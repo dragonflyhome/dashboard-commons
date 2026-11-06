@@ -1,0 +1,10 @@
+# Beispielseite mit Vorschau, Backup-Angabe und Assets.
+schema = 3
+title = "Beispiel: Schaufenster"
+status = "pausiert"
+summary = "Beispielseite mit Vorschau, Backup-Angabe und Assets."
+order = 20
+chat = "Beispiel"
+backup = "gelb"
+backup_note = "nur auf C:"
+vorschau = "assets/vorschau.html"

@@ -1,0 +1,10 @@
+[[balken]]
+name = "Kompost ansetzen"
+von = "2031-03"
+bis = "2031-04"
+farbe = "aktiv"
+
+[[balken]]
+name = "Kräuterbeet"
+von = "2031-04"
+bis = "2031-09"

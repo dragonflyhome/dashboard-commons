@@ -1,0 +1,14 @@
+#!/bin/sh
+# Pre-Push-Hook des Code-Repos (eingehängt mit: git config core.hooksPath scripts/hooks).
+# Prüft jeden Push mit scripts/Vor-Push.ps1: nur refs/heads/main und leichte Tags v0.MINOR.PATCH auf main, nur Ranke,
+# nur Merge-Commits auf main, der ganze Baum ohne Privates. Die Namenslisten
+# liegen nur im Inhalts-Repo (dashboard-inhalt/pruefer/namen.toml); fehlen
+# sie, geht nichts hinaus. Den Hook kann man mit --no-verify umgehen; darum
+# wird nur über scripts/Hochladen.ps1 hochgeladen, das vorher selbst prüft.
+# Ein Projekt-Repo (Overlay) hat kein scripts/: dort core.hooksPath absolut auf
+# <code-repo>/scripts/hooks. Der Prüfer liegt darum neben dem Hook, geprüft wird das aktuelle Repo.
+repo=$(git rev-parse --show-toplevel) || exit 2
+# pwd -W (Git für Windows) gibt C:/…, das PowerShell versteht; sonst pwd.
+code=$(cd "$(dirname "$0")/../.." && { pwd -W 2>/dev/null || pwd; }) || exit 2
+if command -v pwsh >/dev/null 2>&1; then ps=pwsh; else ps=powershell.exe; fi
+exec "$ps" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$code/scripts/Vor-Push.ps1" -Repo "$repo" -Hook -RemoteName "$1" -RemoteUrl "$2"

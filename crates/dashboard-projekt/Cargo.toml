@@ -1,0 +1,31 @@
+[package]
+name = "dashboard-projekt"
+version = "0.1.0"
+edition = "2024"
+description = "SDK für Backend-Module der Projekte (Etappe 4b): Trait Modul, ProjektKontext, Hooks, Prüfstand"
+license = "AGPL-3.0-or-later"
+publish = false
+
+# Nur Kisten, die das Dashboard schon nutzt (Cargo.lock bleibt gleich).
+# Diese Kiste hängt NICHT von der Kiste `dashboard` ab: das Dashboard
+# hängt von ihr ab und füllt den Kontext über den Trait `Anbindung`.
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "tower-log", "tracing", "json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["catch-panic", "limit"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+toml = { version = "1", features = ["preserve_order"] }
+chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std", "serde"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat"] }
+http-body-util = "0.1"
+
+# `dienst`: nur der Dienst (Kiste dashboard) baut Kontexte (`ProjektKontext::neu`).
+# `pruefstand`: nur für Tests (Prüfstand im Arbeitsspeicher, Schreiben der
+# TypeScript-Typen). Module nehmen `pruefstand` nur unter [dev-dependencies];
+# beides prüft der Wächter in src/projekte/waechter.rs.
+[features]
+dienst = []
+pruefstand = []

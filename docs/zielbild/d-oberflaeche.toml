@@ -1,0 +1,251 @@
+titel = "Oberfläche und Bau"
+reihenfolge = 6
+
+[[block]]
+titel = "Grundentscheidung"
+text = """Eine SvelteKit-App, ssr = false, adapter-static, ausgeliefert vom Rust-Server. Keine Remote Functions (experimentell, brauchen einen Node-Server). Fallback-Datei 200.html."""
+
+[[block]]
+titel = "Kopfleiste (Fassung 3)"
+text = """Links Brotkrumen: das Symbol führt zur Startseite, das letzte Glied lädt die Seite neu und scrollt nach oben. Rechts PC-Symbol mit kleinem Echtzeit-Verlauf der Prozessorlast, Glocke mit Zahl der Meldungen (ersetzt das Band), Live-Punkt mit fünf Zuständen und Schloss. Das Menü oben entfällt; links eine Seitenleiste mit Anstehend, den Projekten (Unterseiten eingerückt darunter) und den Dashboard-Seiten, am Handy als Schublade. Ganzer Text: Entscheidung kopfleiste (Abschnitt Entscheidungen; Teile [fassung_2_schloss], [fassung_2_live_zustaende], [fassung_2_passkey_wege], [fassung_3])."""
+
+[[block]]
+titel = "Wie Projektseiten in die App kommen"
+beispiel = """// web/src/lib/projekte.generated.ts  (vom Baumeister geschrieben)
+export const seiten = {
+  garten: {
+    haupt: () => import('../../../projects/garten/Seite.svelte'),
+    unter: { 'beet-a': () => import('../../../projects/garten/seiten/beet-a.svelte') }
+  },
+  // nur Projekte, deren Prüfung grün war
+};"""
+
+[[block]]
+punkte = [
+  "Jede Projektseite ist ein eigener Teil des Baus (Chunk) und wird erst geladen, wenn man sie öffnet.",
+  "Die Liste schreibt der Baumeister, nur mit Projekten, deren Prüfung grün ist. Ein kaputtes Projekt kann den Bau also nicht brechen.",
+  "Zur Laufzeit steckt jede Projektseite in einer Fehlergrenze (<svelte:boundary>): Wirft sie beim Zeichnen einen Fehler, steht dort „Diese Seite hat gerade einen Fehler“ mit Knopf „neu versuchen“; der Rest des Dashboards läuft weiter. Fehler in Klick-Funktionen fängt die Grenze nicht (so die Svelte-Doku); dafür fängt das Projekt-Layout sie mit onerror am Fenster ab und zeigt dieselbe Meldung.",
+]
+
+[[block]]
+text = """Routen:"""
+
+[[block]]
+beispiel = """routes/
+  +layout                        Kopfzeile, Live-Kanal, Projektliste, Bau-Hinweis
+  +page                          Start: Cockpit, Kacheln, offene Fragen
+  fragen/  pc/  schluessel/      wie bisher
+  katalog/                       alle Bausteine und Token, hell/dunkel, breit/schmal
+  anleitung/  zielbild/  entscheidungen/   System-Seiten (statt .md)
+  projects/[slug]/
+    +layout                      Kopf (projekt.toml), Seitenleiste, Fehlergrenze
+    +page                        lädt Seite.svelte des Projekts
+    [unterseite]/+page           lädt seiten/<name>.svelte
+    fragen/  vorschau/"""
+
+[[block]]
+titel = "Der Baumeister: von der Svelte-Datei zur Seite"
+beispiel = """Assistent speichert Seite.svelte (nur .svelte/.ts lösen einen Bau aus, TOML nie)
+ → Beobachter merkt es
+ → 5 s Ruhe abwarten (oft werden mehrere Dateien geschrieben)
+ → pruefe <slug>: TOML, Assets, Stil, ESLint, svelte-check, Vitest – nur für dieses Projekt
+ → rot: Projekt bleibt in seiner letzten grünen Fassung; Ereignis bau/rot mit Meldung
+ → grün: projekte.generated.ts neu (nur grüne Projekte)
+ → Gesamtprüfung (svelte-check über alles): fängt Fehler, die erst beim
+   Zusammenbau entstehen; bei rot das Projekt der ersten Meldung ausschließen
+   und noch einmal (höchstens zwei Runden)
+ → vite build nach web/builds/<n>/
+ → Bau grün: Zeiger umstellen (im Speicher und in der Datei web/builds/aktuell),
+   Ereignis fassung, alte Fassungen bis auf 2 löschen
+ → Bau rot: alte Fassung bleibt, Meldung auf der Startseite"""
+
+[[block]]
+punkte = [
+  "Kein import.meta.glob: Das würde alle Projekte zur Bauzeit einsammeln, auch rote, und der Bau fiele um. Nur die vom Baumeister geschriebene Liste mit expliziten import().",
+  "Ein Bau zur Zeit, Zeitlimit 120 s, danach wird der Kindprozess beendet. Kommen währenddessen Änderungen, folgt genau ein weiterer Bau.",
+  "Niedrige Priorität: Der Bau läuft unter Windows mit BELOW_NORMAL, damit das Cockpit beim Speichern nicht ruckelt.",
+  "Neustart des Servers liest web/builds/aktuell und zeigt sofort die letzte gute Fassung, ohne zu bauen.",
+  "Kein Bau-Knopf auf der Projektseite: gebaut wird von selbst nach dem Speichern. Verpasst der Beobachter etwas, stößt ein Assistent den Bau über den Vorgang bau an. POST /api/bauen gibt es seit 6d nicht mehr; GET /api/bauen zeigt nur den Stand.",
+  "Gemessen mit warmem Cache: vite build 3,8 s, svelte-check 3,9 s, Vitest 4,0 s, ESLint 49,8 s über alles. ESLint ist also der Engpass; darum läuft es je Projektordner mit --cache, nie über alles. Ziel: unter 30 s vom Speichern bis zur Seite; Grenze: 60 s. ESLint je Projektordner mit --cache wird in Etappe 4 gemessen, bevor „sichtbar nach 10–30 s“ ein Versprechen ist.",
+  "„Bleibt in alter Fassung“ heißt: Der Baumeister merkt sich je Projekt den letzten grünen Stand als Kopie unter web/.projekte-gruen/<slug>/ und baut mit dieser, solange die neue rot ist. Man sieht nie eine halbe Seite.",
+  "Der Baumeister läuft im Rust-Server als eigenes Modul mit eigener Tokio-Aufgabe und Warteschlange und startet npm als Kindprozess. Kein zweites Programm: gestartet wird genau eines.",
+  "Für Projekt-Assistenten beim Arbeiten: npm run pruefe -- <slug> im Ordner web zeigt dieselben Meldungen sofort, ohne auf den Baumeister zu warten.",
+  "Ein Svelte-Entwicklungsserver (vite dev) bleibt nur für den Bau-Assistenten in seinem Worktree. Ein eigener Dev-Server je Projekt-Assistent wäre zu viel.",
+]
+
+[[block]]
+titel = "Prüfung je Projekt, damit sich niemand gegenseitig bricht"
+
+[block.tabelle]
+spalten = ["Prüfung", "Bereich", "Was sie ablehnt"]
+zeilen = [
+  ["TOML", "projekt.toml, daten/*.toml", "falsche Felder, Wörter, Daten"],
+  ["Assets", "assets/", "Formate, Größen, SVG-Regeln"],
+  ["Stil (Stylelint)", "<style> in *.svelte des Projekts", "Farben (#…, rgb(), hsl(), Farbnamen), font-family und font-size außer Token, @import, url(http…), :global, !important; Farb-, Rand-, Schatten- und Schrift-Eigenschaften müssen var(--…) sein (Ausnahmen transparent, inherit, currentColor)"],
+  ["Stil im Markup (Vitest-Test)", 'style="…", fill=, stroke= in *.svelte', "feste Farbwerte außerhalb von var(); meldet Datei und Zeile"],
+  ["ESLint", "projects/<slug>/**", "fetch, EventSource, WebSocket, localStorage, sessionStorage, indexedDB, document.cookie, {@html}, Modul-Skripte mit Nebenwirkungen, Imports außer $katalog, $vertrag, svelte und eigenen Dateien"],
+  ["svelte-check", "projects/<slug>/**", "Typfehler"],
+  ["Vitest", "projects/<slug>/**/*.spec.ts", "eigene Tests des Projekts"],
+]
+
+[[block]]
+text = """Für die Stil-Prüfung kommt Stylelint dazu (mit postcss-html und stylelint-declaration-strict-value): Es ist der einzige Weg, der die <style>-Blöcke in Svelte wirklich prüft, ESLint kann es nicht. Drei npm-Pakete nur für die Prüfung, nichts davon läuft im Browser. Die Regeln gelten zuerst für Katalog und Hülle (dort standen bisher 15 Stellen mit festen Farben, davon 10 in pc/Folders.svelte), dann für die Projekte. Aliase $katalog und $vertrag über kit.alias in vite.config."""
+
+[[block]]
+titel = "Server-Teile einzelner Projekte"
+punkte = [
+  "Kein server.rs im Projektordner und kein build.rs, das Projektordner einbindet (Fassung 2 hatte das; gestrichen, Begründung im Abschnitt „Inhaltsmodell: Ein Projekt ist ein Ordner mit drei Sprachen“).",
+  "Braucht ein Projekt einen Server-Teil, baut ihn der Bau-Assistent auf Wunsch als src/projekte/<slug>.rs mit pub fn routen() -> Router<AppState>, eingehängt unter /api/projekt/<slug>/, hinter allen Schleusen.",
+  "Nach dem Zusammenführen startet scripts/Dienst.ps1 -Neustart den Server neu (bauen, alten Prozess beenden, neuen starten); der Live-Kanal verbindet sich selbst wieder, die Oberfläche kommt aus web/builds/aktuell.",
+]
+
+[[block]]
+titel = "API-Vertrag aus einer Quelle"
+text = """Alle Typen stehen in src/vertrag/. ts-rs schreibt daraus beim cargo test die TypeScript-Typen nach web/src/lib/vertrag/ (eingecheckt, Import als $vertrag). cargo test schlägt fehl, wenn sie nicht zu Rust passen (festgelegt bei der Abnahme 2c: die Quelle ist Rust, also prüft cargo test). Dieselben Typen lesen die TOML-Dateien (serde). Ein Typ, drei Nutzungen: TOML lesen, JSON schicken, TypeScript prüfen."""
+
+[[block]]
+titel = "Daten live, App-Fassung getrennt"
+text = """
+Daten und App-Fassung sind zwei Dinge. Daten kommen immer live vom Server und sind auf jeder Seite aktuell. Die App-Fassung ist der Bau der Oberfläche, die gerade im Browser geladen ist. Auf der Projektseite gibt es dafür keine eigene Zeile und keinen Knopf.
+
+Nur wenn die geladene App-Fassung veraltet ist, steht im Bereich „live, angemeldet“ der Hinweis „Daten live, App wird gleich aktualisiert“. Die App lädt nach 30 Sekunden von selbst neu; ein Klick ist nur eine Abkürzung, aber nie mitten in einer Eingabe oder einer offenen Antwort."""
+
+[[block]]
+punkte = [
+  "Drei Fälle: Keine Verbindung zum Dienst (Daten können veraltet sein; kein Neuladen, neuer Versuch alle paar Sekunden). App veraltet (Hinweis wie oben). Neue Fassung wird gebaut (eine Svelte- oder TS-Datei wurde geändert; kein Klick nötig, danach weiter mit App veraltet). Keine Verbindung geht vor, Bau läuft geht vor App veraltet.",
+  "Veraltet heißt: Der Server meldet über den Live-Kanal eine Fassung mit neuerer Bau-Kennung als die, mit der die Seite geladen wurde. Gleiche Kennung: kein Hinweis.",
+  "Von selbst neu geladen wird erst, wenn kein Eingabefeld Fokus oder ungespeicherten Text hat und keine Antwort offen ist; sonst bleibt der Hinweis stehen, bis der Nutzer klickt oder fertig ist.",
+  "Vorlese-Programme hören den Hinweis einmal, nicht bei jedem weiteren Ereignis.",
+  "Ohne Anmeldung gilt dasselbe ohne Satz aus dem Bau; frei sind nur Zustand und Zeit.",
+]
+
+[[block]]
+titel = "Daten und Live-Zustand"
+punkte = [
+  "Seitendaten nur aus load mit depends(„api:projekt:<slug>“).",
+  "Live-Kanal (live.svelte.ts, Runes) übersetzt Ereignisse in gezielte invalidate-Aufrufe; bei fassung lädt er die Oberfläche neu.",
+  "Projekt-Komponenten bekommen alles als Props, holen nie selbst.",
+  "Immer aktuell: Jede Seite hält ihre Daten über den Live-Kanal (frei oder geschützt) von selbst aktuell. Jede Änderung, die der Server bemerkt (TOML gespeichert, Vorgang, Antwort, Meldung, PC-Wert, Bau), wird ein Ereignis, und jede Seite, die diese Daten zeigt, lädt sie gezielt nach. Keine Seite liest nur beim Öffnen. Das letzte Brotkrumen-Glied ist eine Aktualitätsprüfung: Stand mit dem Server abgleichen (Ereignisnummer), fehlende Änderungen nachziehen, nach oben scrollen; keine neue Browserseite. Nach einem neuen Bau (Ereignis fassung) wechselt die Oberfläche selbst, ohne Zutun und ohne Eingaben zu verlieren (4c). Ist der Kanal unterbrochen, sagt das der Live-Punkt; nach dem Wiederverbinden zieht die Seite alles nach, was dazwischen geschah.",
+  "Server: Fakten und Fachgrößen. Oberfläche: Front-Office und Erlebnis. Der Server liefert gut strukturierte Fachdaten: was da ist, in welchem Stand, bis wann (Frist), wie dringend (Stufe) und ob eine Regel erfüllt ist, etwa beim Backup die 3-2-1-Regel mit erfüllt, teilweise oder nicht erfüllt. Solche Regeln rechnet nur der Server, mit Tests, damit jede Seite dasselbe Ergebnis zeigt. Die API weiß nichts über Widgets: keine Kachel, Karte, Icon, Farbe, kein Layout. Wo die Oberfläche zuordnen muss, liefert sie fachliche Kennungen. Die Oberfläche entscheidet, wie es aussieht und wie man damit arbeitet: Farbe (bedeutung), Satz, Beschriftung, Reihenfolge, Gruppierung, Filter und welche Frage zuerst kommt. Mehrere Widgets lesen denselben Endpunkt. Faustregel: Ändert sich die Sache, wenn nur die Seite neu gestaltet wird? Dann gehört sie in die Oberfläche, sonst in den Server. Beispiel: backup_stand mit kopien (ort, stand, text) und regel_321 aus /api/pc. Prüfpunkt jeder Abnahme. Siehe Entscheidung zustand-vom-server (Abschnitt Entscheidungen).",
+  "Backend: Zustand der Projekte. Frontend: Auswertung des Dashboards. Zum Zustand gehören Daten, Fakten, Fachgrößen, Verlauf und Vorgänge je Projekt. Zur Auswertung gehören Zusammenfassen, Zählen über Projekte, Sortieren, Hervorheben und die Übersichten „Anstehend“, „Jetzt für dich“ und das Unter-Dashboard. Beispiel: /api/anstehend liefert die Einträge mit Stufe und Frist je Projekt; Übersicht und Zähler rechnet das Frontend (Schritt 3a+). Ausnahme aus Sicherheit: /stand ohne Anmeldung gibt weiter nur Zahlen aus, weil dort keine Einträge sichtbar sein dürfen.",
+]
+
+[[block]]
+titel = "Formsprache: vier Schichten"
+text = """Das Dashboard nutzt ein gutes, modernes, Svelte-natives UI-Toolkit, als Kopie im eigenen Repo (Vendor) und selbst gepflegt. Toolkit heißt: eine fertige Sammlung von Bedienteilen (Menü, Dialog, Reiter, Aufklapper, Tooltip), die Tastatur und Bildschirmleser schon richtig können."""
+
+[[block]]
+beispiel = """Token  ->  Toolkit (Vendor)  ->  Katalog ($katalog)  ->  Projektseiten"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Schicht", "Ort", "Wer pflegt", "Wer darf es benutzen"]
+zeilen = [
+  ["Token", "web/src/lib/katalog/token.css", "Bau-Assistent", "alle (nur als var(--…))"],
+  ["Toolkit", "web/vendor/<paket>/", "Bau-Assistent", "nur der Katalog"],
+  ["Katalog", "web/src/lib/katalog/", "Bau-Assistent", "alle Seiten"],
+  ["Projektseiten", "projects/<slug>/", "Projekt-Assistenten", "–"],
+]
+
+[[block]]
+punkte = [
+  "Das Toolkit liefert Verhalten (Fokus, Tastatur, ARIA, Öffnen und Schließen); das Aussehen kommt aus den Token. Darum ist ein ungestyltes (headless) Toolkit die erste Wahl; eines mit eigenem Aussehen nur, wenn sich dieses vollständig über unsere Token steuern lässt.",
+  "Projektseiten importieren das Toolkit nie direkt. Die ESLint-Grenze (nur $katalog, $vertrag, svelte, eigene Dateien) erzwingt das. So lässt sich das Toolkit tauschen, ohne ein Projekt anzufassen.",
+  "Vendor-Kopie: je npm-Paket ein Ordner web/vendor/<paket>/ mit dem unveränderten Inhalt aus der Registry, der Original-Lizenz und HERKUNFT.toml (Version, Datum, Prüfsumme der Registry, entfernte Dateien). web/package.json zeigt mit „file:vendor/<paket>“ darauf; npm ci braucht dafür kein Netz. Alle Pakete, die zur Laufzeit gebraucht werden, auch die indirekten, liegen dort; sonst holt npm ci sie doch aus dem Netz.",
+  "Keine eigenen Änderungen am Code der Kopie. Die einzige erlaubte Änderung: Markdown-Dateien des Pakets (README.md, CHANGELOG.md) werden entfernt und in HERKUNFT.toml unter entfernt aufgeführt; eine Lizenz als LICENSE.md wird inhaltsgleich zu LICENSE.txt.",
+  "Aktualisieren: scripts/Vendor-Pruefen.ps1 meldet neue Fassungen und Lizenzen; scripts/Vendor-Holen.ps1 holt eine Fassung in einen leeren Ordner, prüft Prüfsumme und Lizenz, ersetzt, dann npm ci, npm run verify und Sichtprüfung im /katalog. Ein Commit je Paket, nie zusammen mit eigenem Code. Das passiert in Katalog-Runden.",
+]
+
+[[block]]
+text = """Prüfkriterien für die Toolkit-Wahl (der Prüf-Assistent prüft die Empfehlung des Bau-Assistenten daran; die Wahl trifft der Inhaber des Systems):"""
+
+[[block]]
+[block.tabelle]
+spalten = ["#", "Kriterium", "Muss", "Wie gemessen"]
+zeilen = [
+  ["1", "Svelte-5-nativ", "Runes, Snippets, keine Svelte-4-Stores in der Schnittstelle", "Quelltext, peerDependencies"],
+  ["2", "Kein Netz zur Laufzeit", "keine CDN-Verweise, keine Web-Fonts, keine Telemetrie", "Suche nach http im Vendor-Ordner, CSP-Test"],
+  ["3", "Lizenz", "MIT, Apache-2.0, BSD (auch 0BSD) oder ISC", "Lizenzdatei, auch der Abhängigkeiten"],
+  ["4", "Pflegeaufwand", "wenige Abhängigkeiten, lebendiges Projekt (Veröffentlichungen in den letzten 3 Monaten), Größe der Kopie", "Zahl der Pakete, Zeilen, Release-Liste"],
+  ["5", "Token und Theming", "Aussehen vollständig über CSS-Variablen; hell/dunkel ohne Umbau; kein Zwang zu Tailwind", "Probe: eine Komponente mit unseren Token"],
+  ["6", "Barrierefreiheit", "Tastatur, Fokus, ARIA nach WAI-ARIA-Mustern", "Probe mit Tastatur, Doku des Toolkits"],
+  ["7", "Build-Zeit", "npm run build höchstens 10 s länger als vorher; läuft mit TypeScript 6, Vite 8, SvelteKit 3", "Messung im Worktree"],
+  ["8", "Passt zum Katalog", "deckt Dialog, Menü, Reiter, Aufklapper, Tooltip, Auswahl, Umschalter ab", "Liste gegen Katalog"],
+]
+
+[[block]]
+text = """Prüfung der Empfehlung Bits UI 2.20.2 (gegen die npm-Registry nachgeprüft):"""
+
+[[block]]
+[block.tabelle]
+spalten = ["#", "Kriterium", "Ergebnis"]
+zeilen = [
+  ["1", "Svelte-5-nativ", "✅ verlangt svelte ^5.33, Runes und Snippets"],
+  ["2", "Kein Netz zur Laufzeit", "✅ laut Doku und Paketinhalt; beim Einbau mit CSP-Test bestätigen"],
+  ["3", "Lizenz", "✅ mit Auflage: alle MIT, @internationalized/date und @swc/helpers Apache-2.0, tslib 0BSD (alle erlaubt). Bei svelte-toolbelt fehlt das Lizenzfeld in package.json; eine LICENSE-Datei liegt bei, ihr Text muss vor dem Einbau geprüft werden"],
+  ["4", "Pflegeaufwand", "⚠️ tragbar: sehr aktiv. Aber es sind nicht 7, sondern 16 Pakete zu kopieren (13 zur Laufzeit, 3 über den Pflicht-Peer): bits-ui, runed, svelte-toolbelt, @floating-ui/core, /dom, /utils, tabbable, esm-env, dequal, lz-string, clsx, style-to-object, inline-style-parser, dazu @internationalized/date mit @swc/helpers und tslib, weil es als Pflicht-Peer eingetragen ist (nicht optional), auch ohne Kalender. bits-ui allein: 982 Dateien, 2 MB"],
+  ["5", "Token und Theming", "✅ headless, Aussehen über data-*-Zustände und unsere Variablen, kein Tailwind"],
+  ["6", "Barrierefreiheit", "✅ WAI-ARIA, Tastatur, Fokus laut Doku; Grundlage von shadcn-svelte"],
+  ["7", "Build-Zeit", "offen: wird beim Einbau gemessen (Schätzung: unter 1 s mehr, 40–70 KB gepackt)"],
+  ["8", "Abdeckung", "✅ 42 Bausteine, alle acht nötigen dabei"],
+]
+
+[[block]]
+text = """Urteil: Ja zu Bits UI, als vollständige Kopie im Repo, mit den Auflagen aus Zeile 3 und 4 (Lizenztext von svelte-toolbelt prüfen; vollständige Paketliste kopieren) und der Messung aus Zeile 7 als Teil der Abnahme von Etappe 3a. Die Alternativen scheiden aus: Melt UI wird nicht mehr gepflegt, Skeleton und shadcn-svelte verlangen Tailwind.
+
+Probe vor dem Import (Wegwerf, nur im Worktree, nichts committen), gemacht vom Bau-Assistenten: npm install bits-ui@2.20.2, lib/ui/Dialog.svelte und Tabs.svelte mit unseren Token. Der Prüf-Assistent prüft die Messwerte:"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Messung", "Grenze"]
+zeilen = [
+  ["npm ls --all unter bits-ui", "stimmt mit der Liste der 16 Pakete überein (oder Abweichung begründet)"],
+  ["Lizenz svelte-toolbelt", "Text ist MIT oder eine andere erlaubte Lizenz"],
+  ["Bauzeit vite build, je dreimal vorher/nachher", "höchstens 1 s mehr (Kriterium 7 erlaubt 10 s; mehr als 1 s wäre auffällig)"],
+  ["Bündelgröße aus dem Vite-Bericht", "höchstens 80 KB gepackt mehr"],
+  ["Tastatur: Dialog öffnen, Fokus gefangen, Esc schließt, Fokus zurück; Reiter mit Pfeiltasten", "alles ja, Testing-Library-Test vorhanden"],
+  ["Dialog-Seite unter der geltenden CSP", "keine Netzanfrage, keine CSP-Meldung in der Konsole"],
+  ["ESLint je Projektordner mit --cache", "Zahl für den Baumeister (Etappe 4), keine Grenze hier"],
+]
+
+[[block]]
+text = """Sind alle Grenzen eingehalten, gibt der Prüf-Assistent den Vendor-Import für Etappe 3a frei.
+
+Ergebnis der Probe: alle Grenzen eingehalten, Vendor-Import für 3a freigegeben; 16 Pakete wie erwartet, svelte-toolbelt MIT, Bauzeit im Mittel +0,2 s, Bündel +20,1 kB gepackt (davon 16,8 kB die Probeseite selbst), Dialog und Reiter mit Tastatur richtig, zwei Testing-Library-Tests grün, keine Anfrage außer 127.0.0.1, ESLint je Projektordner mit warmem Cache 3,1 s. Hinweis für HERKUNFT.toml: runed nennt @sveltejs/kit ^2.21 als optionale Peer-Abhängigkeit, npm meldet bei Kit 3.1 „invalid“ ohne Folgen. Die Abnahme von 3a prüft zusätzlich npm ci --offline in einem frischen Klon."""
+
+[[block]]
+titel = "Token und Katalog"
+punkte = [
+  "Token in web/src/lib/katalog/token.css. Vorhanden (in app.css): Flächen und Text (--bg, --card, --text, --muted, --line, --shadow, --radius), Akzent, Bedeutungsfarben (--ok, --warn, --bad, --plan, --done, --info), Schrift (--font, --mono). Fehlt und kommt dazu: Abstände (--abstand-1 bis --abstand-6), Schriftstufen (--fs-*), Rundungen, Fokus- und Hover-Farben, Dauer und Kurven für Bewegung, Breiten (360 px, Mitte, 1180 px), eine Palette für Kategorien (--kat-1 bis --kat-10, etwa für Ordnerfarben). Schriften: nur die des Systems.",
+  "Eine Farbsprache statt zwei: Die Klassen st-* und c-* meinen dasselbe; sie werden zu den sechs Bedeutungen (ok, laeuft, wartet, problem, info, neutral).",
+  "Grundteile als Komponenten: Karte, Knopf, Pille, Hinweis, Leer- und Fehlerzustand sind bisher nur CSS-Klassen; sie werden Komponenten im Katalog, gebaut auf dem Toolkit.",
+  "Katalog web/src/lib/katalog/ (Import $katalog): Text-Bausteine (Abschnitt, Absatz, Text, Liste, Tabelle, Hinweis, Zitat, Reiter, Bild), Daten-Bausteine (Kennzahlen, Ampel, Fortschritt, Zeitstrahl, Gantt, Kanban, Fluss, Fragen), Grundteile (Karte, Pille, Knopf).",
+  "Seite /katalog: jeder Baustein in jedem Zustand, hell und dunkel, 360 px und 1280 px. Hier misst der Prüfer.",
+  "Hell/dunkel folgt dem System, mit Schalter. Ab 360 px Breite nutzbar. Tastatur, sichtbarer Fokus, Kontrast mindestens 4,5 : 1, Bewegung aus bei prefers-reduced-motion, jeder Bild-Baustein hat eine Textfassung.",
+]
+
+[[block]]
+titel = "Tests"
+
+[block.tabelle]
+spalten = ["Ebene", "Werkzeug", "Wer"]
+zeilen = [
+  ["Logik und Katalog", "Vitest, Testing Library", "Bau-Assistent"],
+  ["Vertrag", "Vitest gegen Beispiel-JSON aus Rust", "Bau-Assistent"],
+  ["Projekt", "Vitest im Projektordner (optional, Pflicht bei eigenen Daten)", "Projekt-Assistent"],
+  ["Server", "cargo test gegen Beispiel-Repo tests/beispiel/", "Bau-Assistent"],
+  ["Ende-zu-Ende", "eigenes Node-Skript über das DevTools-Protokoll mit dem installierten Edge (headless, Wegwerf-Profil, ohne Netz), wie tests/skripte/passkey-edge.mjs; kein Playwright (Entscheidung zum Plan 3a)", "Bau-Assistent, ab Etappe 3a"],
+]
+
+[[block]]
+text = """Regeln für Ende-zu-Ende-Tests mit Edge:"""
+
+[[block]]
+punkte = [
+  "Kein Paket, kein Browser-Download: eigene Node-Skripte unter tests/skripte/ sprechen über das DevTools-Protokoll (CDP) mit dem installierten Edge. Kein Playwright (Entscheidung zum Plan 3a).",
+  "Edge wird nur gestartet und gesteuert, nicht verändert: keine Erweiterungen, keine Einstellungen am installierten Edge.",
+  "Eigenes, leeres Testprofil in einem Wegwerf-Ordner (das Skript legt es an und löscht nur diesen Ordner danach), nie das Profil des Nutzers, keine Lesezeichen, kein Verlauf.",
+  "Ziel nur 127.0.0.1 (Testport 8788 mit eigenem Datenspeicher; Beispiel-Repo oder Kopien von data/ und projects/ in einem Temp-Ordner, nie die echten Dateien). Edge mit --disable-background-networking und --disable-component-update; Netz-Sperre über CDP (Fetch.enable): jede Anfrage an eine andere Adresse wird abgebrochen und lässt die Probe scheitern.",
+  "Unsichtbar (--headless=new), alle Kindprozesse mit windowsHide. Bildschirmfotos aus Kopien echter Daten kommen nie ins Repo.",
+  "Erste Prüfwege (Etappe 3a): Katalog bei 360 und 1280 px ohne Überlappung, hell und dunkel, Tastatur durch Dialog und Reiter. Später: Startseite, Projektseite, Unterseite, Frage beantworten, Vorschau, Schlüssel-Seite zeigt keinen Wert, absichtlich kaputte Projektseite zerlegt nichts.",
+]

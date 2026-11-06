@@ -1,0 +1,57 @@
+﻿CHANGELOG
+=========
+
+Alle nennenswerten Änderungen an diesem Repo stehen in dieser Datei. Das
+Format folgt Keep a Changelog 1.1.0 (https://keepachangelog.com/de/1.1.0/),
+in Klartext statt Markdown; die Versionen folgen Semantic Versioning
+(https://semver.org/lang/de/), vorerst nur 0.x.
+
+Regel 0.x: Ein Bruch oder etwas Neues hebt die mittlere Zahl (0.2.0), eine
+reine Behebung die letzte (0.2.1); alte Formen fallen ohne Übergang weg. Jeder
+Bruch steht als eigene Zeile „- Bruch: …“ unter Geändert oder Entfernt. Eine
+Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
+
+Unreleased
+----------
+
+0.1.0 - 2026-11-06
+------------------
+
+Hinzugefügt
+- Erste öffentliche Fassung: Code unter AGPL-3.0-or-later (LICENSE),
+  Dokumentation unter CC0-1.0 (LICENSES/CC0-1.0.txt).
+- Pre-Push-Prüfer scripts/Vor-Push.ps1 für jeden Push und das ganze
+  Bundle: nichts Privates geht hinaus.
+- Commit-Nachrichten nach Conventional Commits, geprüft vom Hook
+  scripts/hooks/commit-msg (keine Fußzeilen, keine Anhänge).
+- Dieses Changelog.
+- Mehrere Inhaltsquellen (etwa ein eigenes Projekt-Repo); eine unlesbare
+  Quelle nennt ein Satz in der Prüfung, und dashboard-version.toml im
+  Projekt-Repo wird gegen die Version des Dienstes geprüft.
+  data/schwerpunkte.toml und data/gruppen.toml kennen die Projekte aller
+  Quellen; eine unlesbare Quelle ist in dashboard pruefe --alle ein
+  Fehler. Mit nur einer Quelle, bei pruefe <slug> und bei --bauliste
+  bleibt eine unlesbare Quelle stumm.
+- Projekt-Repos (Overlay mit genau einem Ordner unter projects/): der
+  Prüfer lässt dort nur dieses Projekt und dashboard-version.toml zu, eine
+  Ausnahmedatei je Repo nimmt einzelne Listenwerte aus, und
+  scripts/Hochladen.ps1 -Repo lädt sie hoch.
+- Der Pre-Push-Prüfer sucht Namen von KI-Assistenten, Modellen und ihren
+  Anbietern (auch mit Strich oder Leerzeichen zwischen den Wortteilen) im
+  Basis-Repo in Dateien, Pfaden, Binärdateien und Commit-Nachrichten.
+- Ab 4 geänderten Projekten prüft der Bau gesammelt (ein svelte-check
+  über alle, Stylelint je Inhaltsquelle; ESLint und danach Vitest je
+  Projekt in einer Warteschlange); stürzt ein gemeinsamer Lauf ab oder
+  reißt er sein Zeitlimit, wird je Projekt nachgeprüft, die am längsten
+  nicht zu Ende geprüften zuerst, solange die Frist reicht. Was nicht mehr
+  drankommt, ist nicht geprüft.
+- Projekte deklarieren keine globalen Typen (declare global, declare
+  module, /// <reference, *.d.ts), damit ein Projekt im Sammellauf keine
+  Fehler eines anderen verdeckt.
+- Angemeldet zeigt der Kopf der Projektseite während eines Baus den
+  Schritt („prüft Projekt 7 von 21“, „prüft 21 Seiten“), nur sichtbar, ohne
+  Ansage.
+- Tags v0.MINOR.PATCH, leicht und nur auf main, hochgeladen mit
+  scripts/Hochladen.ps1 -Tag.
+- Versionsregel 0.x: vor 1.0 keine Abwärtskompatibilität; ein Tag gilt
+  nur, wenn Cargo.toml und ein Changelog-Abschnitt dieselbe Fassung tragen.

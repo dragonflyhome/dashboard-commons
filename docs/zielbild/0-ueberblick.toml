@@ -1,0 +1,64 @@
+titel = "Überblick"
+reihenfolge = 0
+text = """
+Zielbild: Wie das Dashboard gebaut sein soll.
+
+Diese Seite fasst die Grundsätze zusammen. Die weiteren Abschnitte führen sie aus. Einzelheiten zu Startpaket, Datengrundsatz und Projekt-Backend stehen im Abschnitt Entscheidungen."""
+
+[[block]]
+titel = "Sprachen und Formate"
+text = """
+Projektseiten bestehen aus Rust (wenn ein Backend nötig ist), TOML (Daten) und TypeScript mit Svelte (alles andere). Das Dashboard enthält kein Markdown. Alle Inhalte sind aktuell.
+
+Projekte dürfen SVG-Dateien, Bilder und andere Assets beisteuern. CSS entsteht in Abstimmung mit dem Bau-Team des Dashboards."""
+
+[[block]]
+titel = "UI-Toolkit"
+text = """
+Das Bau-Team ist für das UI-Toolkit verantwortlich. Es wählt ein modernes, Svelte-natives Toolkit und pflegt es als Kopie im eigenen Repo (Bits UI unter web/vendor/). Fassung 2.1 des Zielbilds legt diesen Platz fest. Die Gestaltung liegt beim Bau-Team."""
+
+[[block]]
+titel = "Etappen"
+text = """
+Die Arbeit ist in kleine Etappen geteilt (etwa 1a/1b, 2a bis 2d, 3a/3b). Etappe 2 hat diese Reihenfolge: 2a Datenspeicher, 2b Vorgänge und Warten, 2c Vertrag, 2d Inhalt im Arbeitsspeicher. Datenspeicher und Vorgänge brauchen nur 1a und 1b (Fehlertyp, Schleusen). Ihre Typen stehen bis 2c von Hand in src/api/vertrag.rs.
+
+Weitere Eckpunkte: kein server.rs im Projektordner, Gesamtprüfung vor dem Bau, Messwerte für den Baumeister (Abschnitt Oberfläche und Bau), vorerst kein ETag, eigene Zeitlimits von 3 Sekunden, Stylelint für die Stil-Prüfung. Vorgänge melden ihr Ende per Rückruf mit curl (Abschnitt Vorgänge und Rückruf). Das Dashboard hat einen eigenen Datenspeicher (Abschnitt Der Datenspeicher des Dashboards). Oberflächen-Tests laufen mit dem vorhandenen Edge; ein zusätzlicher Browser wird nicht heruntergeladen.
+
+Etappe 7 ist geteilt in 7a (Dienst), 7b (Windows-Anmeldung) und 7c (Passkey). Etappe 4v (Vorschau der neuen Form) kommt vor 7c."""
+
+[[block]]
+titel = "Daten kommen vom Backend"
+text = """
+Jedes Projekt bekommt ein Rust-Backend. Der Server baut die Endpunkte aus den TOML-Dateien und dem Datenspeicher. Die Seite greift nur über die API auf Daten zu. Im Frontend darf Text stehen. Zahlen, Zeitachsen, Abbildungen und Diagrammdaten liefert das Backend.
+
+Seite.svelte und die .ts-Dateien eines Projekts enthalten daher keine eingetippten Zahlen, Termine, Reihen oder Diagrammdaten. Ab Etappe 4v meldet der Prüfbefehl solche Stellen."""
+
+[[block]]
+titel = "TOML nur für Handeingaben"
+text = """
+TOML enthält nur Daten, die von Hand eingetragen werden. Alles Erzeugte (Git-Stände, Messwerte, Zählungen, Prozente, Tage seit, Vorgänge, Antworten, Prüfberichte) berechnet der Server aus TOML und Datenspeicher. Er hält es im Arbeitsspeicher oder legt es im Datenspeicher ab.
+
+Ein Projekt darf eigene Werkzeuge nutzen, um seine TOML-Dateien zu erzeugen, etwa aus einem Archiv. Diese Werkzeuge gehören nicht zum Dashboard."""
+
+[[block]]
+titel = "Eigenes Backend je Projekt"
+text = """
+Ab Etappe 4b darf ein Projekt (diese Etappe ersetzt die frühere Regel, dass Rust nur vom Bau-Team kommt) ein eigenes Rust-Modul in projects/<slug>/server/ haben. Es ist eine eigene Kiste im Workspace des Dienstes, hängt nur vom SDK dashboard-projekt ab und wird mit dem Dienst gebaut. Es bekommt Endpunkte unter /api/projekte/<slug>/x/, Hooks an festen Stellen und einen eigenen Bereich im Datenspeicher.
+
+Es gibt keine Isolation. Jede Änderung kommt als Merge-Request (eigener Zweig, Vorgang merge) und geht durch die übliche Prüfung: Der Bau-Assistent prüft und gibt frei, der Prüf-Assistent nimmt ab. Dann folgen ein Merge-Commit nach main und ein Neustart."""
+
+[[block]]
+titel = "Aufgaben stehen im Dashboard"
+text = """
+Jede Aufgabe für den Inhaber und jeder Link, auf den er klicken soll, steht im Dashboard (Startseite „Für dich“ und im Projekt), nie nur im Gespräch. Gebaut wird das als Etappe 5a direkt nach 4v. Bis dahin stehen dauerhafte Links unter [[links]] und Aufgaben in open = [...]. Einmalige Links mit Geheimnis kommen nie ins Repo."""
+
+[[block]]
+titel = "Warme Builds"
+text = """
+Gebaut und getestet wird immer inkrementell. target/, web/build/, web/builds/, .svelte-kit/, node_modules/ und der Datenspeicher werden nicht gelöscht, um „sauber“ zu starten. Die Bauordner leert allein eine geplante tägliche Bereinigung. Eigene clean- oder reset-Skripte gibt es nicht.
+
+Aufgeräumt wird nur mit git clean: erst -n, nur im eigenen Pfad, mit Ausnahmen für target, build, builds, .svelte-kit und node_modules, nie -x. Zurückgesetzt wird mit git restore im eigenen Pfad; git reset ist mit denselben Ausnahmen für target und build erlaubt. Ziel- und Build-Ordner bleiben stehen, die Caches bleiben warm.
+
+Ein Vollbau (cargo clean oder Ähnliches) ist nur im Ausnahmefall erlaubt, mit Grund und vorher beim Leit-Assistenten angemeldet. Keine Etappe verlangt einen Vollbau.
+
+Bauzeiten sind eine Kennzahl. Jede Meldung „bereit zur Abnahme“ und jede Abnahme nennt die Dauer von Bau und Test. Das Dashboard zeigt die letzte Bau- und Testdauer (Vorgang bau und /api/betrieb). Wird es spürbar langsamer, wird das gemeldet statt neu gebaut. Prüf-Worktrees bauen in einen festen Zielordner außerhalb des Worktrees (CARGO_TARGET_DIR), damit jede Abnahme inkrementell baut."""

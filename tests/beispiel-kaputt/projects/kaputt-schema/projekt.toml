@@ -1,0 +1,5 @@
+# Absichtlich kaputt: alte Schema-Nummer.
+schema = 2
+title = "Kaputt: Schema 2"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

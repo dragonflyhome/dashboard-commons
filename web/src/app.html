@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="de">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)" />
+		<!-- Etappe 3b: das gewählte Thema (Schalter unten auf jeder Seite) vor dem
+		     ersten Bild setzen, damit nichts im falschen Thema aufblitzt. Die CSP
+		     erlaubt genau dieses Skript über seine Prüfsumme (der Server rechnet sie
+		     beim Ausliefern aus index.html); ändert es sich, schlägt der Test
+		     thema_skript_der_vorlage im Server an. Schlüssel und Werte wie im
+		     Modul thema der Oberfläche. Dieser Kommentar geht mit jeder Seite
+		     hinaus (auch der Fehlerseite): darum hier keine Pfade nennen. -->
+		<script>
+			try {
+				var thema = localStorage.getItem('dashboard-thema');
+				if (thema === 'hell' || thema === 'dunkel') {
+					document.documentElement.setAttribute('data-theme', thema);
+				}
+			} catch (e) {}
+		</script>
+		<!-- Logo und App-Name für die angeheftete Edge-App; fest im HTML, damit
+		     Edge sie ohne JavaScript findet. Das Logo ist eine einzige SVG-Datei;
+		     ico und PNG bleiben als Rückfall für ältere Stellen. -->
+		<link rel="icon" href="/logo.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.ico" sizes="any" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<link rel="apple-touch-icon" href="/icons/symbol-192.png" />
+		<title>Dashboard</title>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

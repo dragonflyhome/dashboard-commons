@@ -1,0 +1,11 @@
+schema = 3
+title = "Links"
+status = "aktiv"
+
+[[links]]
+name = "Normal"
+url = "https://example.org/seite?q=suche"
+
+[[links]]
+name = "Einladung"
+url = "https://example.org/einladen?token=GEHEIMWERT&x=2"

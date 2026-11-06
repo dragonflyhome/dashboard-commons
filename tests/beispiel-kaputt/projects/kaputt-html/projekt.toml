@@ -1,0 +1,6 @@
+# Absichtlich kaputt: siehe assets/vorschau.html (lädt aus dem Netz, hat ein Formular).
+schema = 3
+title = "Kaputt: Vorschau-HTML"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."
+vorschau = "assets/vorschau.html"

@@ -1,0 +1,39 @@
+# Beispiel-Eckdaten für die Tests. Kein echter PC.
+
+[backup]
+copies = 1
+external_disk = false
+cloud = "keine"
+cloud_stand = "fehlt"
+note = "nur eine Platte"
+plan = ["Externe Platte kaufen", "Spiegeln", "Cloud anmelden"]
+
+[[history]]
+kennung = "erster"
+date = "2026-10-22"
+title = "Erster Eintrag"
+note = "a"
+
+[[history]]
+kennung = "zweiter"
+date = "2026-10-24"
+title = "Zweiter Eintrag"
+note = "b"
+
+[[history]]
+kennung = "dritter"
+date = "2026-10-25"
+title = "Dritter Eintrag"
+note = "c"
+
+[[steps]]
+title = "Schritt eins"
+status = "fertig"
+
+[[steps]]
+title = "Schritt zwei"
+status = "läuft"
+
+[[steps]]
+title = "Schritt drei"
+status = "offen"

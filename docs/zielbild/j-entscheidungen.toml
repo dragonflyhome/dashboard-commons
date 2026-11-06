@@ -1,0 +1,66 @@
+titel = "Entscheidungen"
+reihenfolge = 12
+
+text = """
+Einträge liegen in docs/entscheidungen/*.toml (ohne Markdown). Maßgeblich ist der Ordner; diese Liste ist eine Übersicht. Die Dateinamen beginnen mit einem Datum; hier steht nur der Name dahinter.
+"""
+
+[[block]]
+text = """
+Richtung und Weg:
+"""
+
+[[block]]
+punkte = [
+  "freigabe-zielbild-2",
+  "kein-markdown-projektordner",
+  "rust-nur-im-server",
+  "api-vertrag-ts-rs (umgesetzt in 2c)",
+  "keine-remote-functions",
+  "schleusen-und-host-pruefung (umgesetzt in 1b)",
+  "datenspeicher-redb (umgesetzt in 2a)",
+  "vorgaenge-und-rueckruf (umgesetzt in 2b)",
+  "fragen-eigene-datei",
+  "baumeister",
+  "formsprache-und-wuensche",
+  "gestaltung-beim-dashboard-team",
+  "unterseiten-navigation",
+  "ui-toolkit-als-vendor (Bits UI)",
+  "edge-fuer-oberflaechentests",
+  "autostart-dienst (Dienst, Anmeldung, Passkey; 7a–7c)",
+  "zeitleiste-neu (3a)",
+]
+
+[[block]]
+text = """
+Abnahmen: abnahme-1a, -1b, -2a, -2b, -2c, -7a1, -hotfix-fenster, -7b.
+"""
+
+[[block]]
+text = """
+Grundsatzfragen und ihr Stand:
+"""
+
+[[block]]
+punkte = [
+  "1. Antworten im Projektordner speichern? Entschieden: Nein. Das Dashboard hat einen eigenen Datenspeicher (Abschnitt Der Datenspeicher des Dashboards).",
+  "2. Unterseiten links oder als Reiter? Das ist eine Gestaltungsfrage. Die Navigation soll ansprechend, dynamisch und intuitiv bedienbar sein. Der Bau-Assistent entscheidet mit Begründung in einer Entscheidungsnotiz, der Prüf-Assistent prüft sie gegen das Zielbild (Handybreite, Tastatur, Katalog).",
+  "3. Prüf-Werkzeug mit Edge? Entschieden: Ja. Der vorhandene Edge-Browser dient für automatische Oberflächen-Tests; es werden keine zusätzlichen Browser heruntergeladen. Auflagen im Abschnitt Oberfläche und Bau, Block „Tests“ (Regeln für Ende-zu-Ende-Tests mit Edge).",
+  "4. Welches UI-Toolkit? Entschieden: Bits UI 2.20.2, vollständige Kopie unter web/vendor/ (Abschnitt Oberfläche und Bau).",
+]
+
+[[block]]
+text = """
+Alle vier Fragen sind entschieden.
+"""
+
+[[block]]
+text = """
+Fremde Dienste hinter einer Brandmauer. Ein fremder Dienst (etwa ein Notizdienst) ist höchstens eine zusätzliche Quelle oder Ablage, hinter einer abgegrenzten Schnittstelle: eigenes Modul, eigener Teil im Vertrag, kein Kern-Baustein liest ihn direkt. Keine Kernfunktion hängt von ihm ab. Fällt er aus oder fehlt der Zugang, laufen Dashboard, Projektseiten, Datenspeicher, Aufgaben, Fragen und Rechenteile unverändert weiter; die Seite sagt nur, dass diese Quelle gerade fehlt.
+
+Fremde Dienste nur mit Bestätigung. Nichts im Dashboard spricht von selbst mit einem fremden Dienst: kein Zeitplan, kein Hook, kein Lauf beim Start. Jeder Lauf braucht ein ausdrückliches Ja zu genau diesem Lauf, und das Ja gilt einmal. Ganzer Text: Entscheidung inhaltsquellen in docs/entscheidungen/.
+
+Grundsatz für Grundsatzfragen: Vorgelegt werden nur Fragen, die Richtung, Sicherheit, Daten oder Geld betreffen. Gestaltung entscheidet der Bau-Assistent selbst, mit Begründung in einer Entscheidungsnotiz; der Prüf-Assistent prüft sie gegen das Zielbild.
+
+Keine Etappe wartet auf eine Gestaltungsfrage. Eine Gestaltungswahl verdeckt nur sich selbst; hält sie trotzdem eine Etappe auf, fehlt ein Platzhalter, und das ist ein Fehler in der Prozessabhängigkeit. Fehlt eine Entscheidung zur Gestaltung (etwa ein Logo), baut die Etappe mit einem Platzhalter weiter. Die Frage läuft nebenher im Dashboard; ihre Antwort ist später ein Tausch von Dateien oder Daten, keine neue Etappe und kein Halt. Eine Abnahme verlangt nie eine getroffene Wahl, nur „Platzhalter steht und lässt sich tauschen“. Ganzer Text: Entscheidung kein-halt-fuer-gestaltung in docs/entscheidungen/.
+"""

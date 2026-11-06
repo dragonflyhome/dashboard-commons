@@ -1,0 +1,55 @@
+# Abschnitt „Prüfen der Projekte: pruefe“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Prüfen der Projekte: pruefe'
+reihenfolge = 214
+
+[[block]]
+text = 'Der Server kann ein Projekt prüfen, ohne dass er läuft:'
+
+[[block]]
+beispiel = '''
+./target/release/dashboard.exe pruefe <slug>
+./target/release/dashboard.exe pruefe --alle'''
+
+[[block]]
+text = '''
+oder beim Entwickeln cargo run -- pruefe <slug>. Ohne Angabe prüft er alle. Er nimmt denselben Projektordner wie der Server, also auch DASHBOARD_PROJECTS_DIR (ab 4b mit mehreren Quellen: pruefe <slug> findet das Projekt in seiner Quelle). target/release erneuert nur ein eigener Bau im Repo, Dienst.ps1 -Neustart baut in %LOCALAPPDATA%/Dashboard/cache/dienst: Dieselbe Prüfregel wie im eingespielten Dienst hat %LOCALAPPDATA%/Dashboard/cache/dienst/release/dashboard.exe; npm run pruefe in web/ nimmt die neueste der Fassungen.
+
+Je Befund kommt eine Zeile mit FEHLER oder HINWEIS, Datei und (wo es geht) Zeile, dann ein Satz, was falsch ist und wie es richtig geht. Am Ende steht die Zahl, etwa 1 Fehler, 0 Hinweise. Ein Fehler heißt: so lässt sich das Projekt nicht (ganz) zeigen. Ein Hinweis heißt: geht, sollte aber anders werden.
+
+Rückgabe: 0 ohne Fehler (Hinweise zählen nicht), 1 mit Fehlern, 2 bei falschem Aufruf oder unbekanntem Projekt.
+
+Mit mehreren Quellen prüft pruefe --alle data/ gegen die Projekte aller Quellen; eine unlesbare Quelle ist dann ein Fehler (Rückgabe 1).
+
+Geprüft wird:'''
+
+[[block]]
+punkte = [
+  'Markdown: jede Datei, deren Name auf .md endet (Groß- und Kleinschreibung egal), im Projektordner und in seinen Unterordnern bis 8 Ebenen tief, als FEHLER; Ordner namens node_modules und Verknüpfungen auf Ordner betritt pruefe dabei nicht (node_modules gehört nicht ins Projekt: Projekte bauen mit web/node_modules, wie beim Scanner). Der Satz lautet „Markdown-Dateien gibt es im Projekt nicht mehr. Bitte diese Datei löschen; der Kopf gehört in projekt.toml, Daten in daten/*.toml und die Seite in Seite.svelte.“; liegt im Ordner nur Markdown, dazu der FEHLER „projekt.toml fehlt. …“.',
+  'projekt.toml: Felder, feste Wörter, schema = 3, Unterseiten, Adressen der Links und Lebenszeichen, ob die vorschau da ist; als Hinweis ein leeres summary und offene Punkte über 200 Zeichen.',
+  'daten/: nur bekannte Dateinamen, Pflichtfelder, Farbwörter, Datum, Pfeile nur zu vorhandenen Kästen, Fragen mit passenden optionen.',
+  'assets/: einfache Namen (a-z 0-9 . _ -), keine Unterordner, nur erlaubte Formate (svg, png, jpg, jpeg, webp, gif, pdf, csv, txt, json, html, htm; keine Schriften, Programme, Archive), keine Windows-Gerätenamen (con, nul.txt …), keine Verknüpfungen; SVG höchstens 500 KB, alle anderen Dateien (auch Vorschau-HTML) höchstens 2 MB, alles zusammen höchstens 50 MB. Dieselben Grenzen gelten beim Ausliefern (sonst 413). SVG ohne <script>, on…-Attribute, <foreignObject>, Schriften und Verweise nach außen. Vorschau-HTML ohne Formulare und ohne Laden aus dem Netz (Links nach außen gehen).',
+  'Ab 3b die Stile der .svelte-Dateien mit Stylelint und den Regeln von web/stylelint.config.js (src/werkzeug/stil.rs, Skript web/scripts/stil-projekte.mjs): bei <slug> mit Svelte-Dateien und bei --alle, ein Lauf unter einer Sekunde; --ohne-stil lässt es weg. Bis der Schalter STIL_ALS_FEHLER umgestellt ist, sind die Funde Hinweise, danach Fehler. Stürzt Stylelint an einer Datei ab, trifft das seit 3b-2 nur diese Datei (Hinweis „absturz“; ihr Projekt gilt als nicht geprüft, ebenso bei einer unlesbaren Datei); endet der gemeinsame Lauf ohne Ergebnis, prüft pruefe jedes Projekt einzeln, damit die anderen ihre Befunde behalten.',
+  'Ab 3b-2 Abschalt-Kommentare in Projekten als Fehler: @ts-nocheck, @ts-ignore, @ts-expect-error, svelte-ignore, eslint-disable… und /* eslint <regel>: off */ (src/werkzeug/scanner.rs); für Projekte gibt es keine erlaubten Ausnahmen.',
+  'Ab Zweig B auch declare global, declare module, /// <reference …> (auch im <script> von .svelte) und .d.ts-Dateien als Fehler: Der Bau prüft viele Projekte in einem svelte-check, und ein Projekt darf die Typen anderer nicht ändern.',
+  'Ab 4b für <slug> dazu ESLint für den Projektordner mit --cache (web/eslint.projekte.config.js, ohne Typprüfung, darum schnell) und Vitest für eigene *.spec.ts (web/vitest.projekte.config.ts), wie im Baumeister; --ohne-svelte lässt beide weg.',
+]
+
+[[block]]
+text = 'Drei Beispiele aus den Tests (tests/beispiel-kaputt/, 18 absichtlich kaputte Projekte):'
+
+[[block]]
+beispiel = '''
+FEHLER projects/kaputt-status/projekt.toml, Zeile 4: Bei status steht „fertich“. Erlaubt sind: aktiv, pausiert, geplant, fertig, problem, archiviert.
+FEHLER projects/kaputt-gantt/daten/gantt.toml, Zeile 9: Dem Eintrag „Phase 1“ fehlt bis. Beispiel: bis = "2027-01"
+FEHLER projects/kaputt-pfeil/daten/fluss.toml, Zeile 11: Ein Pfeil zeigt bei nach auf „ertne“, aber diesen Kasten gibt es nicht.'''
+
+[[block]]
+text = 'Dieselben Befunde gibt es als JSON unter GET /api/pruefung (alle Projekte mit Zählern) und GET /api/pruefung/<slug> (ein Projekt, 404 wenn es das nicht gibt).'
+
+[[block]]
+titel = 'Die System-Seiten prüfen: pruefe --system'
+beispiel = '''
+./target/release/dashboard.exe pruefe --system docs/zielbild'''
+
+[[block]]
+text = 'prüft die TOML-Abschnitte einer System-Seite (jeder Ordner geht), ohne Projekte, Stil und Rechte. Gelesen wird wie im Server: dieselben Dateien (höchstens 2000 je Ordner) und dieselbe Grenze von 512 KB je Datei. Jede Stelle ist ein FEHLER mit Datei und Zeile: falsches TOML, bekannte Felder mit falschem Typ (etwa reihenfolge = "2", titel = 3) und jeder Satz „Block n: …“, den die Seite zeigen würde (Block ohne oder mit mehr als einem Inhalt, unbekanntes Feld, Tabellenzeile mit falscher Länge, Tabelle ohne Zeilen, [block] statt [[block]]). Rückgabe wie oben; 2, wenn es den Ordner nicht gibt. Die Form steht im Abschnitt „5. Committen“, Teil „System-Seiten: Anleitung, Zielbild, Entscheidungen“.'

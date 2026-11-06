@@ -1,0 +1,15 @@
+# Abschnitt „Dashboard“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Dashboard'
+reihenfolge = 10
+
+[[block]]
+text = 'Eine kleine Website, die nur auf diesem PC läuft. Sie zeigt auf einen Blick:'
+
+[[block]]
+punkte = [
+  'Wie geht es dem PC? Prozessor, Arbeitsspeicher, Platten, Laufzeit, ob ein Neustart aussteht und ob der Virenschutz (Defender) aktuell ist.',
+  'Woran wird gearbeitet? Eine Kachel pro Projekt. Dahinter eine eigene Seite mit Stand, offenen Punkten, Links und dem Git-Stand der Ordner.',
+]
+
+[[block]]
+text = 'Die Oberfläche ist mit SvelteKit gebaut und aktualisiert sich live, ohne Neuladen: Ringe und Kurven laufen weiter, geänderte Textdateien erscheinen sofort. Der Rust-Server liefert die Daten und die fertige Oberfläche. Seit den Live-Lücken gilt das auch für den Datenspeicher (neue Aufgaben, Meldungen, Sicherungen, Windows-Ereignisse auf /daten und im Verlauf), für neue Entscheidungen und Zielbild-Abschnitte in docs/, für die Benutzer-Daten der PC-Seite (Ordnergrößen, Programme, Tresor, Bote da oder weg) und für Bilder und Vorschauen in assets/ eines Projekts: Ein geändertes Bild zeigt sich, ohne dass Sie die Seite neu laden.'

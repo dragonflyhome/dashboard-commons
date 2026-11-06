@@ -1,0 +1,15 @@
+# Fortschrittsbalken (Baustein Fortschritt). Eingabe von Hand: eine
+# Einschätzung, die sich aus keiner anderen Datei rechnen lässt.
+# Entweder prozent (0 bis 100) oder erreicht und gesamt („3 von 5“).
+# Was sich zählen lässt (erledigte Schritte), rechnet der Server:
+# dafür eine berechnete Kennzahl in kennzahlen.toml, nicht hier.
+
+[[zeile]]
+titel = "Texte"
+erreicht = 3
+gesamt = 5
+hinweis = "Entwurf steht"
+
+[[zeile]]
+titel = "Bilder"
+prozent = 40

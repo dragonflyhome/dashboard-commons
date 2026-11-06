@@ -1,0 +1,41 @@
+# Beispiel für die Blöcke einer System-Seite: alle vier Arten und drei,
+# die nur als Hinweis erscheinen (keiner, zwei Inhalte, falsche Zeile).
+titel = "Mit Blöcken"
+reihenfolge = 2
+text = "Text vor den Blöcken."
+punkte = ["Punkt vor den Blöcken"]
+
+[[block]]
+titel = "Absätze"
+text = """
+Erster Absatz im Block.
+
+Zweiter Absatz im Block."""
+
+[[block]]
+punkte = ["Eins", "Zwei"]
+nummeriert = true
+
+[[block]]
+titel = "Etappen"
+[block.tabelle]
+spalten = ["Etappe", "Was", "Warum"]
+zeilen = [
+  ["1a", "Lesen", "Weil"],
+  ["1b", "Nur zwei"],
+  ["1c", "Zeigen", "Darum"],
+]
+
+[[block]]
+titel = "Aufruf"
+beispiel = """
+dashboard.exe pruefe --system docs\\zielbild
+[[block]]
+<b>kein HTML</b>"""
+
+[[block]]
+titel = "Leer"
+
+[[block]]
+text = "Zwei Inhalte"
+beispiel = "x"

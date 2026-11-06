@@ -1,0 +1,170 @@
+﻿DAS DASHBOARD ALS DIENST
+========================
+
+Hier wohnt das Dashboard, seit es ein Windows-Dienst ist. Es startet beim
+Hochfahren des PCs von selbst, auch bevor sich jemand anmeldet. Adresse im
+Browser: http://localhost:8787
+
+Was hier liegt
+--------------
+  bin\          Die Programme: dashboard.exe (der Dienst) und
+                dashboard-bote.exe (der Bote, siehe unten). Daneben die
+                vorige Fassung als *.alt.exe.
+  daten\        Der Datenspeicher dashboard.redb. Er gehört nur dem Dienst.
+                Bitte nicht öffnen, nicht kopieren, nicht ändern, solange
+                der Dienst läuft. Auch Ihr Konto hat hier absichtlich keinen
+                Zugriff.
+  sicherung\    Eine Sicherung pro Tag, die letzten 14. Diesen Ordner kann
+                der Sicherungsplan auf die externe Platte spiegeln.
+  protokoll\    Was der Dienst tut, eine Datei pro Tag
+                (dienst-JJJJ-MM-TT.log), 14 Tage lang. Dazu
+                einrichten-JJJJ-MM-TT.log vom Einrichten.
+  protokoll\bote\
+                Was der Bote tut (bote-JJJJ-MM-TT.log), 14 Tage lang. Der
+                Bote läuft unter Ihrem Konto; darum darf Ihr Konto hier
+                schreiben, im übrigen Protokollordner nur lesen.
+  dienst.toml   Die Einstellungen: Port, wo das Repo liegt, wo Daten,
+                Sicherung und Protokoll liegen, dazu die Kennungen (SIDs)
+                Ihres Kontos und des Dienstkontos. Enthält kein Passwort.
+
+Im Repo darf der Dienst nur die Ordner projects, data, web,
+docs\entscheidungen, docs\zielbild und docs\anleitung lesen (und den
+Repo-Ordner selbst öffnen). Alles andere in Ihrem Benutzerordner bleibt ihm verschlossen.
+Fehlt ihm ein Recht (etwa nach einem Update, das einen neuen Ordner liest),
+zeigt die PC-Seite eine Meldung; dann einmal als Administrator, wie unten
+beschrieben, Dienst-Einrichten.ps1 mit dem Schalter -NurLeserecht starten.
+
+Der Dienst behält von den Rechten seines Kontos nur eines
+(SeChangeNotifyPrivilege, Ordner durchqueren). Vor allem fehlt ihm
+SeImpersonatePrivilege: Ihr Konto darf bin ändern, und mit diesem Recht
+könnte ein dort getauschtes Programm sich zum Systemkonto machen.
+Dieser Ordner gehört den Administratoren und erbt nichts von ProgramData.
+
+Läuft es?
+---------
+Im Repo-Ordner in einem Terminal:
+
+    .\scripts\Dienst.ps1 -Status
+
+Oder: Windows-Taste, "Dienste" eintippen (services.msc), in der Liste
+"Dashboard" suchen. Dort steht "Wird ausgeführt".
+
+Neu starten (zum Beispiel nach Änderungen am Dashboard)
+-------------------------------------------------------
+    .\scripts\Dienst.ps1 -Neustart
+
+Das baut die neue Fassung, tauscht Dienst und Boten aus und startet beide
+neu. Das Dashboard ist dabei weniger als eine Minute weg. Startet die neue
+Fassung nicht, kommt die alte von selbst zurück. Kein Administrator nötig.
+Der Bau legt web\build neu an; der Ordner erbt das Lese-Recht des Dienstes
+von web. -Status zeigt, ob das Lese-Recht stimmt.
+
+Nach jedem Start prüft das Skript auch, ob die Daten da sind. -Status zeigt
+das in der Zeile "Speicher:". Läuft die neue Fassung, aber mit ihren Daten
+stimmt etwas nicht, bleibt sie trotzdem laufen, und -Neustart sagt es.
+
+Zurück zur vorigen Fassung, wenn die Daten fehlen
+-------------------------------------------------
+Manche neue Fassung stellt die Datendatei beim ersten Start auf eine neue
+Form um. Vorher legt sie eine Sicherung an, im Ordner sicherung, mit
+"vor-schema" im Namen (etwa dashboard-JJJJ-MM-TT-vor-schema-2.redb).
+Startet die neue Fassung danach nicht, holt -Neustart die vorige zurück.
+Die vorige kann die umgestellte Datei nicht lesen und läuft ohne ihre
+Daten: Die Projektseiten gehen; Aufgaben, Vorgänge und Warten gehen gerade
+nicht. -Neustart sagt das dann genau so.
+
+Am besten: den Fehler der neuen Fassung beheben lassen und -Neustart noch
+einmal; dann ist alles wieder da.
+
+Wer sofort zur vorigen Fassung mit Daten zurück will, spielt die Sicherung
+von vor der Umstellung zurück. Das geht nur als Administrator (Ihr Konto
+darf im Ordner daten absichtlich nichts ändern). Was seit der Umstellung
+dazukam (Aufgaben, Vorgänge), fehlt dann; es bleibt in der umbenannten
+Datei erhalten. So geht es:
+
+  1. Im Repo-Ordner, ohne Administrator:
+         .\scripts\Dienst.ps1 -Stopp
+  2. Eine PowerShell als Administrator starten, wie unten unter
+     "Als Administrator starten" beschrieben (ohne Profil), dann:
+         cd C:\ProgramData\Dashboard
+         dir sicherung\*-vor-schema-*.redb
+     Die neueste dieser Dateien nehmen, etwa
+     dashboard-JJJJ-MM-TT-vor-schema-2.redb. Dann die jetzige Datei
+     umbenennen (nicht löschen) und die Sicherung an ihre Stelle kopieren:
+         Rename-Item daten\dashboard.redb dashboard-nach-umstellung.redb
+         Copy-Item sicherung\dashboard-JJJJ-MM-TT-vor-schema-2.redb daten\dashboard.redb
+     Die Kopie bekommt die Rechte des Ordners daten von selbst. Das
+     Administrator-Fenster schließen.
+  3. Wieder im Repo-Ordner, ohne Administrator:
+         .\scripts\Dienst.ps1 -Start
+     Es meldet, ob die Daten da sind.
+
+Die umbenannte Datei bleibt liegen. Kommt später die neue Fassung wieder,
+stellt sie die zurückgespielte Datei noch einmal um.
+
+Abschalten und wieder anschalten
+--------------------------------
+    .\scripts\Dienst.ps1 -Stopp
+    .\scripts\Dienst.ps1 -Start
+
+-Stopp hält Dienst und Boten an, -Start startet beide. Nach -Stopp bleibt
+es aus, bis Sie es starten oder der PC neu hochfährt.
+
+Als Administrator starten (Einrichten, Entfernen)
+--------------------------------------------------
+Nicht über "Terminal (Administrator)" und nicht über Rechtsklick "Mit
+PowerShell ausführen": Beide laden Ihr PowerShell-Profil (eine Datei in
+Ihrem Benutzerordner, die jedes Programm unter Ihrem Konto ändern kann),
+und das liefe dann als Administrator. "Mit PowerShell ausführen" startet
+außerdem ohne Administrator-Rechte. Stattdessen ohne Profil und mit vollem
+Pfad: Windows-Taste+R drücken, eintippen (eine Zeile, <Repo> ist der
+Repo-Ordner, etwa C:\Users\<Name>\dev\dashboard):
+
+    C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File <Repo>\scripts\Dienst-Entfernen.ps1
+
+und mit Strg+Umschalt+Enter bestätigen (das startet als Administrator;
+Windows fragt nach, mit Ja bestätigen). Für das Einrichten dasselbe mit
+Dienst-Einrichten.ps1. Wer es öfter braucht: eine Verknüpfung auf dem
+Desktop mit genau dieser Zeile als Ziel, unter Eigenschaften, Erweitert,
+"Als Administrator ausführen" ankreuzen. Bitte nicht nur "pwsh" schreiben:
+Ein pwsh aus dem Microsoft Store liegt in einem Ordner, den Ihr Konto
+ändern kann.
+
+Ganz entfernen
+--------------
+Wie oben beschrieben als Administrator starten:
+
+    <Repo>\scripts\Dienst-Entfernen.ps1
+
+Dienst und Bote sind dann weg. Dieser Ordner bleibt mit allen Daten liegen.
+Danach startet das Dashboard wieder wie früher mit scripts\Start-Dashboard.ps1.
+
+Der Bote
+--------
+Manches geht nur unter Ihrem eigenen Konto: Passwörter in Ihrem
+Windows-Tresor speichern (Seite "Schlüssel") und Ihre Benutzer-Daten auf der
+PC-Seite (installierte Programme, Autostart, Ordner, Git-Stand). Das erledigt
+der Bote. Er startet unsichtbar, wenn Sie sich anmelden; ein kleiner Wächter
+(dasselbe Programm, dashboard-bote.exe --waechter) startet ihn nach einem
+Fehler neu. Ohne Anmeldung läuft alles andere trotzdem; die Schlüsselseite
+sagt dann, dass sie nur bei Anmeldung speichert.
+
+Bewusst anders als in der Entscheidung autostart-dienst
+-------------------------------------------------------
+  - Ihr Konto darf diesen Ordner selbst öffnen (lesen und ausführen) und
+    dienst.toml und LIESMICH.txt lesen.
+  - Der Dienst darf im Repo den ganzen Ordner web lesen, nicht nur
+    web\build (so erbt jeder Neubau das Recht). Den Repo-Ordner selbst
+    darf er nur öffnen (lesen, ohne Vererbung).
+  - protokoll\bote: Ihr Konto darf dort ändern, weil der Bote sein
+    Protokoll schreibt.
+  - Der Bote erlaubt beim Start dem Dienstkonto, seinen Prozess und sein
+    Token abzufragen (Programm und Konto), damit der Dienst ihn prüfen kann.
+Mehr dazu auf der Seite /anleitung im Dashboard (Das Dashboard als Dienst).
+
+Wenn etwas nicht geht
+---------------------
+Zuerst .\scripts\Dienst.ps1 -Status ansehen. Es zeigt die letzten Zeilen des
+Protokolls. Die ganze Geschichte steht in protokoll\dienst-JJJJ-MM-TT.log,
+die des Boten in protokoll\bote\bote-JJJJ-MM-TT.log.
+Stürzt der Dienst ab, startet Windows ihn nach 5 Sekunden neu.

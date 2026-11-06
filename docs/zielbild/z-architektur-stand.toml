@@ -1,0 +1,207 @@
+titel = "Anhang: Früherer Architekturstand"
+reihenfolge = 90
+
+[[block]]
+titel = "Bestandsaufnahme vor dem Zielbild"
+text = """
+Dieser Anhang bleibt als Geschichte stehen. Er beschreibt, wie das Dashboard vor dem Zielbild gebaut war, wo es gewachsen statt entworfen war, und was anders gebaut werden sollte. README.md, CONTRIBUTING.md, page.md und docs/zielbild.md, die er nennt, gibt es seit Etappe 6d nicht mehr; ihr Inhalt steht in /anleitung und /zielbild.
+
+Kurzfassung: Das Dashboard wurde in fünf Etappen von einer Server-gerenderten Rust-Seite zu einer SvelteKit-Oberfläche mit JSON-API umgebaut, jede Etappe lauffähig und getestet. Die Teile funktionierten und ließen sich prüfen. Es fehlten aber ein aufgeschriebenes Zielbild, ein API-Vertrag aus einer Quelle, Schichten im Rust-Server und eine Versionsnummer im Inhaltsmodell page.md. Neue Funktionen kamen in der Reihenfolge der Anfragen, nicht nach einem Plan für ein Projekt-System mit vielen Unterseiten.
+"""
+
+[[block]]
+titel = "1. Was das System damals war"
+punkte = [
+  "Zwei Programme, ein Repo.",
+  "Rust-Server (src/). Hört auf 127.0.0.1:8787. Liest Textdateien (projects/<slug>/page.md, data/pc.toml, data/schluessel.toml), misst den PC, fragt Git und Windows ab und liefert alles als JSON unter /api/…. Dazu ein Live-Kanal (Server-Sent Events), Dateien aus projects/<slug>/assets/, ein Formular-POST für Passwörter und das fertige Frontend aus web/build.",
+  "SvelteKit-Oberfläche (web/). Einzelseiten-App, statisch gebaut, kein eigener Server. Holt JSON vom Rust-Server, zeichnet Bausteine (Gantt, Zeitstrahl, Fluss, Reiter, Kanban, Ampel, Kennzahlen, Fortschritt) und aktualisiert sich über den Live-Kanal ohne Neuladen.",
+  "Inhalt sind Textdateien, die Projekt-Assistenten schreiben. Der Server liest sie bei jedem Aufruf neu.",
+]
+
+[[block]]
+titel = "2. Der SvelteKit-Teil – Routen und Layouts"
+beispiel = """
+routes/+layout.ts            ssr=false, prerender=false (reine Browser-App)
+routes/+layout.svelte        Kopfzeile, Navigation, Live-Verbindung starten
+routes/+page.ts/.svelte      Startseite (Cockpit, Projektkacheln, Historie)
+routes/pc/                   PC-Seite
+routes/schluessel/           Passwörter (nur Status; Formular geht an Rust)
+routes/projects/[slug]/      Projektseite (Inhalt aus page.md)
+routes/projects/[slug]/vorschau/   Entwurf einer Website im Rahmen
+routes/+error.svelte         Fehlerseite
+"""
+
+[[block]]
+text = """
+Ein einziges, flaches Layout. Jede Route hat eine load-Funktion mit ein oder zwei API-Aufrufen und setzt depends('api:…'), damit der Live-Kanal mit refreshAll() nachladen kann.
+
+Das war das einfachste SvelteKit, das funktioniert. Nicht genutzt wurden verschachtelte Layouts (ein Projekt könnte ein eigenes Layout mit Unterseiten, Vorschau und Fragen haben), geteilte +layout.ts-Daten (die Projektliste wurde nur auf der Startseite geladen), Streaming von load, Seitenübergänge und $app/state-Muster über page.url hinaus. Ohne SSR und ohne Vorrendern zu laufen, war eine Entscheidung aus Bequemlichkeit (keine Projektliste zur Bauzeit), nicht aus einem Konzept.
+"""
+
+[[block]]
+titel = "Datenfluss und Zustand"
+punkte = [
+  "Daten kommen über lib/api/client.ts (ein getJson, vier Methoden) in die load-Funktionen und von dort als data-Prop in die Seiten. Kein globaler Datenspeicher, keine doppelte Wahrheit.",
+  "Live-Zustand liegt in lib/live.svelte.ts (eine Klasse mit Runes: Verbindung, letzte PC-Werte, Änderungs-Ereignisse). Das Cockpit liest daraus direkt; alles andere lädt bei einem Ereignis die ganze Seite neu. Das ist einfach und richtig für wenige Projekte, skaliert aber nicht: Mit vielen Projekten lädt jede Dateiänderung die komplette Projektliste mit Git-Abfragen neu.",
+  "Browser-Speicher nur für Bequemlichkeiten (zugeklappte Abschnitte).",
+]
+
+[[block]]
+titel = "Komponenten"
+punkte = [
+  "lib/components/blocks/*: ein Svelte-Baustein je Block-Art, dazu TimeAxis (Zoom, Verschieben, Heute-Marker) als gemeinsamer Kern für Gantt und Zeitstrahl. Segment.svelte verteilt die API-Blöcke auf die Komponenten.",
+  "lib/components/page/*: Inhaltsverzeichnis, klappbare Abschnitte, Lightbox, Lesefortschritt.",
+  "lib/components/pc/*: Ringe, Verlaufskurven, Ordner, Backup, Programme.",
+  "Reine Logik ohne DOM liegt in lib/*.ts (Zeitachse, Formatierung, Abschnitte, Historie) mit eigenen Tests. Das war der am besten getestete Teil.",
+]
+
+[[block]]
+text = """
+Svelte-5-Runes wurden konsequent benutzt (Runes-Modus erzwungen, $state, $derived, $effect, $props, Snippets). Es fehlte eine gemeinsame Formsprache: Jede Komponente brachte ihr eigenes CSS mit, die Tokens in app.css waren knapp, und es gab keinen Katalog für Karte, Pille und Knopf. Die Projektseite ([slug]/+page.svelte) war die größte Datei und tat zu viel (Kopf, Links, Lebenszeichen, Git, Abschnitte, Inhaltsverzeichnis, Lightbox).
+"""
+
+[[block]]
+titel = "Typen und API-Vertrag"
+text = """
+lib/api/types.ts spiegelte die Rust-Strukturen von Hand. Ein Test prüfte ein Beispiel-JSON gegen die Typen, aber nichts erzeugte Rust und TypeScript aus einer Quelle. Jedes neue Feld musste an mehreren Stellen nachgezogen werden (Rust-Struct, TS-Typ, Test-Fixtures). Das war der größte strukturelle Mangel im Frontend.
+"""
+
+[[block]]
+titel = "Werkzeuge und Strenge"
+text = """
+TypeScript mit strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes, verbatimModuleSyntax; ESLint strict-type-checked plus Svelte-Regeln; Prettier; svelte-check; Vitest mit jsdom. npm run verify lief alles. Kein any, keine Non-Null-Assertions. Es gab keine End-to-End-Tests im Browser; Playwright blieb weg, um keine Browser aus dem Netz zu laden; die Oberfläche wurde von Hand im Browser geprüft.
+"""
+
+[[block]]
+titel = "3. Der Rust-Teil – Router und Schichten"
+text = """
+axum 0.8, ein Router in main.rs mit elf Routen und einem Fallback für das Frontend. Nur zwei tower-Schichten: Cache-Control: no-store und TraceLayer. Alles andere steckte in den Handlern:
+"""
+
+[[block]]
+punkte = [
+  "Herkunftsprüfung (Origin/Referer) war eine Funktion, die nur der Schlüssel-POST aufrief.",
+  "Größenbegrenzung war ein to_bytes(body, 4096) im selben Handler.",
+  "Kein Zeitlimit pro Anfrage. Ein hängender git-Aufruf oder eine langsame HTTP-Prüfung hielt die Antwort auf.",
+  "Kein Caching: /api/projects las bei jedem Aufruf alle page.md, parste Markdown und startete je Repo git-Prozesse. Darum lud die Startseite spürbar.",
+  "Fehlerbehandlung: Jede Route baute ihre Antwort selbst (fail(...) in api.rs, not_found in main.rs). Es gab keinen gemeinsamen Fehlertyp mit IntoResponse und keinen einheitlichen JSON-Fehlerkörper.",
+  "Die Validierung von Eingaben (Slug, Dateiname, Schlüsselname) bestand aus drei ähnlichen Funktionen an drei Stellen.",
+]
+
+[[block]]
+text = """
+Das war kein Schichtenmodell, sondern ein gut aufgeräumtes Skript. Für ein lokales Programm mit einem Benutzer reichte es, aber passende Middleware fehlte.
+"""
+
+[[block]]
+titel = "Module"
+beispiel = """
+main.rs       Router, Handler, Fallback, Schlüssel-POST, Start
+api.rs        JSON-Strukturen und API-Handler
+content.rs    page.md lesen: Kopf (TOML), Markdown → Segmente
+blocks.rs     Bausteine parsen (progress, gantt, flow, …)
+events.rs     Live-Kanal (SSE), Datei-Beobachter
+schluessel.rs Credential Manager (eigene FFI), Formularfeld lesen
+system.rs     CPU, Speicher, Platte, Defender, Neustart, Verlauf
+sysapps.rs    Autostart, Dienste, winget, Updates (PowerShell)
+inventory.rs  Ordnergrößen mit Cache
+git.rs        Branch, letzter Commit, ungesicherte Dateien
+pcdata.rs     data/pc.toml
+"""
+
+[[block]]
+text = """
+Die Trennung war sinnvoll, aber main.rs war ein Sammelbecken: Routen, Zustand, drei Handler, Pfadsuche, Tests. api.rs enthielt sowohl die Datenstrukturen (den eigentlichen Vertrag) als auch die Handler. Toter Code (maud, Templates) war schon entfernt, aber blocks.rs trug noch Felder der alten HTML-Ansicht (level, color_class als CSS-Klassennamen im JSON). Das Frontend bekam also CSS-Klassen statt Bedeutungen.
+"""
+
+[[block]]
+titel = "Tests"
+text = """
+Getestet waren Parser (Kopf, Markdown, jeder Baustein), Router (Routen, Pfad-Ausbruch, Herkunftsprüfung, nie Werte in Antworten), Credential Manager (echter Roundtrip), Git und System. Es fehlten Tests gegen ein festes Beispiel-Repo – die Tests liefen gegen die echten projects/, und eine fremde, kaputte page.md konnte sie rot machen – und Tests für den Live-Kanal.
+"""
+
+[[block]]
+titel = "Umgebung"
+text = """
+Die GNU-Toolchain ohne MinGW erzwang alte Versionen von chrono und sysinfo, eine eigene FFI statt des windows-Crates und einen Polling-Beobachter statt notify. Das war dokumentiert (README, Stolpersteine), machte aber jede Abhängigkeit zur Risikoabwägung.
+"""
+
+[[block]]
+titel = "4. Das Inhaltsmodell page.md"
+text = """
+Eine Datei je Projekt: TOML-Kopf zwischen +++, dann Markdown mit besonderen Code-Blöcken. Der Kopf hatte Felder wie title, status, updated, summary, order, repos, links, open, checks, processes, chat, backup, backup_note, vorschau und [[repos]]-Untertabellen. Unbekannte Felder waren ein Fehler (deny_unknown_fields) mit Zeile und Spalte in der Meldung.
+
+Schwächen:
+"""
+
+[[block]]
+punkte = [
+  "Keine Versionsnummer im Kopf. Alte Seiten ließen sich weder erkennen noch migrieren.",
+  "Felder kamen nacheinander je nach Wunsch dazu. Es gab keine Regel, was in den Kopf gehört und was in den Text.",
+  "Die Validierung war ungleichmäßig: vorschau wurde streng geprüft, status und backup nahmen jedes Wort und färbten Unbekanntes grau.",
+  "Die Bausteine hatten kein Schema, nur Parser mit Beispielen in der Fehlermeldung. Ob eine Zeile verstanden wurde, zeigte erst der Browser.",
+  "Für Unterseiten je Projekt gab es kein Konzept; tabs war ein Notbehelf.",
+  "Ein Modell für Rückkanäle (Antworten auf Fragen, Bestätigen von Konzepten) fehlte ganz.",
+]
+
+[[block]]
+text = """
+CONTRIBUTING.md beschrieb alles in einfachem Deutsch und war die einzige Quelle. Es gab keine maschinenlesbare Fassung (JSON-Schema o. ä.), gegen die eine Datei vor dem Speichern geprüft werden konnte.
+"""
+
+[[block]]
+titel = "5. Wo es gewachsen statt entworfen ist"
+punkte = [
+  "1. Reihenfolge der Arbeit. Anfragen wurden in der Reihenfolge des Eingangs gebaut. Es gab eine Etappenplanung für den Umbau, aber kein Zielbild für ein Projekt-System mit vielen Unterseiten und Rückkanal.",
+  "2. Vertrag von Hand. Rust-Struct, TS-Typ, Fixtures, CONTRIBUTING: vier Stellen je Feld.",
+  "3. Handler statt Schichten. Schutz und Grenzen waren richtig, aber an der falschen Stelle; die nächste schreibende Route (Fragen) hätte alles kopieren müssen.",
+  "4. Server rechnet bei jedem Klick. Kein Zwischenspeicher für Projektliste und Git-Stand, obwohl der Beobachter weiß, wann sich etwas ändert.",
+  "5. Tests gegen lebende Daten. Fremde Änderungen brachen die Tests.",
+  "6. Ein Repo, viele Schreiber. Die Commit-Regeln standen in CONTRIBUTING, aber nichts erzwang sie; ein fremder Commit konnte halbfertige Dateien mitnehmen, und eine Datei mit falscher Kodierung fiel erst spät auf.",
+  "7. Oberfläche ohne Formsprache. Ohne Komponenten-Katalog fielen Fehler bei Handybreite und überlappende Beschriftungen erst in der Prüfung auf.",
+]
+
+[[block]]
+titel = "6. Was anders gebaut werden sollte"
+text = """
+In der Reihenfolge des größten Nutzens:
+"""
+
+[[block]]
+punkte = [
+  "1. Ein Zielbild vor der nächsten Funktion: Was ist ein Projekt (Seite, Unterseiten, Entwürfe, Fragen, Antworten, Backup, Assistent), welche Adressen, Dateien, Rechte und Ereignisse hat es.",
+  "2. Ein API-Vertrag aus einer Quelle. Rust bleibt die Wahrheit; aus den serde-Strukturen entstehen TypeScript-Typen (etwa mit schemars → JSON-Schema → TS, oder ts-rs), und ein Test prüft, dass sie eingecheckt und aktuell sind. Dasselbe Schema beschreibt den Projektinhalt, mit Versionsfeld (damals geplant: schema = 2) und einem Prüfbefehl (dashboard pruefe <slug>), den jeder Schreiber vor dem Speichern ausführen kann.",
+  "3. Rust in Schichten. Ein AppError mit IntoResponse und einem JSON-Körper für alle Routen; tower-Schichten für Zeitlimit, Größenbegrenzung und Herkunftsprüfung auf allen schreibenden Routen; ein ContentStore, der projects/ einmal liest, im Speicher hält und vom Beobachter aktualisiert wird (dann ist der Live-Kanal auch die Cache-Invalidierung); git-Abfragen mit Zeitlimit und Zwischenspeicher; Router in ein eigenes Modul, Handler je Bereich.",
+  "4. Inhaltsmodell mit Absicht. Ein Projekt ist ein Ordner mit Hauptseite (damals page.md), Unterseiten (beliebige <name>.md), assets/ und einem Rückkanal, in den nur der Server schreibt (damals geplant: antworten.toml). Bausteine bekommen ein Schema und sprechende Fehlermeldungen mit Zeilennummer; Farben gehen als Bedeutung über die API (ok, wartet, problem), nicht als CSS-Klasse.",
+  "5. SvelteKit nach Struktur. Ein verschachteltes Layout projects/[slug]/+layout.ts lädt den Projektkopf einmal für alle Unterseiten; Startseite und Projektseiten teilen die Liste über ein Layout-load; eine Katalogseite /katalog zeigt jeden Baustein in jedem Zustand, auch auf Handybreite, als Grundlage für eine gemeinsame Formsprache und für Sichtprüfungen.",
+  "6. Tests gegen ein Beispiel-Repo unter tests/fixtures/projects/, damit fremde Inhalte nichts brechen; dazu ein Test, der alle echten Seiten nur parst und Fehler als Liste meldet.",
+  "7. Arbeitsweise. Wünsche landen zuerst im Rückstand des Dashboard-Projekts mit Begründung und Reihenfolge; gebaut wird nach Zielbild, nicht nach Eingang. Änderungen am Vertrag werden vor dem Bau angekündigt.",
+]
+
+[[block]]
+titel = "7. Was trotzdem trug"
+text = """
+Der Schutz der Passwörter war durchdacht (nie im Frontend-Zustand, Origin-Prüfung, Zeroize, Tests dafür). Der Umbau lief ohne Datenverlust und ohne Ausfall. Die Werkzeugkette war streng und grün. Die Bausteine waren bedienbar und in Gebrauch. Es fehlten das Konzept darüber und die Disziplin, danach zu bauen.
+"""
+
+[[block]]
+titel = "Nachtrag: Etappen 1a bis 2c, 7a1 und 7b"
+text = """
+Danach entstand das Zielbild (Fassung 2.2). Die folgenden Etappen schlossen Lücken aus Abschnitt 5. Zum Zeitpunkt dieses Nachtrags waren 1a und 1b abgenommen, 2a, 2b, 2c und 7a1 bereit zur Abnahme und 7b in Arbeit.
+
+1a brachte Ordnung im Server (app.rs, fehler.rs, inhalt/, api/, pc/). 1b brachte Schleusen in sicherheit.rs: Adresse, Herkunft, Zeitlimit, Größe, Fehlerform, Kopfzeilen mit CSP-Prüfsummen, Nummer je Anfrage, Absturzfänger und ein Budget von 3 s je Git-Repo. Damit hatte der Server Schichten, und Fehler hatten eine Form.
+
+2a brachte den eigenen Datenspeicher nach dem Abschnitt „Der Datenspeicher des Dashboards“: redb 4.4.0 mit der Zugriffsschicht src/speicher/, feste Tabellen, Schema-Nummer, Migrationsliste, jede Nacht eine Sicherungskopie plus TOML-Export (die letzten 14 bleiben), PC-Verlauf alle 5 Minuten für 90 Tage als erster Nutzer und die Seite /daten. Dazu kamen die Auflagen aus der Prüfung von 1b: einheitliche Fehlerform auch für die eigenen 400 und 405 von axum, Rückweg ins Schlüssel-Formular bei 403, 408 und 413, Zeroize für Formularkörper und Benutzername, der Benutzername aus dem Tresor bleibt erhalten, Hintergrund-Sammler mit Obergrenze 5 min, kein fremder Host-Kopf im Protokoll, nur IPv4 in den eigenen Adressen.
+
+2b brachte die Vorgänge nach dem Abschnitt „Vorgänge und Rückruf“ in den Datenspeicher (Schema 2, alte Dateien werden umgebaut, mit Sicherung vorher): ein Journal ereignisse, das nur angehängt wird, und die Tabellen vorgaenge, vorgaenge_je_slug und warter, jeder Schritt in einer Transaktion. Projekt-Assistenten holen ihre Vorgänge über /api/vorgaenge und warten mit curl im Hintergrund auf /api/vorgaenge/warten (scripts/Warten.ps1); das Ende des Befehls ist der Rückruf. Die Seite /vorgaenge zeigt, wer wartet, und jeden Schritt mit Herkunft; neue Schritte kommen live als Ereignis vorgang. Fehlt der Datenspeicher beim Start, läuft der Server weiter, und die Vorgänge antworten mit 503 (speicher-fehlt).
+
+2c brachte den Vertrag aus einer Quelle: Alle Typen stehen in src/vertrag/. Dieselben Rust-Typen lesen TOML, gehen als JSON über die API und werden per ts-rs bei cargo test zu web/src/lib/vertrag/ (eingecheckt, Import $vertrag); veraltete Dateien lassen cargo test scheitern. Farben sind sechs Bedeutungen (ok, laeuft, wartet, problem, info, neutral); die deutschen Farb- und Statuswörter übersetzt der Server. Projekte in neuer Form (projekt.toml mit schema = 3, daten/*.toml, assets/) sind lesbar und stehen neben page.md. dashboard pruefe <slug> und /api/pruefung melden Fehler und Hinweise mit Datei und Zeile, belegt mit 18 kaputten Beispielen in tests/beispiel-kaputt/.
+
+Offen aus Abschnitt 5 blieben damit: der ContentStore (2d), die Projektform mit Svelte-Seiten (Etappe 4) und Markdown als Inhaltsform (Etappe 6).
+
+7a1 machte das Dashboard dienstfähig: dashboard.exe mit Dienst-Modus --dienst (windows-service 0.8.1) und Konsolen-Modus --konsole, beide mit der Einstellungsdatei dienst.toml statt Umgebungsvariablen und mit Protokoll in Tagesdateien (dienst- und bote-JJJJ-MM-TT.log, 14 Tage). Was nur unter dem Benutzerkonto geht (Tresor, winget, Autostart, Ordner, Werkzeuge, Git), erledigt der Bote dashboard-bote.exe über eine benannte Pipe. Er legt sie als erste Instanz an, mit Rechten nur für den Benutzer und das Dienstkonto; der Dienst prüft vor dem ersten Senden Besitzer, Programm und Konto. Dazu kommen die Skripte Dienst-Einrichten.ps1 (ohne Administrator mit -Pruefen nur ansehen), Dienst-Entfernen.ps1 und Dienst.ps1; das Einrichten probt erst mit dem Testdienst Dashboard-Test. Die Probe der Windows-Anmeldung (/api/anmeldung/probe, Negotiate über SSPI) ergab: curl und PowerShell melden auch auf 127.0.0.1 an, der Browser nur auf localhost. Darum hört der Server auf 127.0.0.1 und [::1], und die Browser-Adresse ist http://localhost:8787. 7a2 bringt das Einrichten mit einem UAC-Klick und die Messung, welche PC-Werte das Dienstkonto selbst lesen kann.
+
+7b machte die integrierte Windows-Anmeldung zur Pflicht: Schlüssel, Vorgänge, Daten und der Live-Kanal antworten ohne Anmeldung mit 401 (art: "anmeldung"), bei einem fremden Konto mit 403. Benutzer-Daten des Boten liegen auf dem geschützten Weg /api/pc/benutzer; /api/pc bleibt frei und enthält nur Rechner-Werte, weil der Browser auf freien Wegen keinen Nachweis mitschickt. Die Oberfläche zeigt dafür die Seite „Anmeldung nötig“ mit Link auf dieselbe Seite unter localhost, einen Hinweis auf der PC-Seite und im Live-Zeichen „ohne Anmeldung“ statt „getrennt“, ohne endloses Neuverbinden. Warten.ps1 und alle Beispiele rufen fest C:/Windows/System32/curl.exe --negotiate -u : auf, weil andere curl-Fassungen kein Negotiate können.
+
+Regel für freie Wege (seit dem Hotfix nach 3a-1): Ein freier Weg, der mit Anmeldung mehr zeigt, ist nicht verlässlich, weil der Browser Negotiate nur nach einer 401-Aufforderung schickt. Darum gibt es geschützte Vollwege wie /api/pc/verlauf/voll und /api/projekte/<slug>/stand/voll. Bleibt die Anmeldung aus, fällt die Seite auf den freien Weg zurück und sagt, was fehlt. Neue Wege, die mit Anmeldung mehr liefern, folgen derselben Regel.
+"""

@@ -1,0 +1,22 @@
+# Eigene Daten: Schritte mit Termin, Kosten und erledigt (Eingabe von Hand).
+[[schritt]]
+name = "Kompost umsetzen"
+termin = "2026-01-15"
+kosten = 120
+erledigt = true
+
+[[schritt]]
+name = "Saatgut bestellen"
+termin = 2026-02-01
+kosten = 80.5
+erledigt = true
+
+[[schritt]]
+name = "Pflanzen setzen"
+termin = "2030-05-04"
+kosten = 1000
+erledigt = false
+
+[[schritt]]
+name = "Beete mulchen"
+termin = "2031-01-10"

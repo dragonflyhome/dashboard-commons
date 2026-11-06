@@ -1,0 +1,97 @@
+titel = "Server (Rust, axum, tower)"
+reihenfolge = 3
+
+[[block]]
+titel = "Schleusen"
+text = """Schleuse (Fachwort Middleware): Code, durch den jede Anfrage läuft, bevor sie bei der eigentlichen Seite ankommt. Jede prüft eine Sache."""
+
+[[block]]
+[block.tabelle]
+spalten = ["#", "Schleuse", "Was sie tut", "Werkzeug"]
+zeilen = [
+  ["1", "Absturzfänger", "Ein Fehler wird eine höfliche Fehlerseite", "tower_http::catch_panic"],
+  ["2", "Protokoll", "Anfrage mit Nummer, Dauer, Ergebnis; nie Formularinhalte", "trace + request_id (eigener Zähler)"],
+  ["3", "Adress-Prüfung", "Nur 127.0.0.1:<port> / localhost:<port>, sonst 421 (gegen DNS-Rebinding)", "eigene Schicht (from_fn)"],
+  ["4", "Herkunftsprüfung", "Schreiben (POST) nur vom Dashboard selbst", "tower_http::csrf"],
+  ["5", "Zeitlimit", "10 s, nicht für den Live-Kanal", "tower_http::timeout"],
+  ["6", "Größenlimit", "16 KB je Anfrage, Schlüssel 4 KB", "tower_http::limit"],
+  ["7", "Sicherheits-Kopfzeilen", "CSP, nosniff, Referrer-Policy: no-referrer", "set_header"],
+  ["8", "Zwischenspeicher-Regeln", "/_app/immutable/* lange, sonst no-store", "set_header"],
+]
+
+[[block]]
+text = """Das Zeitlimit von 10 s ist nur das Netz unter allem. Die eigentlichen Hänger bekommen eigene, kürzere Limits im Code: git 3 s je Repo, HTTP-Lebenszeichen 3 s, PowerShell-Abfragen (Programme, Dienste) 3 s. Hängt ein Repo, fehlt nur dessen Zeile, nicht die ganze Projektliste. Die 3 s gelten im Anfragepfad (alles, worauf eine Antwort wartet). Die Hintergrund-Sammler (Programme, Dienste, winget, stündlich) brauchen teils Minuten und blockieren keine Anfrage. Sie bekommen eine eigene Obergrenze von 5 Minuten. Danach wird der Kindprozess beendet (kill_on_drop), und die Seite zeigt den letzten guten Stand mit Zeitpunkt.
+
+ETag und 304 kommen erst, wenn eine Messung zeigt, dass sie etwas bringen. Der Speicher antwortet ohnehin sofort.
+
+DNS-Rebinding: Eine fremde Website lässt ihren Namen plötzlich auf 127.0.0.1 zeigen und spricht so mit dem Dashboard. Die Adress-Prüfung macht das wirkungslos. Komprimierung und CORS bewusst nicht (auf 127.0.0.1 kein Nutzen; niemand Fremdes soll die API lesen)."""
+
+[[block]]
+beispiel = """let schleusen = ServiceBuilder::new()          // oben = außen
+    .layer(CatchPanicLayer::custom(fehlerseite))
+    .layer(SetRequestIdLayer::x_request_id(Zaehler::default()))
+    .layer(TraceLayer::new_for_http())
+    .layer(middleware::from_fn_with_state(state.clone(), nur_eigene_adresse))
+    .layer(CsrfLayer::new().add_trusted_origin(&eigene_herkunft)?)
+    .layer(TimeoutLayer::new(Duration::from_secs(10)))
+    .layer(RequestBodyLimitLayer::new(16 * 1024))
+    .layer(sicherheits_kopfzeilen());"""
+
+[[block]]
+titel = "Ein Fehlertyp"
+text = """AppError mit IntoResponse; jede Fehlerantwort ist { "fehler": "…in einfachem Deutsch…", "art": "nicht-gefunden" }."""
+
+[[block]]
+titel = "Modulschnitt"
+beispiel = """src/
+  main.rs            Start
+  app.rs             AppState, Router, Schleusen
+  fehler.rs          AppError
+  sicherheit.rs      Adress-Prüfung, Kopfzeilen, CSP
+  vertrag/           alle Typen: projekt.toml, daten/*.toml, API-Antworten (→ ts-rs)
+  inhalt/
+    store.rs         ContentStore: alle Projekte im Speicher, Versionsnummer
+    lesen.rs         TOML lesen, Fehler mit Zeile
+    pruefung.rs      alle Regeln, Meldungen in einfachem Deutsch
+    assets.rs        Formate, Größen, SVG-Regeln
+  speicher/          Datenspeicher (redb): Tabellen, Migrationen, Sicherung, Export (Abschnitt „Der Datenspeicher des Dashboards“)
+  baumeister/        Svelte-Bau anstoßen, Fassungen tauschen (Abschnitt „Oberfläche und Bau“)
+  api/               projekte, pc, schluessel, fragen, events, bauen, system-seiten
+  projekte/          Server-Teile einzelner Projekte, vom Bau-Assistenten auf Wunsch gebaut
+  pc/                system, sysapps, inventory, pcdata
+  git.rs             mit Zeitlimit und Zwischenspeicher
+  werkzeug/          Befehle `pruefe`, `umziehen`"""
+
+[[block]]
+titel = "Vom Speichern zum Bild"
+text = """Daten (TOML): Beobachter (alle 2 s, ohne notify) → ContentStore liest nur dieses Projekt neu und prüft es → Live-Ereignis projekt { slug, version } → Browser lädt nur diese Daten neu. Änderungen an TOML lösen nie einen Bau aus.
+
+Aussehen (Svelte/TS): Beobachter → Baumeister (Abschnitt „Oberfläche und Bau“) → neue Fassung → Live-Ereignis fassung { nummer } → Browser lädt die Oberfläche neu und bleibt auf derselben Seite.
+
+Live-Ereignisse:"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Ereignis", "Inhalt", "Wann"]
+zeilen = [
+  ["projekt", "slug, version", "Daten eines Projekts geändert"],
+  ["antwort", "slug, id", "Eine Antwort ist eingegangen (seit A2 ersetzt durch vorgang und die Änderung anstehend/<slug>)"],
+  ["daten", "name", "data/*.toml geändert"],
+  ["bau", "slug, zustand (laeuft, gruen, rot), meldung", "Baumeister arbeitet"],
+  ["fassung", "nummer", "neue Oberfläche ist eingespielt"],
+  ["vorgang", "id, slug, art, zustand", "ein Vorgang ist entstanden oder weitergerückt (Abschnitt „Vorgänge und Rückruf“)"],
+  ["pc", "Messwerte", "alle 5 s"],
+]
+
+[[block]]
+titel = "Sicherheitsgrenzen"
+punkte = [
+  "Nur 127.0.0.1, plus Adress-Prüfung.",
+  "Keine Route gibt einen Schlüsselwert zurück (Test durchsucht jede Antwort).",
+  "Persönliche Daten: data/schluessel.toml enthält keine E-Mail-Adresse. Damit der Tresor-Eintrag zuordenbar bleibt, bekommt /schluessel ein Feld „Benutzername“, das nur im Tresor landet.",
+  "Schreibende Wege: Schlüssel speichern, Frage beantworten, Bau über den Vorgang bau, und Server-Teile in src/projekte/. Alle hinter Schleusen 3–6.",
+  "Projekt-Code läuft in der Oberfläche mit. Darum: kein fetch und kein {@html} im Projekt-Code (ESLint), Daten nur als Props. Ein Projekt kann so nicht aus Versehen Antworten im Namen des Benutzers schicken oder fremde Daten holen.",
+  "Der Scanner schützt vor Versehen, nicht vor Absicht. Projekt-Code steht im selben Layout wie die Knöpfe für Antworten und Haken; „nur aus dem Browser“ ist eine Prüfung von Kopfzeilen. Eine Antwort ist darum nie ein Nachweis und gibt nie allein eine riskante Handlung frei. Eine Scanner-Regel gegen document., .click() und dispatchEvent steht als Auflage aus (A2/A3).",
+  "CSP der Oberfläche: default-src 'self', connect-src 'self', frame-src 'self', frame-ancestors 'none', keine Inline-Skripte.",
+  "CSP für Vorschau-HTML: wie die Oberfläche, plus sandbox allow-scripts.",
+]

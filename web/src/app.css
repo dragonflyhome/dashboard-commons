@@ -1,0 +1,626 @@
+/* Gestaltung des Dashboards: ruhige Karten, klare Farben, Dunkel und Hell
+   nach Systemeinstellung. Keine externen Schriften, keine CDN-Dateien. */
+
+/* Token: alle Farben, Schatten und Schriften der Oberfläche. Nur hier stehen
+   feste Werte; überall sonst nur var(--…) (Stylelint, farben.spec.ts). Die
+   Kontraste prüft kontrast.spec.ts gegen genau diese Datei, hell und dunkel.
+   Abgeleitete Token (color-mix, Schatten mit var()) stehen nur im hellen
+   Block; sie rechnen im dunklen Thema mit dessen Grundfarben. */
+/* stylelint-disable color-no-hex, function-disallowed-list -- Token-Definitionen: nur hier entstehen die Farben */
+/* [data-thema-vorschau] (Etappe 3b): ein Kasten, der ein Thema fest zeigt,
+   egal welches gilt (Logo-Entwürfe hell und dunkel nebeneinander). Er bekommt
+   alle Token neu, die abgeleiteten rechnen dort mit seinen Grundfarben. */
+:root,
+[data-thema-vorschau] {
+	color-scheme: light dark;
+
+	/* Flächen und Text */
+	--bg: #f4f6fb;
+	--card: #ffffff;
+	--text: #1a2233;
+	--muted: #5b6577;
+	--line: #dde3ee;
+	/* Weiße Fläche in beiden Themen: Bilder mit Transparenz, Rahmen der Vorschau. */
+	--papier: #ffffff;
+	--code-bg: color-mix(in srgb, var(--line) 60%, transparent);
+	/* Abgedunkelter Hintergrund hinter Großansichten (Dialog, Schublade). */
+	--overlay: color-mix(in srgb, var(--bg) 88%, transparent);
+
+	/* Akzent (Links, Knöpfe, aktiver Menüpunkt, Fokus) */
+	--accent: #2563eb;
+	--accent-soft: #dbe7ff;
+	/* Text auf Flächen in --accent (Knöpfe, aktiver Menüpunkt): 5,17:1. */
+	--on-accent: #ffffff;
+	/* Fokusrahmen: voll deckend, weil 60 % Akzent nur 2,5:1 hatte (WCAG verlangt 3:1). */
+	--fokus: var(--accent);
+	/* Akzent als Text auf --accent-soft (Schild „neue Form“): --accent hat
+	   dort hell nur 4,16:1, dieses Blau 5,39:1. */
+	--accent-text: #1d4ed8;
+
+	/* Bedeutungen als Ton für Punkte, Balken, Ringe und Ränder (Teile der
+	   Oberfläche, ab 3:1). Gemessen gegen jede Fläche, auf der sie stehen:
+	   --card, --bg, die eigene Fläche --…-soft (Punkt in der Marke) und
+	   --accent-soft (Punkt im gewählten Eintrag der Seitenleiste); die
+	   dunkelste davon ist hell --accent-soft (kontrast.spec.ts, „Bedeutungen
+	   in Gebrauch“). Töne tragen keinen Text; dafür gibt es --…-text.
+	   Prüfbericht: --ok, --warn, --info und --plan hell dunkler, bei
+	   gleichem Farbton (vorher auf --accent-soft 2,06–2,96:1, --plan auf
+	   --card 2,56:1). Nicht heller machen. */
+	/* #149443 statt #16a34a: auf --accent-soft 3,16:1 (vorher 2,65:1). */
+	--ok: #149443;
+	/* #c46b06 statt #d27306 (3a+: statt #d97706): auf --accent-soft 3,10:1
+	   (vorher 2,73:1), auf --bg 3,56:1. Steht auch fest in static/logo.svg. */
+	--warn: #c46b06;
+	/* Text auf Flächen in --warn (Zähler „offene Aufgaben“): 4,80:1 hell, 11,1:1 dunkel.
+	   Darum --warn nicht noch dunkler machen. */
+	--on-warn: #1a1300;
+	--bad: #dc2626;
+	/* Grau für „neutral“: leise, steht immer neben einem Wort.
+	   #6f839f statt #94a3b8: auf --card 3,87:1 (vorher 2,56:1), auf
+	   --accent-soft 3,11:1 (vorher 2,06:1). */
+	--plan: #6f839f;
+	--done: #2563eb;
+	/* #088dad statt #0891b2: auf --accent-soft 3,11:1 (vorher 2,96:1). */
+	--info: #088dad;
+
+	/* Bedeutungen als Text (ab 4,5:1 auf --card und auf der eigenen Fläche).
+	   Hell dunkler als der Ton, weil Grün, Gelb und Türkis auf Weiß nur
+	   etwa 3:1 haben. */
+	--ok-text: #166534;
+	/* 3a+: #a74d08 statt #b45309: auf --warn-soft 5,03:1 statt 4,52:1 ohne
+	   Spielraum (Schwelle Text 4,5:1). */
+	--warn-text: #a74d08;
+	--bad-text: #b91c1c;
+	--info-text: #0e7490;
+
+	/* Bedeutungen als ruhige Fläche (Hinweiskästen, markierte Zeilen) */
+	--ok-soft: color-mix(in srgb, var(--ok) 12%, var(--card));
+	--warn-soft: color-mix(in srgb, var(--warn) 10%, var(--card));
+	--bad-soft: color-mix(in srgb, var(--bad) 10%, var(--card));
+	--info-soft: color-mix(in srgb, var(--info) 10%, var(--card));
+	/* Etappe 3a-3: auch „Hinweis“ (--done) und „neutral“ (--plan) als Fläche,
+	   damit jede Bedeutung eine ruhige Fläche hat (.b-… setzt --ton-soft). */
+	--done-soft: color-mix(in srgb, var(--done) 10%, var(--card));
+	--plan-soft: color-mix(in srgb, var(--plan) 14%, var(--card));
+
+	/* Reihen für Anteile (Ordner auf /pc, Konfetti): mittlere Töne, die auf
+	   hellen und dunklen Karten tragen; darum in beiden Themen gleich.
+	   Schwelle Grafik 3:1 auf --bg und --card in beiden Themen
+	   (kontrast.spec.ts). 3a+ angepasst, mit wenig Spielraum: --reihe-1
+	   dunkel auf --card 3,10:1, --reihe-3 hell auf --bg 3,10:1, --reihe-7 hell
+	   auf --bg 3,14:1. Diese drei nicht heller (3, 7) oder dunkler (1) machen. */
+	--reihe-1: #437463;
+	--reihe-2: #4a78c2;
+	--reihe-3: #b28516;
+	--reihe-4: #c2574a;
+	--reihe-5: #7b5fb3;
+	--reihe-6: #2e9e5b;
+	--reihe-7: #ce751a;
+	--reihe-8: #5c8a3b;
+	--reihe-9: #b3457a;
+	--reihe-10: #6b736d;
+
+	/* Schatten und Ringe */
+	--shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -16px rgb(16 24 40 / 0.25);
+	--shadow-hover:
+		0 1px 2px rgb(16 24 40 / 0.06),
+		0 14px 30px -16px color-mix(in srgb, var(--accent) 50%, transparent);
+	--shadow-gross: 0 10px 30px rgb(16 24 40 / 0.12);
+	/* Leuchten unter einem Bild, das sich vergrößern lässt. */
+	--shadow-bild: 0 8px 24px -12px color-mix(in srgb, var(--accent) 60%, transparent);
+	/* Schmaler Ring in Akzentfarbe (Symbol-Zeichen „hier“). */
+	--ring-akzent: 0 0 0 0.125rem var(--accent);
+	/* Hof um eine Lampe in ihrer eigenen Textfarbe (currentColor). */
+	--ring-hof: 0 0 0 6px color-mix(in srgb, currentColor 10%, transparent);
+	/* Pulsieren des Live-Punkts: Anfang und Ende. */
+	--puls: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent);
+	--puls-weit: 0 0 0 9px transparent;
+
+	/* Schrift */
+	--font:
+		ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif,
+		'Apple Color Emoji', 'Segoe UI Emoji';
+	--mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+	/* Schriftgrößen. Die Grundgröße am html (--text-wurzel) ist 100 %, also
+	   die Schriftgröße, die im Browser eingestellt ist (ab Werk 16px); sie
+	   bleibt so wirksam. Ein fester Wert in px am html, auch 16px, würde
+	   diese Einstellung außer Kraft setzen und gehört nicht hierher (Auflage
+	   aus 3a-2, geklärt in 3a-3). Alles andere in rem, damit die Einstellung
+	   überall wirkt; em nur für Text, der mit seiner Umgebung wächst. */
+	--text-wurzel: 100%;
+	--text-2xs: 0.75rem;
+	--text-xs: 0.8rem;
+	--text-sm: 0.85rem;
+	--text-md: 0.9rem;
+	--text-base: 1rem;
+	--text-lg: 1.1rem;
+	--text-xl: 1.15rem;
+	--text-2xl: 1.25rem;
+	--text-3xl: 1.4rem;
+	--text-4xl: 1.6rem;
+	--text-5xl: 2rem;
+	--text-h1: clamp(1.6rem, 1.2rem + 1.5vw, 2.2rem);
+	/* Große Zahl, die mit der Breite wächst (Code auf /anmelden). */
+	--text-riesig: clamp(2.5rem, 14vw, 4rem);
+	/* Relativ zum umgebenden Text (Code im Satz, Bildunterschrift, Vermerk).
+	   --text-em-lg ab 3b für Projektseiten (Zwischenüberschrift, Auflage aus 3a-2). */
+	--text-em-lg: 1.05em;
+	--text-em-md: 0.9em;
+	--text-em-sm: 0.85em;
+	/* Schrift in Grafiken (SVG, Einheiten des viewBox). */
+	--text-grafik: 18px;
+	--text-grafik-klein: 12px;
+
+	--radius: 14px;
+}
+
+/* Etappe 3b, Schalter System/Hell/Dunkel (#lib/thema.ts): Ohne Wahl folgt das
+   Thema dem System. data-theme="hell" hält das helle Thema auch bei dunklem
+   System, data-theme="dunkel" setzt das dunkle bei hellem System. Der Block
+   „dunkel“ unten hat genau dieselben Werte wie dieser; kontrast.spec.ts
+   verlangt das und prüft alle vier Fälle. */
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='hell']) {
+		--bg: #0f1420;
+		--card: #171e2e;
+		--text: #e6ebf5;
+		--muted: #97a3b8;
+		--line: #28324a;
+		--accent: #7aa2ff;
+		--accent-soft: #1d2a4a;
+		/* Weiß auf dem hellen Blau hatte nur 2,49:1; dunkler Text hat 7,40:1
+		   (WCAG AA verlangt 4,5:1). Das Blau selbst bleibt, weil es als Link-
+		   und Linienfarbe auf --card 6,69:1 hat. */
+		--on-accent: #0f1420;
+		--accent-text: #7aa2ff;
+		--ok: #34d399;
+		--warn: #fbbf24;
+		--bad: #f87171;
+		/* Prüfbericht: #697991 statt #64748b (gleicher Farbton, heller);
+		   auf --plan-soft 3,21:1 statt 3,02:1, auf --accent-soft 3,20:1 statt 2,98:1. */
+		--plan: #697991;
+		--done: #7aa2ff;
+		--info: #22d3ee;
+		/* Im Dunkeln tragen die Töne selbst als Text. */
+		--ok-text: #34d399;
+		--warn-text: #fbbf24;
+		/* Prüfbericht: etwas heller als --bad (#f98181 statt #f87171),
+		   weil BackupCard den Satz mit Deckkraft 0,8 zeigt: 4,75:1 statt 4,29:1. */
+		--bad-text: #f98181;
+		--info-text: #22d3ee;
+		--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -18px rgb(0 0 0 / 0.8);
+	}
+}
+/* Gewählt „Hell“: die Werte aus :root; nur Bedienelemente des Browsers (Rollbalken, Felder) hell. */
+:root[data-theme='hell'],
+[data-thema-vorschau='hell'] {
+	color-scheme: light;
+}
+/* Gewählt „Dunkel“: dieselben Werte wie im Block für das dunkle System oben. */
+:root[data-theme='dunkel'],
+[data-thema-vorschau='dunkel'] {
+	color-scheme: dark;
+	--bg: #0f1420;
+	--card: #171e2e;
+	--text: #e6ebf5;
+	--muted: #97a3b8;
+	--line: #28324a;
+	--accent: #7aa2ff;
+	--accent-soft: #1d2a4a;
+	--on-accent: #0f1420;
+	--accent-text: #7aa2ff;
+	--ok: #34d399;
+	--warn: #fbbf24;
+	--bad: #f87171;
+	--plan: #697991;
+	--done: #7aa2ff;
+	--info: #22d3ee;
+	--ok-text: #34d399;
+	--warn-text: #fbbf24;
+	--bad-text: #f98181;
+	--info-text: #22d3ee;
+	--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -18px rgb(0 0 0 / 0.8);
+}
+/* stylelint-enable color-no-hex, function-disallowed-list */
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	font-family: var(--font);
+	font-size: var(--text-wurzel);
+	line-height: 1.5;
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+}
+
+a {
+	color: var(--accent);
+	text-decoration: none;
+}
+a:hover,
+a:focus-visible {
+	text-decoration: underline;
+}
+
+:focus-visible {
+	outline: 3px solid var(--fokus);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+h1,
+h2,
+h3 {
+	line-height: 1.2;
+	margin: 0 0 0.4em;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+h1 {
+	font-size: var(--text-h1);
+}
+h2 {
+	font-size: var(--text-xl);
+}
+h3 {
+	font-size: var(--text-base);
+}
+p {
+	margin: 0 0 0.6em;
+}
+code {
+	font-family: var(--mono);
+	font-size: var(--text-em-md);
+	background: var(--code-bg);
+	padding: 1px 5px;
+	border-radius: 5px;
+}
+pre {
+	overflow: auto;
+	background: var(--code-bg);
+	padding: 10px 12px;
+	border-radius: 10px;
+}
+table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 0.4em 0 1em;
+}
+th,
+td {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--line);
+	vertical-align: top;
+}
+th {
+	color: var(--muted);
+	font-weight: 600;
+	font-size: var(--text-sm);
+}
+img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 10px;
+}
+video,
+iframe {
+	max-width: 100%;
+}
+
+/* Handybreite: nichts darf die Seite breiter machen als den Bildschirm.
+   Lange Wörter und Pfade brechen; Tabellen behalten ihre Breite und
+   scrollen in ihrem eigenen Rahmen (.scroll-x, .table-scroll). */
+main {
+	overflow-wrap: anywhere;
+}
+main table {
+	overflow-wrap: normal;
+}
+/* Rahmen für breite Tabellen. Die Schatten am Rand zeigen, dass seitlich
+   mehr kommt. Ob es dort mehr gibt, setzt scrollShadow (#lib/scrollschatten.ts)
+   als Klasse; ohne Überlauf wird nichts gemalt, auch keine Deckfarbe, darum
+   passt es auf --card wie auf --bg. */
+.scroll-x,
+.table-scroll {
+	--schatten: color-mix(in srgb, var(--text) 28%, transparent);
+	--schatten-l: transparent;
+	--schatten-r: transparent;
+	overflow-x: auto;
+	max-width: 100%;
+	background:
+		radial-gradient(farthest-side at 0 50%, var(--schatten-l), transparent) left / 12px 100%
+			no-repeat scroll,
+		radial-gradient(farthest-side at 100% 50%, var(--schatten-r), transparent) right / 12px 100%
+			no-repeat scroll;
+}
+.schatten-links {
+	--schatten-l: var(--schatten);
+}
+.schatten-rechts {
+	--schatten-r: var(--schatten);
+}
+.scroll-x {
+	margin: 0.4em 0 1em;
+}
+.scroll-x > table {
+	margin: 0;
+}
+hr {
+	border: 0;
+	border-top: 1px solid var(--line);
+	margin: 1.2em 0;
+}
+blockquote {
+	margin: 0.6em 0;
+	padding: 4px 14px;
+	border-left: 4px solid var(--accent-soft);
+	color: var(--muted);
+}
+
+.muted {
+	color: var(--muted);
+}
+.small {
+	font-size: var(--text-sm);
+}
+.big {
+	font-size: var(--text-xl);
+	font-weight: 600;
+}
+.plain {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+/* Nur für Vorlese-Programme: im Dokument, aber nicht zu sehen (Ansagen, Überschriften als Fokusziel).
+   left: 0, sonst bleibt der 1-px-Kasten an seiner Stelle im Text stehen; ohne
+   positionierten Vorfahren zählt er für die Seite und verbreitert sie, wenn die
+   Zeile bis an den Rand reicht (Quellenliste bei 360 px: 367 px). */
+.nur-vorlesen {
+	position: absolute;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Karten */
+.card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	padding: 16px 18px;
+}
+.cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 14px;
+}
+
+/* Bedeutungen (Vertrag: ok, laeuft, wartet, problem, info, neutral). Eine
+   Klasse je Bedeutung, vergeben nur von klasse() in #lib/bedeutung.ts. Sie
+   setzt nur den Ton --ton; Punkte, Lampen, Balken und Ringe malen damit
+   (background: var(--ton, …) oder stroke: var(--ton, …)). Früher gab es dafür
+   zwei Reihen (st-… und c-…); beide sind in diesen Klassen aufgegangen.
+   Seit 3a-3 setzt sie dazu --ton-soft, die ruhige Fläche derselben Bedeutung
+   (Hinweiskästen, Kacheln); Text darauf bleibt --text. */
+.b-ok {
+	--ton: var(--ok);
+	--ton-soft: var(--ok-soft);
+}
+.b-laeuft {
+	--ton: var(--info);
+	--ton-soft: var(--info-soft);
+}
+.b-wartet {
+	--ton: var(--warn);
+	--ton-soft: var(--warn-soft);
+}
+.b-problem {
+	--ton: var(--bad);
+	--ton-soft: var(--bad-soft);
+}
+.b-info {
+	--ton: var(--done);
+	--ton-soft: var(--done-soft);
+}
+.b-neutral {
+	--ton: var(--plan);
+	--ton-soft: var(--plan-soft);
+}
+
+/* Widgets (Etappe 3a-3, A4): Stand, Frage, Arbeiten, Fristen, Zuletzt in
+   web/src/lib/katalog/widgets, im Unter-Dashboard und im /katalog. Gemeinsame
+   Karte: oben ein Rand in der Farbe der Bedeutung (eine Klasse .b-… an der
+   Karte setzt --ton; ohne bleibt er --line), die Überschrift klein und
+   leise, Listen eng. Steht hier, weil fünf Bausteine sie teilen. */
+.widget {
+	flex: 1 1 15rem;
+	min-width: 0;
+	padding: 0.75rem 0.9rem;
+	border-top: 0.25rem solid var(--ton, var(--line));
+}
+.widget > h2 {
+	font-size: var(--text-sm);
+	color: var(--muted);
+	font-weight: 600;
+	margin-bottom: 0.4rem;
+}
+.widget h3 {
+	font-size: var(--text-xs);
+	color: var(--muted);
+	font-weight: 600;
+	margin: 0.5rem 0 0.2rem;
+}
+.widget-anzahl {
+	display: inline-block;
+	min-width: 1.4em;
+	padding: 0 0.35em;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--text);
+	font-size: var(--text-2xs);
+	text-align: center;
+}
+.widget-liste {
+	display: grid;
+	gap: 0.3rem;
+}
+.widget-liste > li {
+	overflow-wrap: anywhere;
+}
+.widget-mehr > summary {
+	cursor: pointer;
+	color: var(--accent);
+	margin-top: 0.25rem;
+}
+.widget-zeichen {
+	color: var(--muted);
+	margin-right: 0.2rem;
+}
+/* Am Handy untereinander: dann füllt jedes Widget die Breite, statt
+   15rem hoch zu werden (flex-basis gilt in der Spalte als Höhe). */
+@media (max-width: 37.5rem) {
+	.widget {
+		flex: 1 1 auto;
+	}
+}
+
+/* Status-Punkte (StatusDot.svelte) */
+.dot {
+	display: inline-block;
+	width: 0.7em;
+	height: 0.7em;
+	border-radius: 50%;
+	margin-right: 0.45em;
+	vertical-align: baseline;
+	background: var(--ton, var(--plan));
+	flex: none;
+}
+
+.pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: var(--text-xs);
+	padding: 2px 10px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--line) 55%, transparent);
+	color: var(--text);
+	white-space: nowrap;
+}
+
+.button {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	border: 1px solid var(--line);
+	background: var(--card);
+	color: var(--text);
+	font: inherit;
+	padding: 7px 14px;
+	border-radius: 10px;
+	cursor: pointer;
+	transition:
+		transform 120ms ease,
+		background 120ms ease;
+}
+/* Hover und Druck nur für bedienbare Knöpfe; gesperrte bleiben ruhig (Etappe B2). */
+.button:hover:not(:disabled, [aria-disabled='true']) {
+	background: var(--accent-soft);
+	text-decoration: none;
+}
+.button:active:not(:disabled, [aria-disabled='true']) {
+	transform: translateY(1px);
+}
+.button.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--on-accent);
+}
+.button[aria-pressed='true'] {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+}
+/* Gesperrte Knöpfe und Felder, eine Regel für alle Bausteine (Etappe B2;
+   Vorlage .vorschlag:disabled in EintragZeile): ohne
+   Deckkraft, damit der Text lesbar bleibt (--muted auf --card 5,8:1, mit
+   Deckkraft 0,6 nur 2,6:1; kontrast.spec.ts). Gesperrt zeigt der
+   gestrichelte Rand, dazu cursor und das Attribut disabled. Bausteine setzen
+   bei gesperrt keine eigene Deckkraft (gesperrt.spec.ts); einen anderen
+   cursor (etwa progress) dürfen sie selbst setzen. */
+/* stylelint-disable declaration-no-important -- der gestrichelte Rand muss den Rand jedes Bausteins überstimmen; dessen Stile sind gekapselt und spezifischer */
+:is(button, .button, textarea, select):disabled,
+.button[aria-disabled='true'] {
+	border-style: dashed !important;
+	cursor: not-allowed;
+}
+/* stylelint-enable declaration-no-important */
+/* Der Hauptknopf gesperrt: Rand in Textfarbe, die Fläche abgeschwächt (Akzent
+   mit der Kartenfläche gemischt), der Text in --text statt --on-accent. Ohne
+   Deckkraft auf dem Text; keine neuen Farbtoken. */
+.button.primary:disabled,
+.button.primary[aria-disabled='true'] {
+	border-color: var(--text);
+	background: color-mix(in srgb, var(--accent) 25%, var(--card));
+	color: var(--text);
+}
+
+input[type='search'],
+input[type='text'],
+select {
+	font: inherit;
+	color: var(--text);
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 7px 12px;
+}
+
+.block-error {
+	color: var(--bad-text);
+	background: var(--bad-soft);
+	border-left: 4px solid var(--bad);
+	padding: 8px 12px;
+	border-radius: 10px;
+}
+
+/* Ziel eines Ankers (Etappe A1, /projects/<slug>#<art>-<id>): ruhig
+   hervorgehoben, ohne Bewegung; Abstand unter der festen Kopfzeile. */
+[id^='aufgabe-'],
+[id^='frage-'],
+[id^='arbeit-'] {
+	scroll-margin-top: 5rem;
+}
+.ziel-hervorgehoben {
+	outline: 3px solid var(--accent);
+	outline-offset: 2px;
+	background: var(--accent-soft);
+}
+
+/* Freundliche Bewegung, aber nur wenn erwünscht. */
+@media (prefers-reduced-motion: reduce) {
+	/* stylelint-disable declaration-no-important -- Bewegung abschalten muss jede Animation überstimmen, auch die in Bausteinen */
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+	/* stylelint-enable declaration-no-important */
+}

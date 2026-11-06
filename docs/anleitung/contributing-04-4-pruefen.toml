@@ -1,0 +1,56 @@
+# Abschnitt „4. Prüfen“ (Etappe 6b, Format wie docs/zielbild).
+titel = '4. Prüfen'
+reihenfolge = 104
+
+[[block]]
+text = '''
+Seite im Browser öffnen (http://localhost:8787/projects/<slug>). Das Dashboard merkt Änderungen an projekt.toml und daten/*.toml von selbst und lädt die Daten nach, ohne Neuladen. Ist der Kopf fehlerhaft (Tippfehler im Feldnamen, Feld an der falschen Stelle), zeigt die Startseite eine rote Kachel mit der Fehlermeldung. Wer es genauer sehen will: /api/projekte/<slug> zeigt, was der Server aus projekt.toml gemacht hat, /api/projekte/<slug>/daten/<name> eine Datei aus daten/.
+
+Seit Etappe 2d hält der Server alle Projekte im Arbeitsspeicher und liest nur nach, was sich geändert hat. Für dich ändert sich nichts, nur eins gilt es zu wissen: Eine gespeicherte Datei (projekt.toml, daten/*.toml, data/*.toml) ist nach höchstens etwa zwei Sekunden in der API und auf der Seite. Wer gleich nach dem Speichern über Api.ps1 nachsieht, wartet also kurz (zwei bis drei Sekunden) oder fragt noch einmal. Ein Fehler im Inhalt steht wie bisher sofort da. Lässt sich eine Datei gerade nicht lesen (etwa weil ein Programm sie noch offen hält), zeigt das Dashboard den letzten guten Stand weiter und nennt die Datei unter /api/pruefung/<slug>, bis sie wieder lesbar ist; daraus geht nichts verloren. /api/betrieb zeigt unter inhalt die Version des Inhalts; sie steigt mit jeder Änderung.
+
+Fehlermeldungen der API haben immer dieselbe Form: {"fehler": "Satz in einfachem Deutsch", "art": "nicht-gefunden"}. art ist ein festes Wort (nicht-gefunden, unlesbar, abgelehnt, zu-gross, zu-lange, falsche-adresse, intern, speicher-fehlt, methode, fehlerhaft); darauf kann ein Chat prüfen, statt den Satz zu lesen.'''
+
+[[block]]
+titel = 'Mit dem Befehl pruefe'
+text = 'Wer eine Datei im eigenen Projektordner geändert hat, kann sie prüfen lassen, ohne die Seite zu öffnen (im Ordner des Dashboards):'
+
+[[block]]
+beispiel = '''
+./target/release/dashboard.exe pruefe <slug>'''
+
+[[block]]
+text = '''
+oder kürzer im Ordner web/: npm run pruefe -- <slug> (ab 4a; nimmt die neueste gebaute dashboard.exe).
+
+Die Ausgabe hat je Befund eine Zeile: FEHLER oder HINWEIS, dann Datei, Zeile und ein Satz, was falsch ist und wie es richtig geht, etwa'''
+
+[[block]]
+beispiel = '''
+FEHLER projects/kaputt-status/projekt.toml, Zeile 4: Bei status steht „fertich“. Erlaubt sind: aktiv, pausiert, geplant, fertig, problem, archiviert.
+1 Fehler, 0 Hinweise'''
+
+[[block]]
+text = '''
+Also: Datei öffnen, zur genannten Zeile gehen, den Satz befolgen, wieder prüfen. Fehler muss man beheben, Hinweise sollte man. Rückgabe 0 heißt ohne Fehler, 1 mit Fehlern, 2 falscher Aufruf oder unbekanntes Projekt. Dieselben Befunde zeigt /api/pruefung/<slug> als JSON. Mehr im Abschnitt „Prüfen der Projekte: pruefe“.
+
+Markdown-Dateien: Eine Datei mit der Endung .md im Projektordner ist ein FEHLER; die genaue Regel steht im Abschnitt „Prüfen der Projekte: pruefe“.
+
+Seit 3b gibt pruefe einen HINWEIS, wenn ein Text in einer TOML-Datei ein Steuerzeichen enthält. Meist ist das ein einfacher Rückwärtsstrich in doppelten Anführungszeichen: In "D:\Ablage\fach" wird \f zu einem unsichtbaren Zeichen (ebenso \t, \b, \r), und der Pfad stimmt nicht mehr. Abhilfe: Schrägstriche ("D:/Ablage/fach") oder einfache Anführungszeichen ('D:\Ablage\fach').
+
+pruefe (nicht --bauliste) meldet unter Windows jede Datei und jeden Ordner der geprüften Quellen als FEHLER, den das Dienstkonto nicht lesen darf. Der typische Fall: eine Datei aus %TEMP% in den Inhalt verschoben; sie nimmt ihre Rechte ohne Vererbung mit, du siehst sie, der Dienst nicht. Der Satz nennt den Befehl, den du (Inhaber) im Ordner des Inhalts ausführst, etwa icacls "projects/x/daten/a.toml" /reset (bei einem Ordner mit /t). Welches Konto der Dienst ist, steht in den Einstellungen ([konten] dienst_sid in C:/ProgramData/Dashboard/dienst.toml, eine andere Datei mit DASHBOARD_EINSTELLUNGEN); fehlt sie, sagt ein HINWEIS, dass diese Prüfung entfiel. Geprüft wird die Rechteliste (DACL) jedes Orts: Alle Rechte von „Lesen“ (FILE_GENERIC_READ) müssen zusammen für das Dienstkonto oder eine Gruppe erlaubt sein, in der jedes Dienstkonto steht (Jeder, Authentifizierte Benutzer, Benutzer, DIENST, ALL SERVICES, LOKAL, Diese Organisation), und keines darf verboten sein, auch nicht bedingt. Geprüft werden die Quellen, data/ und docs/entscheidungen/ daneben (was der Dienst liest; docs/ selbst nicht); .git, node_modules, target, .svelte-kit, builds, Verknüpfungen und Junctions bleiben außen vor.'''
+
+[[block]]
+titel = 'Stil-Prüfung mit Stylelint (ab 3b)'
+text = 'Seit 3b prüft pruefe auch die Stile in den .svelte-Dateien eines Projekts (der <style>-Block und style="…") mit denselben Regeln wie das Dashboard selbst: Farben, Schatten, Schriftart und Schriftgröße nur als Token (var(--…), Liste in Abschnitt 5 unter „Token und Stil-Prüfung“), kein !important, kein :global, kein @import, nichts aus dem Netz. Häufigster Fund: eine Schriftgröße wie 1.05em oder 0.9em. Dafür gibt es die relativen Token var(--text-em-sm) (0,85em), var(--text-em-md) (0,9em) und var(--text-em-lg) (1,05em).'
+
+[[block]]
+beispiel = '''
+HINWEIS projects/x/Seite.svelte, Zeile 118: Stil: Die Schriftgröße „1.05em“ ist frei. … (Regel scale-unlimited/declaration-strict-value) Wird ein Fehler, sobald STIL_ALS_FEHLER umgestellt ist.'''
+
+[[block]]
+punkte = [
+  'Bis der Schalter STIL_ALS_FEHLER (src/werkzeug/stil.rs) umgestellt ist, sind die Funde HINWEIS (jeder sagt das in seinem letzten Satz): Sie brechen nichts, die Seite wird gebaut. Danach werden sie FEHLER, und eine Seite mit Fund wird nicht mehr gebaut (wie bei jedem anderen Fehler; die anderen Seiten bauen weiter).',
+  'Neue Projektseiten (ab 3b angelegt) müssen schon jetzt ohne Stil-Hinweis sein. Das prüft heute kein Programm, sondern der Betreuer des Dashboards beim ersten bau-Vorgang des Projekts; nach der Umstellung gilt es ohnehin für alle.',
+  'stylelint-disable wirkt in Projekten nicht; abschalten geht nicht. Seit 3b-2 sind auch @ts-nocheck, @ts-ignore, @ts-expect-error, svelte-ignore, eslint-disable… und ESLint-Regeln im Kommentar in Projekten ein FEHLER von pruefe (die Liste der erlaubten Abschaltungen unten gilt nur für web/src).',
+  'Läuft bei pruefe <slug> (Projekte mit Svelte-Dateien), bei pruefe --alle und im Bau über den Boten (der Satz des Baus nennt Projekte mit Hinweisen). Dauer: unter einer Sekunde. Braucht Node und web/node_modules; fehlt eines, steht dort ein Hinweis, dass die Stil-Prüfung übersprungen ist. --ohne-stil lässt sie weg. Stürzt Stylelint bei einer Datei ab, steht nur bei ihr ein Hinweis; alle anderen Dateien und Projekte werden weiter geprüft (seit 3b-2).',
+]

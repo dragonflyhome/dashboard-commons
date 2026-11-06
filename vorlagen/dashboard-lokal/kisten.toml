@@ -1,0 +1,35 @@
+# Liste geprüfter Kisten der Zusammenbau-Kiste ([zusammenbau], [code_nur_kern]).
+#
+# Nur Kisten aus dieser Liste kommen in dashboard-lokal. Je Kiste:
+#   name    Kistenname aus ihrer Cargo.toml (projekt-<slug>)
+#   pfad    Ordner der Kiste, relativ zu diesem Ordner (../projects/<slug>/server)
+#   typ     der Typ, der dashboard_projekt::Modul umsetzt (steht in src/lib.rs)
+#   commit  der geprüfte Stand im Inhalts-Repo (Commit, mindestens 7 Zeichen)
+#
+# Der Wächter im Code-Repo (dashboard.exe pruefe-zusammenbau <ordner> --code
+# <code-repo>, src/projekte/zusammenbau.rs) prüft vor jedem cargo-Aufruf:
+#   - [code].pfad ist relativ und genau das Code-Repo;
+#   - dieser Ordner ist die Vorlage des Code-Repos (vorlagen/dashboard-lokal),
+#     Byte für Byte bis auf kisten.toml, Cargo.lock und je Kiste eine Zeile in
+#     Cargo.toml und src/lib.rs; keine weitere Datei, kein build.rs;
+#   - Cargo.lock nennt nur crates.io (mit Fassung und Prüfsumme wie im
+#     Code-Repo), und Kisten ohne Quelle sind nur dashboard,
+#     dashboard-projekt, dashboard-lokal und die Kisten hier;
+#   - im Inhalt gar kein .cargo, darüber nur dlltool (Name, aktive Toolchain);
+#   - keine Git-Einstellung, die beim Prüfen ein Programm startete (Filter …);
+#   - jede Kiste besteht die Wächter-Regeln des Code-Repos
+#     (src/projekte/waechter.rs) und hat sich seit `commit` nicht geändert,
+#     auch keine neue oder von git ignorierte Datei.
+#
+# Eine neue Kiste kommt nur nach Prüfung und Entscheidung der
+# Architektur-Rolle hinein (Anleitung, „Zusammenbau-Kiste dashboard-lokal“).
+
+[code]
+# Das Code-Repo, relativ zu diesem Ordner.
+pfad = "../../dashboard"
+
+# [[kiste]]
+# name = "projekt-beispiel"
+# pfad = "../projects/beispiel/server"
+# typ = "Beispiel"
+# commit = "0123abc"

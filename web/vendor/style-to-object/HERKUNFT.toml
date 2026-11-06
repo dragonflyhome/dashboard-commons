@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "style-to-object"
+version = "1.0.14"
+quelle = "https://registry.npmjs.org/style-to-object/-/style-to-object-1.0.14.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-LIN7rULI0jBscWQYaSswptyderlarFkjQ+t79nzty8tcIAceVomEVlLzH5VP4Cmsv6MtKhs7qaAiwlcp+Mgaxw=="
+lizenz = "MIT"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 18
+entfernt = ["README.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 17
+inhalt_sha256 = "5e4ea16d32ac62bdc78a0d7801bc4e873de2d197711cc075bbfd98964610a7ee"

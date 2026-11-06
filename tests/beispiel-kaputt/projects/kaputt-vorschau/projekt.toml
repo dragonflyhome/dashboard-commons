@@ -1,0 +1,6 @@
+# Absichtlich kaputt: die Vorschau zeigt auf eine Datei, die es nicht gibt.
+schema = 3
+title = "Kaputt: Vorschau fehlt"
+status = "aktiv"
+vorschau = "assets/entwurf.html"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

@@ -1,0 +1,139 @@
+titel = "Teilschritte mit Besitzer: das Dashboard als Mutex"
+reihenfolge = 8
+text = """
+Chats nutzen das Dashboard als Mutex. So kann kein gegenseitiges Warten (Deadlock) entstehen. Jede Übergabe zwischen Chats wird durch einen geänderten Stand im Aufgaben-Tracker bestätigt.
+
+Der Grund: Ohne Teilschritte kann eine Arbeit nur als Ganzes einem Chat gehören. Dann warten zwei Chats leicht aufeinander, mehrere Dateien sagen Verschiedenes über denselben Stand, und niemand steht im Tracker als „dran“.
+
+Darum gilt: Jede Arbeit kann Teilschritte haben. Jeder Schritt, an dem gearbeitet wird, hat genau einen Chat, der dran ist. Ein Chat arbeitet nur an einem Schritt, an dem er selbst steht. Eine Übergabe gilt erst, wenn der andere Chat den Schritt im Dashboard übernommen hat. Eine Chat-Nachricht allein ist keine Übergabe. Wer wartet, wartet auf einen bestimmten Schritt, und das Dashboard weckt ihn, sobald dieser Schritt fertig ist."""
+
+[[block]]
+titel = "Ein Schritt"
+[block.tabelle]
+spalten = ["Feld", "Was"]
+zeilen = [
+  ["nr", "Nummer ab 1, vergibt der Server, nie neu vergeben (Schritte werden nie gelöscht)"],
+  ["titel", "kurz, höchstens 200 Zeichen"],
+  ["stand", "dieselben vier Wörter wie bei der Arbeit: laeuft, wartet, als-naechstes, fertig"],
+  ["besitzer", "chat:<name>, wer dran ist; Pflicht bei laeuft und wartet; bleibt bei fertig als Angabe stehen; nie inhaber (der Inhaber klickt nichts)"],
+  ["wartet_auf", "nur bei wartet: schritt:<nr> (ein anderer Schritt derselben Arbeit), inhaber oder extern"],
+  ["verweis", "bei wartet_auf inhaber Pflicht: die Frage oder Aufgabe, auf die der Inhaber antwortet"],
+  ["angeboten_an", "chat:<name>, wem der Schritt übergeben werden soll; gilt erst als übergeben, wenn dieser Chat übernimmt"],
+  ["fuer", "freiwillig beim Anlegen: nur dieser Chat darf den Schritt bekommen (etwa chat:pruefer für eine Abnahme, damit sich niemand selbst abnimmt)"],
+  ["seit", "wann der Besitzer zuletzt am Schritt geschrieben hat (auch eine Notiz zählt)"],
+  ["notiz", "freiwillig, höchstens 1000 Zeichen"],
+  ["vorgang", "die Kennung des Weck-Vorgangs, solange einer offen ist"],
+]
+
+[[block]]
+titel = "Die Arbeit selbst"
+punkte = [
+  "Die Arbeit bekommt ein eigenes Feld besitzer, getrennt von von (von heißt nur: wer sie angelegt hat). Bei einer Arbeit ohne Schritte ist besitzer bei laeuft und wartet Pflicht, und nur der Besitzer ändert sie. Eine Arbeit ohne Besitzer übernimmt, wer sie auf laeuft setzt. Die Umstellung setzt bei laufenden und wartenden Arbeiten besitzer = von; sonst wird nichts umgeschrieben.",
+  "Bekommt eine laufende oder wartende Arbeit ihren ersten Schritt, legt der Server zuerst Schritt 1 „bisherige Arbeit“ mit ihrem Besitzer und Stand an. So nimmt ein neuer Schritt niemandem still die Arbeit weg.",
+  "Hat eine Arbeit Schritte, rechnet der Server ihren Stand aus den Schritten: läuft einer, läuft sie; sonst wartet einer, wartet sie; sind alle fertig, ist sie fertig; sonst als-naechstes. Ein Chat setzt den Stand einer solchen Arbeit nicht mehr direkt (abgelehnt, 422). Ihr besitzer bleibt dann nur als „verantwortlich“ für Titel und Notiz stehen.",
+  "Eine Arbeit wartet auf den Inhaber, sobald einer ihrer Schritte auf ihn wartet. Sonst verdeckt ein laufender Schritt, dass der Inhaber gebraucht wird.",
+  "Übergabe gibt es nur an Schritten. Eine Ebene reicht: keine Schritte in Schritten. Höchstens 20 Schritte je Arbeit.",
+]
+
+[[block]]
+titel = "Die Regel (der Mutex)"
+punkte = [
+  "Anlegen darf jeder Chat. Ein neuer Schritt steht auf als-naechstes und ist frei. So muss nie ein Chat warten, bis ein anderer ihm einen Schritt einträgt.",
+  "Übernehmen: Ein freier oder ihm angebotener Schritt wird mit „übernehmen“ seiner und wechselt auf laeuft. Ist fuer gesetzt, darf nur dieser Chat übernehmen. Gehört der Schritt schon einem anderen, lehnt der Server ab (409) und nennt, wer dran ist und seit wann.",
+  "Ändern (Stand, wartet_auf, Notiz, anbieten, freigeben) darf nur der Besitzer; sonst abgelehnt (409), und nichts wird geschrieben.",
+  "Anbieten: Der Besitzer bietet seinen Schritt an. Einen freien oder fertigen Schritt darf außerdem jeder Chat anbieten, der in derselben Arbeit Besitzer eines Schritts ist, auch eines fertigen. Ein angebotener Schritt ist frei, bis der Empfänger übernimmt; ein fertiger öffnet sich dabei wieder als als-naechstes. Ist fuer gesetzt, darf nur an diesen Chat angeboten werden.",
+  "Warten: wartet_auf = schritt:<nr> geht nur, wenn dieser andere Schritt einen Besitzer hat, der an ihm arbeitet (laeuft), oder wenn er gerade jemandem angeboten ist. Auf den eigenen Schritt warten und eine Kette, die zu sich selbst zurückführt, lehnt der Server ab (422, mit dem Satz, welchen Schritt man zuerst anbieten muss).",
+  "Zurückwecken: Wird der Schritt, auf den gewartet wird, fertig oder freigegeben, setzt der Server in derselben Transaktion den wartenden Schritt zurück auf laeuft und legt einen Vorgang für dessen Besitzer an. Niemand bleibt in einem Warten hängen, das keiner mehr auflöst.",
+  "Funde aus einer Abnahme: Der Abnehmende bietet den fertigen Bau-Schritt dem Bauenden wieder an und wartet auf genau diesen Schritt. Ist der behoben und fertig, wird der Abnehmende von selbst geweckt. Die Zahl der Schritte wächst dabei nicht.",
+  "Prüfen und Schreiben geschehen in einer einzigen Schreib-Transaktion des Datenspeichers. Übernehmen zwei Chats zugleich, gewinnt genau einer; der andere bekommt die Ablehnung.",
+  "Gleiches zweimal schadet nicht: Ein zweites „übernehmen“ durch denselben Chat antwortet 200 mit geaendert = false, wie bei Vorgängen.",
+  "Verwaist: Hat der Besitzer an einem laufenden Schritt über 24 Stunden nichts geschrieben (auch keine Notiz), oder ist ein angebotener Schritt über 24 Stunden nicht übernommen, darf ihn ein anderer Chat übernehmen, wenn er den alten Besitzer nennt (statt). Bei fuer gilt das nur für diesen Chat. Das kommt in den Verlauf. Ein Schritt, der auf den Inhaber oder extern wartet, wird nie verwaist: die Antwort des Inhabers weckt seinen Chat ohnehin. Der Server ändert nie von selbst einen Besitzer.",
+  "von ist Pflicht und hat die Form chat:<name>, geprüft an einer Stelle (eine Hilfsfunktion wer_ruft). Bis zum Chat-Schlüssel ist das eine Angabe ohne Nachweis; mit dem Chat-Schlüssel (ab C1) kommt der Name aus dem Schlüssel und ist dann fälschungssicher. Bis dahin schützt der Mutex vor Versehen und Stillstand, nicht vor Absicht.",
+  "Der Mutex trennt Chats, nicht Sitzungen: Zwei Sitzungen desselben Chats und seine Unteragenten gelten als derselbe Besitzer.",
+  "Mitbehoben: Den Titel einer Arbeit ändern ohne von ging bisher durch. Ab diesem Zweig wird das abgelehnt (422), und die Prüfung läuft in der Schreib-Transaktion.",
+]
+
+[[block]]
+titel = "Kein Stillstand ohne Eintrag"
+punkte = [
+  "Jeder Chat arbeitet seine offenen Schritte ohne Anstoß ab. Eine Arbeit ist erst fertig, wenn kein Schritt mehr offen ist, der ihm gehört, und keiner mehr als nächstes bei ihm liegt. Was als Nächstes zu tun ist, steht als Schritt in der Arbeit, nie nur in einer Notiz.",
+  "Aufträge und Abnahmen laufen als Schritte im Tracker (über die API). Eine Nachricht im Chat ist nur ein Hinweis darauf; sie kann verzögert ankommen oder ausbleiben.",
+  "Wer wartet, trägt ein, worauf (Stand wartet mit wartet_auf). So ist jeder Stillstand im Tracker sichtbar, und es ist klar, ob er beim Inhaber, bei einem anderen Chat oder draußen liegt.",
+]
+
+[[block]]
+titel = "Übergabe am Beispiel 6b"
+beispiel = """
+1. Der Bau-Assistent legt an Etappe 6 die Schritte an:
+   2 6b bauen · 3 6b Abnahme (fuer chat:pruefer) · 4 6b zusammenführen · 5 6d bauen
+   (Schritt 1 „bisherige Arbeit“ legt der Server selbst an.)
+2. Bau übernimmt Schritt 2, baut und bietet Schritt 3 an chat:pruefer an.
+   Dann setzt er Schritt 2 fertig.
+   Auf der Seite steht: angeboten an Chat pruefer, noch nicht übernommen.
+3. Der Server legt dafür einen Vorgang für pruefer an. Der wartende Prüf-Assistent wird geweckt.
+4. Pruefer übernimmt Schritt 3 -> erst jetzt ist die Übergabe vollzogen.
+5a. Ja: Pruefer bietet Schritt 4 an chat:bau an und setzt Schritt 3 fertig.
+5b. Funde: Pruefer bietet Schritt 2 wieder chat:bau an
+    und setzt Schritt 3 auf wartet, wartet_auf schritt:2.
+    Bau übernimmt 2, behebt, setzt 2 fertig.
+    Der Server setzt Schritt 3 zurück auf laeuft und weckt Pruefer.
+6. Wollte Bau auf Schritt 3 warten, während Schritt 3 auf Schritt 2 wartet:
+   abgelehnt (422). Gegenseitiges Warten geht nicht mehr."""
+
+[[block]]
+titel = "Wecken"
+text = """
+Ein wartender Chat hängt im Warte-Endpunkt der Vorgänge und wird nur von einem Vorgang geweckt. Darum legt der Server beim Anbieten und beim Zurückwecken in derselben Transaktion einen Vorgang an (über den vorhandenen Weg vorgang_anlegen_in und danach melden), höchstens einen je Empfänger und Anfrage, und merkt sich seine Kennung am Schritt. Übernimmt der Empfänger, wechselt das Angebot, übernimmt ein anderer oder wird der Schritt fertig, ist der alte Vorgang in derselben Transaktion erledigt. Ein neuer Weck-Mechanismus entsteht nicht; die Art des Vorgangs legt T3 fest."""
+
+[[block]]
+titel = "API (für Chats, nicht aus dem Browser)"
+[block.tabelle]
+spalten = ["Anfrage", "Was sie tut"]
+zeilen = [
+  ["POST /api/arbeiten/<id>/schritte", "Schritt anlegen: von, titel, fuer (freiwillig). 201 mit nr"],
+  ["POST /api/arbeiten/<id>/schritte/<nr>/uebernehmen", "von, statt (nur bei verwaist). 200, 200 mit geaendert = false, oder abgelehnt (409) mit besitzer und seit"],
+  ["POST /api/arbeiten/<id>/schritte/<nr>", "stand, wartet_auf, verweis, notiz, anbieten (chat:<name>), freigeben. 200, abgelehnt (409) oder ungültig (422)"],
+  ["GET /api/arbeiten?projekt=<name>", "wie bisher; die Schritte stehen jetzt in jeder Arbeit"],
+]
+
+[[block]]
+titel = "Wie der Inhaber es sieht"
+punkte = [
+  "Auf der Projektseite im Kasten Arbeiten. Schon in der zugeklappten Zeile steht in Worten: „3 von 7 fertig · dran: Chat pruefer“ oder „angeboten an Chat pruefer, noch nicht übernommen“.",
+  "Aufgeklappt eine nummerierte Liste der Schritte. Je Schritt in Worten: Titel, Stand, wer dran ist, worauf er wartet, seit wann. Farbe nur zusätzlich.",
+  "Ein Schritt ohne Bewegung seit über einem Tag sagt das als Satz: „seit über einem Tag unverändert“.",
+  "Wartet ein Schritt auf den Inhaber, führt er zu der Frage oder Aufgabe, auf die er antwortet, wie bei Arbeiten.",
+  "Keine Knöpfe: Schreiben aus dem Browser bleibt gesperrt. Der Inhaber muss nichts klicken.",
+  "Barrierefrei: Liste mit Beschriftung je Arbeit, Stand als Wort, keine Fortschrittsleiste, die dasselbe noch einmal ansagt.",
+]
+
+[[block]]
+titel = "Eine Wahrheit statt drei Dateien"
+text = """
+Ist der Baustein live, ersetzen die Chats in fortschritt.toml, ampel.toml und im Status des Gantt-Balkens den Stand von Etappe 6 durch den Satz „Stand: siehe Arbeit im Kasten Arbeiten“. Nichts wird gelöscht; der Zeitstrahl bleibt als Geschichte, der Gantt-Balken als Plan. Danach gilt allein der Tracker. Die Projektseite des Zielbilds zeigt den Stand der Etappen mit demselben Verweis."""
+
+[[block]]
+titel = "Bis der Zweig live war (abgelöst seit T5)"
+text = "Diese Übergangsregel gilt nicht mehr. Seit T5 gilt die Arbeitsregel für Teilschritte in der Anleitung (Arbeitsregeln für Assistenten und Abschnitt 9, „Arbeitsregel für Teilschritte“): Abnahme als eigener Schritt mit fuer chat:pruefer, Übergabe nur mit anbieten und übernehmen. Vorher galt kurz: Jeder Chat prüfte zu Beginn jedes Zugs über die API (GET /api/arbeiten?projekt=…), wem seine Aufgabe gehört, und arbeitete nur, wo er selbst dran war. Laufende und wartende Arbeiten nannten im Feld notiz, wer dran ist, solange es kein Feld besitzer gab. Eine Übergabe zur Abnahme lief als Vorgang der Art abnahme und war erst mit POST /api/vorgaenge/<id>/uebernommen vollzogen."
+
+[[block]]
+titel = "Etappen (Zweig teilschritte, nach 6b und 6d, vor den Aufräumschritten)"
+[block.tabelle]
+spalten = ["Etappe", "Was", "Tests"]
+zeilen = [
+  ["T1", "Typen Schritt und besitzer, Schema 9 -> 10 (Fassung Arbeiten 2), besitzer = von bei laufenden Arbeiten", "alter Satz liest sich und schreibt sich gleich zurück; altes Programm lehnt Schema 10 ab"],
+  ["T2", "Speicher: anlegen, übernehmen, ändern in je einer Transaktion; abgeleiteter Stand; Schritt 1 „bisherige Arbeit“; Warten auf Schritte mit Zurückwecken; verwaist; Grenzen (20 Schritte, 500 Verlaufseinträge -> 429, 30 offene Arbeiten auch beim Wiederöffnen)", "fremd -> 409 ohne Schreiben; doppelt -> unverändert; zwei zugleich -> genau ein 409; Fall 6b mit Funde-Runde endet ohne Stillstand; Kette zu sich selbst -> 422"],
+  ["T3", "API, wer_ruft, Titel-Lücke zu, Weck-Vorgänge; die Anleitung mit von in jedem Aufruf kommt gleich mit", "409-Körper nennt Besitzer; ohne von -> 422; Browser -> 422; Wartender wird nach fertig geweckt; alter Weck-Vorgang wird erledigt"],
+  ["T4", "Anstehend und Oberfläche: Zeile in der Zusammenfassung, Liste der Schritte, wartet auf den Inhaber aus allen Schritten", "Wörter statt Farbe, 360 px, hell und dunkel"],
+  ["T5", "Arbeitsregel in der Anleitung, danach Etappe 6 im Tracker in Schritte teilen und die Handdateien auf den Verweis umstellen", "Abnahme durch den Prüf-Assistenten"],
+]
+
+[[block]]
+titel = "Bewusst weggelassen"
+punkte = [
+  "Schritte in Schritten und feste Abhängigkeiten zwischen Schritten: die Nummern und das Warten auf einen Schritt genügen, Schritte dürfen parallel laufen.",
+  "Eine Sperre mit Zeitablauf, die von selbst zurückfällt: der Server ändert keinen Besitz allein.",
+  "Ein Nachweis der Chat-Identität: kommt mit dem Chat-Schlüssel.",
+  "Warten über mehrere Arbeiten hinweg: jede Übergabe gehört in die Arbeit, um die es geht.",
+  "Löschen von Schritten: was wegfällt, wird fertig mit Notiz.",
+]

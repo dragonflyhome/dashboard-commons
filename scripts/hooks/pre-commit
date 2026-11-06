@@ -1,0 +1,44 @@
+#!/bin/sh
+# Pre-Commit-Hook des Code-Repos (eingehängt mit: git config core.hooksPath scripts/hooks).
+# Prüft das Format, ändert nie eine Datei: mit gestagten .rs-Dateien, Cargo.toml
+# oder Cargo.lock
+# cargo fmt --all --check und cargo clippy --workspace --all-targets -- -D warnings
+# (warm etwa 12 s), mit gestagten Dateien unter web/ Prettier. Fehlen
+# cargo, Node oder Prettier, bricht er ab: Die Werkzeuge sind immer
+# installiert (Arbeitsregeln).
+# --no-verify nur nach Ja von Architektur oder Inhaber.
+# shortcut: prüft die Datei im Arbeitsbaum, nicht den gestagten Stand (Teil-Staging rutscht durch), aufrüsten, wenn das vorkommt.
+repo=$(git rev-parse --show-toplevel) || exit 2
+cd "$repo" || exit 2
+# Ohne Cargo.toml (Projekt-Repo mit core.hooksPath auf diese Hooks) gibt es nichts für cargo.
+if [ -f Cargo.toml ] && git diff --cached --name-only --diff-filter=ACMR -- '*.rs' 'Cargo.toml' '*/Cargo.toml' 'Cargo.lock' | grep -q .; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-commit: cargo fehlt. Bitte Rust (rustup) mit rustfmt installieren, dann erneut committen." >&2
+    exit 1
+  fi
+  cargo fmt --all --check >/dev/null || {
+    echo "pre-commit: Rust-Format passt nicht. cargo fmt --all, dann neu stagen." >&2
+    exit 1
+  }
+  # Ohne Variable baute clippy kalt in <worktree>/target; nur main darf dev/dashboard/target nutzen (contributing-05).
+  [ -n "$CARGO_TARGET_DIR" ] || [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || {
+    echo "pre-commit: CARGO_TARGET_DIR fehlt. Den Cache der Rolle setzen (%LOCALAPPDATA%/Dashboard/cache/<rolle>, contributing-05), dann erneut committen." >&2
+    exit 1
+  }
+  # --locked: clippy darf Cargo.lock nicht still umschreiben.
+  cargo clippy --workspace --all-targets --locked -q -- -D warnings || {
+    echo "pre-commit: clippy meldet Warnungen (oben). Beheben oder einzeln mit Grund erlauben, dann neu stagen." >&2
+    exit 1
+  }
+fi
+git diff --cached --name-only --diff-filter=ACMR -z -- web/ | tr '\0' '\n' | grep -q . || exit 0
+# Prettier läuft in web/, damit Konfiguration, Plugins und .prettierignore greifen.
+if ! command -v node >/dev/null 2>&1 || [ ! -f web/node_modules/prettier/bin/prettier.cjs ]; then
+  echo "pre-commit: Node oder Prettier fehlt in web/node_modules. Bitte in web/ npm install ausführen (im Worktree: Junction auf das node_modules des Haupt-Repos), dann erneut committen." >&2
+  exit 1
+fi
+git diff --cached --name-only --diff-filter=ACMR -z -- web/ | sed -z 's#^web/##' |
+  (cd web && xargs -0 node node_modules/prettier/bin/prettier.cjs --check --ignore-unknown --log-level warn) || {
+  echo "pre-commit: Format passt nicht. In web/: npx --no-install prettier --write <Datei>, dann neu stagen." >&2
+  exit 1
+}

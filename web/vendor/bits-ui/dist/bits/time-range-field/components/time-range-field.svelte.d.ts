@@ -1,0 +1,27 @@
+import type { TimeValue } from "../../../shared/date/types.js";
+import type { Time } from "@internationalized/date";
+import type { TimeRangeFieldRootProps } from "../types.js";
+declare function $$render<T extends TimeValue = Time>(): {
+    props: TimeRangeFieldRootProps<T>;
+    exports: {};
+    bindings: "value" | "ref" | "placeholder";
+    slots: {};
+    events: {};
+};
+declare class __sveltets_Render<T extends TimeValue = Time> {
+    props(): ReturnType<typeof $$render<T>>['props'];
+    events(): ReturnType<typeof $$render<T>>['events'];
+    slots(): ReturnType<typeof $$render<T>>['slots'];
+    bindings(): "value" | "ref" | "placeholder";
+    exports(): {};
+}
+interface $$IsomorphicComponent {
+    new <T extends TimeValue = Time>(options: import('svelte').ComponentConstructorOptions<ReturnType<__sveltets_Render<T>['props']>>): import('svelte').SvelteComponent<ReturnType<__sveltets_Render<T>['props']>, ReturnType<__sveltets_Render<T>['events']>, ReturnType<__sveltets_Render<T>['slots']>> & {
+        $$bindings?: ReturnType<__sveltets_Render<T>['bindings']>;
+    } & ReturnType<__sveltets_Render<T>['exports']>;
+    <T extends TimeValue = Time>(internal: unknown, props: ReturnType<__sveltets_Render<T>['props']> & {}): ReturnType<__sveltets_Render<T>['exports']>;
+    z_$$bindings?: ReturnType<__sveltets_Render<any>['bindings']>;
+}
+declare const TimeRangeField: $$IsomorphicComponent;
+type TimeRangeField<T extends TimeValue = Time> = InstanceType<typeof TimeRangeField<T>>;
+export default TimeRangeField;

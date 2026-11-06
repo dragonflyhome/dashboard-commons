@@ -1,0 +1,16 @@
+# Abschnitt „Vorgänge“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Vorgänge'
+reihenfolge = 209
+
+[[block]]
+text = 'Ein Vorgang ist alles, was zwischen Dashboard, Ihnen und den Chats hin und her geht: eine Sache mit Nummer (v-JJJJMMTT-NNNN), Besitzer und Zustand, die nicht verloren gehen darf.'
+
+[[block]]
+punkte = [
+  'Arten: antwort (der Inhaber hat geantwortet), frage (ein Chat fragt den Inhaber), wunsch (ein Chat wünscht sich etwas vom Dashboard), bau (der Baumeister ist rot für ein Projekt), merge (ein Projekt reicht sein Backend-Modul ein, Etappe 4b; mit zweig, commit, projekt, beschreibung und pruefbericht), abnahme (eine Etappe ist bereit zur Abnahme; abgelöst seit T5, Abnahme ist jetzt ein Schritt), schritt (nur vom Server: dir wurde ein Teilschritt angeboten, oder dein wartender Schritt läuft wieder; ab T3).',
+  'Zustände, immer nur vorwärts: offen → zugestellt → uebernommen → erledigt. „Zugestellt“ heißt nur: das Warten des Chats hat ihn geliefert. Erst „übernommen“ zählt; was nicht übernommen ist, kommt beim nächsten Abholen wieder.',
+  'Jeder Schritt hängt ein Ereignis mit fortlaufender Nummer an das Journal und ändert den Vorgang, beides in einem Zug (alles oder nichts).',
+  'Die Chats holen ihre Vorgänge mit scripts/Api.ps1 ab und warten im Hintergrund mit scripts/Warten.ps1 auf neue. Wie das geht, steht im Abschnitt „9. Vorgänge: so holt ein Chat seine Arbeit ab“.',
+  'Seite http://localhost:8787/vorgaenge: oben die Zahlen offen, zugestellt und heute übernommen; je Chat eine Zeile („wartet seit …“ oder „wartet nicht“, zuletzt übernommen, Zahl der offenen); darunter die Vorgänge, zuletzt geänderte zuerst (darüber die offenen Merge-Requests mit Zweig, Commit, Beschreibung und Prüfbericht). Ein Klick zeigt alle Schritte und wer sie gemacht hat. Rot markiert ist, was länger als einen Tag „zugestellt“ ist, ohne übernommen zu sein.',
+  'Live: Jeder Schritt geht als Ereignis vorgang über den Live-Kanal /api/events, die Seite aktualisiert sich dann selbst.',
+]

@@ -1,0 +1,102 @@
+# Abschnitt „Die JSON-API und der Live-Kanal“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Die JSON-API und der Live-Kanal'
+reihenfolge = 211
+
+[[block]]
+text = '''
+Der Rust-Server liefert alle Daten als JSON; die Oberfläche lebt davon. Nur lesend bis auf POST /api/daten/sichern, POST /schluessel/<name> und die POSTs der Vorgänge, Aufgaben, Arbeiten, Einstufungen, Antworten und Meldungen; nur von diesem PC aus. Ein Feld form gibt es seit 6d in keiner Antwort mehr (/api/projects, /api/projekte/<slug>, …/stand, /api/pruefung): Es gibt nur noch eine Form.
+
+Adresse: Der Server hört auf 127.0.0.1 und auf [::1]. Im Browser gilt http://localhost:8787. Grund: Seit Etappe 7b prüft der Dienst mit der integrierten Windows-Anmeldung, dass Anfragen von Ihrem Konto kommen. Edge und andere Browser auf Chromium-Grundlage (auch eingebettete) melden auf localhost ohne Rückfrage an, auf 127.0.0.1 gar nicht; die Passkeys ab 7c brauchen localhost ohnehin. Weil Windows localhost zuerst als ::1 auflöst, hört der Server auch dort, sonst lädt die Seite mit Verzögerung. 127.0.0.1 bleibt für scripts/Api.ps1, scripts/Warten.ps1 und die Lebenszeichen.'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Adresse', 'Inhalt']
+zeilen = [
+  ['/api/projects', 'Projektliste mit Status, Chat, Backup, Git-Stand; ab 4c je Projekt mit eigener Seite bau: zustand (gruen, rot, nicht_geprueft, laeuft auch für bestellt, noch_nicht) und letzte_gute (Zeit der letzten guten Fassung, RFC 3339, sonst null), dazu gebaut_um (wann die Seite zuletzt in einen geltenden Bau kam, bei jedem Bau neu; fehlt, wenn sie nicht zu sehen ist); unbekannt, wenn stand.json gerade nicht lesbar ist; ohne eigene Seite fehlt das Feld. Frei, ohne Satz'],
+  ['/api/bauen', 'ab 4c, geschützt (Windows-Anmeldung oder Passkey): projekte mit slug, zustand, letzte_gute, gebaut_um und bei rot und bei nicht_geprueft satz (einfaches Deutsch, ohne Pfade und Prüfwerkzeuge; nur hier, nie in /api/projects)'],
+  ['/api/projects/<slug>', 'ein Projekt: Kopf, Git-Stand, Links, Lebenszeichen (checks, processes), Unterseiten und alle daten/*.toml'],
+  ['/api/projekte/<slug>', 'Kopf eines Projekts aus projekt.toml (ab 4v) und die Namen der Dateien in daten/; ohne projekt.toml 404, ebenso seine Adressen …/daten/<name>'],
+  ['/api/projekte/<slug>/daten/<name>', 'eine Datei daten/<name>.toml einer Seite in neuer Form, gelesen und geprüft, mit dem, was der Server daraus rechnet (abgeleitet)'],
+  ['/projects/<slug>/assets/<file>', 'eine Bild- oder PDF-Datei aus dem Ordner assets/ des Projekts; nur vom Dashboard selbst abrufbar (fremde Seiten 403), SVG mit eigener strenger CSP'],
+  ['POST /schluessel/<name>', 'speichert ein Passwort im Windows-Tresor (Formular der Seite „Schlüssel“, nur mit Herkunft vom Dashboard und Windows-Anmeldung); gibt den Wert nie zurück'],
+  ['/healthz', 'Lebenszeichen: ok (frei, ohne Anmeldung)'],
+  ['/api/pc', 'Rechner-Werte: Prozessor, Speicher, Platte, Dienste, Windows-Stand, pc.toml, Backup je Projekt (frei)'],
+  ['/api/pc/verlauf?seit=<datum>&bis=<datum>', 'Verlauf des PCs als Ereignisse (kennung, zeit, genauigkeit, bis, titel, text, quelle, art, verweis) ohne zugesagte Reihenfolge, dazu hinweise zur Vollständigkeit; seit und bis als JJJJ-MM-TT oder RFC 3339, Standard die letzten 90 Tage, falsche Angabe 422 (frei; mit Anmeldung zusätzlich Starts, Systemmeldungen und die Vorgänge des Dashboards)'],
+  ['/api/pc/verlauf/voll?seit=<datum>&bis=<datum>', 'derselbe Verlauf, immer mit Starts, Systemmeldungen und den Vorgängen des Dashboards (nur mit Windows-Anmeldung, ohne sie 401 mit WWW-Authenticate: Negotiate). Die Oberfläche liest diesen Weg: Edge meldet nur auf einer Verbindung an, die vorher 401 bekam, auf dem freien Weg fehlten die Starts darum oft zufällig. Ohne Anmeldung nimmt sie den freien Weg und sagt das in einem Satz (ab Hotfix 3a-1)'],
+  ['/api/pc/benutzer', 'Benutzer-Daten über den Boten: Ordnergrößen, Programme, Autostart, Werkzeuge, Schlüssel-Zähler, Bote-Stand (nur mit Windows-Anmeldung)'],
+  ['/api/schluessel', 'Schlüssel-Status (nie Werte)'],
+  ['/api/daten', 'Stand des Datenspeichers: Datei, Größe, Schema, letzte Sicherung, Tabellen, Eckdaten des PC-Verlaufs'],
+  ['/api/daten/pc-verlauf?stunden=<n>', 'PC-Messwerte der letzten n Stunden (Standard 24, höchstens 90 Tage)'],
+  ['/api/daten/export?format=toml|json', 'ganzer Datenspeicher als TOML (Standard) oder JSON zum Herunterladen'],
+  ['POST /api/daten/sichern', 'legt sofort eine Sicherung an (Knopf „Jetzt sichern“)'],
+  ['POST /api/vorgaenge', 'legt einen Vorgang an (Zustand offen); JSON mit art, slug, titel, freiwillig bezug und von; nur mit Content-Type: application/json (sonst 415)'],
+  ['/api/vorgaenge?fuer=<slug>&offen=1', 'alle Vorgänge dieses Chats, die noch nicht übernommen sind'],
+  ['/api/vorgaenge?fuer=<slug>&seit=<nr>', 'alle Ereignisse dieses Chats nach Nummer nr und die betroffenen Vorgänge (Wiederherstellung; seit=0 für alles)'],
+  ['/api/vorgaenge/uebersicht', 'alles für die Seite /vorgaenge: Zähler, je Chat „wartet seit“, die letzten 100 Vorgänge'],
+  ['/api/vorgaenge/<id>', 'ein Vorgang mit allen Ereignissen; bei einem Vorgang antwort zu einer Frage dazu die Antwort des Inhabers samt notiz (Feld antwort, ab A2)'],
+  ['POST /api/vorgaenge/<id>/uebernommen', 'Chat bestätigt „ich kümmere mich“; zweimal schadet nicht; nur mit Content-Type: application/json (sonst 415)'],
+  ['POST /api/vorgaenge/<id>/erledigt', 'Chat bestätigt „erledigt“, freiwillig mit {"notiz": "…"}; zweimal schadet nicht; nur mit Content-Type: application/json (sonst 415)'],
+  ['/api/vorgaenge/warten?fuer=<slug>&timeout=<s>[&seit=<nr>]', 'wartet, bis es für diesen Chat etwas gibt, und setzt Geliefertes auf zugestellt; timeout Standard 1500 s, höchstens 3600 s, 0 heißt nur nachsehen; ohne Zeitlimit-Schleuse; höchstens 3 Warter je Chat, ein vierter beendet den ältesten'],
+  ['POST /api/aufgaben', 'legt eine Aufgabe für den Inhaber an (ab 5a): JSON mit projekt, titel, freiwillig link oder knopf, frist, ablauf, prioritaet, von; 201 mit id; üblich per Api.ps1, höchstens 20 offene je Projekt und 100 insgesamt (sonst 429)'],
+  ['/api/aufgaben[?offen=1][&projekt=<slug>]', 'Aufgaben außerhalb des Archivs; den Link nur, solange die Aufgabe offen und nicht abgelaufen ist'],
+  ['/api/aufgaben/anzahl', 'nur die Zahl der offenen Aufgaben (Seitenkopf), ohne einen Link zu entschlüsseln'],
+  ['POST /api/aufgaben/<id>/erledigt', 'Haken des Inhabers, freiwillig mit {"antwort": "<knopf>"}; nur aus dem Browser (per Api.ps1 ohne Origin 422); legt einen Vorgang antwort an'],
+  ['POST /api/aufgaben/<id>/zurueckgezogen', 'der Chat zieht die Aufgabe zurück; zweimal schadet nicht'],
+  ['POST /api/arbeiten', 'ein Chat meldet eine Arbeit (ab A1): JSON mit projekt, von (Pflicht, chat:<name>, ab T3), titel, stand, freiwillig prioritaet, frist, wartet_auf, verweis, notiz; 201 mit id; nur per Api.ps1 (aus dem Browser 422), höchstens 30 nicht fertige je Projekt'],
+  ['/api/arbeiten[?projekt=<slug>]', 'Arbeiten außerhalb des Archivs, je mit ihren Schritten (ab T3)'],
+  ['POST /api/arbeiten/<id>', 'schreibt eine Arbeit fort: von (Pflicht) und die Felder, die sich ändern; nur der Besitzer (sonst 409 mit besitzer und seit); nur per Api.ps1'],
+  ['POST /api/arbeiten/<id>/schritte', 'legt einen Teilschritt an (ab T3): {"von", "titel", "fuer"?}; 201 mit nr; höchstens 20 je Arbeit (sonst 429); nur per Api.ps1'],
+  ['POST /api/arbeiten/<id>/schritte/<nr>/uebernehmen', 'der Chat übernimmt den Schritt: {"von", "statt"?}; 200, zweimal 200 mit geaendert false, ein anderer ist dran 409 mit besitzer und seit'],
+  ['POST /api/arbeiten/<id>/schritte/<nr>', 'ändert einen Schritt: {"von", "stand"?, "wartet_auf"?, "verweis"?, "notiz"?, "anbieten"?, "freigeben"?}; 200, 409 (nicht dran) oder 422 (gegen die Regeln); Anbieten und Zurückwecken legen einen Vorgang der Art schritt für den Empfänger an'],
+  ['/api/anstehend?stufe=&schwerpunkt=&art=&projekt=&nur_fuer_mich=', '„Anstehend“ (ab A1): die gemeinsame Liste aus Aufgaben, Arbeiten, allen offenen Fragen und ab A3 den ungelesenen Meldungen (art=meldung, feste Stufe); ab 3a+ in neutraler Ordnung (Projekt, Art, Kennung) mit Fakten je Eintrag (Stufe, Frist-Stufe, wartet_auf_dich, Schwerpunkt mit schwerpunkt_reihenfolge), ohne Zähler und Auswahl (das rechnet die Oberfläche); mit projekt= dazu aktualisierungen (alle Meldungen und Vorgänge des Projekts); nie Klick-Links'],
+  ['POST /api/meldungen', 'ein Chat meldet für sein Projekt (ab A3): {"projekt", "art": "fertig"|"info", "titel", "text"?, "verweis"?, "schluessel"?, "von"?}; mit verweis dieselbe Meldung wie „Arbeit auf fertig“ (zählt einmal), sonst zählt eine Wiederholung hoch; 201 neu, 200 Wiederholung (id, neu, anzahl); nur per Api.ps1 (aus dem Browser 422); fehler und frist erzeugt nur der Server'],
+  ['/api/meldungen[?projekt=<slug>]', 'Meldungen außerhalb des Archivs, neueste zuerst (auch gelesene)'],
+  ['POST /api/meldungen/<id>/gelesen', 'der Inhaber klickt „gelesen“; nur aus dem Browser (per Api.ps1 ohne Origin 422)'],
+  ['POST /api/einstufung', 'der Inhaber stuft einen Eintrag um: {projekt, art, id, gestellt?, stufe}, stufe null heißt zurück zum Vorschlag; nur aus dem Browser (per Api.ps1 ohne Origin 422)'],
+  ['/api/projekte/<slug>/stand/voll', 'derselbe Stand, immer mit Titeln (nur mit Windows-Anmeldung, ohne sie 401 mit WWW-Authenticate: Negotiate); die Projektseiten lesen diesen Weg und nur ohne Anmeldung den freien (ab Hotfix 3a-1)'],
+  ['/api/projekte/<slug>/stand', 'der Zustand eines Projekts für das Unter-Dashboard (ab A1); frei lesbar; Ampel als Regel (gesamt.ampel, grund als Kennung, bezug mit Titel nur angemeldet); ab 3a+ mit Anmeldung alle offenen Einträge und aktualisierungen ohne Zahlen, ohne Anmeldung keine Einträge, nur zahlen (wartet auf dich, Aufgaben, Fragen, Arbeiten je Zustand, Meldungen neu/gesamt, nächste Frist)'],
+  ['POST /api/antworten/<slug>/<id>', 'der Inhaber beantwortet eine Frage aus daten/fragen.toml (ab A2): {"gestellt", "antwort", "notiz"}, notiz freiwillig (nicht bei text); nur aus dem Browser (per Api.ps1 ohne Origin 422); legt einen Vorgang antwort an; gleiche Antwort mit gleicher Anmerkung 200 ohne Änderung, sonst 409'],
+  ['/api/antworten/<slug>/<id>', 'die neueste Antwort auf diese Frage, auch aus dem Archiv, mit antwort und notiz (null: keine); ohne Antwort 404'],
+  ['/api/antworten[?projekt=<slug>]', 'Antworten außerhalb des Archivs, neueste zuerst'],
+  ['/api/pruefung', 'Prüfung aller Projekte: Zahl der Projekte, Fehler und Hinweise, dazu je Projekt mit Befunden Slug und Befunde'],
+  ['/api/pruefung/<slug>', 'Prüfung eines Projekts (wie dashboard pruefe <slug>); 404, wenn es das Projekt nicht gibt'],
+  ['/api/events', 'Live-Kanal (Server-Sent Events), geschützt: seit der Kopfleiste, Fassung 2, als Erstes anmeldung mit stand: angemeldet (dasselbe Ereignis wie auf /api/events/frei); endet eine Sitzung mit Passkey (Widerruf, Abmelden, alle Sitzungen beendet), zum Schluss anmeldung mit nicht_angemeldet, dann endet der Strom; ab 2d projekt (slug, version), wenn der Server ein Projekt neu gelesen hat oder sein Git-Stand neu ist, daten (name, version) bei data/<name>.toml und inhalt (version, projekte, daten) statt vieler einzelner, wenn mehr als drei Projekte auf einmal neu sind; dazu wie bisher change bei geänderten Dateien in projects/ und data/, pc alle 5 Sekunden mit CPU, Speicher, Platte, vorgang bei jedem Schritt eines Vorgangs; bau (slug, zustand laeuft/gruen/rot, meldung, gescheitert) bei jedem Schritt des Baumeisters (ab 4c auch, wenn ein schon rotes Projekt rot bleibt; meldung ist ein fester Satz ohne Pfade und Befehle, den vollen Satz tragen Vorgang und Meldung; gescheitert: der ganze Bau lief nicht durch); change mit Bereich aufgaben (ab 5a) und anstehend (ab A1, auch nach einer Antwort; ab A3 auch bei jeder neuen, hochgezählten, gelesenen oder behobenen Meldung)'],
+  ['/api/events/frei', 'freier Kanal (Kopfleiste, Fassung 2), ohne Anmeldung, hinter Adresse, Herkunft und den übrigen Schleusen; nur genau dieser Pfad ist frei. Als Erstes anmeldung (stand: angemeldet, nicht_angemeldet oder nicht_registriert, vom Server bestimmt), dann nur projekt, inhalt, daten (nur pc), pc, fassung und nachholen; alle 15 s der Kommentar lebenszeichen. Nie Vorgänge, Antworten, Aufgaben, Schlüssel, Entscheidungen oder Verlauf (Erlaubnisliste FREIER_KANAL in src/api/events.rs, Wächter-Test)'],
+  ['/api/betrieb/voll', 'geschützt (Windows-Anmeldung oder Passkey): derselbe Bericht wie /api/betrieb, dazu einstellungen, bote mit verbunden oder getrennt, bote_seit und sitzung'],
+  ['/api/stand', 'Kopfleiste, Fassung 3: der gemeinsame Stand für die Aktualitätsprüfung im Blatt der Brotkrumen, frei: ereignis (wie viele Ereignisse seit dem Start, nur die Arten, die auch der freie Kanal trägt), inhalt (Version des Inhalts, wie in /api/betrieb) und fassung. /api/stand/voll (geschützt) zählt in ereignis alle Ereignisse mit Daten des geschützten Kanals (ohne pc, anmeldung, bau)'],
+  ['/api/betrieb', 'wie der Server läuft: modus (dienst, konsole, umgebung), version, commit (oder null), gestartet, einstellungen (Pfad der dienst.toml oder null), bote (verbunden, getrennt, nicht vorgesehen) und bote_seit (seit wann verbunden, bei getrennt zuletzt gesehen), speicher, ab 2d inhalt (version, Zahl der projekte, geladen_in_ms beim Start, Zahl der lesefehler) und ab A3 sitzung: ob die Sitzungsabfrage für „Bote fehlt“ geht (geht), ob Sie angemeldet sind (inhaber_angemeldet), woher das kommt (quelle: windows, bote für den Bericht des Boten, solange seine Sitzung an der Konsole ist, oder unbekannt, dann ohne Meldung), die Fehlerart (fehler: sid-fehlt, wts, abgebrochen, nur-windows, sieht-inhaber-nicht) und wann gefragt wurde (geprueft); nie SID oder Name. Seit der Kopfleiste, Fassung 2, sind einstellungen, bote_seit und sitzung hier immer null und bote nur vorgesehen oder nicht vorgesehen; sie stehen nur in /api/betrieb/voll (geschützt, sonst gleich). Seit der Kopfleiste, Fassung 2, dazu fassung (Ordner der Oberfläche unter web/builds oder build), fassung_gebaut und ordner (je gelesenem Ordner name und stand: lesbar, fehlt, nicht lesbar; nur kurze Namen). Scheitert die Abfrage, steht einmal je Wechsel eine Warnung im Protokoll'],
+  ['/api/anmeldung/probe', 'Probe der Windows-Anmeldung (seit Etappe 7a1): ohne Nachweis 401 mit WWW-Authenticate: Negotiate, nach der Aushandlung 200 mit konto und mechanismus (etwa ntlm), bei fremdem Konto 403 mit Satz'],
+  ['/api/anmeldung/wer', 'ob die Windows-Anmeldung hier verfügbar ist: verfuegbar und paket'],
+  ['/api/entscheidungen', 'ab 4d, geschützt (Windows-Anmeldung): alle docs/entscheidungen/*.toml, neueste zuerst; je Eintrag nur der Dateiname, die bekannten Felder (datum, thema, status, von, etappe, urteil, was) und alle übrigen unter weitere als Text, Liste oder Gruppe; eine kaputte Datei ist ein Eintrag mit fehler (Satz), nie ein Fehler der Liste; eine Datei ohne Leserecht ebenso. Darf der Server den Ordner nicht lesen (oder scheitert das Lesen anders), ist die Liste leer und warnung trägt einen Satz ohne Pfad (die Seite zeigt ihn als Problem statt „noch keine Entscheidungen“); fehlt der Ordner, ist warnung null'],
+  ['/api/zielbild', 'ab 4d, geschützt (Windows-Anmeldung): die Abschnitte aus docs/zielbild/*.toml (titel, reihenfolge, text, punkte, die [[block]] unter bloecke mit genau einem Inhalt text, punkte, tabelle oder beispiel, Sätze „Block n: …“ zu kaputten Blöcken unter hinweise, übrige Felder unter weitere; prüfen mit dashboard.exe pruefe --system docs/zielbild); leer, solange es keine gibt (die Seite zeigt dann einen Platzhalter); warnung wie bei /api/entscheidungen (kein Recht oder Lesefehler: Satz, die Seite zeigt ihn statt des Platzhalters)'],
+  ['/api/anleitung', 'ab 6b, geschützt (Windows-Anmeldung) wie /api/zielbild: die Abschnitte aus docs/anleitung/*.toml im Code-Repo, in derselben Form (abschnitte mit titel, reihenfolge, bloecke, hinweise, weitere; prüfen mit dashboard.exe pruefe --system docs/anleitung); ohne Anmeldung 401; warnung wie bei /api/entscheidungen (kein Recht oder Lesefehler: Satz ohne Pfad), fehlt der Ordner, ist die Liste leer'],
+]
+
+[[block]]
+text = '''
+Die POSTs der Vorgänge (/api/vorgaenge, …/uebernommen, …/erledigt) nehmen nur Anfragen mit Content-Type: application/json, auch bei leerem Körper; sonst antwortet der Server mit 415 und dem Satz „Bitte den Körper als JSON schicken (Content-Type: application/json).“ Dasselbe gilt für die POSTs der Aufgaben, Arbeiten, Einstufungen, Antworten (POST /api/antworten/<slug>/<id>) und Meldungen (POST /api/meldungen; …/gelesen mit leerem Körper geht auch ohne).
+
+Die Chats rufen die API mit scripts/Api.ps1 ohne Origin auf. Das ist nur auf /api/vorgaenge, /api/aufgaben, /api/arbeiten, /api/einstufung, /api/anstehend, /api/antworten und /api/meldungen (je mit allem darunter) erlaubt; alle anderen POSTs verlangen weiterhin eine Herkunft vom Dashboard selbst, und Anfragen fremder Websites bleiben auch hier 403. Umgekehrt nehmen der Haken bei Aufgaben, das Einstufen, das Beantworten von Fragen und „gelesen“ an Meldungen nur Anfragen mit Origin oder Sec-Fetch-Site an („nur aus dem Browser“, per Api.ps1 ohne Origin 422). Das ist eine Prüfung der Kopfzeilen gegen Versehen, keine Sicherheitsgrenze: Wer die Kopfzeilen selbst setzt, kommt durch.
+
+Anmeldung von Skripten: PowerShell mit -UseDefaultCredentials (in PowerShell 7 dazu -AllowUnencryptedAuthentication) meldet sich auf 127.0.0.1 und localhost an, der Browser nur über localhost. scripts/Api.ps1 macht das für die Chats. Seit 7b ist die Anmeldung auf den geschützten Wegen Pflicht (Tabelle im Abschnitt „Anmeldung“). Beispiel:'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/vorgaenge?fuer=<slug>&offen=1"'''
+
+[[block]]
+text = '''
+Nicht mit curl: Das curl 8.22 von Windows (KB5127936) kann kein NTLM und bekommt nur 401, das aus Git oder MSYS2 konnte es nie. scripts/Api.ps1 fragt über .NET (scripts/Anfrage.ps1).
+
+Der Beobachter prüft die Ordner alle zwei Sekunden auf geänderte Dateien (Zeitstempel und Größe). Das Speichern des POST auf /schluessel/<name> bleibt wie es ist, es gibt keine API dafür.'''
+
+[[block]]
+titel = 'Inhalt im Arbeitsspeicher (Etappe 2d)'
+text = '''
+Der Server liest alle Projekte beim Start einmal (projekt.toml, alles in daten/, dazu data/pc.toml und data/schwerpunkte.toml), prüft sie mit dem Vertrag und hält sie im Arbeitsspeicher, mit einer Versionsnummer (src/inhalt/store.rs, ContentStore). Die Lesewege (/api/projects, /api/projects/<slug>, /api/projekte/<slug>, …/daten/<name>, /api/pc, /api/anstehend, …/stand), der Fristen-Lauf jede Minute und die Backend-Module lesen nur von dort. Sie rechnen mit denselben Funktionen wie vorher, nur nicht mehr bei jeder Anfrage von der Platte. Gemessen an rund zwanzig Projekten (Debug-Bau): Start etwa 0,2 s, jede Anfrage der Startseite wenige Millisekunden.
+
+Der Beobachter gleicht alle zwei Sekunden ab und liest nur das Projekt neu, in dem sich projekt.toml oder etwas in daten/ geändert hat. Die Seite bekommt dann genau ein Ereignis projekt und lädt nur dieses Projekt und die Projektliste neu, nicht mehr alles. Bilder in assets/ ändern den Inhalt nicht. Ändern sich mehr als drei Projekte auf einmal (etwa beim ersten Git-Lauf nach dem Start), kommt ein einziges Ereignis inhalt.
+
+Lässt sich eine Datei gerade nicht lesen (gesperrt, während ein Programm schreibt), bleibt der letzte gute Stand des Projekts stehen; /api/pruefung nennt die Datei, und alle zwei Sekunden wird es wieder versucht. Ein Fehler im Inhalt (falsches Feld, kaputtes TOML) steht dagegen sofort da, wie bisher. Für die Chats ändert sich nichts: Eine gespeicherte Datei ist nach höchstens etwa zwei Sekunden in der API und auf der Seite.
+
+Git: Ob sich in einem Repo etwas getan hat, sieht der Beobachter alle zwei Sekunden an HEAD, index und den Dateien oben im Repo, alle zehn Sekunden auch tiefer (bis 4000 Einträge, ohne node_modules, target, build). Weil der Dienst Ihre Repos meist nicht lesen darf, fragt er dafür den Boten (Anfrage repo_stempel, nur für Repos, die eine Projektseite nennt). Ein älterer Bote kennt sie nicht; dann schaut der Dienst selbst, und für Ihre Repos bleibt es beim Takt von 60 Sekunden. Die Projektkarte zeigt, wie alt der Git-Stand ist, sobald er älter als fünf Minuten ist.'''

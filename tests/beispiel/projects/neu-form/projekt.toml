@@ -1,0 +1,35 @@
+# Beispiel in neuer Form (Zielbild, Abschnitt b): Kopf mit allen Feldern.
+schema = 3
+title = "Beispiel: Neue Form"
+status = "aktiv"
+summary = "Feste Beispielseite in neuer Form für die Tests des Servers. Kein echtes Projekt."
+order = 40
+chat = "Rust-Dashboard"
+backup = "grün"
+backup_note = "nur Beispiel, keine echten Daten"
+vorschau = "assets/vorschau.html"
+open = ["Erster offener Punkt"]
+processes = ["gibt-es-nicht.exe"]
+
+[[seiten]]
+name = "plan"
+title = "Der Plan"
+order = 20
+
+[[seiten]]
+name = "beet-a"
+title = "Beet A: Hochbeete"
+order = 10
+
+[[links]]
+name = "Startseite"
+url = "http://127.0.0.1:8787/"
+
+[[repos]]
+path = "C:/gibt-es-nicht/beispiel-repo"
+label = "beispiel"
+private = true
+
+[[checks]]
+name = "Niemand hört"
+url = "http://127.0.0.1:9/"

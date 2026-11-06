@@ -1,0 +1,31 @@
+titel = "Seite Einstellungen mit Farbschemata"
+reihenfolge = 8
+text = """
+Die Farbwahl und der Satz „Dein Dashboard läuft nur hier auf diesem PC.“ ziehen aus dem Fuß jeder Seite auf eine eigene Seite Einstellungen (Etappen S1 bis S4). Die Seite kommt nach dem Umzug der Projektseiten (Etappe 5). Dort gibt es mehr als Hell und Dunkel.
+
+Die Wahl gilt sofort, nur in diesem Browser, und geht nirgendwohin."""
+
+[[block]]
+titel = "Schemata"
+punkte = [
+  "Wie mein PC: folgt Windows hell oder dunkel (Standard).",
+  "Hell und Dunkel: die bisherigen Schemata.",
+  "Warm: hell wie Papier, für langes Lesen am Tag.",
+  "Dämmerung: weich dunkel, für den Abend.",
+  "Kontrast hell und Kontrast dunkel: für schwache Augen oder viel Licht.",
+]
+
+[[block]]
+text = """
+Jedes Schema wird geprüft: Text gut lesbar (mindestens 4,5:1, bei Kontrast 7:1), und ok, wartet und problem bleiben auch bei Rot-Grün-Schwäche unterscheidbar. Dafür bekommt der Punkt neben der Farbe ein zweites Merkmal."""
+
+[[block]]
+titel = "Etappen"
+[block.tabelle]
+spalten = ["Etappe", "Was"]
+zeilen = [
+  ["S1", "Umbau ohne sichtbare Änderung, Tests"],
+  ["S2", "Seite Einstellungen mit Vorschau-Karten, Fuß entfällt"],
+  ["S3", "Kontrast hell und dunkel, Windows-Kontrastdesign, Farbfehlsicht-Prüfung"],
+  ["S4", "Warm und Dämmerung mit gemessenen Farben"],
+]

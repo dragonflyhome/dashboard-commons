@@ -1,0 +1,42 @@
+# Zusammenbau-Kiste (Entscheidung inhaltsquellen [zusammenbau]).
+#
+# Vorlage aus dem Code-Repo (vorlagen/dashboard-lokal). Sie gehört in den
+# Inhalt, neben projects/ (etwa %USERPROFILE%\dev\dashboard-inhalt\dashboard-lokal),
+# nie ins Code-Repo. scripts\Inhalt-Umziehen.ps1 legt sie beim Umzug an und
+# trägt die Kisten ein; danach ändert sie nur, wer eine neue Kiste nach
+# Prüfung und Architektur-Entscheidung aufnimmt.
+#
+# Sie baut die Fassung des Dashboards mit den Rechenteilen der Projekte:
+# die Bibliothek des Code-Repos plus die geprüften Projektkisten aus
+# kisten.toml, angemeldet in src/lib.rs. Der Wächter liegt nicht hier, sondern
+# im Code-Repo (dashboard.exe pruefe-zusammenbau, src/projekte/zusammenbau.rs):
+# Er liest nur und baut nichts, und er läuft vor jedem cargo-Aufruf hier. Er
+# verlangt diesen Ordner Byte für Byte wie die Vorlage, bis auf kisten.toml,
+# Cargo.lock und die Zeilen der Kisten; dazu nur crates.io in Cargo.lock.
+#
+# Bauen (Dienst.ps1 -Neustart tut das selbst, mit dem Bauordner des Code-Repos):
+#   <code-repo>\target\release\dashboard.exe pruefe-zusammenbau <dieser Ordner> --code <code-repo>
+#   $env:CARGO_TARGET_DIR = "<code-repo>\target"; cargo --config <code-repo>\.cargo\config.toml build --release --locked
+# (dlltool kommt so aus dem Code-Repo; hier im Inhalt gibt es keine .cargo-Einstellung)
+[package]
+name = "dashboard-lokal"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Eigener Workspace: Diese Kiste gehört zu keinem anderen.
+[workspace]
+
+[[bin]]
+name = "dashboard-lokal"
+path = "src/main.rs"
+
+[dependencies]
+# Die Bibliothek des Code-Repos; derselbe Pfad wie [code].pfad in kisten.toml.
+dashboard = { path = "../../dashboard" }
+# KISTEN-ANFANG (aus kisten.toml; je geprüfte Kiste eine Zeile, sonst nichts)
+# KISTEN-ENDE
+
+[dev-dependencies]
+# Prüfstand und Schreiben der TypeScript-Typen (tests/vertrag.rs).
+dashboard-projekt = { path = "../../dashboard/crates/dashboard-projekt", features = ["pruefstand"] }

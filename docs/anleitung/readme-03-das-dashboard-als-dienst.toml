@@ -1,0 +1,128 @@
+# Abschnitt „Das Dashboard als Dienst“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Das Dashboard als Dienst'
+reihenfolge = 13
+
+[[block]]
+text = 'Das Dashboard kann als Windows-Dienst laufen. Dann startet es beim Hochfahren des PCs von selbst, auch bevor Sie sich anmelden, und Windows startet es nach einem Absturz neu. Es läuft unter einem eigenen Konto (NT SERVICE/Dashboard) ohne Passwort, das weniger darf als Ihr Konto. Adresse im Browser: http://localhost:8787 (dort meldet Edge Sie ohne Rückfrage mit Ihrem Windows-Konto an; die Skripte nehmen weiter 127.0.0.1).'
+
+[[block]]
+titel = 'Einmal einrichten'
+punkte = [
+  '1. Windows-Taste+R drücken und diese Zeile eintippen (<Repo> ist der Repo-Ordner, etwa C:/Users/<Name>/dev/dashboard):',
+]
+
+[[block]]
+beispiel = '''
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File <Repo>/scripts/Dienst-Einrichten.ps1'''
+
+[[block]]
+punkte = [
+  '2. Mit Strg+Umschalt+Enter bestätigen: Das startet als Administrator. Windows fragt, ob Änderungen erlaubt sind (UAC): mit Ja bestätigen. -NoExit hält das Fenster offen, damit Sie das Ergebnis lesen können.',
+]
+
+[[block]]
+text = '''
+Warum so umständlich: Terminal (Administrator) und Rechtsklick Mit PowerShell ausführen laden beide Ihr PowerShell-Profil, eine Datei in Ihrem Benutzerordner, die jedes Programm unter Ihrem Konto ändern kann; die liefe dann als Administrator. „Mit PowerShell ausführen“ startet zudem ohne Administrator-Rechte. Darum -NoProfile und der volle Pfad zu Windows PowerShell; nur pwsh hieße hier das pwsh aus dem Microsoft Store, dessen Aufruf in einem Ordner liegt, den Ihr Konto ändern kann. Wer es öfter braucht, legt eine Verknüpfung mit dieser Zeile als Ziel an (Eigenschaften, Erweitert, „Als Administrator ausführen“). Läuft das Skript doch mit Profil, warnt es. Im erhöhten Lauf setzt es außerdem PSModulePath auf die Systemordner, lädt ScheduledTasks und NetTCPIP mit vollem Pfad, arbeitet in System32 und ruft sc.exe, icacls.exe und curl.exe mit vollem Pfad auf. System32 und ProgramData nimmt es von Windows selbst, nicht aus Umgebungsvariablen (die kann Ihr Konto überschreiben).
+
+Nur aus diesem Haupt-Repo auf dem Branch main: Aus einem Git-Worktree oder von einem anderen Branch warnt das Skript und bricht ab (mit -Pruefen nur die Warnung; -Trotzdem richtet dennoch ein).
+
+Was dann passiert, steht vorher als Liste auf dem Bildschirm (nur ansehen, ohne etwas zu ändern, geht auch ohne Administrator mit -Pruefen):'''
+
+[[block]]
+punkte = [
+  'Zuerst eine Probe: ein Testdienst Dashboard-Test auf Port 8788 wird eingerichtet, gestartet, geprüft und wieder ganz entfernt. Geprüft wird / und /healthz (200), /api/anmeldung/wer (verfuegbar: true), die Windows-Anmeldung (/api/anmeldung/probe nicht 500) und /api/betrieb (der Bote ist vorgesehen; beim Testdienst „getrennt“, dort läuft keiner). Anmeldung und Pipe laufen also ohne SeImpersonatePrivilege. Nur wenn das klappt, geht es weiter. Läuft auf 8788 gerade ein Testserver, bitte vorher beenden. Liegt noch ein Ordner C:/ProgramData/Dashboard-Test da, bricht das Skript ab (Dienst-Entfernen.ps1 räumt ihn weg); den Testordner löscht es nur, wenn dieser Lauf ihn angelegt hat und keine Verknüpfung darin ist.',
+  'Ein von Hand gestartetes Dashboard wird beendet.',
+  'Prozessrechte: Gleich nach dem Anlegen bekommt der Dienst (und ebenso der Testdienst) mit sc.exe privs nur noch SeChangeNotifyPrivilege; sc.exe qprivs muss genau das zeigen, sonst bricht das Skript ab. Vor allem fehlt damit SeImpersonatePrivilege: Ihr Konto darf bin ändern, und mit diesem Recht könnte ein dort getauschtes Programm über bekannte Wege zum Systemkonto werden. SeCreateGlobalPrivilege braucht der Dienst nicht (er läuft in Sitzung 0, legt keine Global\-Objekte an, und benannte Pipes brauchen es nicht). Dienst.ps1 -Status zeigt die Rechte.',
+  'Der Ordner C:/ProgramData/Dashboard entsteht, mit den Programmen, Ihrem Datenspeicher (kopiert aus %USERPROFILE%/.var/dashboard, das Original bleibt liegen), den Sicherungen und dem Protokoll. Im Unterordner protokoll/bote darf Ihr Konto schreiben, weil der Bote als Sie läuft und dort sein Protokoll ablegt. Unter ProgramData darf jedes Konto Ordner anlegen: Einen schon vorhandenen Ordner nimmt das Skript nur, wenn er den Administratoren (oder SYSTEM) gehört und weder er noch etwas darin eine Verknüpfung (Reparse-Punkt) ist; sonst bricht es mit einem Satz ab. Einen neuen sperrt es sofort (Besitzer Administratoren, Vererbung aus) und entfernt fremde ausdrückliche Einträge. Kopiert wird aus .var/dashboard nur, wenn dort keine Verknüpfung liegt.',
+  'Der Dienst darf im Repo nur projects, data, web, docs/entscheidungen, docs/zielbild und docs/anleitung lesen (dazu den Repo-Ordner selbst öffnen, ohne Vererbung). Von docs nur diese drei Unterordner (seit 4d für die Seiten /entscheidungen und /zielbild, seit 6b für /anleitung); fehlt einer, überspringt das Skript ihn mit einer Zeile und legt ihn nicht an. web ganz, nicht nur web/build: So erbt jeder Neubau der Oberfläche das Recht von selbst; dass der Dienst dabei auch web/node_modules lesen kann, ist unkritisch. target, .git und alles andere in Ihrem Benutzerordner bleiben ihm verschlossen. Ältere Regeln (auf dem ganzen Repo, eigene auf web/build) werden dabei entfernt.',
+  'dienst.toml bekommt unter [konten] Ihr Konto (inhaber_sid) und das Dienstkonto (dienst_sid, aus sc.exe showsid Dashboard). Damit gibt der Bote nur dem Dienst Zugang zur Pipe. Die Probe bekommt eine eigene dienst.toml mit eigenem Dienstkonto und eigener Pipe (dashboard-test-bote).',
+  'Ihr Konto darf den Dienst abfragen, starten und stoppen, ohne Administrator (sc sdset mit CCLCSWRPWPLORC; nicht anhalten, nicht umkonfigurieren, nicht löschen).',
+  'Der Bote wird in der Aufgabenplanung eingetragen (siehe unten): Die Aufgabe startet bin/dashboard-bote.exe --waechter, der Wächter startet den Boten und nach einem Fehler neu.',
+  'Am Ende startet der Dienst, das Skript prüft die Seiten und sagt „Fertig“.',
+]
+
+[[block]]
+text = 'Geht etwas schief, hört das Skript auf und sagt, welcher Schritt es war. Dann Dienst-Entfernen.ps1 (als Administrator, wie oben ohne Profil) laufen lassen: danach ist alles wie vorher. Ein zweiter Lauf von Dienst-Einrichten.ps1 richtet nichts doppelt ein, sondern repariert.'
+
+[[block]]
+titel = 'Nur das Lese-Recht nachziehen (nur wenn -Status es meldet)'
+text = 'Liest das Dashboard einen neuen Ordner im Repo (seit 4d docs/entscheidungen und docs/zielbild, seit 6b docs/anleitung), braucht ein schon eingerichteter Dienst dafür das Lese-Recht. Für docs/anleitung setzt es der Betreuer des Dashboards nach dem Merge selbst, als Besitzer des Ordners, genau wie bei docs/zielbild. Sie müssen dafür nichts tun. Fehlt das Recht doch, zeigt /anleitung nur den Satz, dass das Dashboard den Ordner mit der Anleitung nicht lesen darf, und ./scripts/Dienst.ps1 -Status meldet es bei „Leserecht“. Nur dann einmal als Administrator Dienst-Einrichten.ps1 -NurLeserecht; das ganze Einrichten muss dafür nicht noch einmal laufen. Aus dem Haupt-Repo auf main, wie oben ohne Profil (Windows-Taste+R, eintippen, Strg+Umschalt+Enter):'
+
+[[block]]
+beispiel = '''
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File %USERPROFILE%/dev/dashboard/scripts/Dienst-Einrichten.ps1 -NurLeserecht'''
+
+[[block]]
+text = 'Das setzt nur das Lese-Recht des Dienstkontos (Schritt „Lese-Recht im Repo“): keine Probe, kein Anhalten, keine Programme, nichts unter ProgramData außer einer Zeile im Protokoll. Ein Neustart ist nicht nötig; /entscheidungen zeigt die Liste beim nächsten Laden, und die Systemmeldung auf /pc („Das Dashboard darf den Ordner … nicht lesen“) ist binnen einer Minute behoben. Fehlt docs/zielbild oder docs/anleitung noch, überspringt das Skript ihn; sobald es ihn gibt, denselben Befehl noch einmal. Mit -Pruefen dazu zeigt es nur, was fehlt (ohne Administrator). Für die Ordner im privaten Inhalt (projects, data, docs/entscheidungen) hilft kein Chat: Dort setzt das Recht nur derselbe Befehl als Administrator. Er nimmt die Ordner aus dem Abschnitt [inhalt] in dienst.toml; so sagt es auch die Meldung auf /pc. Nur wenn dienst.toml noch keinen Abschnitt [inhalt] hat, gehört -Inhalt mit dem Ordner des Inhalts dahinter (siehe Abschnitt „14. Umzug des Inhalts“).'
+
+[[block]]
+titel = 'Im Alltag (ohne Administrator)'
+[block.tabelle]
+spalten = ['Was', 'Befehl im Repo-Ordner']
+zeilen = [
+  ['Läuft es?', './scripts/Dienst.ps1 -Status'],
+  ['Neu starten nach Änderungen', './scripts/Dienst.ps1 -Neustart'],
+  ['Abschalten (Dienst und Bote)', './scripts/Dienst.ps1 -Stopp'],
+  ['Wieder anschalten (Dienst und Bote)', './scripts/Dienst.ps1 -Start'],
+]
+
+[[block]]
+text = '''
+-Status zeigt, ob der Dienst läuft, ob er antwortet, ob der Bote läuft, welche Prozessrechte der Dienst hat (sc qprivs; erwartet nur SeChangeNotifyPrivilege, sonst Exit 1), ob der Dienst projects, data, web, docs/entscheidungen, docs/zielbild und docs/anleitung lesen darf (die drei docs-Ordner nur, wenn es sie gibt), und die letzten Zeilen des Protokolls. Auch in der Windows-Liste der Dienste (Windows-Taste, „Dienste“) steht er, unter „Dashboard“.
+
+-Neustart baut die neue Fassung (Programm und Oberfläche), tauscht beide Programme aus (Dienst und Bote) und startet neu. Welche Projektseiten in den Bau kommen, entscheidet dabei dieselbe Prüfung wie im Boten (dashboard.exe pruefe --bauliste --svelte, siehe Baumeister). Gebaut wird jede Seite aus ihrer grünen Kopie: der eben geprüften, sonst der letzten guten; ohne Kopie fehlt die Seite. Läuft ein Prüfwerkzeug nicht oder wird eine Seite nach ihrer Prüfung gespeichert, ist sie nicht geprüft, nie grün (die Ausgabe nennt sie unter NICHT GEPRÜFT, fehlende unter FEHLT). Bleibt die Gesamtprüfung rot, kommt wie im Boten die letzte gute Fassung: jede Seite mit grüner Kopie (GESAMTPRÜFUNG ROT). Der Bote steht dafür schon während dieser Prüfung; was in der Zeit gespeichert wird, baut erst die nächste Änderung. Bricht das Skript vor dem Austausch ab (mit einem Fehler oder einer Ausnahme), startet es den Boten wieder, sofern keiner mehr läuft, und den Dienst, wenn es ihn schon angehalten hatte; lässt er sich nicht anhalten, wird nichts eingespielt. Nach einer neuen Fassung des Prüfers prüft das Einspielen einmal alle Seiten neu; das dauert etwa eine Minute, sonst Sekunden (das Dashboard läuft so lange weiter). Das Dashboard ist dabei weniger als eine Minute weg; die Zeit steht am Ende da. Startet die neue Fassung nicht, kommt die alte von selbst zurück; scheitert schon der Austausch der Dateien, kommt die alte sofort zurück und startet wieder. Auch der Weg zurück zur alten Fassung startet Dienst und Boten wieder, sofern sie nicht laufen, selbst wenn er mit einem Fehler abbricht. Strg+C oder ein geschlossenes Fenster mitten im Neustart sind nicht abgedeckt; dann zeigt ./scripts/Dienst.ps1 -Status, was läuft, und -Start startet beide. Beim Anhalten stoppt das Skript erst die Aufgabe des Boten und beendet dann Wächter und Boten; beim Starten startet es die Aufgabe (darf Ihr Konto das nicht, startet es den Wächter selbst). npm run build legt web/build jedes Mal neu an; der neue Ordner erbt das Lese-Recht des Dienstes von web, es ist also nichts neu zu setzen.
+
+Nach -Stopp bleibt der Dienst aus, bis Sie ihn starten oder der PC neu hochfährt.'''
+
+[[block]]
+titel = 'Entfernen'
+text = 'Als Administrator ohne Profil starten, wie beim Einrichten (Windows-Taste+R, Strg+Umschalt+Enter):'
+
+[[block]]
+beispiel = '''
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File <Repo>/scripts/Dienst-Entfernen.ps1'''
+
+[[block]]
+text = 'Dienst und Bote sind dann weg, die Rechte im Repo (Repo-Ordner, projects, data, web, docs/entscheidungen, docs/zielbild, docs/anleitung, dazu Reste auf web/build) zurückgenommen. Der Ordner C:/ProgramData/Dashboard bleibt mit allen Daten liegen. Danach geht Start-Dashboard.ps1 wieder wie früher. Der Datenspeicher unter ProgramData ist dann der neuere; das Skript nennt den Befehl, um ihn zurückzukopieren. Es kopiert nichts von selbst. Einen übrig gebliebenen Testordner C:/ProgramData/Dashboard-Test löscht es nur, wenn er den Administratoren (oder SYSTEM) gehört und keine Verknüpfung enthält; sonst bleibt er mit einem Satz liegen.'
+
+[[block]]
+titel = 'Wo was liegt'
+[block.tabelle]
+spalten = ['Was', 'Ort']
+zeilen = [
+  ['Programme', 'C:/ProgramData/Dashboard/bin'],
+  ['Datenspeicher', 'C:/ProgramData/Dashboard/daten/dashboard.redb (gehört nur dem Dienst; auch Ihr Konto hat hier absichtlich keinen Zugriff)'],
+  ['Sicherungen', 'C:/ProgramData/Dashboard/sicherung (für den Sicherungsplan und die Backup-Übersicht)'],
+  ['Protokoll', 'C:/ProgramData/Dashboard/protokoll (dienst-…, einrichten-…, je Tag eine Datei); der Bote in protokoll/bote (bote-…)'],
+  ['Einstellungen', 'C:/ProgramData/Dashboard/dienst.toml (Port, Repo, Pfade, die SIDs von Ihrem Konto und vom Dienstkonto; kein Passwort)'],
+  ['Kurze Anleitung', 'C:/ProgramData/Dashboard/LIESMICH.txt'],
+]
+
+[[block]]
+titel = 'Bewusst anders als in der Entscheidung'
+text = 'Die Entscheidung autostart-dienst gilt; an diesen Stellen weicht die Einrichtung bewusst ab:'
+
+[[block]]
+punkte = [
+  'Inhaber auf dem Hauptordner: Ihr Konto darf C:/ProgramData/Dashboard selbst öffnen (lesen und ausführen, ohne Vererbung) und dienst.toml und LIESMICH.txt lesen. Sonst ließen sich Status, Anleitung und Einstellungen nicht ansehen. daten bleibt Ihnen verschlossen.',
+  'web statt web/build: Der Dienst darf den ganzen Ordner web lesen (vererbt), damit jeder Neubau der Oberfläche das Recht erbt.',
+  'Repo-Ordner selbst: Der Dienst darf den Repo-Ordner nur öffnen (lesen, ohne Vererbung); target, .git und der Rest bleiben zu.',
+  'protokoll/bote: Ihr Konto darf dort ändern (vererbt), weil der Bote als Sie sein Protokoll schreibt; das Dienstkonto ebenfalls, damit es alte Dateien wegräumen kann. Im übrigen Protokollordner liest Ihr Konto nur.',
+  'Prozess und Token des Boten: Der Bote erlaubt beim Start dem Dienstkonto, seinen Prozess (Programmpfad) und sein Token (Konto) abzufragen. Ohne das könnte der Dienst nicht prüfen, ob hinter der Pipe wirklich der Bote unter Ihrem Konto läuft.',
+]
+
+[[block]]
+titel = 'Was nur geht, wenn Sie angemeldet sind'
+text = 'Der Dienst läuft unter seinem eigenen Konto und sieht Ihren Windows-Tresor und Ihren Benutzerordner nicht. Was nur unter Ihrem Konto geht, erledigt der Bote (dashboard-bote.exe): Er startet unsichtbar, wenn Sie sich anmelden, und arbeitet dem Dienst zu. Bevor der Dienst dem Boten etwas schickt, prüft er auf zwei Wegen, dass es wirklich der Bote ist: Programm und Konto des Prozesses hinter der Pipe, und wem die Pipe gehört. Dafür erlaubt der Bote beim Start nur dem Dienstkonto, seinen Prozess und sein Token abzufragen. Startet man den Boten von Hand in einem Terminal, erscheinen --hilfe und Fehlermeldungen dort.'
+
+[[block]]
+punkte = [
+  'Schlüsselseite speichern: Der Bote schreibt den Wert in Ihren Tresor, wie bisher als ranke/<name>. Gespeicherte Passwörter bleiben, wo sie sind; nichts muss neu eingegeben werden.',
+  'Benutzer-Daten auf der PC-Seite: installierte Programme (winget), Autostart, Ordner im Benutzerordner, Werkzeug-Versionen, Git-Stand.',
+]
+
+[[block]]
+text = '''
+Sind Sie nicht angemeldet, läuft alles andere trotzdem (Projekte, Vorgänge, Warten, Datenspeicher, Werte des ganzen PCs). Die Schlüsselseite sagt dann, dass sie nur bei Anmeldung speichert, und die Benutzer-Daten zeigen den letzten Stand mit Uhrzeit.
+
+Ob Sie angemeldet sind (davon hängt die Meldung „Bote fehlt“ ab), erfährt der Dienst über den Boten: Er meldet bei jedem Lebenszeichen (alle 60 s) Nummer und Zustand seiner Sitzung, ohne Konto und Namen. Jede Minute fragt der Dienst Windows nach genau dieser Sitzung (und der an der Konsole). Geht das nicht, zählt die gemeldete Sitzung nur, solange sie noch die an der Konsole ist (ohne Konsolenbezug höchstens 5 Minuten nach dem letzten Lebenszeichen); sonst bleibt offen, ob Sie angemeldet sind, und es kommt keine Meldung. Eine Abmeldung soll nie wie ein Absturz des Boten aussehen. Alle Sitzungen aufzuzählen (WTSEnumerateSessionsW) scheitert unter dem Dienstkonto in Sitzung 0 mit Fehler 259 (ERROR_NO_MORE_ITEMS), vermutlich weil Windows einem Konto ohne Abfragerecht an den Sitzungen eine leere Liste gibt; die Begründung steht in src/pc/sitzung.rs.'''

@@ -1,0 +1,15 @@
+[[frage]]
+id = "schlusssatz"
+text = "Welcher Schlusssatz in der Rundmail an den Verein?"
+art = "wahl"
+optionen = ["Herzliche Grüße vom Vorstand", "Wir sehen uns beim Sommerfest!"]
+empfehlung = "Wir sehen uns beim Sommerfest!"
+gestellt = "2026-10-25"
+prioritaet = "bald"
+
+[[frage]]
+id = "konzept"
+text = "Konzept so bestätigen?"
+art = "bestaetigen"
+gestellt = "2026-10-26"
+prioritaet = "bald"

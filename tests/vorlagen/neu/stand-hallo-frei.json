@@ -1,0 +1,36 @@
+{
+  "slug": "hallo",
+  "schwerpunkt": "Sonstiges",
+  "gesamt": {
+    "titel": "Projekt hallo",
+    "status": "aktiv",
+    "bedeutung": "laeuft",
+    "ampel": "rot",
+    "grund": "frist-vorbei",
+    "bezug_art": "arbeit",
+    "bezug": null,
+    "zuletzt": "2026-10-29 10:00"
+  },
+  "frist_bald_tage": 7,
+  "sichtbar": false,
+  "eintraege": [],
+  "aktualisierungen": [],
+  "zahlen": {
+    "wartet_auf_dich": 1,
+    "aufgaben": 0,
+    "fragen": 1,
+    "laeuft": 1,
+    "wartet": 0,
+    "als_naechstes": 1,
+    "meldungen": {
+      "neu": 4,
+      "gesamt": 6
+    },
+    "naechste_frist": "2026-10-27",
+    "tage_bis": -2,
+    "frist_stufe": "ueberfaellig"
+  },
+  "notizen": [],
+  "notizen_zahl": 1,
+  "speicher_fehlt": false
+}

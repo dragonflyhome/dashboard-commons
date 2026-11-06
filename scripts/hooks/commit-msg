@@ -1,0 +1,12 @@
+#!/bin/sh
+# Commit-msg-Hook des Code-Repos (eingehängt mit: git config core.hooksPath scripts/hooks).
+# Prüft die Nachricht mit scripts/Vor-Push.ps1 -Nachricht, demselben Muster wie
+# der Pre-Push-Prüfer: erste Zeile nach Conventional Commits (typ(bereich)!: text),
+# keine Anhänge (Trailer), keine KI-Namen, kein Fuß BREAKING CHANGE. Ohne
+# Namenslisten, damit ein Commit auch ohne Inhalts-Repo geht; den Text prüft der Push.
+# --no-verify nur nach Ja von Architektur oder Inhaber.
+# Im Projekt-Repo (Overlay, ohne scripts/) zeigt core.hooksPath absolut hierher; der Prüfer liegt neben dem Hook.
+repo=$(git rev-parse --show-toplevel) || exit 2
+code=$(cd "$(dirname "$0")/../.." && { pwd -W 2>/dev/null || pwd; }) || exit 2
+if command -v pwsh >/dev/null 2>&1; then ps=pwsh; else ps=powershell.exe; fi
+exec "$ps" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$code/scripts/Vor-Push.ps1" -Repo "$repo" -Nachricht "$1"

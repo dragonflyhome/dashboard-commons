@@ -1,0 +1,12 @@
+# Beispiel für /api/entscheidungen (Etappe 4d): bekannte und weitere Felder.
+datum = "2026-10-31"
+thema = "Erste Entscheidung"
+status = "entschieden"
+von = "Inhaber"
+etappe = 4
+warum = "Weil es einfacher ist."
+auflagen = ["Erste Auflage", "Zweite Auflage"]
+
+[nachbesserung_1]
+datum = "2026-11-01"
+erledigt = true

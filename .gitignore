@@ -1,0 +1,14 @@
+/target
+# Bauten über den Boten (Etappe 4v) und die Bauliste, beide erzeugt
+/web/builds/
+/web/src/lib/projekte.generated.ts
+# Etappe 4b: Bauordner, falls cargo einmal in einer Kiste außerhalb des Workspace lief
+/crates/*/target/
+/projects/*/server/target/
+# Umzug des Inhalts: privater Inhalt liegt in dashboard-inhalt, nie hier.
+/projects/*
+!/projects/_vorlage/
+/data/
+/docs/entscheidungen/
+/docs/architektur-stand.md
+/web/src/lib/vertrag/projekte/

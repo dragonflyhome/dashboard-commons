@@ -1,0 +1,56 @@
+# Abschnitt „3. Felder im Überblick“ (Etappe 6b, Format wie docs/zielbild).
+titel = '3. Felder im Überblick'
+reihenfolge = 103
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Zeigt sich wo']
+zeilen = [
+  ['title', 'ja', 'Kachel, Seitentitel'],
+  ['status', 'nein (Standard aktiv)', 'farbiger Punkt'],
+  ['summary', 'nein', 'Kurztext auf der Kachel'],
+  ['order', 'nein (Standard 50)', 'Reihenfolge'],
+  ['repos', 'nein', 'Git-Stand auf der Kachel (alles gesichert, ungesicherte Dateien, Alter des Stands)'],
+  ['links', 'nein', 'Abschnitt „Links“ im Standardaufbau; eine eigene Seite.svelte zeigt sie nicht von selbst'],
+  ['checks, processes', 'nein', 'auf keiner Seite; nur in /api/projects/<slug> (checks, processes)'],
+  ['open', 'nein', 'Karte „Notizen“ im Unter-Dashboard oben auf der Projektseite (im Standardaufbau dazu „Offene Punkte“), Zahl auf der Kachel'],
+  ['chat', 'ja', '„verwaltet von Chat …“ oben auf der Seite, Feld auf der Kachel'],
+  ['backup, backup_note', 'ja', '„Backup: rot/gelb/grün“ auf der Kachel (backup_note als Kurzinfo), auf der PC-Seite unter „Backup je Projekt“'],
+  ['vorschau', 'nein', 'Eintrag „Vorschau“ in der Seitenleiste unter dem Projekt, Unterseite /projects/<slug>/vorschau, Hinweis auf der Kachel'],
+]
+
+[[block]]
+text = '''
+chat = "Haus und Garten": Jedes Projekt hat seinen eigenen Chat; der Name steht dann auf der Seite. backup = "rot", "gelb" oder "grün" plus backup_note = "liegt nur auf C:": Stand der Datensicherung dieses Projekts, vom Projekt-Chat selbst gepflegt; die PC-Seite sammelt alle unter „Backup je Projekt“. Beide sind Pflicht nach den Regeln des Inhabers, auch wenn der Server ein fehlendes Feld nicht als Fehler meldet (er zeigt dann einfach nichts an). In backup_note Pfade mit Schrägstrichen schreiben (C:/Daten/...), siehe Abschnitt 4 zu Steuerzeichen.
+
+vorschau = "assets/vorschau.html": ein fertiger Entwurf (Website, Flyer, Fahrplan) als eine HTML-Datei in assets/. Das Dashboard zeigt ihn auf der Unterseite /projects/<slug>/vorschau in einem abgeschirmten Rahmen mit Vollbild-Knopf; Regeln dazu in Abschnitt 6 unter „Vorschau einer Website“.
+
+Die Seite eines Projekts zeigt oben immer Titel, summary, Status, Chat, den Bau-Stand und das Unter-Dashboard; darunter steht seine Seite.svelte. Fehlt sie im Bau (keine Seite.svelte, oder pruefe hat sie wegen Fehlern ausgelassen), zeigt das Dashboard den Standardaufbau: einen Hinweis mit dem Grund, die offenen Punkte, jede Datei aus daten/ mit dem passenden Baustein und zuletzt die Links. Lebenszeichen (checks, processes) zeigt keine Seite; pruefe prüft ihre Adressen trotzdem.
+
+Farben der Status-Punkte (seit Etappe 2c Bedeutungen, siehe Abschnitt „Projekte in neuer Form (schema = 3)“): türkis aktiv (läuft), gelb pausiert, grau geplant, grün fertig (in Ordnung), rot problem, ohne Farbe archiviert (ruhig). Ein anderes Wort bei status ist ein FEHLER in pruefe („Bei status steht „…“. Erlaubt sind: aktiv, pausiert, geplant, fertig, problem, archiviert.“).'''
+
+[[block]]
+titel = 'Archivieren: status = "archiviert"'
+text = 'Ein Projekt kann ruhen (archiviert). Den Status setzt der Projekt-Chat in projekt.toml; zurück geht es mit status = "aktiv". Ein archiviertes Projekt'
+
+[[block]]
+punkte = [
+  'fehlt in Seitenleiste, Schublade, Startseite, Cockpit, „Anstehend“, Glocke, allen Zählern und Kennzahlen; es gibt keine Meldung und keine Benachrichtigung, und der Live-Kanal nennt es nicht;',
+  'behält seine Fragen, Aufgaben, Arbeiten und Meldungen: Sie bleiben gespeichert, zählen nirgends mit und stehen nur auf der Projektseite;',
+  'steht in der Archivansicht /projekte/archiviert (Titel, seit wann). Der einzige Weg dorthin ist der Link „Archiv“ am Ende der Projektübersicht auf der Startseite, ohne Zahl und ohne Namen;',
+  'bleibt unter seiner Adresse erreichbar und wird weiter gebaut und geprüft (Bauliste, pruefe); oben auf der Seite steht „Dieses Projekt ist archiviert.“ Der Projekt-Chat kann weiter schreiben; nichts davon meldet sich.',
+]
+
+[[block]]
+text = '''
+Sicherheitsregel für Fristen: Eine Frage, Aufgabe oder Arbeit mit echter Frist (frist gesetzt) in einem archivierten Projekt erscheint sieben Tage vor Ablauf (und danach, solange sie offen ist) in „Anstehend“, nur als neutraler Satz ohne Projekttitel („Eine Frist in einem archivierten Projekt läuft am 08.11.2026 ab.“) mit Link zur Projektseite. Er zählt nicht mit. Eine Frist in acht oder mehr Tagen bleibt still.
+
+„Seit wann“ in der Archivansicht kommt aus archiviert_seit = "JJJJ-MM-TT" in projekt.toml (bitte zusammen mit dem Status setzen; fehlt es, gibt pruefe einen HINWEIS, und es gilt das Änderungsdatum von projekt.toml). Ein falsches Datum ist ein FEHLER; archiviert_seit bei einem anderen Status ein HINWEIS.
+
+Groß und klein ist beim Wort archiviert egal. Ein Tippfehler im Kopf eines archivierten Projekts hebt das Archiv nicht auf: Solange sich der Kopf nicht lesen lässt, gilt der zuletzt bekannte Status (startet der Dienst mit kaputtem Kopf, zählt die Zeile status = …). Das Projekt steht dann auch nicht unter „Seiten mit Fehlern“; den Fehler nennt nur seine eigene Seite (und pruefe).
+
+„Jetzt für dich“ auf der Startseite zeigt die nahen Fristen im Archiv als eigene Zeile mit demselben Satz, ohne Projekttitel; Tab-Titel und Glocke zählen sie nicht. Vorgänge eines archivierten Projekts (seines Chats und Merge-Anträge für sein Modul) fehlen auf /vorgaenge, in den Zählern, im Verlauf und auf dem Live-Kanal; mit ?fuer=<slug> sieht sein Chat alles.
+
+Zurück auf aktiv: Was in der Zeit des Archivs gespeichert wurde, ist sofort wieder da, auch Meldungen (etwa „Fertig: …“ oder eine Prüfung, die rot ist) in der Glocke, auf einmal.
+
+Für Werkzeuge: /api/projects nennt archivierte Projekte nicht, /api/archiv nur sie. /api/aufgaben, /api/arbeiten, /api/meldungen, /api/antworten, /api/anstehend und /api/vorgaenge/uebersicht lassen sie ohne ?projekt=<slug> (Vorgänge: ?fuer=<slug>) weg; mit ?projekt=<slug> steht alles da wie sonst.'''

@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.json",
+	"include": [
+		"src",
+		"vite.config.ts",
+		"vitest-setup.ts",
+		"../projects/**/*.svelte",
+		"../projects/**/*.ts"
+	]
+}

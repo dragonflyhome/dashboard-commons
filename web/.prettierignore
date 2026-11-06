@@ -1,0 +1,21 @@
+# Package Managers
+package-lock.json
+
+# Build
+/build/
+/builds/
+/.svelte-kit/
+
+
+# Erzeugt von cargo test (Rust), nicht von Hand formatieren
+/src/lib/vertrag/
+
+# Erzeugt von dashboard pruefe --bauliste (Rust), nicht von Hand formatieren
+/src/lib/projekte.generated.ts
+
+# Vendor-Kopie (Etappe 3a-3): unverändert aus der Registry, nie formatieren
+/vendor/
+
+# Baumeister (Etappe 4b): letzte grüne Fassung je Projekt und Arbeitsordner
+/.projekte-gruen/
+/.baumeister/

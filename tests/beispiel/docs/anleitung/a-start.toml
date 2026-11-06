@@ -1,0 +1,4 @@
+# Beispiel für /api/anleitung (Etappe 6b).
+titel = "Start"
+reihenfolge = 1
+text = "Erster Abschnitt der Anleitung."

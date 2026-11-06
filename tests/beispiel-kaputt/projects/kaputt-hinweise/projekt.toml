@@ -1,0 +1,13 @@
+# Absichtlich mit Hinweisen: leere summary, langer offener Punkt, Unterseite ohne Datei; dazu ein Lebenszeichen ohne http.
+schema = 3
+title = "Kaputt: Hinweise"
+summary = ""
+open = ["Dieser offene Punkt ist absichtlich viel zu lang für die Kachel auf der Startseite. Er erzählt alles, was eigentlich auf die Seite des Projekts gehört, und hört und hört nicht auf, bis er weit über zweihundert Zeichen lang ist."]
+status = "aktiv"
+[[seiten]]
+name = "plan"
+title = "Der Plan"
+
+[[checks]]
+name = "Website"
+url = "127.0.0.1:8080"

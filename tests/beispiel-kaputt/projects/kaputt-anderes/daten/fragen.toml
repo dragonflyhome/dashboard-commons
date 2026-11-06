@@ -1,0 +1,6 @@
+[[frage]]
+id = "farbe"
+text = "Welche Farbe für den Kopf?"
+art = "wahl"
+optionen = ["Blau", "Grün", "Etwas anderes …"]
+gestellt = "2026-11-01"

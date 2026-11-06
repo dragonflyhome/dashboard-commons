@@ -1,0 +1,12 @@
+# Absichtlich kaputt: dieselbe Unterseite zweimal.
+schema = 3
+title = "Kaputt: Unterseite doppelt"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."
+[[seiten]]
+name = "plan"
+title = "Der Plan"
+
+[[seiten]]
+name = "plan"
+title = "Noch ein Plan"

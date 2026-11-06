@@ -1,0 +1,102 @@
+titel = "Etappenplan"
+reihenfolge = 8
+
+text = """
+Jede Etappe läuft für sich und lässt sich mit git revert zurücknehmen. Vor jedem Zusammenführen gilt: cargo test und npm run verify grün, Anleitung aktuell, Ja vom Prüf-Assistenten. Keine Etappe wartet auf eine offene Gestaltungsfrage. Bis zur Antwort gilt ein Platzhalter (Abschnitt Entscheidungen).
+"""
+
+[[block]]
+[block.tabelle]
+spalten = ["#", "Etappe", "Was", "Nutzen", "Abnahme"]
+zeilen = [
+  ["0", "Zielbild 2", "dieses Papier, eigene Projektseite des Zielbilds, offene Entscheidungen", "klarer Plan", "✅ abgenommen (Fassung 2, Stand 2.1, 99ad01d); offene Fragen laufen parallel"],
+  ["1a", "Ordnung im Server", "Modulschnitt, AppError, Beispiel-Repo für Tests; Edition 2024, Vitest 5. Kein Verhaltenswechsel", "Grundlage", "alle Tests wie vorher grün, jetzt ohne echte projects/"],
+  ["1b", "Schleusen", "Schleusen 1–8, eigene 3-s-Limits für git, Lebenszeichen, PowerShell; Vorschau-CSP sandbox; Feld „Benutzername“ auf /schluessel; aus der Abnahme von 1a: lesbare Fehlersätze statt JSON auf Browser-Wegen, eigener Beispiel-Schlüssel, README und CONTRIBUTING zum Modulschnitt", "sicherer, nichts hängt mehr", "je Schleuse ein Test (421, 403, 413, 408); hängendes Repo hält die Liste nicht auf"],
+  ["2a", "Datenspeicher", "redb unter .var/dashboard/, src/speicher/ mit typisierten Tabellen, Migrationen mit Versionsnummer, nächtliche Sicherungskopie und TOML-Export, PC-Verlauf als erster Nutzer, einfache Seite /daten", "ein echter Verlauf der PC-Werte; Grundlage für Antworten und Vorgänge", "baut ohne C-Compiler (cargo test); Migrationstest von Schema 1 nach 2; Server mitten im Schreiben beenden → Datei heil; Sicherungskopie lässt sich öffnen; Datei mit zu neuer Schema-Nummer wird abgelehnt mit Meldung"],
+  ["2b", "Vorgänge und Warten", "Vorgänge und Journal im Datenspeicher (Tabellen ereignisse, vorgaenge), API (abfragen, seit, übernommen, erledigt), Ereignis vorgang; Warte-Endpunkt /api/vorgaenge/warten und scripts/Warten.ps1, erste Vorgangsart abnahme (der Abnahme-Ablauf zwischen Bau- und Prüf-Assistent läuft ab dann darüber, als Probe des Weckens)", "nichts geht mehr verloren, was zwischen Assistenten läuft", "Test: Server mitten im Schreiben beenden → nach Neustart alle Vorgänge da; doppeltes „übernommen“ ändert nichts; seit liefert genau die fehlenden Ereignisse; ein ruhender Assistent wird vom endenden Warten geweckt; Server-Neustart beim Warten verliert nichts"],
+  ["2c", "Vertrag", "src/vertrag/ für projekt.toml und alle daten/*.toml (Tabellen-Arrays), ts-rs, types.ts von Hand weg, Farben als Bedeutung, pruefe für TOML und Assets, /api/pruefung", "Assistenten sehen Fehler sofort, in einfachem Deutsch", "Vertrags-Test rot bei Abweichung; 10+ Fehlerbeispiele"],
+  ["2d", "Inhalt im Arbeitsspeicher", "ContentStore (Projektinhalt im Arbeitsspeicher) mit Versionsnummer, Git-Zwischenspeicher, genaue Live-Ereignisse", "Startseite schneller, nur Geändertes lädt neu", "Start unter 0,5 s; Ereignis-Test"],
+  ["3a", "Token, Toolkit, Katalog", "Token vervollständigen, st-/c- zusammenlegen, Bits UI als Vendor-Kopie, $katalog mit Grundteilen, Text- und Daten-Bausteinen, /katalog, Stylelint scharf, 15 feste Farben behoben, Edge-Prüfung über CDP und erste Prüfwege", "gleiche Formen und Farben überall", "Stylelint grün; Katalog bei 360 px ohne Überlappung; Kontrast; Tastatur; Edge-Prüfungen grün ohne Browser-Download und ohne Anfrage außerhalb 127.0.0.1"],
+  ["3b", "Schönheit", "Prüfer-Funde (Zeitachse stapeln, Handybreite, Fehlerseite), hell/dunkel-Schalter, Textfassung der Bild-Bausteine, Logo und Favicon, Startseite als Spalten", "schöner, am Handy lesbar", "Prüfer-Funde geschlossen; Logo, Favicon und Manifest stehen mit Platzhalter, ein endgültiges Motiv ist danach nur ein Dateitausch"],
+  ["4v", "Vorschau der neuen Form (vorgezogen aus 4, vor 7c)", "/projects/<slug>/neu neben page.md, allgemeine Endpunkte /api/projekte/<slug>/daten/<name>, $projekt, $katalog, $vertrag, Svelte der Projekte im Bau mit Fehlergrenze, pruefe auch für Svelte, Vorgangsart bau", "Projekt-Assistenten bauen ihre Seiten schon jetzt in Svelte", "siehe [etappe_4v] in der Entscheidung „Svelte jetzt“"],
+  ["5a", "Aufgaben (vorgezogen nach 4v, vor 4b)", "Vorgangsart aufgabe im Datenspeicher, API für Assistenten, „Für dich“ auf der Startseite und je Projekt, Haken weckt den Assistenten, einmalige Links mit Ablauf nur hinter der Anmeldung", "alles, worauf der Benutzer klicken soll, steht im Dashboard", "siehe die Entscheidung zu Aufgaben"],
+  ["A1", "Liste, Übersicht, Unter-Dashboard (nach 5a)", "Arbeiten über die API, data/schwerpunkte.toml, Stufen und Einstufung, GET /api/anstehend und /api/projekte/<slug>/stand mit Zielen, Registerkarte „Anstehend“, Unter-Dashboard auf jeder Projektseite", "alles Anstehende an einem Ort, jede Seite zeigt oben ihren Stand", "siehe die Entscheidung „Konzept Anstehendes“"],
+  ["A2", "Fragen beantworten", "Fragen aus daten/fragen.toml im Dashboard beantworten, eine auf einmal, Vorgang antwort", "Antwort mit einem Klick", "ebenda"],
+  ["A3", "Meldungen", "vom Server erzeugt, Band, Zähler, Tab-Titel, gelesen, Archiv", "der Benutzer erfährt, was passiert ist", "ebenda"],
+  ["A4", "Widgets (mit 3a)", "Stand, Frage, Arbeiten, Fristen, Zuletzt im Katalog, Entwürfe für Widgets", "ruhige, gut lesbare Bausteine", "ebenda"],
+  ["4b", "Projekt-Backends (nach 4v, vor 7c)", "SDK-Kiste dashboard-projekt, Module in projects/<slug>/server/ als Workspace-Mitglied, ProjektKontext, Namensraum im Datenspeicher, Hooks, Wächter-Tests, Vorgangsart merge, ein Beispielmodul", "Projekte rechnen und speichern selbst", "siehe [projekt_backend] in der Entscheidung „Svelte jetzt“"],
+  ["4", "Projektform und Baumeister", "Projekt-Layout mit Fehlergrenze, projekte.generated.ts, Baumeister (Warteschlange, niedrige Priorität, web/builds/aktuell, „jetzt bauen“), pruefe je Projekt, ESLint-Grenzen, Vorlage projects/_vorlage/, Umzugswerkzeug umziehen (mit --reiter-als-seiten); Pilot mit einigen Projekten; System-Seiten /anleitung, /zielbild, /entscheidungen", "erste Seiten in neuer Form, Fehler zerlegen nichts mehr", "absichtlich kaputte Seite → nur sie bleibt alt, Rest läuft; Speichern bis Seite unter 60 s gemessen (Ziel 30 s); Pilotseiten zeigen alles wie vorher"],
+  ["5", "Umzug aller Projekte, Fragen, Antworten, Rückruf", "Projekt-Assistenten ziehen um (mit Werkzeug); parallel baut der Bau-Assistent Fragen/Antworten, /fragen, wuensche.toml + /katalog/wuensche, Vorgangsarten frage, antwort, wunsch, bau, Seite /vorgaenge mit „wartet seit“ je Assistent; alle Projekt-Assistenten warten mit Warten.ps1", "Antwort mit einem Klick, und der Assistent wird gerufen", "alle Projekte schema = 3; Ende-zu-Ende: Frage → Antwort → Vorgang → wartender Assistent wird geweckt → übernimmt → erledigt; Server-Neustart während des Wartens verliert nichts"],
+  ["6", "Markdown raus", "page.md-Weg und pulldown-cmark entfernt; alle .md gelöscht; LIESMICH.txt, Start-Skript gibt den Hinweis auf /anleitung aus", "ein System statt zwei", 'git ls-files "*.md" leer; Server baut ohne pulldown-cmark'],
+  ["7a", "Dashboard als Dienst (vorgezogen nach 2c)", "Windows-Dienst unter NT SERVICE＼Dashboard, Start beim Hochfahren, Bote unter dem Windows-Konto des Benutzers, Dienst.ps1 -Neustart statt Neustart.ps1", "Dashboard ist einfach da", "Neustart des PCs → läuft vor der Anmeldung; Punkte in der Entscheidung „Autostart als Dienst“"],
+  ["7b", "Windows-Anmeldung", "Negotiate/SSPI je Verbindung; Schlüssel, Vorgänge, Daten, Live-Kanal, Benutzer-Daten nur für das berechtigte Windows-Konto; Adresse localhost:8787", "kein anderes Konto am PC liest mit", "401 ohne, 200 mit Anmeldung; fremdes Konto 403; Warten.ps1 weckt weiter"],
+  ["7c", "Passkey für andere Konten", "Passkey über localhost, Antrag und Freigabe durch den Hauptbenutzer, Widerruf, signierte JWT im Cookie", "Anmeldung auch aus anderen Konten", "Punkte in [passkey] der Dienst-Entscheidung"],
+]
+
+[[block]]
+text = """
+Jede Teil-Etappe (1a, 1b, …) ist ein eigener Merge, den der Prüf-Assistent einzeln abnimmt.
+
+Ablauf der Abnahme: Der Bau-Assistent baut im Worktree und meldet „bereit zur Abnahme“ mit Branch und Commit. Der Prüf-Assistent prüft das Abnahmekriterium, die Tests (cargo test, npm run verify), die Anleitung und die Verständlichkeit für den Benutzer. Er sagt „Ja“ oder konkret, was fehlt. Erst nach dem Ja folgt die Zusammenführung nach main. Merge-Commits sind Pflicht, Fast-Forward gibt es nie. Die Nachricht nennt Etappe oder Modul, die Spitze des Zweigs und den Hash der Abnahme.
+
+Dabei gilt der Abschnitt „Teilschritte mit Besitzer“: Die Abnahme ist seit T5 ein eigener Schritt der Arbeit, dessen Besitzer (Feld fuer) der Prüf-Assistent ist. Der Vorgang der Art abnahme war eine abgelöste Übergangsregel. Die Übergabe ist erst vollzogen, wenn der Prüf-Assistent den angebotenen Schritt im Dashboard übernommen hat. Eine Nachricht allein ist keine Übergabe. Zweig, Commit und Dauer von Bau und Test stehen in der Notiz des eigenen Bau-Schritts (gesetzt, bevor er fertig ist), nicht in einer Nachricht. Den Stand jeder Etappe zeigt der Tracker (Kasten Arbeiten).
+"""
+
+[[block]]
+titel = "Umzug der Projektseiten"
+[block.tabelle]
+spalten = ["Wer", "Was"]
+zeilen = [
+  ["Leit-Assistent", "stößt die Projekt-Assistenten in der Reihenfolge unten an, je drei bis vier am Tag"],
+  ["Bau-Assistent", "baut cargo run -- umziehen <slug>: page.md → projekt.toml + daten/*.toml (aus den Bausteinen) + Seite.svelte-Gerüst (Text als <Absatz>, **fett** als <strong>); Vorlage; Anleitung"],
+  ["Prüf-Assistent", "zieht ein Pilotprojekt als Erster um und prüft das Werkzeug daran"],
+  ["Projekt-Assistenten", "führen umziehen für ihr Projekt aus, glätten die Seite, pruefe grün, committen ihren Ordner (page.md weg)"],
+  ["Prüfer", "zählt täglich: Projekte neu / alt, Markdown-Dateien übrig"],
+]
+
+[[block]]
+text = """
+Reihenfolge: Pilot → kleine Seiten → mittlere Seiten → große Seiten (dort gleich in Unterseiten teilen). Welche Projekte in welche Gruppe gehören, steht im privaten Inhalt.
+
+Alt und neu nebeneinander: Ab Etappe 4 zeigt der Server ein Projekt in neuer Form, sobald projekt.toml da ist. Sonst zeigt er es wie bisher aus page.md (mit gelbem Hinweis „alte Form“). Das gilt höchstens sieben Tage nach Ende des Piloten. Dann folgt Etappe 6: Der Markdown-Weg wird entfernt. Eine Seite, die bis dahin nicht umgezogen ist, zieht der Bau-Assistent mit dem Werkzeug um, ohne Glätten.
+"""
+
+[[block]]
+titel = "Gemeinsame Bausteine nach den Konzepten"
+text = """
+Aus den Konzepten der Projekte folgen acht Etappen, nacheinander, jede mit Abnahme. Was mindestens zwei Projekte brauchen, kommt allgemein ins Basis-Repo. Der Server schreibt nie in den Inhalt.
+"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Etappe", "Inhalt"]
+zeilen = [
+  ["B1", "kleine Korrekturen: leere Liste zählt 0, Tabelle mit Summe, Link und Marke, „Stand vom …“"],
+  ["B2", "Backlog: Aufgaben, Arbeiten und Fragen auf jeder Projektseite, Kanban aus dem Datenspeicher, Fragen-Warteschlange"],
+  ["B3", "Fristen, auch bewegliche (an einem Ereignis), nächste Frist je Projekt"],
+  ["B4", "Orte und Sicherung: ein Format für Orte, Sicherungsstand je Ort und Projekt berechnet"],
+  ["B5", "Unterlagen-Archiv: Archivseite, Vorschau und Download"],
+  ["B6", "Gespräche und Rückmeldungen: Treffen, Rückmeldungen, „Als Nächstes“"],
+  ["B7", "Schriftverkehr: Entwürfe, Platzhalter, Bearbeiten mit Passkey, Freigabe je Abschnitt"],
+  ["B8", "Plan und Verlauf: ein Plan statt Gantt, Fortschritt und Kanban von Hand"],
+]
+
+[[block]]
+text = """
+Später: Finanzen, Repo-Stand, Prüfläufe. Der ganze Text steht in der Entscheidung „gemeinsame Bausteine“ der privaten Inhaltsquelle.
+"""
+
+[[block]]
+titel = "Die eingefrorenen Wünsche, einsortiert"
+[block.tabelle]
+spalten = ["Wunsch", "Etappe"]
+zeilen = [
+  ["Fragen, Antworten, /fragen, Bestätigen-Knopf", "5"],
+  ["Aufgaben und Links („Für dich“), Vorgangsart aufgabe", "5a (vorgezogen nach 4v)"],
+  ["Unterseiten je Projekt", "4 (als seiten/<name>.svelte)"],
+  ["Logo und Favicon", "3"],
+  ["Prüfer-Funde (Zeitachse, Handybreite)", "3"],
+  ["Autostart", "7a (als Windows-Dienst)"],
+  ["Startseite als Spalten nach Status", "3 (Schalter Kacheln/Spalten)"],
+  ["Platzhalter {{git_last_commit}}", "entfällt: In Svelte ist der Git-Stand einfach eine Prop"],
+]

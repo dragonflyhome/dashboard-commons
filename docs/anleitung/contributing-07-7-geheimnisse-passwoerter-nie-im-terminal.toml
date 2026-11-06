@@ -1,0 +1,54 @@
+# Abschnitt „7. Geheimnisse: Passwörter nie im Terminal abfragen“ (Etappe 6b, Format wie docs/zielbild).
+titel = '7. Geheimnisse: Passwörter nie im Terminal abfragen'
+reihenfolge = 107
+
+[[block]]
+text = '''
+Der Inhaber gibt Passwörter nur über das Dashboard ein, nie in ein Terminal, nie in einen Windows-Dialog, nie in den Chat. Hintergrund: Abfragen im Terminal sind schwer nachzuvollziehen, und Eingaben können in Verläufen und Protokollen landen.
+
+So geht es, wenn eine Sitzung ein Passwort oder einen Schlüssel braucht:'''
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Bedarf in data/schluessel.toml eintragen (Datei enthält nie Werte):',
+]
+
+[[block]]
+beispiel = '''
+[[key]]
+name = "wetter-api"
+zweck = "Wetterdienst: API-Schlüssel für die Vorhersage"
+hinweis = "Beim Wetterdienst anmelden, unter Konto > API-Schlüssel den Schlüssel kopieren"
+angefordert_von = "Gartenplaner"'''
+
+[[block]]
+text = '''
+In data/schluessel.toml steht keine E-Mail-Adresse und kein Name einer Person; ein unpersönlicher Kontoname (benutzer = "Wetter-Konto") ist erlaubt.
+
+name: nur a-z 0-9 . _ -. zweck und hinweis in einfachem Deutsch, denn der Inhaber liest sie auf der Seite. Die Datei wird bei jedem Aufruf neu gelesen, kein Neustart nötig.'''
+
+[[block]]
+punkte = [
+  '2. Den Inhaber bitten, http://localhost:8787/schluessel zu öffnen und den Wert dort einzutragen. Die Seite zeigt rot „fehlt“ oder grün „gespeichert am …“, nie den Wert. Braucht der Dienst auch einen Benutzernamen (zum Beispiel die Kundennummer beim Wetterdienst), trägt der Inhaber ihn auf derselben Seite in das freiwillige Feld „Benutzername“ ein; er landet zusammen mit dem Wert nur im Windows-Tresor. Bleibt das Feld beim nächsten Speichern leer, behält der Eintrag den Benutzernamen, der schon im Tresor steht; er wird nicht stumm überschrieben.',
+  '3. Den Wert selbst lesen. Er liegt im Windows Credential Manager als Generic Credential mit dem Ziel ranke/<name> (Benutzername = das Feld „Benutzername“ von der Seite, sonst benutzer aus der TOML, sonst zweck, Blob = UTF-16, wie bei cmdkey). Das Dashboard hat keine Route, die Werte zurückgibt. Lesen per PowerShell, ohne Zusatzmodul:',
+]
+
+[[block]]
+beispiel = '''
+$pw = & %USERPROFILE%/dev/dashboard/scripts/Schluessel-Lesen.ps1 wetter-api'''
+
+[[block]]
+text = '''
+Das Skript nutzt CredReadW per P/Invoke (advapi32) und gibt nur den Wert auf stdout aus; bei fehlendem Eintrag Exit-Code 2 und ein Hinweis. In Rust: src/schluessel.rs zeigt die Deklarationen, falls ein eigenes Programm lesen soll.
+
+Regeln dabei:'''
+
+[[block]]
+punkte = [
+  'Den Wert nie loggen, nie in eine Datei schreiben, nie in Chat-Antworten, Commits oder Notizen zitieren. Nach Gebrauch aus Variablen entfernen (Remove-Variable pw).',
+  'Prüfen, ob der Eintrag schon da ist, bevor der Inhaber gefragt wird (cmdkey /list:ranke/<name> zeigt nur Ziel und Benutzer, nie den Wert).',
+  'Ausgeschlossen und nie anfordern: das Hauptpasswort eines Mail- oder Cloud-Kontos, Bankdaten, Ausweisnummern. Die gibt der Inhaber nur direkt im jeweiligen Programm ein.',
+  'Schutz der Seite: Das Dashboard hört nur auf diesem PC (127.0.0.1 und [::1]), die Seite verlangt das Windows-Konto des Inhabers (Abschnitt 9, „Anmeldung mit dem Windows-Konto“), der POST nimmt nur Formulare mit Origin/Referer vom Dashboard selbst an, höchstens 4 KB, und überschreibt nach Gebrauch den Wert, den Benutzernamen und den rohen Formularinhalt im Speicher, auch wenn unterwegs ein Fehler auftritt. Anforderungen ohne Eintrag in schluessel.toml werden abgelehnt.',
+  'Grenze dabei: Überschreiben (zeroize) können wir nur unsere eigenen Kopien. Den Eingangspuffer, in dem hyper und axum die Anfrage empfangen, geben diese ohne Überschreiben frei; dort kann der Wert noch eine Weile im Arbeitsspeicher des Servers stehen, bis er neu belegt wird.',
+]

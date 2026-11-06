@@ -1,0 +1,37 @@
+# Abschnitt „Einstellungen (alle freiwillig)“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Einstellungen (alle freiwillig)'
+reihenfolge = 15
+
+[[block]]
+text = '''
+Die Umgebungsvariablen unten gelten nur für den Start ohne Argumente (cargo run, Start-Dashboard.ps1, der Testserver). Im Dienst und mit --konsole gilt stattdessen die Datei dienst.toml (C:/ProgramData/Dashboard/dienst.toml, das Einrichtungsskript schreibt sie). Sie enthält schema, repo, port, unter [pfade] daten, sicherung, protokoll und freiwillig web und projekte, unter [konten] inhaber_sid und dienst_sid, unter [bote] pipe und programm. Pfade mit / und immer mit Laufwerk; ein unbekanntes Feld ist ein Fehler. Ein Beispiel liegt in tests/beispiel/dienst.toml.
+
+Die Aufrufe von dashboard.exe (auch mit --hilfe):'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Aufruf', 'Wirkung']
+zeilen = [
+  ['dashboard.exe', 'Server in der Konsole, Pfade aus den Umgebungsvariablen'],
+  ['dashboard.exe --konsole --einstellungen <datei>', 'Server in der Konsole mit dienst.toml, wie der Dienst; Protokoll zusätzlich in den Protokollordner'],
+  ['dashboard.exe --dienst --einstellungen <datei> [--dienstname <name>]', 'nur für den Windows-Dienst (startet Windows selbst); Standard für den Namen: Dashboard'],
+  ['dashboard.exe pruefe [<slug>|--alle] [--ohne-stil]', 'Projektseiten prüfen, ohne Server (ab 3b mit Stylelint)'],
+  ['dashboard.exe --hilfe', 'die Aufrufe zeigen'],
+]
+
+[[block]]
+text = 'Exit-Codes: 0 gut, 2 Einstellungen oder Aufruf falsch, 3 Port schon belegt, 9 anderer Fehler (pruefe hat eigene, siehe die Abschnitte „Prüfen der Projekte: pruefe“ und „4. Prüfen“). In web/ gibt es dafür die Abkürzung npm run pruefe -- <slug> (Skript web/scripts/werkzeug.mjs, nimmt die neueste gebaute dashboard.exe aus target/release oder target/debug).'
+
+[[block]]
+[block.tabelle]
+spalten = ['Umgebungsvariable', 'Wirkung', 'Standard']
+zeilen = [
+  ['DASHBOARD_PORT', 'anderer Port', '8787'],
+  ['DASHBOARD_PROJECTS_DIR', 'anderer Ordner mit Projektseiten; ab 4b auch eine Liste, getrennt durch ; (je Eintrag ein Ordner mit Projekten oder ein einzelnes Projekt mit projekt.toml; ein Slug in zwei Quellen: die erste gilt, dazu ein Satz unter /api/pruefung)', 'projects/ im Repo'],
+  ['DASHBOARD_BAUMEISTER', 'direkt: baut ohne Boten im eigenen Prozess (nur eine Testkopie auf Port 8788, nie der Dienst; tests/skripte/baumeister-edge.mjs)', 'aus'],
+  ['DASHBOARD_WEB_DIR', 'anderer Ordner mit dem gebauten Frontend', 'web/build im Repo'],
+  ['DASHBOARD_PC_DATA', 'andere Datei mit den PC-Eckdaten', 'data/pc.toml'],
+  ['DASHBOARD_KEYS_DATA', 'andere Datei mit den Schlüssel-Anforderungen', 'data/schluessel.toml'],
+  ['DASHBOARD_DATEN', 'andere Datei für den Datenspeicher (Dateipfad)', '%USERPROFILE%/.var/dashboard/dashboard.redb'],
+  ['RUST_LOG', 'mehr oder weniger Protokoll', 'dashboard=info,tower_http=info'],
+]

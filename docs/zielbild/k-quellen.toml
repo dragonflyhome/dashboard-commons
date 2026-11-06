@@ -1,0 +1,19 @@
+titel = "Quellen"
+reihenfolge = 13
+
+text = """
+Die Versionsnummern sind Momentaufnahmen der Versionsabfrage; den geltenden Stand zeigt der Abschnitt „Neuester Stand: Versionen und Grenzen der Bauumgebung“.
+"""
+
+punkte = [
+  "SvelteKit, Remote Functions (experimentell, laufen auf dem Server): https://svelte.dev/docs/kit/remote-functions",
+  "SvelteKit, Single-Page-Apps (ssr = false, Fallback nicht index.html, Konfiguration in vite.config): https://svelte.dev/docs/kit/single-page-apps",
+  "Svelte, <svelte:boundary> (fängt Fehler beim Zeichnen und in Effekten, nicht in Klick-Funktionen; seit 5.3): https://svelte.dev/docs/svelte/svelte-boundary",
+  "SvelteKit 3, Versionshinweise: https://github.com/sveltejs/kit/releases",
+  "axum 0.8.9, Fehlerbehandlung: https://docs.rs/axum/latest/axum/error_handling/index.html",
+  "axum, Middleware und Reihenfolge: https://docs.rs/axum/latest/axum/middleware/index.html",
+  "tower-http 0.7.1: https://docs.rs/tower-http/latest/tower_http/",
+  "tower-http, CSRF-Schicht: https://docs.rs/tower-http/latest/tower_http/csrf/index.html",
+  "ts-rs 12.0.1: https://docs.rs/ts-rs/latest/ts_rs/",
+  "Versionen: npm-Registry (npm view <paket> version, peerDependencies) und crates.io-API (max_stable_version).",
+]

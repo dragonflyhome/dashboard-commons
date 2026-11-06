@@ -1,0 +1,40 @@
+# Abschnitt „Anmeldung“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Anmeldung'
+reihenfolge = 12
+
+[[block]]
+text = '''
+Manches im Dashboard ist nur für Sie: die Schlüssel, die Vorgänge, die Daten und Ihre persönlichen Werte auf der PC-Seite. Damit kein anderes Konto an diesem PC sie sieht, prüft das Dashboard, dass die Anfrage von Ihrem Windows-Konto kommt.
+
+Sie müssen dafür nichts tun und nie ein Passwort eingeben. Öffnen Sie das Dashboard einfach über http://localhost:8787. Dort meldet Windows Sie im Browser von selbst an.'''
+
+[[block]]
+punkte = [
+  'Über 127.0.0.1: Dort meldet der Browser Sie nicht an. Öffnen Sie eine geschützte Seite über http://127.0.0.1:8787, leitet das Dashboard Sie auf dieselbe Seite unter localhost weiter. Klicken Sie innerhalb der Seite weiter, zeigt sie „Anmeldung nötig“ mit einem Link zu localhost. Die PC-Seite zeigt dann statt Ihrer Programme und Ordner einen Hinweis, und oben rechts steht „live, nicht angemeldet“.',
+  'Ein anderes Windows-Konto an diesem PC sieht die Projektseiten und die Rechner-Werte (Prozessor, Speicher, Platte). Schlüssel, Vorgänge und Daten führen dort auf http://localhost:8787/anmelden: Mit einem freigegebenen Passkey (Windows Hello, Handy oder Sicherheitsschlüssel) gelten Sie auch dort als Sie (seit Etappe 7c). Einen Passkey für dieses Konto beantragen Sie auf derselben Seite; dann steht dort eine vierstellige Zahl. Im Hauptkonto unter „Schlüssel“ steht derselbe Antrag mit derselben Zahl: Nur wenn beide Zahlen gleich sind, „Freigeben“ drücken. Ein Antrag gilt 24 Stunden. Passkeys lassen sich dort auch widerrufen, und „Alle Sitzungen mit Passkey beenden“ meldet überall ab. Im Hauptkonto brauchen Sie nie einen Passkey.',
+  'Die Kopfleiste (Fassung 3): Links stehen Brotkrumen: das Symbol ganz links führt zur Startseite, dann der Weg (etwa Projekte › Architektur › Neue Zeitachse), zuletzt der Name der Seite. Ein Klick auf diesen Namen prüft beim Server, ob die Seite auf dem neuesten Stand ist, zieht nach, was fehlt (ohne die Seite im Browser neu zu laden), und scrollt nach oben; ein Häkchen und eine Ansage sagen, ob etwas fehlte. Am Handy steht statt der mittleren Glieder „…“. Rechts stehen in dieser Reihenfolge das PC-Symbol (die Prozessorlast der letzten Minute als kleine Linie, Farbe nach Stufe, auch ohne Anmeldung; Klick führt zu /pc), die Glocke (Zahl der ungelesenen Meldungen; behobene zählen nicht und stehen in der Liste unter „behoben“, Meldungen zu fehlenden Leserechten stehen dort als Hinweis; ohne Anmeldung keine Zahl, nur der Hinweis zur Anmeldung), der Live-Punkt und das Schloss. Das Band mit Meldungen über dem Inhalt gibt es nicht mehr; die Glocke ersetzt es.',
+  'Die Seitenleiste (Fassung 3) ersetzt das Menü oben: Anstehend, darunter die Projekte nach Schwerpunkt (wie in „Anstehend“), je mit der Zahl der Einträge, die auf Sie warten; das aktuelle Projekt ist markiert, seine Unterseiten stehen eingerückt darunter. Abgesetzt darunter Schlüssel, Hallo, Vorgänge, Daten, Anleitung, Zielbild und Entscheidungen. PC steht oben rechts. Ab 1024 px Breite steht die Leiste fest links, darunter öffnet sie der Knopf ☰ links oben als Schublade (Escape oder ein Klick daneben schließt sie, ein Seitenwechsel auch).',
+  'Oben rechts (seit der Kopfleiste, Fassung 2) stehen der Live-Punkt und ein Schloss. Der Punkt zeigt einen von fünf Zuständen: „live, angemeldet“, „live, nicht angemeldet“, „live, nicht registriert“ (ein anderes Windows-Konto ohne Passkey), „Verbindung nicht gefunden“ (seit dem Laden nie verbunden) oder „Verbindung unterbrochen“ (die Seite versucht es selbst neu). Ein Klick darauf führt zum Abschnitt „Dashboard“ auf der PC-Seite (Live-Kanal, Bote, Fassung, Lesbarkeit der Ordner). Ohne Verbindung steht dort „Keine Verbindung zum Dienst, Daten können veraltet sein“; wird eine neue Fassung gebaut, „Daten live, neue Fassung wird gebaut“; ist die App im Tab älter als die auf dem Server, „Daten live, App wird gleich aktualisiert“, und die Seite lädt nach 30 Sekunden von selbst (siehe „Neue Fassung im offenen Tab“). Klicken müssen Sie dafür nichts. Das Schloss ist offen, wenn Sie angemeldet sind, sonst zu; ein Klick führt immer zur Passkey-Seite: angemeldet zum Anlegen und zur Liste der Passkeys (bestätigen, widerrufen; der Passkey, mit dem Sie gerade angemeldet sind, hat keine Knöpfe), sonst zum Anmelden oder zum Antrag. Ohne Verbindung zeigt die Passkey-Seite nur einen Hinweis. Jede Seite hält nur eine Live-Verbindung offen (angemeldet die geschützte, sonst die freie); nach „Abmelden“, einem Widerruf oder dem Ablauf der Passkey-Anmeldung geht das Schloss von selbst zu.',
+  'Skripte und Chats melden sich mit scripts/Api.ps1 an (Einzelheiten im Abschnitt „9. Vorgänge: so holt ein Chat seine Arbeit ab“).',
+]
+
+[[block]]
+[block.tabelle]
+spalten = ['Weg', 'Wer darf']
+zeilen = [
+  ['Startseite, Projektseiten (/, /projects/…, /api/projects), auch der Bau-Stand der Seiten (grün, rot, wird gebaut, noch nicht gebaut; Zeit der letzten guten Fassung)', 'alle Konten an diesem PC'],
+  ['Der Bau-Stand mit Satz bei rot (/api/bauen)', 'nur Sie'],
+  ['PC-Seite: Prozessor, Speicher, Platte, Dienste (/pc, /api/pc)', 'alle Konten an diesem PC'],
+  ['PC-Seite: Programme, Autostart, Werkzeuge, Ordnergrößen, Schlüssel-Zähler (/api/pc/benutzer)', 'nur Sie'],
+  ['Verlauf des PCs mit Starts, Meldungen und Vorgängen (/api/pc/verlauf/voll); Unter-Dashboard mit Titeln (/api/projekte/<slug>/stand/voll)', 'nur Sie'],
+  ['Schlüssel (/schluessel, /api/schluessel, auch Passkeys freigeben, ablehnen, widerrufen)', 'nur Sie'],
+  ['Anmelden mit Passkey (/anmelden, /api/passkey/stand, …/anmelden/…, …/abmelden)', 'alle Konten an diesem PC'],
+  ['Passkey beantragen (/api/passkey/antrag…)', 'jedes Konto an diesem PC mit Windows-Anmeldung; berechtigt erst nach Ihrer Freigabe'],
+  ['Vorgänge (/vorgaenge, /api/vorgaenge, auch Warten)', 'nur Sie'],
+  ['Daten (/daten, /api/daten, Export, Sichern)', 'nur Sie'],
+  ['Live-Kanal (/api/events)', 'nur Sie'],
+  ['Freier Kanal (/api/events/frei): Lebenszeichen, Anmeldestand, Projekte, PC-Werte, Fassung', 'alle Konten an diesem PC'],
+  ['Aufgaben, Arbeiten, Einstufung, „Anstehend“, Antworten, Meldungen (/api/aufgaben, /api/arbeiten, /api/einstufung, /api/anstehend, /api/antworten, /api/meldungen)', 'nur Sie'],
+  ['Lebenszeichen (/healthz, /api/betrieb ohne Pfade und ohne Ihren Anmeldestand)', 'alle Konten an diesem PC'],
+  ['Voller Betriebsbericht (/api/betrieb/voll: Einstellungsdatei, seit wann der Bote läuft, ob Sie an der Konsole angemeldet sind)', 'nur Sie'],
+]

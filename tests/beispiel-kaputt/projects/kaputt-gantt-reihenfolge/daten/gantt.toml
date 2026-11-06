@@ -1,0 +1,13 @@
+# Absichtlich kaputt: beim zweiten Balken liegt `bis` vor `von`.
+start = "2031-03"
+
+[[balken]]
+name = "Hecke schneiden"
+von = 0
+bis = 2
+
+[[balken]]
+# Ende vor dem Anfang: 3 bis 1.
+name = "Phase 1"
+von = 3
+bis = 1

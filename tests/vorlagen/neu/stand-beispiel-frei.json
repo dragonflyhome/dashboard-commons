@@ -1,0 +1,36 @@
+{
+  "slug": "beispiel",
+  "schwerpunkt": "Arbeit",
+  "gesamt": {
+    "titel": "Projekt beispiel",
+    "status": "aktiv",
+    "bedeutung": "laeuft",
+    "ampel": "rot",
+    "grund": "fehler-offen",
+    "bezug_art": "meldung",
+    "bezug": null,
+    "zuletzt": "2026-10-29 10:00"
+  },
+  "frist_bald_tage": 7,
+  "sichtbar": false,
+  "eintraege": [],
+  "aktualisierungen": [],
+  "zahlen": {
+    "wartet_auf_dich": 2,
+    "aufgaben": 1,
+    "fragen": 3,
+    "laeuft": 0,
+    "wartet": 1,
+    "als_naechstes": 0,
+    "meldungen": {
+      "neu": 2,
+      "gesamt": 3
+    },
+    "naechste_frist": "2026-10-29",
+    "tage_bis": 0,
+    "frist_stufe": "heute"
+  },
+  "notizen": [],
+  "notizen_zahl": 1,
+  "speicher_fehlt": false
+}

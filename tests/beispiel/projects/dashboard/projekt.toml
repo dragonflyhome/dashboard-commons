@@ -1,0 +1,12 @@
+# Feste Beispielseite für die Tests des Servers (Kopf mit chat, open, links).
+schema = 3
+title = "Beispiel: Dashboard"
+status = "aktiv"
+summary = "Feste Beispielseite für die Tests des Servers. Kein echtes Projekt."
+order = 10
+chat = "Rust-Dashboard"
+open = ["Erster offener Punkt", "Zweiter offener Punkt"]
+
+[[links]]
+name = "Startseite"
+url = "http://127.0.0.1:8787/"

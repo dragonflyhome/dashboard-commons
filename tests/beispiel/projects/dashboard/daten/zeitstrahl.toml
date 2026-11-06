@@ -1,0 +1,12 @@
+[[eintrag]]
+kennung = "eingerichtet"
+datum = "2024-06-03"
+titel = "Werkstatt eingerichtet"
+text = "Werkbank, Regal, Licht"
+art = "erledigt"
+
+[[eintrag]]
+kennung = "pilot"
+datum = "2026-11"
+titel = "Pilot"
+art = "geplant"

@@ -1,0 +1,117 @@
+# Abschnitt „Ordner“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Ordner'
+reihenfolge = 217
+
+[[block]]
+beispiel = '''
+src/                Rust-Code des Servers und des Boten
+  main.rs           Start von dashboard.exe: Aufruf lesen, dann Server, Dienst, pruefe oder --hilfe
+  lib.rs            die Bibliothek hinter beiden Programmen (dashboard.exe und dashboard-bote.exe)
+  bin/
+    dashboard-bote.rs  Start des Boten (ohne Fenster), seine Aufrufe und Exit-Codes
+  dienst/           Betrieb (Etappe 7a)
+    mod.rs          Aufrufe, Konsolen-Modus, Start und Ende, die Lauscher auf 127.0.0.1 und [::1]
+    einstellungen.rs  dienst.toml lesen und prüfen, Fehler mit Datei und Zeile
+    protokoll.rs    Tagesdateien dienst-JJJJ-MM-TT.log, Aufräumen nach 14 Tagen
+    betrieb.rs      /api/betrieb
+    windows.rs      Anbindung an den Dienststeuerungs-Manager (nur Windows)
+  bote/             der Bote und seine Gegenseite im Dienst
+    win.rs          Win32-Aufrufe: Pipe, SIDs, Prozesse
+    server.rs       die Schleife des Boten: Pipe anlegen, Anfragen bedienen
+    aufgaben.rs     was der Bote auf eine Anfrage tut
+    bau.rs          Baumeister im Boten: prüfen, grüne Kopien, Gesamtprüfung, npm run build, Zeiger (4v, 4b)
+    client.rs       die Seite des Dienstes: verbinden, prüfen, fragen
+    sammler.rs      Sammler des Dienstes, die über den Boten holen
+  anmeldung/        Windows-Anmeldung (Negotiate über SSPI), Probe für 7b
+  app.rs            Zustand (AppState), Router und Schleusen
+  baumeister.rs     Baumeister im Dienst (4b): Beobachter (.svelte/.ts, 5 s Ruhe), Warteschlange, Zeiger, Ereignisse
+  baustand.rs       Bau-Stand je Projekt (4c): aus stand.json, grünen Kopien und Warteschlange; Sätze ohne Pfade
+  quellen.rs        mehrere Inhaltsquellen (DASHBOARD_PROJECTS_DIR als Liste, 4b)
+  projekte/         Register der Backend-Module (Etappe 4b): angemeldete Module, Hooks, Störungen,
+                    anbindung.rs (Kontext für das SDK), waechter.rs (Wächter-Tests)
+  start.rs          die einzige Anmeldestelle der Module: dashboard::starten(module)
+  fehler.rs         der eine Fehlertyp AppError mit {"fehler","art"}
+  oberflaeche.rs    liefert das fertige SvelteKit-Build aus web/build aus
+  sicherheit.rs     die acht Schleusen (Adresse, Herkunft, Zeit, Größe, Kopfzeilen …) und die Fehlerform
+  schleusen_test.rs Tests der Schleusen (nur beim Testen gebaut)
+  schluessel.rs     Windows-Tresor: Schlüssel schreiben, Anforderungen lesen
+  git.rs            Git-Stand der Repos auf den Projektseiten
+  vertrag/          der Vertrag aus einer Quelle (Rust, TOML, JSON, TypeScript)
+    bedeutung.rs    die sechs Bedeutungen und welche Wörter dahin übersetzt werden
+    projekt.rs      der Kopf projekt.toml
+    daten.rs        je Baustein ein Datentyp (daten/*.toml), eigen-<name>.toml, Teile
+    api.rs          alle Antworten der API
+    bote.rs         Anfragen und Antworten zwischen Dienst und Bote (kein TypeScript)
+    lesen.rs        TOML lesen, Fehlersätze mit Datei und Zeile
+    verlauf.rs      Ereignis und Verlauf (Etappe 2e), Übersetzung der Einträge von Hand
+    export.rs       schreibt web/src/lib/vertrag (nur beim Testen)
+  inhalt/           Projektseiten lesen
+    seite.rs        Projekte lesen: projekt.toml und daten/
+    pruefung.rs     die Prüfung je Projekt: Befunde (Fehler, Hinweis) mit Datei und Zeile
+    assets.rs       Regeln für assets/: Namen, Formate, Größen, SVG und Vorschau-HTML
+    store.rs        ContentStore (2d): alle Projekte im Arbeitsspeicher, Versionsnummer, genaue Live-Ereignisse
+  werkzeug/         Befehle ohne Server
+    pruefe.rs       dashboard pruefe <slug> | --alle
+    stil.rs         Stylelint für die Stile der Projektseiten (ab 3b)
+    projektpruefung.rs  ESLint, svelte-check und Vitest je Projektordner (4b, pruefe und Baumeister)
+  api/              JSON-API für die Oberfläche
+    mod.rs          Liste aller Routen
+    vertrag.rs      nur noch Weiterleitung auf src/vertrag/api.rs
+    pruefung.rs     /api/pruefung und /api/pruefung/<slug>
+    system_seiten.rs /api/entscheidungen, /api/zielbild (Etappe 4d) und /api/anleitung (6b) aus docs/
+    projekte.rs     /api/projects und die Assets der Projekte
+    bauen.rs        /api/bauen (Bau-Stand mit Satz, 4c)
+    pc.rs           /api/pc und /api/pc/verlauf (Etappe 2e), /api/pc/verlauf/voll (Hotfix 3a-1)
+    schluessel.rs   /api/schluessel und das Speichern-Formular
+    events.rs       Live-Kanal /api/events und freier Kanal /api/events/frei, der Datei-Beobachter und die Fingerabdrücke der Repos
+    daten.rs        /api/daten: Stand, PC-Verlauf, Export, Sichern
+    vorgaenge.rs    /api/vorgaenge: Anlegen, Abfragen, Bestätigen, Warten (Warteraum je Slug)
+    anmeldung.rs    /api/anmeldung/probe und /api/anmeldung/wer
+  speicher/         Datenspeicher (redb-Datei)
+    mod.rs          Öffnen, Fehler, Zugriff im Hintergrund
+    tabellen.rs     die Tabellen (meta, pc_verlauf, ereignisse, vorgaenge, vorgaenge_je_slug, warter)
+    migration.rs    Schema-Prüfung und Umbauschritte
+    sicherung.rs    tägliche Sicherung und Aufräumen
+    export.rs       Export als TOML oder JSON
+    pc_verlauf.rs   PC-Verlauf und sein Sammler
+    pc_ereignisse.rs  Windows-Ereignisse für den Verlauf (Updates, Starts), mit Archiv nach 90 Tagen
+    vorgaenge.rs    Vorgänge und Journal: jeder Schritt in einer Transaktion
+    projekte.rs     Tabellen der Backend-Module (projekt/<slug>/<name>): einrichten, umbauen, lesen, schreiben
+  pc/               PC-Werte
+    system.rs       Prozessor, Speicher, Platten, Neustart, Defender (im Hintergrund)
+    sysapps.rs      Autostart, Dienste, Werkzeuge (per PowerShell, nur lesend)
+    inventory.rs    große Ordner im Benutzerordner
+    pcdata.rs       data/pc.toml lesen
+    ereignisse.rs   Windows-Ereignisse als Verlauf: Kennungen, nach KB und Tag zusammengeführt
+crates/dashboard-projekt/  SDK für Backend-Module (Trait Modul, ProjektKontext, Hooks, Prüfstand)
+tests/beispiel/     festes Beispiel-Repo für cargo test (projects/, data/), mit neu-form in neuer Form, dazu dienst.toml als Beispiel
+tests/beispiel-kaputt/  18 absichtlich kaputte Projekte für die Prüfung
+tests/dienst_konsole.rs  dashboard.exe --konsole mit eigener dienst.toml im Temp-Ordner
+tests/bote_pipe.rs  der Bote mit eigener Pipe, Verbindung und Prüfung durch den Dienst-Client
+web/                Oberfläche (SvelteKit); web/build ist das Ergebnis von npm run build
+  src/lib/vertrag/  von cargo test erzeugte Typen ($vertrag), nie von Hand ändern; in projekte/<slug>/ die der Module
+  src/lib/katalog/  die Bausteine ($katalog): grund/ (Grundteile auf Bits UI), widgets/ (Unter-Dashboard), zeit/
+  src/routes/katalog/  die Seite /katalog mit Beispielen und den Entwürfen der Widgets
+  .projekte-gruen/  letzte grüne Kopie je Projekt und stand.json des Baumeisters (4b, nicht in Git)
+  .baumeister/      tsconfig je Prüfung des Baumeisters (4b, nicht in Git)
+  vendor/           Vendor-Kopie des Toolkits (Bits UI und Helfer), je Paket mit LICENSE und HERKUNFT.toml; nie von Hand ändern
+data/               pc.toml, schluessel.toml (nach dem Umzug des Inhalts in dashboard-inhalt/data)
+projects/           je Projekt ein Ordner; nach dem Umzug des Inhalts hier nur noch _vorlage, die
+                    Projekte liegen in dashboard-inhalt/projects (Anleitung, Abschnitt 14)
+vorlagen/           dashboard-lokal: Vorlage der Zusammenbau-Kiste (Bibliothek plus geprüfte Rechenteile)
+scripts/            Inhalt-Umziehen.ps1 (Umzug des Inhalts), Vor-Push.ps1 und hooks/pre-push (Pre-Push-Prüfer), hooks/pre-commit (Format, clippy), hooks/commit-msg (Conventional Commits),
+                    Hochladen.ps1 (der einzige Weg nach draußen), Wurzel-Entwurf.ps1 (frischer Wurzel-Commit
+                    als Entwurf), Inhalt-Orte.ps1 (die Orte des Inhalts für beide),
+                    Start-Dashboard.ps1, Schluessel-Lesen.ps1, Warten.ps1 (ein Chat wartet auf Vorgänge),
+                    Vendor-Pruefen.ps1 und Vendor-Holen.ps1 (Toolkit-Kopie prüfen, neue Fassung zur Durchsicht holen),
+                    Dienst-*.ps1 (Dashboard als Dienst): Dienst-Einrichten.ps1 (einmal als Administrator,
+                    mit Probe als Testdienst; -Pruefen ohne Änderung), Dienst-Entfernen.ps1 (als Administrator),
+                    Dienst.ps1 (-Status, -Start, -Stopp, -Neustart ohne Administrator), dazu LIESMICH-Dienst.txt
+docs/               Pläne und Beschlüsse
+  zielbild/         die Abschnitte für /zielbild: wohin das Dashboard sich entwickelt, mit Etappenplan
+  anleitung/        die Abschnitte für /anleitung (seit 6b; seit 6d gibt es im Code-Repo keine .md-Datei mehr)
+  (entscheidungen/  liegt seit dem Umzug des Inhalts in dashboard-inhalt/docs)
+LIESMICH.txt        Klartext (seit 6d): was das Repo ist und wie man das Dashboard startet, wenn es nicht läuft
+CHANGELOG.txt       Änderungen nach Keep a Changelog (Klartext, Abschnitt Unreleased)
+LICENSE             Lizenz des Codes: AGPL-3.0-or-later (GNU Affero GPL, Fassung 3 oder später)
+LICENSES/CC0-1.0.txt  Lizenz der Dokumentation in docs/anleitung und docs/zielbild: CC0-1.0 (gemeinfrei)'''

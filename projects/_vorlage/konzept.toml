@@ -1,0 +1,59 @@
+# Konzept einer Projektseite, vor dem Umzug in die neue Form.
+# Jeder Chat kopiert diese Datei nach projects/<slug>/konzept.toml, füllt sie aus
+# und meldet der Architektur-Rolle, dass sie fertig ist. Kein Markdown.
+#
+# Die Regel für alles hier:
+# - Server: Daten lesen, prüfen, rechnen, speichern.
+# - Oberfläche: nur zeigen und Eingaben weiterreichen. Sie zählt, sortiert und
+#   filtert nur über die gemeinsamen Auswertungsstellen, nie selbst.
+# - Darstellung nur über Bausteine aus dem Katalog (/katalog). Fehlt einer,
+#   steht er unter [[wuensche]], und bis dahin gilt der nächstbeste Baustein.
+#
+# Keine persönlichen Daten in diese Datei (Namen, E-Mail, Adressen), keine
+# Geheimnisse, Schrägstriche statt Rückwärtsstrichen. Kurze Sätze genügen.
+# Was ein Chat nicht weiß, schreibt er als hinweis = "offen: …".
+
+[konzept]
+slug = "<slug>"
+zweck = "Wofür die Seite da ist, in zwei Sätzen."
+leser = "Inhaber"                    # Inhaber | Chat | beide
+stand = "2026-10-31"                 # Datum dieser Fassung
+
+# Alles, was der Server liefern soll. Eine Zeile je Datenart.
+[[daten]]
+name = "Fristen"
+quelle = "TOML von Hand"             # TOML von Hand | Server rechnet | Datenspeicher | fremde API
+datei = "daten/fristen.toml"         # bei TOML von Hand; sonst weglassen
+hinweis = "Fristen für Garten und Verein, ändern sich selten"
+
+# Was die Oberfläche zeigt. Eine Zeile je Ansicht auf der Seite.
+[[ansichten]]
+name = "Fristen nach Datum"
+baustein = "Zeitstrahl"              # Name aus /katalog oder "neu"
+daten = ["Fristen"]                  # Namen aus [[daten]]
+hinweis = "die nächsten zuerst"
+
+# Was passiert, wenn jemand etwas tut oder eine Zeit kommt.
+[[ablaeufe]]
+name = "Frist naht"
+art = "meldung"                      # frage | aufgabe | arbeit | meldung | bau | eigen
+ausloeser = "eine Woche vor der Frist"
+schritte = ["Server rechnet", "Meldung an dich", "du hakst ab"]
+hinweis = "gibt es heute schon als Meldung"
+
+# Was dieser Chat vermutlich mit anderen teilt (Bausteine, Endpunkte, Abläufe).
+[[gemeinsam]]
+name = "Fristen mit Meldung"
+hinweis = "Reisen, Vereinsfeste, Werkstattaufträge haben Fristen"
+
+# Fehlende Bausteine oder Endpunkte, mit Begründung. Wie wuensche.toml.
+[[wuensche]]
+name = "Meilenstein im Gantt"
+art = "baustein"                     # baustein | endpunkt | ablauf | token
+hinweis = "Prüftermine als Raute; bis dahin Balken mit einem Tag"
+
+# Fragen an andere Chats oder an die Architektur-Rolle. Antworten laufen direkt
+# von Chat zu Chat; Streitfälle über die Koordination zu dir.
+[[fragen]]
+an = "Architektur"
+text = "Gehört die Fristen-Rechnung in den Server oder in mein Rechenteil?"

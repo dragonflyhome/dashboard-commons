@@ -1,0 +1,25 @@
+titel = "Wofür das Dashboard da ist"
+reihenfolge = 1
+text = """
+Das Dashboard ist der eine Ort, an dem du siehst, was die Projekt-Assistenten tun, wie es dem Rechner geht und was gerade auf dich wartet.
+
+Es läuft nur auf dem eigenen Rechner. Nichts kommt aus dem Internet. Passwörter gibst du nur auf der Seite „Schlüssel“ ein, und das Dashboard zeigt sie nie wieder an."""
+
+[[block]]
+punkte = [
+  "Konzepte prüfen. Jeder Projekt-Assistent legt seinen Plan als Seite hin, mit Bildern statt Textwüsten.",
+  "Status verfolgen. Was läuft, was hängt, was ist fertig, wie geht es dem Rechner, ist alles gesichert?",
+  "Fragen beantworten. Direkt auf der Seite, mit einem Klick.",
+  "Websites nur als Vorschau hier.",
+]
+
+[[block]]
+text = """
+Feste Grenzen: nur 127.0.0.1; nichts aus dem Netz (Skripte, Schriften, Bilder); Passwörter nur über /schluessel, der Server gibt nie einen Wert zurück; einfaches Deutsch in allem, was du liest; schön, lebendig, ein bisschen unterhaltsam.
+
+Neu seit Fassung 2: Es gibt kein Markdown mehr. Daten stehen in TOML, Darstellung ist Svelte und TypeScript, Server-Logik ist Rust. Alles, was du liest, ist eine Dashboard-Seite."""
+
+[[block]]
+titel = "Grundsatz: Für den Betrieb klickst du nichts"
+text = """
+Für den Betrieb muss niemand etwas anklicken. Bauen, Prüfen, Neuladen und Aktualisieren laufen von selbst auf der Serverseite. Die App aktualisiert sich selbst. Klicks gibt es nur für Entscheidungen und Antworten. Ein Hinweis zum Betrieb ist eine Information, keine Aufforderung; ein Knopf daneben ist höchstens eine Abkürzung für Ungeduldige."""

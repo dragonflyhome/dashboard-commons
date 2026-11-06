@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 40 20">
+<script>alert(1)</script>
+<rect width="40" height="20" onclick="alert(2)"/>
+<image xlink:href="https://example.org/bild.png" width="10" height="10"/>
+</svg>

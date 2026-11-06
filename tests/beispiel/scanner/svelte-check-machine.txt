@@ -1,0 +1,9 @@
+config_option_deprecated_alias
+The `config.alias` option is deprecated, and will be removed in a future version of SvelteKit.
+1793137645769 START "c:\\Repo\\web"
+1793137645770 ERROR "../projects/erstes/Seite.svelte" 12:5 "Type 'string' is not assignable to type 'number'."
+1793137645771 WARNING "../projects/erstes/seiten/plan.svelte" 3:1 "Unused CSS selector \"p\""
+1793137645772 ERROR "src/routes/+page.svelte" 1:1 "Fehler in web/src"
+1793137645773 ERROR "../projects/anderes/Seite.svelte" 2:2 "Fehler in einem anderen Projekt"
+1793137645773 ERROR "C:\\Repo\\projects\\erstes\\typen.ts" 4:2 "Absoluter Pfad"
+1793137645774 COMPLETED 559 FILES 4 ERRORS 1 WARNINGS 4 FILES_WITH_PROBLEMS

@@ -1,0 +1,5 @@
+# Absichtlich kaputt: siehe daten/zeitleiste.toml (diesen Baustein gibt es nicht).
+schema = 3
+title = "Kaputt: unbekannte Datei"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

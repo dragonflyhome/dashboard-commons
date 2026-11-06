@@ -1,0 +1,20 @@
+# Kennzahlen (Baustein Kennzahlen). Zwei Formen nebeneinander:
+# - wert: von Hand eingetippt (als Text, damit „40–60“ geht).
+# - berechnet: der Server rechnet aus einer anderen Datei in daten/,
+#   bei jeder Anfrage neu. Arten: anzahl, anteil, summe, tage_seit, tage_bis
+#   (summe und tage_* brauchen feld). Nie ein Ergebnis von Hand eintragen.
+
+[[kennzahl]]
+titel = "Saatgut"
+wert = "8–10"
+einheit = "Tüten"
+hinweis = "Schätzung von Hand"
+
+[[kennzahl]]
+titel = "Phasen fertig"
+hinweis = "aus dem Balkenplan"
+berechnet = { quelle = "gantt", liste = "balken", art = "anteil" }
+
+[[kennzahl]]
+titel = "Bis zum nächsten Phasenende"
+berechnet = { quelle = "gantt", liste = "balken", art = "tage_bis", feld = "bis" }

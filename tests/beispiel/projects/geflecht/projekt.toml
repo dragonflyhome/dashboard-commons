@@ -1,0 +1,7 @@
+# Kleinste gültige Seite mit Backup-Angabe.
+schema = 3
+title = "Beispiel: Geflecht"
+status = "geplant"
+summary = "Kleinste gültige Seite mit Backup-Angabe."
+order = 30
+backup = "rot"

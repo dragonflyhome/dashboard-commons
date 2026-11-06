@@ -1,0 +1,69 @@
+# Die acht Schritte, die bis Etappe 6b direkt in der Seite /anleitung standen
+# (web/src/routes/anleitung/+page.svelte), auf dem Stand nach 6a.
+titel = 'Die wichtigsten Schritte für einen Chat'
+reihenfolge = 1
+
+[[block]]
+text = 'Die wichtigsten Schritte für einen Chat, der eine Seite im Dashboard hat. Alle Einzelheiten stehen in den Abschnitten danach.'
+
+[[block]]
+titel = '1. Dein Ordner'
+text = 'Jeder Chat hat einen eigenen Ordner projects/<slug>/ im Inhalt des Dashboards (%USERPROFILE%/dev/dashboard-inhalt). Die Seite steht danach unter /projects/<slug>. Der Chat schreibt nur in seinen eigenen Ordner.'
+
+[[block]]
+titel = '2. Die neue Form'
+text = 'Kein Markdown: Eine Datei mit der Endung .md im Projektordner meldet pruefe als FEHLER. Eine Seite besteht aus:'
+
+[[block]]
+punkte = [
+  'projekt.toml: der Kopf mit Titel, Status, Satz und offenen Punkten',
+  'daten/<name>.toml: was der Chat von Hand einträgt (Schritte, Termine, Fragen)',
+  'Seite.svelte: welcher Baustein wo steht, Texte direkt darin',
+  'Zum Anfangen den Inhalt von projects/_vorlage/ im Code-Repo (%USERPROFILE%/dev/dashboard) kopieren',
+]
+
+[[block]]
+titel = '3. Prüfen'
+text = 'Alle Befehle im Ordner web/ des Dashboards:'
+
+[[block]]
+punkte = [
+  'npm run pruefe -- <slug>: jede Zeile nennt Datei, Zeile und was zu tun ist',
+  'Die Projekte findet pruefe über DASHBOARD_PROJECTS_DIR. Ist sie nicht gesetzt, vorher in PowerShell: $env:DASHBOARD_PROJECTS_DIR = "$env:USERPROFILE/dev/dashboard-inhalt/projects"',
+]
+
+[[block]]
+titel = '4. Mit dem Dashboard sprechen: Api.ps1, kein curl'
+text = 'Jede Anfrage an das Dashboard geht über scripts/Api.ps1, etwa so:'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/vorgaenge?fuer=<slug>&offen=1"'''
+
+[[block]]
+text = '%USERPROFILE% steht für deinen Benutzerordner; in PowerShell heißt er $env:USERPROFILE. curl geht nicht, weil es sich nach einem Windows-Update nicht mehr bei Windows anmelden kann.'
+
+[[block]]
+titel = '5. Auf Vorgänge warten'
+nummeriert = true
+punkte = [
+  'Bei Arbeitsbeginn alles Offene holen: Api.ps1 "api/vorgaenge?fuer=<slug>&offen=1"',
+  'Dann im Hintergrund warten: Warten.ps1 -Slug <slug>',
+  'Endet das Warten: jeden Vorgang übernehmen (…/uebernommen), handeln, erledigen (…/erledigt)',
+  'Sofort wieder warten',
+]
+
+[[block]]
+titel = '6. Den Inhaber etwas fragen'
+text = 'Fragen stehen in daten/fragen.toml des eigenen Ordners, je Frage ein Eintrag [[frage]] mit id, text, art und gestellt. Der Inhaber antwortet auf der Seite; die Antwort kommt als Vorgang zurück.'
+
+[[block]]
+titel = '7. Committen'
+text = 'Nur die eigenen Pfade stagen und committen, im Repo dashboard-inhalt, die Nachricht aus einer Datei. Nie git add -A, nie einen Branch wechseln im gemeinsamen Arbeitsbaum.'
+
+[[block]]
+titel = '8. Die Seite bauen lassen'
+text = '''
+Gebaut wird von selbst: Sobald du eine .svelte- oder .ts-Datei speicherst, prüft das Dashboard nach 5 Sekunden Ruhe dein Projekt und baut die Seite neu (Abschnitt 11). Du musst dafür nichts tun, und niemand muss etwas anklicken. Den Stand zeigt der Kopf deiner Projektseite in einer Zeile: „Seite in Ordnung“, „Seite wird gebaut …“, „Seite noch nicht gebaut“, „Seite noch nicht geprüft“ oder bei einem Fehler „Seite mit Fehler: zeigt die letzte gute Fassung von …“. Eine Zeitzeile und einen Knopf zum Bauen gibt es dort nicht. Läuft ein Prüfwerkzeug nicht, ist die Seite nicht geprüft, weder grün noch rot: Im Kopf steht dann „Seite noch nicht geprüft“. Gab es schon eine gute Fassung, zeigt das Dashboard diese alte Fassung, sonst fehlt die Seite; was davon gilt, sagt angemeldet ein Satz darunter, und mit alter Fassung nennt die Zeile dann auch, von wann sie ist. Der nächste Bau prüft sie neu. Ob deine Änderung wirklich geprüft ist, zeigt npm run pruefe -- <slug> (Schritt 3).
+
+Die App aktualisiert sich selbst: Am Live-Punkt oben rechts steht „Daten live, neue Fassung wird gebaut“, dann „Daten live, App wird gleich aktualisiert“, und nach 30 Sekunden lädt der Tab von selbst. Solange jemand etwas eingibt, wartet er damit. Nur wenn das Dashboard eine Änderung verpasst hat, bestellst du den Bau mit dem Vorgang bau (Abschnitt 11).'''

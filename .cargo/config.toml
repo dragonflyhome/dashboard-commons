@@ -1,0 +1,20 @@
+# Warum diese Datei?
+# Rust läuft hier mit der GNU-Toolchain ohne eigenes MinGW. Einige Windows-Crates
+# brauchen beim Bauen ein "dlltool". Das von rustup mitgelieferte GNU-dlltool
+# verlangt zusätzlich einen Assembler (as.exe), den es nicht gibt. Darum nutzen
+# wir das dlltool aus LLVM: `rustup component add llvm-tools`, dann llvm-ar.exe
+# aus <sysroot>\lib\rustlib\x86_64-pc-windows-gnu\bin\ nach
+# %USERPROFILE%\.cargo\bin\llvm-dlltool.exe kopieren (es erkennt seine Rolle am Namen).
+#
+# Hier steht nur der Name, ohne Benutzerpfad: rustc findet das Programm über
+# PATH (%USERPROFILE%\.cargo\bin steht nach rustup dort). Wer es nicht auf
+# PATH hat, trägt den vollen Pfad in die eigene Einstellung von cargo ein
+# (%USERPROFILE%\.cargo\config.toml, gilt für alle Repos), etwa:
+#   [target.x86_64-pc-windows-gnu]
+#   rustflags = ["-C", "dlltool=C:/Users/<name>/.cargo/bin/llvm-dlltool.exe"]
+# und löscht dann diesen Abschnitt hier nicht, sondern lässt ihn gleich: cargo
+# nimmt die Flags aus der Datei, die dem Ordner am nächsten liegt. Die
+# Zusammenbau-Kiste dashboard-lokal (vorlagen/dashboard-lokal) hat dieselbe
+# Datei; gleiche Flags heißen, dass beide denselben Bauordner nutzen können.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "dlltool=llvm-dlltool.exe"]

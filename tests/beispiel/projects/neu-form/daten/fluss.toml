@@ -1,0 +1,13 @@
+[[kasten]]
+id = "aussaat"
+text = "Aussaat"
+
+[[kasten]]
+id = "ernte"
+text = "Erntefest"
+farbe = "info"
+
+[[pfeil]]
+von = "aussaat"
+nach = "ernte"
+text = "danach"

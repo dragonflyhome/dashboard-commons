@@ -1,0 +1,31 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitOverride": true,
+		"verbatimModuleSyntax": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitReturns": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"moduleDetection": "force",
+		"paths": {
+			"$vertrag": ["./src/lib/vertrag"],
+			"$vertrag/*": ["./src/lib/vertrag/*"],
+			"$katalog": ["./src/lib/katalog"],
+			"$katalog/*": ["./src/lib/katalog/*"],
+			"$projekt": ["./src/lib/projekt"],
+			"$projekt/*": ["./src/lib/projekt/*"]
+		},
+		"types": ["$app/types", "node", "vitest/globals", "@testing-library/jest-dom"]
+	},
+	"include": [
+		"src",
+		"vite.config.ts",
+		"vitest-setup.ts",
+		"../projects/_vorlage/**/*.svelte",
+		"../projects/_vorlage/**/*.ts"
+	]
+}

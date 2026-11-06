@@ -1,0 +1,25 @@
+# Abschnitt „Die PC-Seite“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Die PC-Seite'
+reihenfolge = 16
+
+[[block]]
+text = 'Unter http://localhost:8787/pc zeigt das Dashboard Ringe und Live-Kurven für Prozessor, Speicher und Platte, die großen Ordner im Benutzerordner, den Backup-Stand als Ampel (mit Backup je Projekt), Autostart-Programme, laufende Dienste, installierte Werkzeuge (winget), die Historie des PCs als Verlauf mit Dichtestreifen (Etappe 3a-1) und die geplanten nächsten Schritte als Spalten.'
+
+[[block]]
+punkte = [
+  'Backup, Historie und Fahrplan stehen in data/pc.toml und lassen sich ohne Rust ändern. Die Datei wird bei jedem Aufruf neu gelesen. Den Stand der Cloud-Kopie sagt cloud_stand = "vorhanden" | "teilweise" | "fehlt" in [backup] (Einzelheiten im Abschnitt „8. Datenspeicher: nur über die API“, Teil „Backup in data/pc.toml“).',
+  'Ordnergrößen werden im Hintergrund gezählt und unter %USERPROFILE%/.cache/dashboard/folders.json zwischengespeichert (im Dienst inventar.json neben dem Datenspeicher); alle 6 Stunden wird neu gezählt. Welche Ordner nie betreten werden, steht nicht im Code, sondern in der Ausschlussliste inventar-ausschluss.toml im Daten-Ordner des Inhalts (nie_betreten = ["…"], Teil des Namens, ohne Groß/Klein). Fehlt die Liste, ist sie leer oder kaputt, wird der Benutzerordner gar nicht durchlaufen: Die PC-Seite zeigt dann nur die Laufwerke und ihre Größen und einen Satz dazu (geschlossen scheitern).',
+  'Dienste, Updates und Startzeiten kommen per PowerShell (nur lesend) und werden stündlich neu geholt. Nichts davon ändert etwas am System.',
+  'Verlauf (ab Etappe 2e): /api/pc/verlauf liefert alles, was mit dem PC passiert ist, als Liste von Ereignissen: Einträge von Hand aus [[history]] in data/pc.toml, Updates (Hotfixes und Update-Ereignisse, nach KB und Tag zusammengeführt), die Installation von Windows, Sicherungen, mit Anmeldung auch Starts (sie verraten, wann jemand da war), Systemmeldungen und die Vorgänge des Dashboards. Der Sammler liest alle Hotfixes und die Starts und Updates der letzten 90 Tage und legt sie im Datenspeicher ab (pc_ereignisse); Älteres zieht nach 90 Tagen ins Archiv (pc_ereignisse_archiv), gelöscht wird nichts. Das Archiv wird gelesen, wenn seit vor jetzt minus 90 Tage liegt, also auch beim Standard (seit ist dann der Tagesanfang vor 90 Tagen). Jeder Eintrag in [[history]] bekommt eine eigene kennung (Kleinbuchstaben, Ziffern, Bindestriche, in der Datei nur einmal), etwa:',
+]
+
+[[block]]
+beispiel = '''
+[[history]]
+kennung = "netzteil-getauscht"
+date = "2025-04-01"
+title = "Netzteil getauscht"
+note = "650 W, leiser"'''
+
+[[block]]
+text = 'Ohne kennung geht es bis Schritt 6 noch (die Prüfung gibt einen Hinweis).'

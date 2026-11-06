@@ -1,0 +1,26 @@
+# Balkenplan (Baustein Gantt). Eingabe von Hand: Name, von, bis, Farbe.
+# Daten als "JJJJ-MM-TT" (oder "JJJJ-MM", dann rechnet der Server aber keine
+# Tage); oder Plan-Monate als Zahlen (von = 0, bis = 3) mit start = "JJJJ-MM".
+# Nie beides mischen.
+# Farbe ist eine Bedeutung: ok/fertig, laeuft/aktiv, wartet, problem, info, neutral.
+# Der Server zählt erledigte Balken (farbe = fertig) selbst, siehe kennzahlen.toml.
+
+[[balken]]
+name = "Phase 0: Boden lockern"
+von = "2024-03-04"
+bis = "2024-04-26"
+farbe = "fertig"
+gruppe = "Anbau"
+
+[[balken]]
+name = "Phase 1: Aussaat"
+von = "2026-09-01"
+bis = "2027-03-31"
+farbe = "aktiv"
+gruppe = "Anbau"
+
+[[balken]]
+name = "Phase 2: Ernte"
+von = "2027-04-01"
+bis = "2027-06-30"
+gruppe = "Abschluss"

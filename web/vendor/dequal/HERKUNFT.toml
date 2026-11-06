@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "dequal"
+version = "2.0.3"
+quelle = "https://registry.npmjs.org/dequal/-/dequal-2.0.3.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA=="
+lizenz = "MIT"
+lizenzdatei = "license"
+dateien_im_tarball = 11
+entfernt = ["readme.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 10
+inhalt_sha256 = "1cee241dd9c65d74570fbcfc20b745574e4454b9e370f0db90916c3141c508f4"

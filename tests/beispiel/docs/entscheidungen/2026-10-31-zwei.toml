@@ -1,0 +1,5 @@
+# Gleiches Datum wie eins: nach dem Namen absteigend. `was` als Liste kommt unter weitere.
+datum = "2026-10-31"
+thema = "Zweite Entscheidung"
+urteil = "Ja"
+was = ["Punkt eins", "Punkt zwei"]

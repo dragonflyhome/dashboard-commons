@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "@floating-ui/utils"
+version = "0.2.12"
+quelle = "https://registry.npmjs.org/@floating-ui/utils/-/utils-0.2.12.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="
+lizenz = "MIT"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 19
+entfernt = ["README.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 18
+inhalt_sha256 = "d71b3d2907aa5340fbc0c8d912fe9d87cbe80b97bb8cb02932e1beda63577290"

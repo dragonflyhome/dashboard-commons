@@ -1,0 +1,5 @@
+# Absichtlich kaputt: falsches Wort bei status.
+schema = 3
+title = "Kaputt: Status"
+status = "fertich"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

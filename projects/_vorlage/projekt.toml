@@ -1,0 +1,23 @@
+# Vorlage für ein Projekt in neuer Form (Etappe 4v). Kopieren nach
+# projects/<slug>/ und anpassen; Erklärung oben in Seite.svelte.
+# Ordner, die mit _ beginnen, lädt das Dashboard nie als Projekt.
+schema = 3
+title = "Vorlage"
+status = "geplant"             # aktiv | pausiert | geplant | fertig | problem | archiviert
+# archiviert_seit = "2026-11-01"  # nur mit status = "archiviert": seit wann (Archivansicht)
+summary = "Ein Satz für die Kachel auf der Startseite."
+order = 900
+chat = "Name des Chats"
+backup = "gelb"                # rot | gelb | grün
+backup_note = "Kurz: wo die Sicherung liegt"
+open = ["Erster offener Punkt", "Zweiter offener Punkt"]
+
+# Unterseiten: je Eintrag eine Datei seiten/<name>.svelte.
+# [[seiten]]
+# name = "plan"
+# title = "Der Plan"
+# order = 10
+
+# [[links]]
+# name = "Ordner"
+# url = "C:/Users/<name>/Projekte/<slug>"

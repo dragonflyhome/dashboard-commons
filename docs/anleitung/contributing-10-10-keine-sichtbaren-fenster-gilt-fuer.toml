@@ -1,0 +1,17 @@
+# Abschnitt „10. Keine sichtbaren Fenster (gilt für alle Chats)“ (Etappe 6b, Format wie docs/zielbild).
+titel = '10. Keine sichtbaren Fenster (gilt für alle Chats)'
+reihenfolge = 110
+
+[[block]]
+text = 'Kein Prozess, den ein Chat oder das Dashboard startet, öffnet ein sichtbares Fenster:'
+
+[[block]]
+punkte = [
+  'Rust: Kindprozesse nur über dienst::programme::befehl / befehl_async (Werkzeuge an festen Orten) oder eigener_befehl (eigene exe, current_exe); alle setzen CREATE_NO_WINDOW. Für einen fertigen Command gibt es ohne_fenster / ohne_fenster_async. Ein Test (kein_command_ausserhalb in src/dienst/programme.rs) schlägt fehl, sobald irgendwo sonst in src/ oder tests/ ein Command direkt entsteht.',
+  'PowerShell: Start-Process -WindowStyle Hidden.',
+  'Edge nur mit --headless.',
+  'Testserver nur im Hintergrund, nie in einem eigenen Konsolenfenster.',
+]
+
+[[block]]
+text = 'Warum: Startet ein Prozess ohne eigene Konsole (Bote, Dienst, Aufgabenplanung) ein Konsolenprogramm wie git, winget, powershell oder cmd, legt Windows sonst jedes Mal ein neues Konsolenfenster an. Es blitzt auf dem Bildschirm auf, auch in Bildschirmfreigaben.'

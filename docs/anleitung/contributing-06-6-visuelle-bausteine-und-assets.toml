@@ -1,0 +1,61 @@
+# Abschnitt „6. Visuelle Bausteine“ (Etappe 6b, Format wie docs/zielbild).
+titel = '6. Visuelle Bausteine und Dateien in assets/'
+reihenfolge = 106
+
+[[block]]
+text = '''
+Die Seite.svelte (Abschnitt 11) nimmt ihre Bausteine aus $katalog; jeder steht mit lebendem Beispiel und Code zum Abschreiben unter http://localhost:8787/katalog:'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Baustein', 'Wofür']
+zeilen = [
+  ['Kennzahlen', 'Kacheln mit einer Zahl und einem Satz (daten/kennzahlen.toml)'],
+  ['Ampel', 'Zeilen mit grün, gelb, rot (daten/ampel.toml)'],
+  ['Fortschritt', 'Balken mit Anteil (daten/fortschritt.toml)'],
+  ['Zeitstrahl', 'Ereignisse auf der Zeitachse (daten/zeitstrahl.toml)'],
+  ['Gantt', 'Balkenplan mit Phasen (daten/gantt.toml)'],
+  ['Kanban', 'Spalten mit Karten (daten/kanban.toml)'],
+  ['Fluss', 'Flussdiagramm (daten/fluss.toml)'],
+  ['Fragen', 'Fragen an den Inhaber aus daten/fragen.toml, zum Lesen'],
+  ['Abschnitt', 'Karte mit Überschrift und kurzer Unterzeile'],
+  ['Absatz', 'ein Absatz Fließtext, direkt in der Seite'],
+  ['Text', 'langer Text aus TOML, Leerzeile beginnt einen Absatz'],
+  ['Liste', 'Aufzählung, auf Wunsch nummeriert'],
+  ['Hinweis', 'hervorgehobener Kasten, Farbe nach Bedeutung'],
+  ['Reiter', 'zwei oder mehr Pfade nebeneinander, je ein Reiter'],
+  ['Knopf', 'Knopf mit Fokus und Tastatur'],
+  ['Schalter', 'Ein/Aus'],
+  ['Auswahl', 'Auswahlliste'],
+  ['Dialog', 'Fenster über der Seite, hält den Fokus'],
+  ['Kurzinfo', 'kleiner Hinweis beim Berühren (Tooltip)'],
+  ['Aufklapper', 'Bereich zum Auf- und Zuklappen'],
+  ['Tabelle', 'breite Tabelle, rollt in ihrem eigenen Rahmen'],
+  ['Menue', 'Menü mit Einträgen (Links in einer Klappliste, ab 3b)'],
+  ['Schublade', 'Leiste, die von links über die Seite kommt (wie die Seitenleiste am Handy)'],
+  ['Klappfeld', 'kleines Feld mit Inhalt an einem Knopf (wie die Glocke)'],
+  ['Minilinie', 'kleiner Verlauf als Linie, Werte 0 bis 100 (wie das PC-Symbol)'],
+  ['Bild', 'Foto oder Grafik aus assets/'],
+]
+
+[[block]]
+titel = 'Bilder und fertige Grafiken'
+text = '''
+Auch eigene HTML-Dateien dürfen in assets/ liegen (z. B. ein interaktiver Fahrplan) und werden als Seite ausgeliefert, mit denselben Schranken wie bei „Vorschau einer Website“: alles eingebettet, nichts aus dem Netz, keine Formulare.
+
+Eine Datei in projects/<slug>/assets/ ablegen (png, jpg, jpeg, gif, svg, webp, pdf, txt, csv, json, html; einfache Dateinamen ohne Unterordner, Regeln in „Prüfen der Projekte: pruefe“). Die Adresse ist dann http://localhost:8787/projects/<slug>/assets/<datei>, für assets/kosten.svg also http://localhost:8787/projects/<slug>/assets/kosten.svg; in der Seite zeigt sie der Baustein Bild. SVG-Dateien werden als Bild gezeigt, nicht in die Seite eingebettet; die Farben der Seite (Dark/Light) greifen darin nicht, also Farben wählen, die auf hell und dunkel lesbar sind, oder einen eigenen Hintergrund setzen.'''
+
+[[block]]
+titel = 'Vorschau einer Website (Feld vorschau)'
+text = 'Es gibt keine eigenen Websites mehr, die Entwürfe leben im Dashboard. So kommt ein Entwurf auf die eigene Seite:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Alles in eine HTML-Datei packen, z. B. assets/vorschau.html: CSS im <style>, Bilder als data:-URL oder als Datei daneben in assets/ (<img src="bild.jpg">), Schriften des Systems. Mehrere Unterseiten kommen untereinander mit Sprungmenü (<a href="#angebot">).',
+  'In projekt.toml eintragen: vorschau = "assets/vorschau.html". Erlaubt ist nur ein einfacher Dateiname in assets/ mit Endung .html oder .htm; sonst meldet die Startseite die Seite als fehlerhaft.',
+  'Fertig: In der Seitenleiste steht unter dem Projekt „Vorschau“, die Kachel zeigt einen Hinweis, und unter http://localhost:8787/projects/<slug>/vorschau läuft der Entwurf im Rahmen (Vollbild, in neuem Tab öffnen).',
+]
+
+[[block]]
+text = 'Was im Rahmen gilt (technisch erzwungen, nicht nur Bitte): keine Verbindung nach außen (keine Skripte, Schriften, Bilder aus dem Netz, kein fetch), keine Formulare, kein Zugriff auf das Dashboard oder dessen Daten. Eigene eingebettete Skripte für Klappmenüs oder Reiter dürfen drin sein. Was gegen die Regeln verstößt, wird vom Browser stumm weggelassen, also vorher im Rahmen ansehen. Der Entwurf ist kein Server: Er ist nur auf diesem PC sichtbar.'

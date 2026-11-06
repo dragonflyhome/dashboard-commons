@@ -1,0 +1,3 @@
+# Vendor-Kopie (Etappe 3a-3): Bytes genau wie aus der Registry, Git ändert
+# keine Zeilenenden (Prüfsummen in HERKUNFT.toml, scripts/Vendor-Pruefen.ps1).
+* -text

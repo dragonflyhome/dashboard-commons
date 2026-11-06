@@ -1,0 +1,15 @@
+# Abschnitt „Die Seite „Schlüssel““ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Die Seite „Schlüssel“'
+reihenfolge = 17
+
+[[block]]
+text = 'Unter http://localhost:8787/schluessel geben Sie Passwörter ein, die die Chats brauchen (zum Beispiel den API-Schlüssel eines Wetterdienstes). Der Wert geht direkt in den Windows-Tresor (Anmeldeinformationsverwaltung) auf diesem PC, als Eintrag ranke/<name>. Das Dashboard zeigt ihn danach nie wieder an, nur „fehlt“ (rot) oder „gespeichert am …“ (grün).'
+
+[[block]]
+punkte = [
+  'Welche Schlüssel gebraucht werden, steht in data/schluessel.toml. Die Chats tragen sich dort ein; die Datei enthält nie Werte und nie E-Mail-Adressen.',
+  'Neben dem Wert hat die Seite ein Feld „Benutzername“ (freiwillig, nur wenn der Dienst einen braucht). Er wird zusammen mit dem Wert nur im Windows-Tresor gespeichert, nie im Repo.',
+  'Nie dort eingeben: das Hauptpasswort eines Mail- oder Cloud-Kontos, Bankdaten, Ausweisnummern.',
+  'Die Chats lesen den Wert mit scripts/Schluessel-Lesen.ps1 <name>.',
+  'Schutz: nur von diesem PC, nur Ihr Windows-Konto (Abschnitt „Anmeldung“), nur Formulare vom Dashboard selbst, kein Logging des Werts, keine Adresse, die Werte zurückgibt.',
+]

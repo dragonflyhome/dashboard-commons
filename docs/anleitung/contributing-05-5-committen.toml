@@ -1,0 +1,411 @@
+# Abschnitt „5. Committen“ (Etappe 6b, Format wie docs/zielbild).
+titel = '5. Committen'
+reihenfolge = 105
+
+[[block]]
+text = '''
+Im Dashboard-Repo als Ranke committen (user.name Ranke, user.email ranke2@proton.me, nur ASCII). Commit-Nachrichten ohne Anhänge: kein Co-Authored-By, kein Generated with, keine Namen von KI-Modellen oder ihren Firmen. Der Pre-Push-Prüfer weist solche Commits ab (Abschnitt 14).
+
+Seit Teil 3 der Veröffentlichung folgt jede erste Zeile Conventional Commits 1.0: typ(bereich)!: text. Typen: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert; der Bereich in Klammern und das ! sind freiwillig, nach dem Doppelpunkt genau ein Leerzeichen. Beispiele: fix(web): Knopf reagiert wieder auf Enter, feat!: Tags nur noch v0.x. Ein Bruch steht nur als ! in der ersten Zeile; Fußzeilen gibt es nicht, auch kein BREAKING CHANGE: (das ist ein Anhang). Das gilt auch für Merges: die Standardmeldung Merge branch … geht nicht durch, die Nachricht kommt mit -F (etwa chore(merge): <zweig> nach main). Der Pre-Push-Prüfer prüft die erste Zeile jedes Commits noch einmal, auch was mit --no-verify, cherry-pick oder rebase entstand. Der Hook scripts/hooks/commit-msg prüft das beim Commit mit scripts/Vor-Push.ps1 -Nachricht (dieselben Muster wie beim Push, ohne Namenslisten); Kommentarzeilen (#) und alles ab der Schere von git commit -v schreibt der Hook aus der Nachricht heraus, auch bei -m und -F, wo git sie stehen ließe. git revert und git commit --fixup schreiben keine solche erste Zeile; dort mit -m oder im Editor eine geben (etwa revert: …). Nach squash oder fixup in git rebase -i die Nachricht von Hand zu einer ersten Zeile mit Text darunter zusammenfassen: Eine zweite typ: …-Zeile als letzter Absatz liest git als Anhang, und der Pre-Push weist sie ab.
+
+Jede Änderung mit feat, fix oder ! bekommt im selben Zweig eine Zeile unter Unreleased in CHANGELOG.txt (Keep a Changelog, Unterabschnitte Hinzugefügt, Geändert, Veraltet, Entfernt, Behoben, Sicherheit). Tags: nur leicht (git tag ohne -a, -s, -m), nur v0.MINOR.PATCH (etwa v0.1.0), nur auf Commits der First-Parent-Linie von main (Merge-Commits oder der Wurzel-Commit von Hochladen.ps1 -Wurzel), und nur über scripts/Hochladen.ps1 -Tag, getrennt vom Push von main (main und Tag zusammen nur mit git push --atomic; Hochladen.ps1 schickt sie ohnehin getrennt); der Pre-Push-Prüfer weist alles andere ab (Abschnitt 14).
+
+Versionen (Teil 4, Regel 0.x): Vor 1.0 bleibt die erste Zahl 0. Enthält eine Fassung einen Bruch (! in einer ersten Zeile) oder etwas Neues (feat), steigt die mittlere Zahl und die letzte wird 0 (0.1.3 wird 0.2.0); nur Behebungen (fix) heben die letzte (0.2.0 wird 0.2.1). Abwärtskompatibilität gibt es vor 1.0 nicht: Alte Felder, Formen, Wege und Schalter fallen ohne Übergang weg; der Bruch wird im Changelog genannt, nicht gestützt. Ausgenommen ist der Datenspeicher: Bei einer neuen Form wird er weiter umgestellt (Umbauschritte in SCHRITTE, Abschnitt 8), mit Sicherung vorher, nie aufgegeben. Ein Bruch steht in CHANGELOG.txt als eigene Zeile unter Geändert oder Entfernt, die mit „- Bruch: “ beginnt (etwa - Bruch: Schalter -Alt fällt weg, stattdessen -Neu). Eine Fassung geht so: im Zweig die Überschrift Unreleased in <version> - JJJJ-MM-TT umbenennen (etwa 0.2.0 - 2026-11-20, die Strichzeile darunter bleibt) und darüber ein neues leeres Unreleased mit Strichzeile anlegen; version in Cargo.toml setzen und Cargo.lock mit cargo check nachziehen lassen; version in web/package.json und in web/package-lock.json (oben und unter packages."") gleich setzen; das als eigener Commit chore(release): v0.x.y, über den Zweig mit Merge-Commit nach main; dann ein leichter Tag v0.x.y auf diesen Merge-Commit und scripts/Hochladen.ps1 -Tag v0.x.y. Die erste Fassung v0.1.0 geht ebenso über chore(release): v0.1.0 nach main, dann aber scripts/Hochladen.ps1 -Wurzel und der Tag auf den Wurzel-Commit (git tag v0.1.0 refs/heads/oeffentlich, Abschnitt 14). Der Wächter versionen_gleich_und_changelog_geordnet (tests/vor_push.rs) prüft: die Version in Cargo.toml, Cargo.lock, web/package.json und web/package-lock.json ist gleich, ihre erste Zahl 0; CHANGELOG.txt beginnt nach dem Kopf mit Unreleased; jede weitere Überschrift hat die Form x.y.z - JJJJ-MM-TT, absteigend; die oberste ist genau die Version aus Cargo.toml (vor der ersten Fassung gibt es keine). Der Pre-Push-Prüfer nimmt einen Tag v0.x.y nur, wenn im getaggten Commit Cargo.toml unter [package] genau eine Zeile version mit dieser Version hat und der oberste Abschnitt nach Unreleased in CHANGELOG.txt dieser Fassung gehört, mit gültigem Datum (Abschnitt 14).
+
+Änderungen am Rust-Code bitte mit dem Betreuer des Dashboards absprechen.
+
+Änderungen an src/ und web/ macht nur der Betreuer des Dashboards, und zwar in seinem eigenen Worktree (../dashboard-neu, Testport 8788), nicht im gemeinsamen Arbeitsbaum. Umgekehrt kann ein fremdes Projekt die Tests des Dashboards nicht brechen: cargo test liest nur das feste Beispiel-Repo in tests/beispiel/, nie die echten projects/. Der Beispielbenutzer dort heißt ranke, benannt nach dem Hauptentwickler Ranke.'''
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: der Vertrag aus einer Quelle'
+text = 'Typen, die zwischen Server und Oberfläche oder aus den TOML-Dateien der Chats kommen, gibt es nur einmal, in Rust:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Neue Typen nur in src/vertrag/ anlegen (API-Antworten in api.rs, Kopf in projekt.rs, Bausteine in daten.rs), mit #[derive(TS)].',
+  'Neue Wurzeltypen in src/vertrag/export.rs in die Liste wurzeln! eintragen; was sie enthalten, kommt von selbst mit.',
+  'cargo test ausführen. Der erste Lauf schreibt web/src/lib/vertrag/ neu und schlägt fehl, wenn etwas abwich; der zweite ist grün. Die Dateien in web/src/lib/vertrag/ mit einchecken.',
+  'Nie von Hand in web/src/lib/vertrag/ schreiben. Die Oberfläche importiert nur aus $vertrag; Typen nur für die Oberfläche bleiben in web/.',
+  'Ein neues Pflichtfeld in einer TOML-Datei braucht einen Fehlersatz: ein Beispiel für das fehlende Feld in src/vertrag/lesen.rs (wie bis = "2027-01"), damit die Meldung sagt, wie es richtig geht.',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Dienst und Bote'
+nummeriert = true
+punkte = [
+  'Eine neue Aufgabe des Boten nur über zwei Stellen: die Anfrage und die Antwort in src/vertrag/bote.rs, die Ausführung in src/bote/aufgaben.rs.',
+  'Der Bote gibt nie einen Wert aus dem Tresor zurück, auch nicht in Fehlersätzen oder im Protokoll. Werte auf dem Weg zum Tresor stecken in Wert (wird überschrieben, Debug zeigt nur „verborgen“).',
+  'Neue Features von windows-sys nur zentral in Cargo.toml eintragen (eine Liste für Dienst, Pipe, Tresor und SSPI).',
+  'Tests nehmen ihre eigene Pipe (dashboard-test-…) und ihre eigene dienst.toml in einem Temp-Ordner, wie tests/bote_pipe.rs und tests/dienst_konsole.rs. Nie die echte Pipe dashboard-bote, nie C:/ProgramData/Dashboard.',
+  'Den Testserver (8788) aus einer Kopie der exe starten, nicht direkt aus target/, damit cargo build die Datei nicht blockiert findet.',
+  'Nie als Administrator testen. Der Dienstmodus (--dienst) wird nur in Etappe 7a2 am echten Dienst geprüft; bis dahin --konsole --einstellungen.',
+  'Lesewege im Server (Etappe 2d) lesen Projekte nur aus dem ContentStore (state.inhalt.bestand()), nie mit seite::load_all oder seite::daten_lesen von der Platte. Was die Seite neu laden muss, sagt der Store mit projekt, daten oder inhalt; ein neues change nur für Dinge, die nicht aus Dateien kommen (Aufgaben, Anstehend). Tests bekommen mit AppState::fuer_tests einen Store, der bei jedem Zugriff abgleicht; für einen anderen Projektordner .mit_projekten(ordner).',
+  'Scheitert scripts/Dienst.ps1 -Neustart im Schritt cargo build --release mit „Zugriff verweigert (os error 5)“, hielt meist ein anderes Programm (Virenscanner, Indexdienst, ein Editor) kurz eine Datei in %LOCALAPPDATA%/Dashboard/cache/dienst/release fest. Der Dienst läuft dann unverändert weiter. So geht es weiter: kurz warten, dann scripts/Dienst.ps1 -Neustart noch einmal (kein Bau von Hand: ohne CARGO_TARGET_DIR auf cache/dienst landet er in einem anderen Ordner). Den Platz nicht löschen und kein cargo clean: Der kalte Neubau dauert Minuten und hilft gegen die kurze Sperre nicht.',
+]
+
+[[block]]
+titel = 'Werkzeuge: immer installiert, vor jedem Commit formatieren'
+text = 'Prettier, ESLint, Stylelint, svelte-check, rustfmt und clippy sind immer installiert. Fehlt eines, darf ein Chat es ohne Rückfrage nachinstallieren: die Node-Werkzeuge mit npm install in web/ des Code-Repos (nie npx mit Download), rustfmt und clippy mit rustup component add. Jede andere Installation braucht weiter das Ja des Inhabers. Vor jedem Commit:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'In web/: npx --no-install prettier --write auf die geänderten Dateien, dann npm run lint (Prettier-Prüfung, ESLint, Stylelint) und npm run check (svelte-check).',
+  'Rust: cargo fmt --all (rustfmt.toml: max_width = 160) und cargo clippy --workspace --all-targets -- -D warnings ohne jede Warnung. Ein #[allow(clippy::…)] nur an der einzelnen Stelle mit einem Kommentar fürs Warum, nie für ganze Kisten oder Module. Der Hook prüft beides (cargo fmt --all --check und clippy mit -D warnings), sobald eine .rs-Datei gestagt ist; außer auf main bricht er ab, wenn CARGO_TARGET_DIR fehlt (sonst baute clippy kalt im Worktree). Merges, --no-verify und Toolchain-Wechsel prüft der Hook nicht: nach jedem Merge auf main cargo clippy --workspace --all-targets -- -D warnings. Reine Formatierungs-Commits stehen in .git-blame-ignore-revs (einmal git config blame.ignoreRevsFile .git-blame-ignore-revs).',
+  'Der Hook scripts/hooks/pre-commit prüft vor jedem Commit das Prettier-Format der gestagten Dateien unter web/ (und bei gestagten .rs-Dateien, Cargo.toml oder Cargo.lock Rust mit cargo fmt --check und clippy --locked, siehe oben) und ändert nie eine Datei. Ohne solche Dateien endet er sofort; fehlt web/node_modules (im Worktree: Junction auf das des Haupt-Repos), bricht er mit einem Satz ab. Eingehängt wie der Pre-Push-Prüfer mit git config core.hooksPath scripts/hooks. --no-verify nur nach Ja von Architektur oder Inhaber.',
+  'pruefe findet die Werkzeuge immer im Code-Repo, auch wenn es aus dem Inhaltsordner läuft: Es nimmt das Repo, aus dem das Programm gebaut wurde. Im Inhaltsordner ist kein eigenes node_modules nötig.',
+  'So fällt ein Formatfehler wie in Etappe 6a vor dem Commit auf und nicht erst auf main.',
+  'Nach jedem Merge, der Skripte (scripts/*.ps1) ändert, die Tests auf main mit DASHBOARD_TESTS_VOLL=1 laufen lassen: Wächter wie skripte_schatten laufen nur dann.',
+  'Zeitgrenzen in Tests (etwa „lesend schnell“) gelten im normalen Lauf streng; nur mit DASHBOARD_TESTS_VOLL=1, wenn alle Tests gleichzeitig laufen, dürfen sie großzügiger sein (dashboard::zeitgrenze, mit einem Kommentar fürs Warum). Ausreißer mit anderer Ursache (Datei belegt, Temp-Datei weg) werden an der Ursache behoben, nie mit längeren Grenzen oder #[ignore].',
+]
+
+[[block]]
+titel = 'Bauordner warm halten, einmal täglich aufräumen'
+text = 'Regeln: Bauordner werden einmal täglich gelöscht, nicht nach jeder Arbeit; wer jedes Mal neu baut, baut immer kalt. Ein Bau gehört in den Anwendungs-Cache von Windows, nicht in die Ordner der Chats. Ablage nach Windows-Standardpfaden: Cache nach %LOCALAPPDATA%/Dashboard/cache, Daten des Dienstes nach %PROGRAMDATA%/Dashboard, eigene Programmdaten nach %APPDATA%, Quellen nach %USERPROFILE%/dev.'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Rust: ein fester Cache je gleichzeitig bauender Rolle unter %LOCALAPPDATA%/Dashboard/cache/: arbeit-1 und arbeit-2 (Arbeiter und Prüfläufe des Betreuers des Dashboards), abnahme (Architektur), dienst (nur scripts/Dienst.ps1 -Neustart). Jeder Lauf setzt CARGO_TARGET_DIR auf seinen Platz und nur auf ihn: Zwei Bauten im selben Ordner kollidieren (eine laufende Test-Exe lässt sich nicht neu linken, „Permission denied“), und Zweige überschreiben sich gegenseitig die Kiste dashboard. Nie dev/dashboard/target: Den nutzt nur main für eigene Aufrufe wie pruefe (target/release veraltet, wenn dort niemand baut; npm run pruefe nimmt die neueste Fassung, auch die aus cache/dienst). Der Dienst kommt aus cache/dienst (release, mit Zusammenbau release/zusammenbau) und nie von einem Zweig; Dienst.ps1 setzt CARGO_TARGET_DIR nur für seine cargo-Aufrufe und stellt danach den vorigen Wert wieder her. Nach der täglichen Bereinigung baut das erste Einspielen kalt und dauert entsprechend länger; für den Bau hat Dienst.ps1 keine Frist, und der Dienst läuft währenddessen weiter (die 60 s gelten erst nach dem Austausch). Edge-Proben (tests/skripte/*-edge.mjs) nehmen ohne --exe target/debug des Repos: die eingespielte Fassung mit --exe %LOCALAPPDATA%/Dashboard/cache/dienst/release/dashboard.exe (mit Zusammenbau release/zusammenbau/dashboard.exe), einen Zweig mit --exe auf seinen Platz (etwa cache/arbeit-1/debug/dashboard.exe).',
+  'Die Arbeitsordner der Assistenten (im Temp-Ordner) enthalten nur Quellen und kleine Zwischenergebnisse, keine Bauordner. Sie bleiben klein.',
+  'Node: web/node_modules im Worktree ist immer eine Junction auf das node_modules des Haupt-Repos, nie eine Kopie; am Ende nur den Link entfernen. Vite- und ESLint-Cache liegen heute in node_modules/.vite und node_modules/.cache und werden über die Junction geteilt; der Umzug nach %LOCALAPPDATA%/Dashboard/cache/<werkzeug> ist eine Code-Änderung (vite cacheDir, --cache-location, ESLINT_CACHE) und kommt in einem eigenen Zweig.',
+  'Aufräumen einmal täglich (geplante Aufgabe, scripts/Bauordner-Bereinigen.ps1): Das Skript verlangt -Wurzel, den Arbeitsordner der Assistenten (darin je Projekt ein Ordner mit einem Unterordner je Sitzung; geräumt wird nur in dessen Arbeitsbereich, dem Unterordner scratchpad); eine -Wurzel, die das Benutzerprofil, %APPDATA% oder %LOCALAPPDATA% ist oder umfasst, lehnt es als zu breit ab. Mit -Scharf ist auch -Tabu Pflicht (die Ordner, die nie angefasst werden). Wurzel und Tabu stehen nur in der geplanten Aufgabe, nicht im Code; ein Probelauf geht über -Selbsttest oder gegen eine Testwurzel. Jeder Cache-Platz mit CACHEDIR.TAG unter %LOCALAPPDATA%/Dashboard/cache wird ganz geleert, wenn gerade kein cargo und kein rustc läuft (innerhalb des Tages bleibt er warm, der erste Bau am Tag ist kalt). Liegt darin EINSPIELEN.lock (Dienst.ps1 -Neustart legt sie vor dem ersten cargo-Aufruf an, mit Zeit und Prozess-ID, und entfernt sie, sobald die Programme in bin liegen oder nichts eingespielt wurde), bleibt der Platz; ist sie älter als ein Tag, gilt sie als verwaist, und der Platz wird geleert (eine Zeile im Protokoll). Dazu Rust-Bauordner in den Arbeitsordnern der Sitzungen, in die seit einem Tag nichts geschrieben wurde, und in Sitzungen, die nicht laufen, Kopien von node_modules (nie Links), .vite, .eslintcache und *.tmp, die seit einem Tag unverändert sind. Ohne -Scharf nur ein Trockenlauf. Bauten in web/builds räumt der Bote selbst auf. Nie dev/dashboard/target/release, nie den Bauordner eines laufenden Baus.',
+  'Verläufe und Daten der Assistenten werden nie gelöscht, von keiner Routine; das Skript nimmt ihre Ordner mit -Tabu aus.',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Token und Stil-Prüfung'
+text = 'Alle Farben, Schatten und Schriften stehen als Token in web/src/app.css (:root, darunter das dunkle Thema). Nur dort stehen feste Werte; überall sonst nur var(--…).'
+
+[[block]]
+[block.tabelle]
+spalten = ['Gruppe', 'Token']
+zeilen = [
+  ['Flächen und Text', '--bg, --card, --text, --muted, --line, --papier (weiß in beiden Themen, für Bilder und die Vorschau), --code-bg, --overlay'],
+  ['Akzent', '--accent, --accent-soft, --on-accent (Text auf --accent), --accent-text (Akzent als Text auf --accent-soft), --fokus'],
+  ['Bedeutung als Ton (Punkte, Balken, Ringe)', '--ok, --warn, --bad, --info, --done, --plan; --on-warn für Text auf --warn'],
+  ['Bedeutung als Text', '--ok-text, --warn-text, --bad-text, --info-text (nie --ok usw. als Textfarbe)'],
+  ['Bedeutung als Fläche', '--ok-soft, --warn-soft, --bad-soft, --info-soft, --done-soft, --plan-soft (ab 3a-3); über die Klasse b-… als --ton-soft'],
+  ['Reihen (Anteile, Konfetti)', '--reihe-1 bis --reihe-10, im Code über reihe(n) aus #lib/reihen.ts'],
+  ['Schatten und Ringe', '--shadow, --shadow-hover, --shadow-gross, --shadow-bild, --ring-akzent, --ring-hof, --puls, --puls-weit'],
+  ['Schrift', '--font, --mono; Größen --text-2xs (0,75rem), --text-xs, --text-sm, --text-md, --text-base (1rem), --text-lg, --text-xl, --text-2xl … --text-5xl (2rem), --text-h1, --text-riesig, --text-em-lg/--text-em-md/--text-em-sm (relativ), --text-grafik/--text-grafik-klein (SVG)'],
+]
+
+[[block]]
+text = 'So geht es:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Farbe mischen ist erlaubt, wenn alles Token sind: color-mix(in srgb, var(--accent) 22%, transparent). Daneben gelten nur transparent, inherit und currentColor, dazu none für box-shadow, fill und stroke. Nicht initial oder unset: color: initial gibt im dunklen Thema schwarzen Text.',
+  'Bedeutungen (ok, laeuft, wartet, problem, info, neutral) bekommen ihre Klasse nur von klasse() aus #lib/bedeutung.ts (b-ok, b-laeuft, …). Die Klasse setzt --ton; wer malt, schreibt background: var(--ton, var(--plan)) oder stroke: var(--ton, …). Seit 3a-3 setzt sie dazu --ton-soft, die ruhige Fläche derselben Bedeutung (background: var(--ton-soft), Text darauf bleibt --text; so Hinweis und die Widgets). Die alten Klassen st-…, c-…, ton-… und ampel-… gibt es nicht mehr.',
+  'Fehlt ein Token, kommt es in app.css dazu, hell und, wo nötig, im dunklen Block. Danach npm run test: web/src/kontrast.spec.ts liest app.css und verlangt für Text 4,5:1 und für Punkte, Balken und Fokusrahmen 3:1, in beiden Themen. Ein neues wichtiges Paar dort in PAARE eintragen. Die Reihen und --warn/--warn-text stehen in OFFEN mit ihrem gemessenen Wert auf zwei Stellen und der Schwelle; in 3a+ hat Architektur fünf Werte angehoben, der Spielraum ist klein (3,10:1). Ein Token-Wert ändert sich nur nach Entscheidung von Architektur, mit altem und neuem Verhältnis in beiden Themen.',
+  'Geprüft wird in npm run lint (und damit in npm run verify): Stylelint (web/stylelint.config.js) für alle Stile in *.css und <style> (keine Hex-Werte, keine Farbfunktionen wie rgb(), hsl(), color() oder device-cmyk(), auch nicht groß geschrieben, keine Farbnamen; Farben, Schatten, Schriftart und -größe, auch in der Kurzform font, nur als Token; kein @import, kein url(http…) oder url(//…), kein :global, kein !important). Die Kurzform font nur als font: inherit oder mit einem Token (font: var(--…)); alles andere als Einzeleigenschaften (font-size: var(--text-sm); font-weight: 600;). In *.svelte liest Stylelint (über postcss-html) auch die Attribute style="…" und wendet dieselben Regeln an; ein {wert} darin gilt als freier Wert und fällt durch (Werte darum als style:--name={…}). web/src/farben.spec.ts prüft dazu, was Stylelint nicht sieht: style:…, fill=, stroke= und Zeichenketten in Svelte und TypeScript (und style="…" noch einmal).',
+  'Abschalten nur mit Begründung in derselben Zeile: /* stylelint-disable-next-line regel -- warum */. Ohne Begründung meldet Stylelint einen Fehler. Jede Abschaltung steht in der Liste unter „Erlaubte Abschaltungen“ (gleich unten).',
+  'Eine Regel für px gibt es noch nicht; sie kommt, wenn die Abstands-Token vollständig sind.',
+  "Hell und dunkel (ab 3b): Ohne Wahl folgt das Thema dem System. Der Schalter „Farben“ unten auf jeder Seite (#lib/thema.ts, je Browser in localStorage) setzt data-theme=\"hell\" oder \"dunkel\" am <html>; dafür hat app.css den Block :root[data-theme='dunkel'] mit denselben Werten wie der Block für das dunkle System. Ein neuer dunkler Wert kommt in beide Blöcke; kontrast.spec.ts verlangt Gleichheit und prüft alle vier Fälle. Ein Kasten mit data-thema-vorschau=\"hell\" oder \"dunkel\" zeigt sein Thema fest, egal welches gilt (Logo-Entwürfe). Das kleine Skript im head von app.html setzt die Wahl vor dem ersten Bild; die CSP erlaubt es über seine Prüfsumme, die der Server aus index.html rechnet. Wer es ändert, trägt die neue Prüfsumme im Test thema_skript_der_vorlage (src/sicherheit.rs) ein; die Fehlermeldung nennt sie.",
+  'Schriftgrößen relativ zum umgebenden Text (ab 3b auch für Projektseiten): --text-em-sm (0,85em), --text-em-md (0,9em), --text-em-lg (1,05em). Eine Projektseite schreibt also font-size: var(--text-em-lg); statt 1.05em.',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: erlaubte Abschaltungen (ab 3b)'
+text = 'Wer in web/src eine Prüfung abschaltet, schreibt den Grund in dieselbe Zeile und trägt die Stelle in die Liste unten ein. Der Test web/src/abschaltungen.spec.ts (läuft in npm run test) sucht in ganz web/src nach Kommentaren mit eslint-disable…, stylelint-disable…, svelte-ignore, @ts-expect-error, @ts-ignore, @ts-nocheck und eslint mit Regel-Einstellung und scheitert, wenn'
+
+[[block]]
+punkte = [
+  'eine Stelle nicht in der Liste steht oder öfter vorkommt als dort gezählt,',
+  'ein Eintrag der Liste keine Stelle mehr hat (dann den Eintrag löschen),',
+  'der Grund in derselben Zeile fehlt oder keine Regel genannt ist.',
+]
+
+[[block]]
+text = 'So steht der Grund:'
+
+[[block]]
+[block.tabelle]
+spalten = ['Art', 'Form']
+zeilen = [
+  ['ESLint', '// eslint-disable-next-line regel -- Grund, in Svelte <!-- eslint-disable-next-line regel -- Grund -->'],
+  ['Stylelint', '/* stylelint-disable-next-line regel -- Grund */'],
+  ['Svelte', '<!-- svelte-ignore code (Grund) -->, im Skript // svelte-ignore code (Grund); der Grund in Klammern, ohne Klammern darin. Mit -- hielte ESLint (svelte/no-unused-svelte-ignore) jedes Wort des Grundes für einen Code'],
+  ['TypeScript', '// @ts-expect-error -- Grund; @ts-ignore und @ts-nocheck nicht'],
+]
+
+[[block]]
+text = '''
+Die abschließenden Kommentare (eslint-enable, stylelint-enable) brauchen keinen Grund und stehen nicht in der Liste. Zeichenketten in Tests (etwa in stil.spec.ts), die einen solchen Kommentar nur als Beispiel enthalten, zählen nicht. Pfade relativ zu web/src.'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Datei', 'Regel', 'Anzahl', 'Grund']
+zeilen = [
+  ['app.css', 'color-no-hex', '1', 'Token-Definitionen: nur hier entstehen die Farben'],
+  ['app.css', 'function-disallowed-list', '1', 'Token-Definitionen: nur hier entstehen die Farben'],
+  ['app.css', 'declaration-no-important', '2', 'Bewegung abschalten muss jede Animation überstimmen, auch die in Bausteinen; gesperrt (gestrichelter Rand, Etappe B2) muss den Rand jedes Bausteins überstimmen'],
+  ['lib/components/anstehend/EintragZeile.svelte', 'svelte/no-navigation-without-resolve', '1', 'zielHref baut mit resolve()'],
+  ['lib/components/aufgaben/AufgabenKasten.svelte', 'svelte/no-navigation-without-resolve', '1', 'Ziel liegt außerhalb der App (vom Server geprüft: https oder localhost)'],
+  ['lib/components/kopf/Brotkrumen.svelte', 'svelte/no-navigation-without-resolve', '1', 'adresse() baut mit resolve(), dazu die Sprungmarke #projekte'],
+  ['lib/components/kopf/Glocke.svelte', 'svelte/no-navigation-without-resolve', '2', 'zielHref baut mit resolve()'],
+  ['lib/components/kopf/Seitenleiste.svelte', 'svelte/no-navigation-without-resolve', '1', 'unterAdresse() baut mit resolve()'],
+  ['lib/components/LiveBadge.svelte', 'svelte/no-navigation-without-resolve', '1', 'Baut mit resolve(), dazu die Sprungmarke #dashboard'],
+  ['lib/components/OldLink.svelte', 'svelte/no-navigation-without-resolve', '1', 'Ziel liegt außerhalb der App, resolve() kennt es nicht'],
+  ['lib/components/Schloss.svelte', 'svelte/no-navigation-without-resolve', '1', 'Baut mit resolve(), dazu Rückweg (ziel) und Sprungmarke'],
+  ['lib/components/projekt/StandardDatei.svelte', 'state_referenced_locally', '1', 'Der Name ändert sich für eine Komponente nicht'],
+  ['lib/katalog/Tabelle.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Rollt der Rahmen, ist er per Tab erreichbar (WCAG 2.1.1)'],
+  ['lib/components/system/Beispiel.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Rollt das Beispiel, ist der Rahmen per Tab erreichbar (WCAG 2.1.1)'],
+  ['lib/katalog/Backlog.svelte', 'svelte/no-navigation-without-resolve', '1', 'zielHref baut mit resolve()'],
+  ['lib/katalog/Fristenliste.svelte', 'svelte/no-navigation-without-resolve', '1', 'zielHref baut mit resolve()'],
+  ['lib/katalog/Tabelle.svelte', 'svelte/no-navigation-without-resolve', '1', 'Adresse aus den Daten: https (geprüft mit sichererLink, neuer Tab) oder ein fertiger Pfad dieser App'],
+  ['lib/katalog/grund/Menue.svelte', 'svelte/no-navigation-without-resolve', '1', 'href kommt fertig mit resolve()'],
+  ['lib/katalog/widgets/Zuletzt.svelte', 'svelte/no-navigation-without-resolve', '1', 'zielHref baut mit resolve()'],
+  ['lib/katalog/zeit/Dichtestreifen.svelte', 'a11y_no_static_element_interactions', '1', 'Zeigen mit Maus oder Finger; die Tastatur bedient den Schieberegler darum herum'],
+  ['lib/katalog/zeit/Gantt.svelte', 'svelte/prefer-svelte-reactivity', '1', 'Nur ein Gedächtnis, das Zeichnen hängt nicht daran'],
+  ['lib/katalog/zeit/Gantt.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Die Fläche ist als role=application bewusst bedienbar'],
+  ['lib/katalog/zeit/Gantt.svelte', 'a11y_no_noninteractive_element_interactions', '1', 'Die Fläche ist als role=application bewusst bedienbar'],
+  ['lib/katalog/zeit/Verlauf.svelte', 'svelte/no-navigation-without-resolve', '1', 'Adresse im Dashboard vom Server, kein Routenname'],
+  ['lib/katalog/zeit/Verlauf.svelte', 'a11y_no_static_element_interactions', '1', 'Die Hülle fängt nur die Pfeiltasten der Einträge darin ab'],
+  ['lib/katalog/zeit/Verlauf.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Einstieg für die Tastatur auf der Heute-Linie'],
+  ['lib/thema.svelte.spec.ts', '@typescript-eslint/no-implied-eval', '1', 'Führt genau das Skript aus app.html aus, wie der Browser es täte; nur im Test'],
+  ['lib/thema.svelte.spec.ts', '@typescript-eslint/no-unsafe-call', '1', 'Führt genau das Skript aus app.html aus, wie der Browser es täte; nur im Test'],
+  ['routes/anstehend/+page.svelte', 'svelte/no-navigation-without-resolve', '1', 'resolve() kennt keine Suche'],
+  ['routes/daten/+page.svelte', 'svelte/no-navigation-without-resolve', '1', 'Export kommt vom Rust-Server, keine Seite der App'],
+  ['routes/katalog/Beispiel.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Der Code rollt im eigenen Rahmen und ist darum per Tab erreichbar'],
+]
+
+[[block]]
+text = '''
+Projektseiten dürfen gar nichts abschalten: Dort wirkt stylelint-disable nicht (Abschnitt 4, „Stil-Prüfung mit Stylelint“), und @ts-nocheck, @ts-ignore, @ts-expect-error, svelte-ignore und eslint-disable… lehnt pruefe dort als Fehler ab (seit 3b-2). Für Projekte ist die Liste leer.'''
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Toolkit als Vendor-Kopie (ab 3a-3)'
+text = 'Vier Schichten (Zielbild „Formsprache“): Token (app.css), Toolkit (web/vendor/), Katalog ($katalog), Projektseiten. Das Toolkit ist Bits UI 2.20.2 (Entscheidung ui-toolkit-als-vendor). Es liefert nur Verhalten (Fokus, Tastatur, ARIA); das Aussehen kommt aus den Token.'
+
+[[block]]
+punkte = [
+  'Je npm-Paket ein Ordner web/vendor/<paket>/ (Scope als Unterordner, etwa web/vendor/@floating-ui/dom/), Inhalt unverändert aus der Registry, dazu HERKUNFT.toml: Version, Quelle, Datum, pruefsumme (sha512 des Tarballs, wie die Registry sie meldet), inhalt_sha256 (über alle Dateien der Kopie), Lizenz und entfernt (die Markdown-Dateien). Sonst ändert niemand etwas darin; web/vendor/.gitattributes hält die Zeilenenden fest.',
+  'Die file:vendor-Einträge im Lockfile haben kein integrity; npm ci prüft ihren Inhalt also nicht. Darum rechnet npm run verify (Test web/src/vendor.spec.ts, dieselbe Rechnung wie Vendor-Pruefen.ps1 -OhneNetz) inhalt_sha256 jedes Pakets nach; eine geänderte Datei im Vendor-Ordner macht verify rot.',
+  '16 Pakete: bits-ui, runed, svelte-toolbelt, @floating-ui/core, /dom, /utils, tabbable, esm-env, dequal, lz-string, clsx, style-to-object, inline-style-parser, @internationalized/date, @swc/helpers, tslib. Alle stehen in web/package.json als "file:vendor/<paket>", auch die indirekten; sonst holte npm sie doch aus dem Netz.',
+  'web/.npmrc: install-links=true (npm kopiert die Ordner nach node_modules; als Verknüpfung zählten sie als eigenes Projekt und npm holte ihre devDependencies) und ignore-scripts=true (keine Paket-Skripte beim Installieren; style-to-object hätte sonst husky aufgerufen). Darum stehen unsere Vorstufen direkt in den Skripten: build, check, lint und test rufen scripts/projekte-vorbereiten.mjs selbst auf. Ohne prepare läuft auch svelte-kit sync nicht beim Installieren: In einem frischen Stand fehlen dem Editor die Kit-Typen (./$types, .svelte-kit/tsconfig.json), bis einmal npm run check, lint oder test gelaufen ist (oder npx svelte-kit sync).',
+  'overrides in web/package.json: runed nennt SvelteKit 2 als freiwilligen Peer; wir haben SvelteKit 3, der Eintrag $@sveltejs/kit sagt npm, dass das unsere Fassung ist.',
+  "Nur web/src/lib/katalog/ importiert das Toolkit. ESLint (Block grenze in web/eslint.config.js, Liste TOOLKIT) lehnt bits-ui und alle 15 Helfer überall sonst ab, statisch (no-restricted-imports) wie dynamisch (import('…') über no-restricted-syntax); web/src/grenze.spec.ts prüft das. Ein neues Vendor-Paket kommt in TOOLKIT dazu (die Pakete unter @floating-ui/ sperrt TOOLKIT_SCOPES als ganzen Scope); derselbe Test hält die Liste gleich mit den Ordnern in web/vendor und scheitert, wenn ein Ordner fehlt oder zu viel ist. Projektseiten nehmen ohnehin nur $katalog.",
+  'Bauteile stylen: Bits UI rendert über das Snippet child unser eigenes Element ({#snippet child({ props })}<button {...props} class="…">), so greifen die Stile der Datei ohne :global. Zustände kommen als data-state, data-highlighted, data-disabled.',
+]
+
+[[block]]
+text = 'Prüfen und aktualisieren (in Katalog-Runden, nie nebenbei):'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'pwsh -NoProfile -File scripts/Vendor-Pruefen.ps1 listet Pakete, Versionen und Lizenzen, rechnet inhalt_sha256 nach, prüft package.json und Lockfile und meldet mit Netz neuere Fassungen und ob die Registry dieselbe Prüfsumme meldet (nur npm view, kein Download). -OhneNetz lässt den Abgleich weg. Exit 1 bei jedem Fund.',
+  'pwsh -NoProfile -File scripts/Vendor-Holen.ps1 -Paket bits-ui -Version <neu> holt die Fassung in einen neuen leeren Ordner unter %TEMP%/vendor-holen/, prüft Prüfsumme und Lizenz, entfernt Markdown, schreibt HERKUNFT.toml und zeigt die Abhängigkeiten neben der heutigen Kopie. Es schreibt nie in web/vendor.',
+  'Unterschiede ansehen, dann web/vendor/<paket> durch den geholten Ordner ersetzen; braucht die neue Fassung andere Helfer, diese genauso holen.',
+  'In web/: npm install --offline, npm run verify, Sichtprüfung im /katalog, node tests/skripte/katalog-edge.mjs, dann Vendor-Pruefen.ps1.',
+  'Ein Commit je Paket, nie zusammen mit eigenem Code.',
+]
+
+[[block]]
+text = 'Laufzeit ohne Netz: Im Vendor-Ordner stehen Adressen nur in Kommentaren (Doku-Links, Lizenz) und in Testdateien, die nie geladen werden (runed/dist/utilities/resource/msw-handlers.js, lz-string/tests). Keine CDN-Verweise, keine Web-Fonts, keine Telemetrie (Suche nach http, fetch, XMLHttpRequest, sendBeacon, @font-face).'
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: bauen und testen'
+text = 'Immer inkrementell bauen und testen, die Caches bleiben warm (Bauregel im Zielbild):'
+
+[[block]]
+punkte = [
+  'Nie löschen: target, web/build, web/builds, .svelte-kit, node_modules und data (samt Datenspeicher).',
+  'Kein cargo clean, kein git clean über diese Ordner. Wenn aufräumen, dann nur im eigenen Pfad, zuerst git clean -n, nie -x; zurücksetzen mit git restore. Ein Vollbau nur im Ausnahmefall, mit Grund und vorher beim Inhaber angemeldet.',
+  'Jede Meldung „bereit zur Abnahme“ nennt die Dauer von Bau und Test (seit T5 in der notiz des eigenen Bau-Schritts, zusammen mit Zweig und Commit); wird es spürbar langsamer, melden statt neu bauen.',
+  'npm run lint nutzt seit 3b einen ESLint-Cache unter web/node_modules/.cache/eslint; der zweite Lauf ist darum schneller.',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Kopfzeile, Zugang, Fehlerseite (ab 3b)'
+punkte = [
+  'Seit der Kopfleiste, Fassung 3, gibt es kein Menü oben mehr; die Navigation steht in der Seitenleiste (Abschnitt „Kopfleiste, Fassung 3“ unten). Der Katalog-Baustein Menue bleibt für Projektseiten.',
+  'Die Oberfläche fragt einmal je Laden, ob eine Anmeldung möglich ist (web/src/lib/zugang.ts, eine Anfrage an /api/vorgaenge/uebersicht). Ohne Anmeldung gehen die geschützten Abfragen danach nicht mehr ins Netz; die Schleusen im Server bleiben unverändert.',
+  'Unbekannte Seitenadressen antworten 404; die Seite zeigt eine Fehlerseite in einfachem Deutsch mit Link zur Übersicht. Seit 3b-2 auch unter /katalog/…: Seite ist dort nur, was in KATALOG_SEITEN (src/oberflaeche.rs) steht. Eine neue Katalogseite kommt dort dazu; der Test jede_route_der_oberflaeche_ist_eine_seite meldet eine fehlende.',
+  'Neue Probe tests/skripte/pruefer-edge.mjs, mit denselben Regeln wie die anderen Edge-Proben (headless, keine Anfrage außerhalb 127.0.0.1).',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Brotkrumen, Seitenleiste, Glocke, PC-Symbol (Kopfleiste, Fassung 3)'
+text = 'Entscheidung: kopfleiste, [fassung_3], dazu Schritt 4 aus immer-aktuell.'
+
+[[block]]
+punkte = [
+  "Wo was steht: Route zu Brotkrumen und Markierung der Leiste in web/src/lib/kopfleiste.ts (ohne Svelte, getestet); die Teile unter web/src/lib/components/kopf/ (Brotkrumen, Seitenleiste, Glocke, PcSymbol), zusammengesetzt in web/src/routes/+layout.svelte. Die Projektliste der Leiste lädt web/src/routes/+layout.ts (frei, depends('api:projects'), also live wie die Startseite).",
+  'Eine Auswertungsstelle: Die Zahl der Glocke (glocke), die Zähler „wartet“ der Leiste (wartetJeProjekt) und „behoben“ (behobenUngelesen) rechnet web/src/lib/anstehend.ts aus derselben Liste wie „Anstehend“, Reiter und Tab-Titel. Gruppieren nach Schwerpunkt (leistenGruppen) und die Unterseiten (leistenUnterseiten) stehen in web/src/lib/projekte.ts. Den Schwerpunkt je Projekt schickt der Server in /api/projects (schwerpunkt, schwerpunkt_reihenfolge, wie in „Anstehend“), den Schlüssel einer Meldung in „Anstehend“ (meldung.schluessel); daran erkennt die Oberfläche Rechte-Meldungen (/lesen:) als Hinweis.',
+  'Katalog: Schublade (Bits UI Dialog, ohne Seitensperre), Klappfeld (Bits UI Popover, ohne Seitensperre) und Minilinie (nur Token, ohne Animation bei reduzierter Bewegung), je mit Beispiel im /katalog. Die Schublade schließt die Kopfleiste in afterNavigate; weil weder sie noch das Klappfeld preventScroll setzen, kann keine Sperre an <body> hängen bleiben (Lehre aus einem früheren Fehler im Menü).',
+  'Aktualitätsprüfung (web/src/lib/aktualitaet.svelte.ts): Der Server zählt Ereignisse an einer Stelle (src/api/stand.rs, eine Aufgabe auf denselben Kanälen wie die Live-Ströme) und nennt den Stand unter /api/stand (frei: nur Arten des freien Kanals) und /api/stand/voll (geschützt: alle mit Daten). Die Seite zählt mit, was ankam; der Klick auf das Blatt holt den Stand, zieht alles nach (refreshAll und die Speicher außerhalb von load) und sagt, ob etwas fehlte. Eine neue Art von Ereignis gehört in zaehlen_starten und in Aktualitaet.start.',
+  'PC-Symbol: web/src/lib/pcminute.svelte.ts merkt sich die letzten 12 Werte (pc alle 5 s, über den einen Kanal der Seite); die Stufe kommt vom Server (cpu_belegung).',
+  'Projektseiten: Die Unterseiten-Chips unter dem Titel (NeueFormRahmen) stehen nur noch unter 1024 px; darüber stehen die Unterseiten in der Leiste unter dem Projekt. Das Inhaltsverzeichnis rechts bleibt.',
+  'Prüfen: vitest (kopfleiste.spec.ts, aktualitaet.spec.ts, anstehend.glocke.spec.ts, components/kopf/*.spec.ts, katalog/grund/Schublade.svelte.spec.ts, routes/layout.svelte.spec.ts), Rust (api::stand, api::projekte::tests::liste_nennt_den_schwerpunkt) und node tests/skripte/pruefer-edge.mjs --port 8898 (Abschnitt „kopfleiste-3“: 360, 375, 768, 1280 px, hell und dunkel, mit und ohne Anmeldung).',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: freier Kanal, Live-Zustände, Schloss (Kopfleiste, Fassung 2)'
+text = 'Entscheidung: kopfleiste, [fassung_2_schloss], [fassung_2_live_zustaende] und [fassung_2_passkey_wege].'
+
+[[block]]
+punkte = [
+  'Freier Kanal /api/events/frei (src/api/events.rs, sse_frei): ohne Anmeldung, aber hinter Adresse, Herkunft und den übrigen Schleusen; frei ist nur genau dieser Pfad (sicherheit::FREIER_KANAL). Was er tragen darf, steht an einer Stelle: Art und die Erlaubnisliste FREIER_KANAL (dazu FREIE_DATEN, heute nur pc). Alle Ereignisse beider Kanäle entstehen in ereignis(), das eine nicht erlaubte Art auf dem freien Kanal zurückhält. Eine neue Art bricht den Bau im Test alle_arten_vollstaendig und muss für den freien Kanal entschieden werden; der Wächter-Test waechter_freier_strom_traegt_nichts_geschuetztes schickt auf alle Kanäle und prüft, was ankommt. Vorgänge, Antworten, Aufgaben, Schlüssel und alles Persönliche bleiben auf /api/events (7b, unverändert).',
+  'Anmeldestand in einem Wort, nur vom Server: api::passkey::wort_aus (angemeldet als Inhaber, nicht_registriert für ein fremdes Windows-Konto ohne registrierten Passkey, sonst nicht_angemeldet). Der freie Kanal schickt es als anmeldung; /api/passkey/antrag nennt es im Feld anmeldung. Der freie Kanal sieht die Windows-Anmeldung nur auf einer schon angemeldeten Verbindung; die Oberfläche nimmt darum zusätzlich die Frage beim Start (zugang.ts) und fragt nach einer 401 mit Art passkey einmal /api/passkey/antrag (freikanal.svelte.ts, verbindung.ts).',
+  'Ein Kanal je Seite: Edge erlaubt über HTTP/1.1 sechs Verbindungen je Host über alle Tabs. freikanal.svelte.ts wählt darum genau einen: angemeldet (zugang sagt da) nur den geschützten /api/events, sonst nur den freien. Der geschützte schickt als Erstes ebenfalls anmeldung (angemeldet). Beim Wechsel öffnet erst der neue; der alte schließt, sobald der neue sein erstes Ereignis hat. Der Server wacht über offene geschützte Ströme mit Passkey (sitzung_waechter, alle 5 s, dieselbe Prüfung wie die Schleuse): Widerruf, Abmelden oder „alle Sitzungen beenden“ schicken zum Schluss anmeldung mit nicht_angemeldet und beenden den Strom; bei Ablauf des Ausweises endet er ohne Wort. Die Seite setzt dann zugang zurück und wechselt zum freien.',
+  '/api/betrieb ist frei, aber ohne Pfade und ohne den Anmeldestand des Inhabers (einstellungen, bote_seit, sitzung sind null); alles steht in /api/betrieb/voll (geschützt). Der Abschnitt „Dashboard“ auf /pc fragt angemeldet den vollen Bericht. stoerungen (Kleinkram 2) nennt je Störung einen Satz ohne Pfade, bisher nur: Der Bote prüft mit einer anderen Fassung des Prüfers als der Dienst.',
+  'Fünf Zustände (web/src/lib/verbindung.ts): live, angemeldet; live, nicht angemeldet; live, nicht registriert; Verbindung nicht gefunden (seit dem Laden nie verbunden); Verbindung unterbrochen. Die ersten 3 s zeigt der Punkt keinen davon (der erste Versuch läuft). Der Punkt (LiveBadge) ist ein Link zu /pc#dashboard (DashboardStand, Daten aus /api/betrieb). Dazu steht dort höchstens einer von drei Zuständen der App-Fassung (ohne Verbindung statt „Verbindung nicht gefunden“ und „Verbindung unterbrochen“ der Satz „Keine Verbindung zum Dienst, Daten können veraltet sein“; Einzelheiten unter „Offene Tabs nach einem Bau“ im Abschnitt zum Baumeister (ab 4b)).',
+  'Schloss (lib/components/Schloss.svelte, kein $katalog-Baustein: der Katalog ist für Projektseiten, das Schloss hängt an der Anmeldung der App): offen nur angemeldet; Ziel immer /anmelden mit Rückweg (ziel) und Sprungmarke #passkey-anlegen oder #mit-passkey-anmelden. 44 × 44 px, nur Token. /anmelden zeigt angemeldet auch die Liste der Passkeys (PasskeyVerwaltung, der eigene ohne Knöpfe) und ohne Verbindung nur einen Hinweis.',
+  'Prüfen: cargo test (Wächter, Schleusen, fremdes_konto_ergibt_nicht_registriert), vitest (verbindung.spec.ts, freikanal.spec.ts, Schloss.svelte.spec.ts) und pruefer-edge.mjs (Kürzel kopfleiste-2, mit und ohne Anmeldung bei 360, 375 und 1280 px) und passkey-edge.mjs (Kürzel schloss: Schloss zu und offen, Bestätigen und Widerrufen hinter dem Schloss, eigener Passkey ohne Knöpfe, ohne Verbindung nur der Hinweis).',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Live-Lücken (Ereignisse mit Bereich)'
+text = 'Grundlage: immer-aktuell, Punkt 2.'
+
+[[block]]
+punkte = [
+  'Ereignisse mit Bereich (src/aenderungen.rs, nur geschützter Kanal): speicher (jedes Festschreiben im Datenspeicher; neue Schreibwege gehen über Speicher::festschreiben(txn, &[Bereich::…]), nie blankes txn.commit()), pc-benutzer (Ordnergrößen, Systemprogramme, Tresor, Bote da/weg) und docs (docs/entscheidungen, docs/zielbild). Der Melder bündelt 250 ms je Bereich. Ein neuer Bereich braucht einen Eintrag in Bereich, dann meldet der Vertrag (LiveBereich.ts) ihn der Seite, und BEREICH_ABHAENGIGKEIT in live.svelte.ts muss ihn auf depends-Schlüssel abbilden (svelte-check verlangt das).',
+  'Ausnahmen vom blanken txn.commit() (bewusst, je mit Grund; der Wächter-Test waechter_kein_blankes_commit in src/speicher/mod.rs hält die Liste COMMIT_ERLAUBT und schlägt bei jedem neuen blanken Commit in src/speicher an):',
+  '– mod.rs, pc_messwert_anhaengen: schreibt im Hintergrund-Faden ohne &self und meldet pc-messung danach selbst.',
+  '– migration.rs, anlegen und migrieren_mit: neue Datei und Umbau des Schemas beim Öffnen; da gibt es noch keinen Melder und keine Leser.',
+  '– sicherung.rs, kopie_schreiben: schreibt die Sicherungskopie, eine andere Datei; sichern meldet sicherung über festschreiben.',
+  '– passkeys.rs, passkey_aufgabe_anlegen und passkey_aufgabe_nehmen: Challenges, die keine Seite zeigt.',
+  '– passkeys.rs, passkey_antrag_pruefen, passkey_entscheiden (Ablauf vorab) und passkey_aufraeumen: melden passkeys und vorgaenge nur, wenn Anträge abgelaufen sind; abgelaufene Challenges und Sperren sieht niemand.',
+  '– pc_ereignisse.rs, pc_ereignisse_einspielen: meldet windows-ereignisse nur bei neuen Einträgen; bekannte bekommen nur zuletzt_gesehen. Eine neue Ausnahme kommt mit Grund in COMMIT_ERLAUBT und hierher.',
+  'Gezielt statt refreshAll: vorgang lädt nur api:vorgaenge; was ein Vorgang sonst ändert, kommt als speicher/vorgaenge (lädt zur Sicherheit auch api:vorgaenge, falls ein Schreibweg das Ereignis vorgang vergisst). refreshAll bleibt nur für nachholen. Eigene Schlüssel: api:pc:benutzer, api:verlauf (auf / und /pc), api:projekt:hallo statt api:projects.',
+  'Tabellen der Projekte (projekt-tabellen, ohne Slug): laden nur api:daten. Keine Projektseite zeigt bisher eine Modul-Tabelle (die Seiten lesen nur daten/*.toml über $projekt; nach_lesen liest keine Tabelle). Zeigt eine Seite einmal Daten aus einem Endpunkt eines Moduls (/api/projekte/<slug>/x/…), bekommt das Ereignis den Slug; der Test projektseiten_zeigen_keine_modul_tabellen (vitest) fällt dann auf.',
+  'Wachen: Bote da/weg alle 2 s, Tresor-Stand jede Minute (nur Name und ob der Schlüssel im Tresor steht, nie Werte; so fallen auch in der Anmeldeinformationsverwaltung gelöschte Schlüssel auf). Beide enden beim Abschaltsignal. systemprogramme kommt nach einem fehlgeschlagenen Boten-Lauf nur, wenn sich der Fehlersatz geändert hat. ordner_stempel sieht höchstens 2000 Einträge je Ordner an.',
+  'Assets: Der Beobachter schaut auch in assets/ jedes Projekts; eine Änderung gibt projekt mit assets: true (frei, die Dateien sind frei), auf dem geschützten Kanal dazu dateien (Namen der geänderten Dateien, höchstens 50). assets.svelte.ts hängt dann ?v=<version> an: an ein Bild nur, wenn seine Datei dabei war (ohne dateien an alle Bilder des Projekts), an die Vorschau bei jeder Änderung in assets/ (sie kann andere Dateien einbinden).',
+  'Git: repo_stempel zählt jede Datei unter refs/heads (auch Zweige mit Schrägstrich) und packed-refs.',
+  'Prüfen: cargo test (speicher_ereignis_mit_bereich, weitere_wachen_docs_und_assets, repo_stempel_sieht_zweige_mit_schraegstrich_und_packed_refs, Wächter des freien Kanals, waechter_kein_blankes_commit, bote_wache_meldet_wechsel_und_endet_bei_abschaltung, tresor_wache_sieht_geloeschten_schluessel), vitest (live.spec.ts, layout.svelte.spec.ts, live-abhaengigkeiten.spec.ts, live-luecken.svelte.spec.ts, assets.svelte.spec.ts, nachlader.spec.ts) und node tests/skripte/live-edge.mjs --port 8868 (/daten, /entscheidungen, /pc, Bild und Vorschau ohne Neuladen).',
+]
+
+[[block]]
+titel = 'System-Seiten: Anleitung, Zielbild, Entscheidungen (ab 4d)'
+text = 'In der Seitenleiste (bis Fassung 3 im Menü „Mehr“) stehen seit 4d drei Seiten über das Dashboard selbst. Keine zeigt Markdown.'
+
+[[block]]
+punkte = [
+  '/anleitung: die ganze Anleitung (seit Etappe 6b) aus docs/anleitung/*.toml über GET /api/anleitung, geschützt (Windows-Anmeldung) wie /zielbild; ohne Anmeldung zeigt die Seite den Weg über Edge. Eine Datei je Abschnitt, in derselben Form wie das Zielbild (unten) und mit demselben Baustein SystemAbschnitt. Vor dem Commit prüfen: dashboard.exe pruefe --system docs/anleitung.',
+  '/entscheidungen: eine Liste aus docs/entscheidungen/*.toml über GET /api/entscheidungen, geschützt (Windows-Anmeldung), nur lesend; ohne Anmeldung zeigt die Seite den Weg über Edge wie /anstehend. Neueste zuerst nach datum (fehlt es, gilt das Datum vorn im Dateinamen), mit Suche. Einzeln gezeigt werden datum, thema, status, von, etappe, urteil und was; alle anderen Felder klappen als Text auf (Listen als Aufzählung, Tabellen als „Tabelle · Feld“). Eine Datei, die kein gültiges TOML ist, steht als Eintrag mit einem Satz da; der Rest der Liste bleibt. Die Seite zeigt nur den Dateinamen. Der Ordner gehört der Architektur-Rolle; das Dashboard schreibt nie hinein.',
+  'Leserecht im Dienst (Hotfix 4d). Der Dienst läuft als NT SERVICE/Dashboard und darf im Repo nur, was scripts/Dienst-Einrichten.ps1 freigibt: projects, data, web, docs/entscheidungen, docs/zielbild und docs/anleitung. „Kein Zugriff“ ist nicht „Ordner fehlt“: Fehlt der Ordner, zeigen die Seiten den Platzhalter; darf der Dienst ihn nicht lesen (oder scheitert das Lesen sonst), kommt warnung mit einem Satz ohne Pfad, und die Seite zeigt ihn als Problem statt einer leeren Liste. Eine einzelne Datei ohne Leserecht ist ein Eintrag mit fehler. Beim Start und danach jede Minute prüft der Server jeden Ordner, den er liest, und meldet einen unlesbaren als Systemmeldung auf /pc („Das Dashboard darf den Ordner docs/entscheidungen nicht lesen.“); sie ist behoben, sobald er lesbar ist. Bei einer bestehenden Installation setzt der Betreuer des Dashboards das Recht für einen neuen Ordner nach dem Merge selbst, als Besitzer des Ordners (icacls, wie bei docs/zielbild). Nur wenn scripts/Dienst.ps1 -Status beim Leserecht etwas meldet, setzt der Inhaber es einmal als Administrator (ohne Profil, Windows-Taste+R, Strg+Umschalt+Enter):',
+]
+
+[[block]]
+beispiel = '''
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File %USERPROFILE%/dev/dashboard/scripts/Dienst-Einrichten.ps1 -NurLeserecht'''
+
+[[block]]
+text = 'Liest der Server künftig einen weiteren Ordner, kommt er in $leseOrdner/$leseOrdnerWennDa (Dienst-Einrichten.ps1), in RepoOrte (Dienst-Entfernen.ps1), in Leserecht (Dienst.ps1) und in meldungen::gelesene_ordner; das Recht setzt dann der Betreuer des Dashboards wie oben. Edge-Proben laufen unter dem Konto des Inhabers und sehen solche Lücken nicht.'
+
+[[block]]
+punkte = [
+  'Konto in dienst.toml: Das Konto des Inhabers steht unter [konten] als inhaber_sid, das Dienstkonto als dienst_sid. Jeder andere Schlüssel dort (auch ein älterer Name für die SID) ist ein Fehler: Dienst und Bote starten dann nicht und nennen die Zeile (Exit-Code 2).',
+  '/zielbild: liest docs/zielbild/*.toml über GET /api/zielbild, geschützt (Windows-Anmeldung); ohne Anmeldung der Weg über Edge wie bei /anstehend. Ein Abschnitt je Datei, für die Architektur-Rolle:',
+]
+
+[[block]]
+beispiel = '''
+# docs/zielbild/a-grundsatz.toml
+titel = "Grundsatz"
+reihenfolge = 1          # kleinere zuerst; ohne Angabe ans Ende, dann nach Dateiname
+text = """
+Erster Absatz.
+
+Zweiter Absatz (Leerzeile = neuer Absatz, keine Auszeichnung)."""
+punkte = ["Erstens", "Zweitens"]   # freiwillig, als Aufzählung unter dem Text
+nummeriert = true                  # freiwillig: die Punkte nummeriert (1., 2., …)'''
+
+[[block]]
+text = 'Für Tabellen und Code-Beispiele kommen Blöcke dazu (freiwillig, in dieser Reihenfolge unter text und punkte). Jeder Block hat eine freiwillige kleine Überschrift und genau einen Inhalt:'
+
+[[block]]
+beispiel = """
+[[block]]
+titel = \"Warum\"          # freiwillig: kleine Überschrift über dem Block
+text = \"\"\"Absätze wie oben.\"\"\"
+
+[[block]]
+punkte = [\"Eins\", \"Zwei\"]
+nummeriert = true        # freiwillig, auch hier: nummeriert
+
+[[block]]
+titel = \"Etappen\"
+[block.tabelle]
+spalten = [\"Etappe\", \"Was\", \"Warum\"]
+zeilen = [[\"1a\", \"…\", \"…\"], [\"1b\", \"…\", \"…\"]]   # jede Zeile so lang wie spalten
+
+[[block]]
+titel = \"Aufruf\"
+beispiel = '''
+dashboard.exe pruefe --system docs\\zielbild'''   # vorformatiert, Zeilen bleiben; ''' lässt \\ stehen"""
+
+[[block]]
+text = '''
+Eine Tabelle zeigt der Katalog-Baustein Tabelle, ein beispiel steht in Monospace mit seinen Zeilen; beide rollen am Handy im eigenen Rahmen seitlich, die Seite wird nie breiter. Alles bleibt reiner Text (kein Markdown, kein HTML). Einen Hinweis „Block n: …“ im Abschnitt gibt es für: keinen oder mehr als einen Inhalt, ein unbekanntes Feld im Block, einen falschen Typ (etwa text = 3, punkte keine Liste von Texten, titel keine Zeichenkette, nummeriert nicht true/false oder ohne punkte), eine Tabelle ohne spalten, ohne zeilen oder mit zeilen = [], eine Tabellenzeile mit falscher Länge (nur die Zeile fehlt). [block] statt [[block]] ergibt den Hinweis „Die Blöcke lassen sich nicht lesen …“. Der Rest des Abschnitts und die übrigen Blöcke bleiben sichtbar. Bekannte Felder des Abschnitts mit falschem Typ (reihenfolge = "2", titel = 3) zeigt die Seite unter den übrigen Feldern; ein solcher Abschnitt sortiert ans Ende. Vor dem Commit prüfen: ./target/release/dashboard.exe pruefe --system docs/zielbild (im Repo; jeder Ordner mit TOML-Abschnitten geht) meldet jede solche Stelle als FEHLER mit Datei und Zeile, dazu falsches TOML und die Abschnittsfelder mit falschem Typ. Es liest wie der Server (höchstens 2000 Dateien, 512 KB je Datei); grün heißt 0 Fehler, 0 Hinweise.
+
+Weitere Felder sind erlaubt und erscheinen als Text unter dem Abschnitt. Eine neue Datei ist beim nächsten Laden der Seite da, ohne Bau. Dieselbe Form (Typ SystemAbschnitt im Vertrag, Baustein web/src/lib/components/system/SystemAbschnitt.svelte) hat auch /anleitung, seit 6b aus docs/anleitung/*.toml.'''
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: der Baumeister und mehrere Inhaltsquellen (ab 4b)'
+punkte = [
+  'Wann gebaut wird entscheidet der Dienst (src/baumeister.rs): Der Beobachter schaut jede Sekunde auf die .svelte- und .ts-Dateien aller Projekte (TOML nie) und meldet nach 5 s Ruhe die geänderten an die Warteschlange; der Vorgang bau läuft in dieselbe. Ein Bau zur Zeit; was währenddessen kommt, ergibt genau einen weiteren Bau. Grün: Zeiger im Speicher umgestellt, Ereignis fassung. Rot: alte Fassung bleibt, Meldung auf der Startseite. Fehlt der Bote, gilt nur „Bote fehlt“. Ein Neustart baut nicht. Den Vorgang bau brauchen Chats nur noch, wenn der Beobachter etwas verpasst. Die Oberfläche bietet keinen Knopf zum Bauen mehr an (vorher „Jetzt bauen“, dann der Kreispfeil „Seite neu generieren“); POST /api/bauen/<slug> gibt es darum seit 6d nicht mehr.',
+  'Bau-Stand (ab 4c): src/baustand.rs liest stand.json (neu dort: gruen_um, wann die letzte grüne Kopie entstand, und rot_art, pruefung oder zusammenbau), die grünen Kopien und die Warteschlange (Baumeister::im_bau: bestellt oder im Bau). Frei in /api/projects (bau: Zustand und Zeiten, letzte_gute und gebaut_um), geschützt unter /api/bauen (dazu der Satz bei rot und nicht_geprueft, nur feste Sätze ohne Pfade). Ausgewertet wird in der Oberfläche nur in web/src/lib/projekte.ts (bauAnzeige, auch für Zählzeile und Seitenleiste); den Zustand im Browser hält web/src/lib/bau.svelte.ts, den Kopf zeigt components/projekt/BauKopf.svelte. Projekte, die schon vor dem Bau rot waren und es bleiben, melden bau jetzt rot statt grün. Abnahme 4c: bau trägt gescheitert (der ganze Bau lief nicht durch) und nur feste Sätze ohne Pfade (baumeister::ereignis_satz). Der Kopf der Projektseite zeigt nur die Statuszeile: „Seite in Ordnung“ (ohne Zeit), „Seite mit Fehler: zeigt die letzte gute Fassung von …“ (angemeldet mit dem Satz darunter), „Seite noch nicht geprüft“ (angemeldet mit Kopie „: zeigt die letzte geprüfte Fassung von …“ und dem Satz darunter; ein Ereignis bau mit gruen ändert das nicht, bis die Liste neu da ist), „Seite wird gebaut …“, „Seite noch nicht gebaut“ oder „Bau-Stand gerade nicht lesbar“. Zeitzeile, Kreispfeil zum Bauen samt Ansage, Nachholen in sessionStorage und Fokus-Rückgabe sind weg; ob die App im Tab veraltet ist oder eine neue Fassung gebaut wird, sagt jetzt der Live-Punkt (nächster Punkt). Am Server bleibt gebaut_um in stand.json und /api/projects (bote::bau::gebaut_setzen; für Chats, die Oberfläche liest es nicht). stand.json kennt rot_art pruefung, zusammenbau (aus der Kopie gebaut), ausgeschlossen (fehlt im Bau) und nicht_geprueft (ein Prüfwerkzeug lief nicht: kein Rot und kein Grün, sondern der eigene zustand nicht_geprueft, mit Kopie mit letzte_gute, ohne Kopie ohne; den Satz dazu gibt es wie bei rot nur unter /api/bauen, ohne Anmeldung zeigt der Kopf nur den Zustand, ohne aria-live; Bedeutung wartet, nicht die Farbe für Fehler); nicht lesbar heißt zustand unbekannt.',
+  'Offene Tabs nach einem Bau (web/src/lib/fassung.ts, Zustand in fassung.svelte.ts, Wache in components/FassungWache.svelte, Anzeige in components/LiveBadge.svelte). Grundsatz: Niemand muss etwas anklicken; die App aktualisiert sich selbst. Das Neuladen von selbst ist der Regelweg, ein Klick nur eine Abkürzung; jeder Text ist Information, keine Aufforderung, ohne Warnfarbe. Am Live-Punkt steht höchstens einer von drei Zuständen (lageVon, Vorrang 1 vor 3 vor 2):',
+  '– 1. Keine Verbindung (Live-Kanal weg oder nie zustande gekommen, oder ein Abruf über getJson, postJson oder standHolen bekam keine Antwort, api/antwortet.svelte.ts; eine 5xx-Antwort zählt nicht): „Keine Verbindung zum Dienst, Daten können veraltet sein“, der Link bleibt Link, der Punkt grau. Nie neu laden, auch nicht von selbst und nicht nach einem fehlenden Teil des Baus (chunkFehler); eine laufende Uhr aus 2 stoppt. Wiederverbinden wie bisher; steht der Kanal (nach Laden, Wechsel oder Lücke), holt die Wache einmal /api/stand (Name der Fassung), falls dazwischen ein fassung kam; ohne Antwort der API bei stehendem Kanal fragt sie alle 5 s (NACHFRAGE_MS). Auch direkt vor dem Neuladen von selbst fragt sie /api/stand; ohne Antwort gilt 1.',
+  "– 3. Neue Fassung wird gebaut: „Daten live, neue Fassung wird gebaut“, der Link bleibt Link, kein Neuladen. Signal: das Ereignis bau mit laeuft (Beobachter nach 5 s Ruhe oder Vorgang bau) bis gruen oder rot, dazu bau.zustand aus /api/projects (bauLage.laeuft). bau gibt es nur im geschützten Kanal. Ohne Anmeldung (keine neue Ereignisart im freien Kanal, nichts am Server) gilt nur ja/nein aus bau.zustand der Projektliste (bauLage.freiLaeuft, ohne Slug); die Wache holt die Liste (invalidate('api:projects')) beim Ereignis fassung, alle 5 s, solange sie einen Bau nennt (so endet 3 auch nach rotem Bau, der frei kein Ereignis hat), und direkt vor dem Neuladen von selbst. Grenze (shortcut im Code): den Beginn eines Baus sieht ein freier Tab erst mit der nächsten Liste. Den Schrittzähler (Bau-Tempo, Zweig C: Ereignis bau-fortschritt, nur Zahlen, nur im geschützten Kanal) zeigt angemeldet nur der Kopf der Projektseite („prüft Projekt n von m“, „prüft m Seiten“), ohne aria-live, role=status oder progressbar; frei gibt es keinen. Nach grünem Bau weiter mit 2, nach rotem ohne neue Fassung kein Zustand.",
+  '– 2. App veraltet: Das Ereignis fassung (beide Kanäle) nennt den Ordner des Baus (JJJJMMTT-hhmmss, Ortszeit beim Start des Baus); veraltet nur, wenn er neuer ist als die Fassung beim Laden (SvelteKits version, Millisekunden, wenn Vite beginnt; neuere). Gleich, älter oder unlesbar: nichts (nicht updated.check(), das nur „anders“ kennt). Dann ein Knopf (class="button", 44 px, bei 360 px ohne Überbreite) mit „Daten live, App wird gleich aktualisiert“; nach 30 s (SELBST_NEU_MS) lädt die Seite von selbst (selbstNeuLaden), ein Klick lädt sofort (location.reload()), aber nie, solange etwas offen ist. Grundsatz der Abnahme: NIE neu laden, solange Eingabe, Dialog oder Freigabe offen ist (neuLadenAufschieben: Fokus in input, textarea, select oder contenteditable, ein offener Dialog, Popover oder die Schublade, Text in einem textarea, ein ausgefülltes Feld in einem Formular, aria-busy="true" an Formular, Antwortgruppe oder Knopf, etwa eine laufende Passkey-Abfrage, und jedes Element mit data-sperrt-neuladen, etwa die Rückfragen in PasskeyVerwaltung.svelte). Dann heißt es „App wird aktualisiert, sobald du fertig bist“ (das Umschalten einmal angesagt, das Zurück nicht); der Klick lädt dann nicht, sondern setzt den Fokus ins ungesicherte Feld. Ist es vorbei, lädt sie nach 5 s (NACH_SPERRE_MS, vorher noch einmal geprüft, auch nach der Frage an /api/stand, die eine Frist von 5 s hat, STAND_FRIST_MS). Vor dem Neuladen merkt sich der Tab den Fokus (dashboard:fassung-fokus in sessionStorage: ID des Elements oder Live-Punkt) und setzt ihn danach einmal dorthin, sonst auf main. Ein Feld mit data-entwurf-gesichert (Entwurf schon so in sessionStorage, „Etwas anderes …“) zählt nur mit Fokus. Ein Tab im Hintergrund lädt, sobald er wieder sichtbar ist. Bis dahin macht beforeNavigate den nächsten Klick auf einen Link zu einer anderen Route zur vollen Navigation; nicht bei popstate (abbrechen und neu gehen verdoppelte den Verlauf), nicht innerhalb derselben Route (goto mit ?ansicht=) und nicht, solange etwas offen ist.',
+  'Nur TOML geändert: kein Bau, keine Fassung, kein Zustand. Jeder Wechsel des Zustands wird einmal angesagt (role=status am Live-Punkt; ohne Zustand leer, nach dem Neuladen nichts). Wechseln Knopf und Link, wandert ein Tastaturfokus mit. Ohne Anmeldung dieselben Texte, ohne Sätze aus dem Bau und ohne Schrittzähler. Ein fehlender Teil des alten Baus (Fehler „dynamically imported module“) lädt einmal neu statt des Fehlers, außer in Zustand 1 (Chrome und Edge melden einen Teil, der ohne Verbindung nicht kam, mit demselben Satz; dann „keine Verbindung“): in handleError (hooks.client), in der Fehlergrenze (Grenze.svelte) und im Rahmen. Schutz vor Schleifen (auch für das Neuladen von selbst, nicht für den Klick): Merker dashboard:fassung-neu-geladen in sessionStorage, kein zweites Neuladen binnen 10 s und aus derselben Fassung erst nach 5 min; darf es gerade nicht, bleibt der Hinweis, und nach 30 s kommt der nächste Versuch.',
+  'Was gebaut wird entscheidet der Bote (src/bote/bau.rs, schreibt als Inhaber): Prüfung nur der geänderten Projekte (werkzeug::projektpruefung: TOML, Assets, Scanner, Stil, ESLint mit web/eslint.projekte.config.js und --cache, svelte-check mit eigener tsconfig, Vitest mit web/vitest.projekte.config.ts), gemerkt in web/.projekte-gruen/stand.json. Grüne Projekte kommen aus ihrem Ordner in projekte.generated.ts (absolute Pfade, nur import()), rote aus ihrer letzten grünen Kopie web/.projekte-gruen/<slug>/ (sonst gar nicht). Danach svelte-check über alles; bei rot greift sie ein, höchstens zweimal, je Fundort (Kleinkram 2): Hat sich das Projekt mit dem Fund geändert (in dieser Runde geprüft, oder sein Abdruck weicht von der letzten grünen Fassung ab, etwa beim Speichern während des Baus), trifft es dieses Projekt; ist es unverändert, trifft es ein geändertes Projekt als Auslöser (svelte-check meldet einen Konflikt oft nur bei einem der beiden, etwa beim unveränderten), und der Satz nennt beide; erst ohne geändertes Projekt das Projekt der ersten Meldung. Gibt es eine grüne Kopie, wird es aus ihr gebaut (Abnahme 4c, gesamtpruefung mit gruene_kopie), sonst, oder passt auch die Kopie nicht, fliegt es raus. Zurückgestellte und ausgeschlossene Projekte prüft jeder Bau neu, auch ohne Änderung an ihnen (neu_pruefen); passt der Rest wieder, sind sie danach grün. Übersprungen heißt nicht geprüft: Läuft ein Werkzeug nicht (fehlt, bricht ab, Zeitlimit; alle melden das über projektpruefung::uebersprungen, auch Stylelint und Vitest), wird das Projekt nicht grün und nicht rot, sondern nicht_geprueft: gebaut aus seiner grünen Kopie, ohne Kopie weggelassen, ohne Rot-Meldung; jeder Bau prüft es neu. Fehlt eines der Pakete (svelte-check, eslint, stylelint, postcss-html, vitest) oder eine der Dateien web/eslint.projekte.config.js, web/vitest.projekte.config.ts, web/scripts/stil-projekte.mjs, baut der Bote gar nicht (werkzeuge_fehlen). Neben dem Inhalts-Abdruck je Projekt (bote::bau::abdruck: Elternordner, Pfade, Größen, Zeiten der .svelte- und .ts-Dateien; projekt.toml und Assets bewusst nicht) steht der Umgebungs-Abdruck (bote::bau::umgebung, über die Bytes): die Fassung des Prüfers (werkzeug::PRUEFER_FASSUNG, beim Übersetzen berechnet, ein Abdruck der .rs-Dateien in pruefer_quellen!: die Startdateien werkzeug/mod, projektpruefung, scanner, stil und inhalt/pruefung, seite, assets und alles in src/werkzeug, src/inhalt und src/vertrag, was sie über Verweise erreichen; der Test pruefer_quellen_vollstaendig verlangt genau diese Hülle), die Konfigurationen der Werkzeuge (UMGEBUNG_DATEIEN), die tsconfig-Teile von web/node_modules/$app (tsconfig.json, tsconfig/; $app/types nicht) und, nur für Projekte mit *.spec.ts, die Alias-Ziele unter web/src/lib/{vertrag,katalog,projekt}. Ändert er sich, prüft der nächste Bau alles neu, und kein altes Urteil bleibt in stand.json stehen; die grüne Kopie und „geändert“ in der Gesamtprüfung hängen nur am Inhalts-Abdruck. Neue Dateien in diesen Ordnern gehören in pruefer_quellen! (der Test pruefer_quellen_vollstaendig sagt es). Geprüft und gebaut wird immer mit dem Boten aus bin des Dienstes; Dienst.ps1 -Neustart tauscht Dienst und Boten zusammen. Auch das Einspielen (Dienst.ps1 -Neustart) fällt kein eigenes Urteil: dashboard.exe pruefe --bauliste --svelte ruft bote::bau::bauliste_einspielen, also dieselben Schritte 1 bis 3 wie der Bote (Prüfung je Projekt mit pruefe_voll, übersprungen heißt nicht geprüft, Gesamtprüfung, dieselben Kopien und derselbe stand.json, alle Inhaltsquellen), nur ohne npm run build (das macht Dienst.ps1 nach web/build). Weil dort erst später gebaut wird und ein Neustart nicht nachbaut, steht in der Liste jedes Projekt mit seiner grünen Kopie (nur_aus_kopien): Was nach der Prüfung gespeichert wird (oder ohne aktuelle Kopie), ist NICHT GEPRÜFT und kommt so nicht in den Bau. Dienst.ps1 hält dafür den Boten schon vor der Bauliste an (sonst schriebe er dieselbe Liste, Kopien und stand.json); läuft er nach 5 s noch oder kurz vor der Prüfung wieder, wird nichts eingespielt. Ein try/finally vom Anhalten bis zum Austausch startet ihn auf jedem Weg wieder (Ende, Ausnahme; Strg+C und ein geschlossenes Fenster sind nicht zugesagt), aber nur, wenn keiner mehr läuft (sonst liefen zwei Wächter); ebenso den Dienst, wenn er schon angehalten war und noch nicht wieder gestartet ist (sonst übernimmt der Rückweg). Die Ausgabe nennt ROT (fehlt), KOPIE (rot, aus der Kopie), NICHT GEPRÜFT, dann GRÜN (nur die grünen), GEBAUT (alles in der Liste) und FEHLT (ohne Seite). Bleibt die Gesamtprüfung rot, gilt wie im Boten die letzte gute Fassung: GESAMTPRÜFUNG ROT, in der Liste jedes Projekt mit grüner Kopie, keins GRÜN, der Stand bleibt (Rückgabe 0). Scheitert die Prüfung selbst (Paket fehlt, Gesamtprüfung läuft nicht), ist die Liste leer (Rückgabe 1). Beim ersten Einspielen mit neuer Prüfer-Fassung prüft es alle Projekte (je drei zugleich, je Werkzeug höchstens 120 s; an rund zwanzig Projekten etwa eine Minute, sonst Sekunden). pruefe --bauliste ohne --svelte prüft nur mit dem Scanner (für Proben-Bauten und Tests, nie zum Einspielen). Der Bote nennt seine Fassung im Hallo (pruefer); weicht sie von der des Dienstes ab (oder fehlt sie), steht in /api/betrieb unter stoerungen ein Satz. npm run pruefe nimmt dagegen das neueste target/release/dashboard.exe bzw. target/debug/dashboard.exe des Repos, nicht das des Dienstes; sein Urteil kann darum vom Bau abweichen. Tests, die Node, npm oder Module brauchen, melden ohne sie „ÜBERSPRUNGEN“ (dashboard::ueberspringen, sichtbar mit --nocapture); mit DASHBOARD_TESTS_VOLL=1 schlagen sie stattdessen fehl. Daneben (gleichzeitig) npm run build nach web/builds/<n>/ mit 120 s, BELOW_NORMAL, ohne Fenster; die Fassung gilt erst, wenn die Gesamtprüfung grün ist (sonst verworfen bzw. neu gebaut); die zwei neuesten Bauten bleiben. web/.projekte-gruen/ und web/.baumeister/ (tsconfig je Prüfung) sind in .gitignore.',
+  'Mehrere Inhaltsquellen: DASHBOARD_PROJECTS_DIR darf eine Liste sein, getrennt durch ;. Ein Eintrag ist ein Ordner mit Projekten oder ein einzelnes Projekt (erkannt an seiner projekt.toml). Ein Slug in zwei Quellen ist ein Fehler mit einem Satz (unter /api/pruefung); die erste Quelle bleibt sichtbar. vite bekommt die Quellen für server.fs.allow. Mit einem Eintrag ändert sich nichts. dienst.toml nennt die Quellen seit dem Umzug in [inhalt] (Abschnitt „14. Umzug des Inhalts“, Teil „Einstellungen: [inhalt] in dienst.toml“).',
+  'Rechenteile aus fremden Quellen (projects/<slug>/server in einer weiteren Quelle, nicht im ersten Ordner): Der Server baut und lädt sie nicht. Sie kommen erst nach Durchsicht hinein, über einen Prüfweg, den es nach 4b gibt (inhaltsquellen.toml, geteilt_merge_first). /api/pruefung nennt sie mit dem Hinweis „Rechenteil aus einer fremden Quelle wird noch nicht gebaut“; die Seite selbst geht. Der Baumeister sieht server/ ohnehin nie an.',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: das Logo tauschen (ab 3b-2)'
+text = 'Das Logo ist eine Datei: web/static/logo.svg. Gewählt ist unter /katalog/entwuerfe/logo Entwurf 1 „Blüte“; logo.svg ist dieses Logo, mit denselben Formen wie LogoBluete.svelte und den Werten von --accent, --on-accent und --warn aus app.css als feste Farben, hell und dunkel. Ändert sich einer dieser Token, kommt der neue Wert auch in logo.svg. Im Kommentar eines SVG nie zwei Bindestriche hintereinander: XML verbietet sie dort, das Bild bleibt dann leer.'
+
+[[block]]
+punkte = [
+  'Tauschen: nur web/static/logo.svg ersetzen (ein SVG ohne Skript und ohne Verweise nach außen; web/src/logo.spec.ts prüft das), dann die Oberfläche bauen (npm run build oder ein bau-Vorgang). Nichts sonst ändern: Pfad und Name bleiben gleich.',
+  'Farben im Logo: Als <img>, Favicon und App-Symbol sieht das SVG keine Token (var(--…) wirkt dort nicht), es braucht feste Farben. Damit es hell und dunkel lesbar bleibt, gilt eine von zwei Regeln: Das Logo bringt seine eigene Fläche mit (ein gefülltes <rect> über das ganze viewBox, wie beim Platzhalter), oder es wechselt seine Farben selbst mit @media (prefers-color-scheme: dark) in einem <style> im SVG. web/src/logo.spec.ts prüft, dass eine der beiden gilt.',
+  'Wo es erscheint: links in der Kopfleiste jeder Seite (Link zur Startseite), im Browser-Reiter (Favicon, <link rel="icon"> in web/src/app.html), als App-Symbol der angehefteten Edge-App (web/static/manifest.webmanifest, Größe any) und auf /katalog/entwuerfe/logo als „gewähltes Logo“.',
+  'Neu erzeugen bei jedem Tausch: die PNG-Rückfälle in web/static/icons/ (192 und 256 Pixel; Manifest, apple-touch-icon) und web/static/favicon.ico (PNG-Bilder in 16, 24, 32, 48, 64, 128 und 256 Pixel). Das macht in web/ der Aufruf node scripts/symbole-erzeugen.mjs (Edge headless ohne Fenster, eigenes Temp-Profil, freier Port; mit --ziel <ordner> --vorschau <ordner> erst zur Probe woanders hin, samt Vorschau hell und dunkel). Die PNGs zeigen das helle Thema und tragen keine Metadaten, nur die Blöcke IHDR, IDAT und IEND (scripts/Vor-Push.ps1 und web/src/logo.spec.ts prüfen das).',
+]
+
+[[block]]
+titel = 'Für den Betreuer des Dashboards: Profil und Benutzername verbergen'
+text = 'Was der Server hinausgibt, nennt nie das Profil oder den Windows-Namen des Inhabers; die Oberfläche (web/src/lib/pfade.ts, profilVerbergen) ist nur die zweite Sicherung. Die eine Funktion dafür ist datenschutz::verbergen (src/datenschutz.rs): C:\Users\<name>, auch „Benutzer“, mit / oder doppelten Rückstrichen, /c/Users/<name>, /mnt/c/…, /cygdrive/c/…, \\rechner\c$\Users\<name>, URL-kodiert (%5C, %2F, %3A, auch doppelt kodiert, file:///) und das echte Profil des Inhabers, auch außerhalb von \Users und als Freigabe oder mit \\?\ (im Dienst aus der SID), werden zu %USERPROFILE%, der Name allein (etwa DOMÄNE\<name> oder DOMÄNE%5C<name>, ab 3 Zeichen) zu %USERNAME%. Sie läuft für /api/pc, /api/pc/benutzer, /api/pc/verlauf (auch /voll), /api/betrieb (auch /voll), /api/meldungen, jedes Ereignis des freien Kanals /api/events/frei und den PC-Takt, Repo-Pfade und -Fehler, Links, Lebenszeichen und Prozesse der Projekte, jeden Befund der Prüfung, jede Fehlerantwort (AppError) und den Vertragsfehler (422) der Wege /api/projekte/…. Alles Freie muss hindurch; was hinter der Anmeldung steht (/api/anstehend, das Band, Seiteninhalte), bleibt unverändert. Wer einen neuen Weg baut, der Texte aus dem System (Pfade, Fehlermeldungen von Windows oder git) hinausgibt, schickt sie durch datenschutz::verbergen oder antwortet mit datenschutz::als_json. Seiteninhalte selbst bleiben unverändert.'
+
+[[block]]
+titel = 'Commits in einem geteilten Projekt-Repo (Overlay)'
+punkte = [
+  'Ein geteiltes Projekt-Repo enthält nur projects/<slug>/ für genau einen Slug und dashboard-version.toml (tag = "v0.1.0", ohne Adresse), dazu höchstens .gitignore und .gitattributes. Es ist ein Overlay, kein Fork: Das Code-Repo kommt getrennt dazu. Kollegen forken und schreiben Issues, Pull-Requests gibt es nicht.',
+  'Der Wurzel-Commit entsteht genau einmal (frisches Repo), danach kommt alles nur mit Merge-Commit nach main (git merge --no-ff), als Ranke, Nachricht nach Conventional Commits, ohne Anhänge.',
+  'Hooks: Das Repo hat kein scripts/. Einmal je Klon: git config core.hooksPath <code-repo>/scripts/hooks (absolut). Dann prüfen commit-msg und pre-push wie im Code-Repo; der Prüfer prüft es als Art Projekt, wenn seine Adresse in dashboard-inhalt/pruefer/repos.toml als Projekt steht.',
+  'Wörter aus den Namenslisten, die das Projekt braucht, stehen einzeln in dashboard-inhalt/pruefer/ausnahmen/<repo>.toml (erlaubt = [...]) und sind nur alleinstehend frei (mit Buchstabe oder Ziffer daneben bleiben sie ein Fund); jeder Eintrag braucht die Abnahme der Architektur-Rolle (Abschnitt 14).',
+  'Hochladen nur mit scripts/Hochladen.ps1 -Repo <projekt-repo> aus dem Code-Repo (erst -Pruefen); es lädt main nach main hoch.',
+]
+
+[[block]]
+titel = 'Commits im gemeinsamen Repo'
+text = 'Viele Chats arbeiten im selben Arbeitsbaum, und der Server liest direkt daraus. Darum gilt beim Committen:'
+
+[[block]]
+punkte = [
+  '1. Vorher git status --short ansehen: Fremde Änderungen (andere projects/, web/, src/) bleiben liegen, auch wenn sie unfertig aussehen.',
+  '2. Nur die eigenen Pfade stagen und committen:',
+]
+
+[[block]]
+beispiel = '''
+git add projects/<slug>
+git commit -F <nachricht.txt> -- projects/<slug>'''
+
+[[block]]
+punkte = [
+  '3. Nie git add -A, git add ., git commit -a, git stash, git reset, git checkout -- . oder einen Branch-Wechsel im gemeinsamen Arbeitsbaum. Wer einen Branch braucht, nimmt ein eigenes git worktree add ../<ordner> <branch> mit eigenem Port; zurück nach main kommt es über den Betreuer des Dashboards nach grünem npm run verify und cargo test.',
+  '4. Die Commit-Nachricht kommt aus einer Datei (-F), damit Backticks und Anführungszeichen nicht von der Shell verschluckt werden.',
+  '5. Nach main kommt ein Zweig nur mit Merge-Commit: git merge --no-ff <zweig> -F <nachricht.txt> als Ranke, nie Fast-Forward. Die erste Zeile folgt Conventional Commits (etwa chore(merge): <zweig> nach main), nie die Standardmeldung Merge branch …; darunter Etappe oder Modul, die Spitze des Zweigs und die Abnahme (Architektur-Rolle, Hash der Entscheidung), als Fließtext, nicht als Zeilen Schlüssel: Wert (git läse sie als Anhang). Kein Co-Authored-By und keine anderen Anhänge (der Hook commit-msg läuft auch bei git merge). Danach scripts/Dienst.ps1 -Neustart (baut aus main).',
+]

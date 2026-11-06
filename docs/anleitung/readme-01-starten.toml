@@ -1,0 +1,39 @@
+# Abschnitt „Starten“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Starten'
+reihenfolge = 11
+
+[[block]]
+text = 'Im Ordner %USERPROFILE%/dev/dashboard:'
+
+[[block]]
+beispiel = '''
+cargo run'''
+
+[[block]]
+text = 'oder bequemer:'
+
+[[block]]
+beispiel = '''
+./scripts/Start-Dashboard.ps1'''
+
+[[block]]
+text = '''
+Dann im Browser öffnen: http://localhost:8787
+
+Beim ersten Start (oder nach Änderungen in web/) muss die Oberfläche einmal gebaut werden; das Start-Skript macht das selbst, cargo run nicht:'''
+
+[[block]]
+beispiel = '''
+cd web
+npm ci
+npm run build'''
+
+[[block]]
+text = '''
+Fehlt das Build, zeigt der Server unter / nur einen Hinweis; die Daten unter /api/… gibt es trotzdem.
+
+Beenden mit Strg+C im Terminal.
+
+Die Website ist nur von diesem PC aus erreichbar. Schlüssel, Vorgänge und Daten sieht nur Ihr Windows-Konto; Windows meldet Sie dafür im Browser von selbst an (Abschnitt „Anmeldung“).
+
+Ist das Dashboard als Dienst eingerichtet (nächster Abschnitt), startet Start-Dashboard.ps1 kein zweites, sondern sagt, wie man den Dienst neu startet. Ist der Port schon belegt, hört es mit einem Satz auf (Rückgabe 3).'''

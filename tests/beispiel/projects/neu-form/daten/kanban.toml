@@ -1,0 +1,17 @@
+[[spalte]]
+titel = "Offen"
+farbe = "wartet"
+
+[[spalte.karte]]
+titel = "eins"
+hinweis = "zuerst"
+
+[[spalte]]
+titel = "Fertig"
+
+[[spalte.karte]]
+titel = "zwei"
+farbe = "grün"
+
+[[spalte.karte]]
+titel = "drei"

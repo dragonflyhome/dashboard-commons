@@ -1,0 +1,37 @@
+# Beispiel für die Einstellungsdatei des Dienstes (Etappe 7a).
+# Echt liegt sie unter C:/ProgramData/Dashboard/dienst.toml; das Einrichtungsskript
+# schreibt sie. Nur zum Nachlesen: kein Test lädt diese Datei.
+# Aufruf: dashboard.exe --konsole --einstellungen <datei>  (oder --dienst, nur der SCM)
+# Pfade mit Schrägstrich / und immer vollständig (mit Laufwerk). <name> steht
+# für den Windows-Benutzer; in der echten Datei steht dort der volle Pfad.
+
+schema = 1
+repo = "C:/Users/<name>/dev/dashboard"   # das Code-Repo: web/build, docs/zielbild
+port = 8787
+
+[pfade]
+daten = "C:/ProgramData/Dashboard/daten/dashboard.redb"
+sicherung = "C:/ProgramData/Dashboard/sicherung"
+protokoll = "C:/ProgramData/Dashboard/protokoll"   # dienst-JJJJ-MM-TT.log, 14 Tage; der Bote in bote/
+web = "C:/Users/<name>/dev/dashboard/web/build"     # freiwillig, Standard <repo>/web/build
+
+# Der private Inhalt außerhalb des Code-Repos (Umzug des Inhalts), freiwillig.
+# Ohne diesen Abschnitt gilt alles im Repo: <repo>/projects, <repo>/data,
+# <repo>/docs/entscheidungen. DASHBOARD_PROJECTS_DIR (Liste mit ;) ersetzt die
+# Liste der Quellen. Den Abschnitt hängt Dienst-Einrichten.ps1 -NurLeserecht
+# -Inhalt <ordner> an und gibt dem Dienstkonto dort das Lese-Recht.
+[inhalt]
+projekte = ["C:/Users/<name>/dev/dashboard-inhalt/projects"]   # Liste der Inhaltsquellen
+daten = "C:/Users/<name>/dev/dashboard-inhalt/data"             # pc.toml, schluessel.toml, schwerpunkte.toml, inventar-ausschluss.toml
+entscheidungen = "C:/Users/<name>/dev/dashboard-inhalt/docs/entscheidungen"
+
+[konten]
+inhaber_sid = ""   # SID deines Kontos (S-1-5-21-…), vom Einrichtungsskript eingetragen
+# SID des Dienstkontos NT SERVICE\Dashboard (S-1-5-80-…), vom Einrichtungsskript
+# aus `sc.exe showsid Dashboard` eingetragen. Der Bote gibt ihr Lesen und
+# Schreiben an der Pipe. Hier nur ein Beispielwert in der richtigen Form.
+dienst_sid = "S-1-5-80-0-0-0-0-0"
+
+[bote]
+pipe = "dashboard-bote"   # Name der Pipe ohne \\.\pipe\
+programm = "C:/ProgramData/Dashboard/bin/dashboard-bote.exe"

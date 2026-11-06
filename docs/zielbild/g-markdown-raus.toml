@@ -1,0 +1,28 @@
+titel = "Markdown raus: was aus jeder .md wird"
+reihenfolge = 9
+
+[[block]]
+text = """
+Erledigt mit Etappe 6d: Im Code-Repo und im Inhalts-Repo gibt es keine .md-Datei mehr (git ls-files "*.md" ist leer). pulldown-cmark ist aus dem Bau entfernt. Jede .md in einem Projektordner ist ein Fehler. Die Tabelle zeigt, wohin jede Datei gegangen ist.
+"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Früher", "Heute", "Wer", "Etappe"]
+zeilen = [
+  ["projects/*/page.md", "Projektordner Fassung 3", "Projekt-Assistenten", "5"],
+  ["CONTRIBUTING.md", "Seite /anleitung (docs/anleitung/*.toml)", "Bau-Assistent", "4"],
+  ["README.md", "Teil von /anleitung („Technik“, „Stolpersteine“)", "Bau-Assistent", "4"],
+  ["web/README.md", "Teil von /anleitung", "Bau-Assistent", "4"],
+  ["docs/architektur-stand.md", "Anhang auf /zielbild (früherer Architekturstand)", "Prüf-Assistent", "4"],
+  ["docs/zielbild.md", "Seite /zielbild (docs/zielbild/*.toml): Abschnitte als TOML, Bilder als Katalog-Bausteine", "Prüf-Assistent", "4"],
+  ["docs/entscheidungen/*.md", "docs/entscheidungen/*.toml. Die Seite /entscheidungen (eine Liste aus allen TOML-Dateien) baut der Bau-Assistent; der Prüf-Assistent schreibt nur die TOML-Dateien", "Prüf-Assistent (Daten), Bau-Assistent (Seite)", "4"],
+  ["–", "LIESMICH.txt im Repo-Ordner: Klartext, 5 Zeilen, wie man das Dashboard startet, wenn es nicht läuft", "Bau-Assistent", "6"],
+]
+
+[[block]]
+text = """
+So wurde das Zielbild überführt: Mit den System-Seiten und dem Katalog aus Etappe 4 entstand docs/zielbild/ mit einer TOML-Datei je Abschnitt (titel, text, Tabellen, Beispiele); die Seite /zielbild zeigt sie mit Katalog-Bausteinen. Als /zielbild alles zeigte, fiel docs/zielbild.md weg. Assistenten lesen die Abschnitte als TOML, Menschen lesen die Seite.
+
+Warum LIESMICH.txt: Läuft das Dashboard nicht, kann niemand /anleitung lesen. Ein Zettel in reinem Text (kein Markdown) sagt, wie man es startet. Mehr steht dort nicht.
+"""

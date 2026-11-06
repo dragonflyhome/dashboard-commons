@@ -1,0 +1,17 @@
+# Beispiel für /api/anleitung (Etappe 6b): ein Abschnitt mit Blöcken.
+titel = "Schritte"
+reihenfolge = 2
+
+[[block]]
+titel = "So geht es"
+nummeriert = true
+punkte = ["Erst prüfen", "Dann committen"]
+
+[[block]]
+[block.tabelle]
+spalten = ["Befehl", "Wofür"]
+zeilen = [["pruefe", "prüft ein Projekt"]]
+
+[[block]]
+beispiel = '''
+dashboard.exe pruefe --system docs/anleitung'''

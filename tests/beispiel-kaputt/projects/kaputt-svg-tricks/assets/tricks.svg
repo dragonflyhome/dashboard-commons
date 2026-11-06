@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg [ <!ENTITY x "y"> ]>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 40 20">
+<svg:script>alert(1)</svg:script>
+<x:foreignObject width="10" height="10"/>
+<a href="&#106;avascript:alert(2)"><text>a</text></a>
+<a xlink:href=" JavaScript:alert(3)"><text>b</text></a>
+<set attributeName="onclick" to="alert(4)"/>
+<animate attributeName="href" to="javascript:alert(5)"/>
+<style>@import "x.css"; rect { fill: url( "https://example.org/f.svg#a") }</style>
+</svg>

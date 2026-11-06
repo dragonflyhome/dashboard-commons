@@ -1,0 +1,122 @@
+# Abschnitt „12. Backend-Module (ab Etappe 4b)“ (Etappe 6b, Format wie docs/zielbild).
+titel = '12. Backend-Module (ab Etappe 4b)'
+reihenfolge = 112
+
+[[block]]
+text = '''
+Jedes Projekt darf ein eigenes Backend-Modul haben. Es läuft im Dashboard-Dienst mit. Es gibt keine Trennung; jede Änderung kommt als Merge-Request und geht durch die übliche Prüfung. Die Regeln stehen in der Entscheidung svelte-jetzt unter [projekt_backend].
+
+Ehrlich gesagt: Die Wächter-Tests in cargo test lesen nur den Text deines Moduls. Sie schützen vor Versehen, nicht vor Absicht. Gegen Absicht schützt die Prüfung jedes Merge-Requests durch den Betreuer des Dashboards und die Abnahme durch die Architektur-Rolle.'''
+
+[[block]]
+titel = 'Was ein Modul ist'
+punkte = [
+  'Eine eigene Rust-Kiste in projects/<slug>/server/ deines Projekts, seit dem Umzug des Inhalts (Abschnitt 14) also in dashboard-inhalt/projects/<slug>/server/ (Cargo.toml, src/lib.rs, Tests), nicht im Code-Repo. Sie gehört dir.',
+  'Sie hängt nur vom SDK dashboard-projekt ab (crates/dashboard-projekt/), nie von der Kiste dashboard. So kommt sie an Tresor, Schlüssel, Bote und fremde Projekte nicht über Rust-Wege heran. Das ist Ordnung, keine Trennung: Das Modul läuft im selben Prozess wie der Dienst.',
+  'slug() muss zu deinem Ordner passen: projects/<slug>/server/ mit name = "projekt-<slug>" in Cargo.toml. Sonst hängt das Dashboard das Modul beim Start nicht ein und meldet es unter /api/pruefung. Dafür steht in deinem Modul fn herkunft(&self) -> Herkunft { dashboard_projekt::herkunft!() } (wie in der Vorlage); das hält Kiste und Ordner beim Bauen fest. #[ts(export_to)] ist nicht erlaubt.',
+  'Deine Endpunkte stehen unter /api/projekte/<slug>/x/…. Das Präfix setzt das Dashboard; in deinem router() stehen nur Wege wie /stufen.',
+  'Alle Wege sind geschützt (seit Etappe B2): ohne Windows-Anmeldung 401, auch beim Lesen (GET). Schreiben (POST und andere) geht dazu nur aus dem Dashboard selbst (Herkunftsprüfung). Ein Körper darf höchstens 64 KiB groß sein.',
+  "Soll ein lesender Weg frei sein, nennst du ihn ausdrücklich in fn freie_wege(&self) -> &'static [&'static str] { &[\"/zahlen\", \"/stufe/{nr}\"] } ({…} ist genau ein Abschnitt). Ein freier Weg gibt nie persönlichen Text heraus (Fragen, Titel, Notizen, Befunde), nur Zahlen. Jeder freie Weg wird von der Architektur abgenommen; schreib im Merge-Request, welcher und warum.",
+  'Ohne Anmeldung bekommt ein Weg, den es im Modul nicht gibt, 401 statt 404 (seit dem Hotfix Prozent prüft das Dashboard die Anmeldung vor deinem Router); erst angemeldet kommt dein 404. Ein % im Pfad gibt 400.',
+  'Fehler gibst du als Fehler zurück, etwa Fehler::nicht_gefunden("…"). Die Antwort hat dann die Form { "fehler": "…", "art": "…" } mit einem Satz in einfachem Deutsch.',
+  'Stürzt dein Modul in einer Anfrage ab, bekommt nur diese Anfrage 500 mit einem Satz. Der Absturz steht im Protokoll und unter /api/pruefung bei deinem Projekt. Alles andere läuft weiter.',
+]
+
+[[block]]
+titel = 'Was dein Modul bekommt: der ProjektKontext'
+[block.tabelle]
+spalten = ['Methode', 'Was sie tut']
+zeilen = [
+  ['k.projekt()', 'projekt.toml, geprüft, als JSON'],
+  ['k.daten("name"), k.daten_als::<T>("name")', 'daten/name.toml, geprüft, als JSON oder eigener Typ'],
+  ['k.tabelle("name")', 'eine eigene Tabelle im Datenspeicher (nur aus tabellen())'],
+  ['k.git()', 'Git-Stand deiner Repos aus [[repos]], nur lesen'],
+  ['k.jetzt()', 'jetzt, in der Zeit des PCs'],
+  ['k.info("…"), k.warnung("…")', 'ins Protokoll, mit projekt=<slug>'],
+  ['k.im_hintergrund(…)', 'Arbeit mit Dateien oder Datenspeicher, ohne den Server aufzuhalten'],
+]
+
+[[block]]
+text = 'Mehr gibt es nicht: keine Schlüssel, keine fremden Projekte, keine Vorgänge anderer Chats. Im Endpunkt rufst du Dateien und Tabellen immer über k.im_hintergrund(…) auf.'
+
+[[block]]
+titel = 'Eigene Tabellen im Datenspeicher'
+text = 'In tabellen() nennst du jede Tabelle mit Name, Beschreibung und Fassung, etwa TabellenDef::neu("verlauf", "Je Tag, wie viele Schritte fertig sind"). Das Dashboard legt sie beim Start als projekt/<slug>/verlauf an. Sie steht dann auf der Seite /daten, in der nächtlichen Sicherung und im Export.'
+
+[[block]]
+punkte = [
+  'Schlüssel sind Text, Werte sind JSON (schreiben, lesen, erste, letzte, anzahl). Gelöscht wird nichts.',
+  'Ändert sich die Form deiner Einträge, erhöhst du die Fassung und gibst einen Umbauschritt mit: TabellenDef::neu(…).mit_fassung(2, umbau). umbau(von, wert) hebt einen Eintrag von Fassung von auf von + 1. Beim nächsten Start sichert das Dashboard erst und baut dann jeden Eintrag um. Dazu gehört ein Migrationstest. Lehnt das Dashboard die Fassung ab oder scheitert der Umbau, ist die Tabelle für dein Modul gesperrt, bis die Fassungen wieder passen (Fund unter /api/pruefung).',
+  'In TOML schreibst du nie; Erzeugtes gehört in deine Tabelle.',
+]
+
+[[block]]
+titel = 'Hooks'
+text = 'Hooks sind Funktionen, die das Dashboard an festen Stellen aufruft. Du nennst sie in hooks():'
+
+[[block]]
+[block.tabelle]
+spalten = ['Hook', 'Wann']
+zeilen = [
+  ['nach_lesen(name, eintraege)', 'bevor GET /api/projekte/<slug>/daten/<name> eine deiner Dateien ausliefert; du darfst die Einträge ergänzen'],
+  ['nach_daten_geaendert(name)', '2 Sekunden nach der letzten Änderung an daten/<name>.toml'],
+  ['zeitplan', 'regelmäßig, höchstens alle 5 Minuten'],
+  ['taeglich', 'einmal am Tag, nach der Sicherung des Datenspeichers'],
+  ['bei_vorgang(vorgang)', 'bei jedem Schritt eines Vorgangs deines Projekts'],
+  ['nach_bau(gruen oder rot)', 'wenn ein Bau der Oberfläche fertig ist'],
+]
+
+[[block]]
+text = 'Jeder Hook läuft für sich, höchstens einmal zugleich, und hat ein Zeitlimit von 30 Sekunden (nach_lesen 5 Sekunden, weil eine Anfrage wartet). Ein Fehler oder Absturz steht im Protokoll und unter /api/pruefung; scheitert ein Hook immer wieder, steht dort „wiederholt“. Scheitert nach_lesen, bekommt die Seite die Daten unverarbeitet.'
+
+[[block]]
+titel = 'So fängst du an'
+nummeriert = true
+punkte = [
+  'Lege einen eigenen Worktree an (nie im gemeinsamen Baum den Zweig wechseln): git worktree add ../dashboard-<slug> -b projekt/<slug>-<thema>.',
+  'Kopiere projects/_vorlage/server/ aus dem Code-Repo nach dashboard-inhalt/projects/<slug>/server/ (der Weg zum SDK ändert sich dabei, siehe Schritt 3). Setze in Cargo.toml name = "projekt-<slug>" und in src/lib.rs den Slug in slug(). Oben in lib.rs schreibst du in einfachen Worten, was das Modul tut.',
+  'Eingehängt wird ein neues Modul nicht mehr im Code-Repo (seit dem Umzug des Inhalts, Abschnitt 14): Es kommt nach Prüfung und Entscheidung der Architektur-Rolle in die Liste geprüfter Kisten der Zusammenbau-Kiste dashboard-inhalt/dashboard-lokal (kisten.toml mit Commit, eine Zeile in deren Cargo.toml und eine in deren src/lib.rs). Den Weg zum SDK setzt du in deiner Cargo.toml auf das Code-Repo daneben: dashboard-projekt = { path = "../../../../dashboard/crates/dashboard-projekt" }. Das Code-Repo nennt kein Projekt (dashboard::starten(module) ist die einzige Anmeldestelle).',
+  'Prüfe dein Modul allein: cargo test in projects/<slug>/server/. Das baut nur deine Kiste und das SDK (mit dem Prüfstand, Feature pruefstand, nur unter [dev-dependencies]).',
+  'Prüfe vor dem Merge-Request einmal alles: cargo test im Worktree (zweimal, wenn sich Typen geändert haben; der erste Lauf schreibt sie neu) und dashboard.exe pruefe <slug>.',
+]
+
+[[block]]
+titel = 'Regeln (prüft cargo test, Wächter-Tests gegen Versehen)'
+punkte = [
+  'Jede .rs-Datei unter server/ (auch tests/) beginnt mit #![forbid(unsafe_code)].',
+  'Kein std::fs, std::net, std::env, std::process, std::thread::spawn, static mut oder Command.',
+  'tokio nur für Tests (#[tokio::test], unter [dev-dependencies]). Im Modul kein tokio::fs, tokio::net, tokio::process, tokio::spawn oder spawn_blocking: Im Workspace hätte tokio alle Fähigkeiten des Dienstes. Für Arbeit im Hintergrund gibt es k.im_hintergrund(…) und die Hooks.',
+  'include_str! und include_bytes! nur mit einem Pfad im eigenen Ordner; include! gar nicht.',
+  'Abhängigkeiten nur aus der Liste geprüfter Kisten: dashboard-projekt (nur mit path = "../../../crates/dashboard-projekt", ohne Features; unter [dev-dependencies] mit features = ["pruefstand"]), serde, serde_json, ts-rs, dazu tokio nur unter [dev-dependencies]. Eine neue Kiste braucht eine Entscheidung der Architektur-Rolle und einen Baunachweis auf diesem PC. Kisten mit C-Code (cc, openssl) bauen hier nicht.',
+  'Kein Bauskript (build.rs), keine Abhängigkeit zur Kiste dashboard, kein path in [lib], [[bin]], [[test]], [[example]] oder [[bench]].',
+  'Keine Netzzugriffe, keine Geheimnisse, keine persönlichen Daten.',
+  'Eingaben nie mit unwrap; jede falsche Eingabe bekommt einen Fehler mit Satz.',
+  'Tests: je Endpunkt ein guter und ein Fehlerfall, je Hook ein Test, ein Migrationstest für jede Tabelle. Der Pruefstand aus dem SDK hilft dabei (siehe die Tests in der Vorlage projects/_vorlage/server/src/lib.rs).',
+]
+
+[[block]]
+titel = 'Typen für die Seite'
+text = "Deine Antworttypen bekommen #[derive(Serialize, TS)]. In vertrag() nennst du sie (v.typ::<MeineAntwort>()), und ein Test ruft dashboard_projekt::vertrag::vertrag_pruefen(&MeinModul) auf. cargo test schreibt sie dann nach web/src/lib/vertrag/projekte/<slug>/ (nur dorthin; eine Datei, die zu keinem Typ mehr gehört, meldet der Test, gelöscht wird nichts, das tust du selbst). In deiner Seite holst du sie mit import type { MeineAntwort } from '$vertrag/projekte/<slug>';."
+
+[[block]]
+titel = 'Der Merge-Request in sechs Schritten'
+nummeriert = true
+punkte = [
+  'Zweig: projekt/<slug>-<thema> in einem eigenen Worktree außerhalb des gemeinsamen Baums (git worktree add). Im gemeinsamen Baum wechselst du nie den Zweig.',
+  'Commits: nur in projects/<slug>/ (Seite, Daten und server/) im Repo dashboard-inhalt. Die erzeugten Typen web/src/lib/vertrag/projekte/<slug>/ werden nicht mehr eingecheckt (sie entstehen beim Bau von dashboard-lokal). Das Code-Repo bleibt in deinen Commits unverändert; beim ersten Modul trägt der Betreuer des Dashboards die Kiste nach der Abnahme in dashboard-lokal/kisten.toml ein, mit dem geprüften Commit.',
+  'Einreichen: ein Vorgang merge an den Betreuer des Dashboards, mit zweig, commit, projekt, beschreibung (deine Endpunkte als TOML-Beispiel) und pruefbericht (die Ausgabe deiner Prüfschritte). In PowerShell:',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/vorgaenge -Json '{"art":"merge","slug":"dashboard","titel":"Modul <slug>: <thema>","von":"chat:<slug>","zweig":"projekt/<slug>-<thema>","commit":"<hash>","projekt":"<slug>","beschreibung":"GET /api/projekte/<slug>/x/stufen/n[antwort]/ngesamt = 5","pruefbericht":"cargo test: 6 grün"}''''
+
+[[block]]
+text = 'Der Zweig muss mit projekt/<slug>- beginnen, der Commit ist der Hash (git rev-parse HEAD). Die Beschreibung darf höchstens 4000 Zeichen, der Prüfbericht höchstens 10000 Zeichen lang sein. Offene Merge-Requests stehen auf der Seite /vorgaenge.'
+
+[[block]]
+punkte = [
+  '4. Prüfung beim Betreuer des Dashboards, für jede Änderung: Pfadprüfung; Probe-Merge mit main ohne Konflikt (git merge-tree); cargo build --release ohne Warnung und clippy -D warnings für das Modul; cargo test (je Endpunkt ein guter und ein Fehlerfall, je Hook ein Test, Migrationstest, Typen aktuell); pruefe <slug> und npm run verify; ein unabhängiger Gutachter mit der Checkliste; 100 Anfragen auf die neuen GET-Wege (Zeit, Speicher); ein Testserver auf Port 8788 und deine Seite im Edge ohne Fehler in der Konsole. Dann kommt ein Ja oder genau, was fehlt (als Vorgang mit Datei, Zeile und Satz).',
+  '5. Abnahme durch die Architektur-Rolle, nach dem Ja des Betreuers des Dashboards.',
+  '6. Nach dem Ja: Merge-Commit nach main (git merge --no-ff, nie Fast-Forward, kein Rebase). Bei einem Konflikt holst du main in deinen Zweig, und die Prüfung sieht nur den Unterschied neu an. Danach startet der Betreuer des Dashboards den Dienst neu (Dienst.ps1 -Neustart), meist gesammelt einmal am Tag, außer bei dringenden Fehlern.',
+]

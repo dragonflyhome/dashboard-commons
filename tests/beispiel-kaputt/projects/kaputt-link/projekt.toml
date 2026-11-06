@@ -1,0 +1,8 @@
+# Absichtlich kaputt: ein Link ohne gültige Adressform.
+schema = 3
+title = "Kaputt: Link"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."
+[[links]]
+name = "Hersteller"
+url = "www.example.org"

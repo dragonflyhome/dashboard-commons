@@ -1,0 +1,11 @@
+# Abschnitt „Eine eigene Projektseite anlegen“ (Etappe 6b, Format wie docs/zielbild).
+titel = '1. Eine eigene Projektseite anlegen'
+reihenfolge = 100
+
+[[block]]
+text = '''
+Jeder Chat (oder jeder Mensch) bekommt im Dashboard eine eigene Unterseite. Dafür braucht es kein Rust, nur Dateien im eigenen Projektordner.
+
+Kein neues Markdown. Neue Inhalte kommen in die neue Form: projekt.toml (Kopf), daten/*.toml (Inhalt) und Seite.svelte (Darstellung), siehe Abschnitt 11.
+
+Pfade in dieser Datei: %USERPROFILE% steht für den eigenen Benutzerordner (so bleibt kein Benutzername im Code-Repo). Beim Eintippen: in PowerShell $env:USERPROFILE, in Git Bash $USERPROFILE, in cmd %USERPROFILE%. Der private Inhalt liegt seit dem Umzug in %USERPROFILE%/dev/dashboard-inhalt (Abschnitt 14).'''

@@ -1,0 +1,36 @@
+# Abschnitt „Datenspeicher“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Datenspeicher'
+reihenfolge = 208
+
+[[block]]
+text = '''
+Was zur Laufzeit entsteht und nicht in Git gehört, liegt in einer Datenbank-Datei (redb). Heute sind das der PC-Verlauf (alle 5 Minuten ein Messwert: Prozessor, Speicher, erste Platte, 90 Tage lang; Älteres wird gelöscht), die Vorgänge zwischen Dashboard, Ihnen und den Chats (siehe „Vorgänge“), die Aufgaben für den Inhaber (ab 5a), die Arbeiten der Chats und Ihre Einstufungen (ab A1), Ihre Antworten auf Fragen (ab A2) und die Meldungen für den Inhaber (ab A3). Die Projektseiten bleiben Textdateien in Git. Passwörter liegen nie im Datenspeicher, nur im Windows-Tresor.
+
+Die Tabellen (Schema 6):'''
+
+[[block]]
+punkte = [
+  'meta: Verwaltung, also Schema-Nummer, Fassung je Tabelle und Datum der letzten Sicherung.',
+  'pc_verlauf: die PC-Werte alle 5 Minuten.',
+  'ereignisse: das Journal der Vorgänge, jeder Schritt mit Nummer, Zeit und Herkunft; wird nur angehängt, nie geändert, nie gelöscht.',
+  'vorgaenge: jeder Vorgang mit seinem jetzigen Zustand.',
+  'vorgaenge_je_slug: Verzeichnis, welche Vorgänge zu welchem Chat gehören.',
+  'warter: je Chat, wann er zuletzt etwas übernommen hat und wann sein Warten zuletzt etwas lieferte.',
+  'aufgaben (ab Schema 3, Etappe 5a): Aufgaben für den Inhaber, ohne Link.',
+  'aufgaben_links (ab Schema 3): die Links der offenen Aufgaben, verschlüsselt (DPAPI); nach Haken, Ablauf oder Zurückziehen gelöscht. Im Export und auf /daten nur als Anzahl.',
+  'aufgaben_archiv (ab Schema 3): abgeschlossene Aufgaben, sieben Tage nach ihrer letzten Änderung; nie gelöscht.',
+  'arbeiten (ab Schema 4, Etappe A1): was die Chats tun oder vorhaben.',
+  'arbeiten_archiv (ab Schema 4): fertige Arbeiten nach sieben Tagen; nie gelöscht.',
+  'einstufungen (ab Schema 4): die Einstufung des Inhabers (Jetzt, Bald, Irgendwann) je Aufgabe, Arbeit, Notiz oder Frage.',
+  'antworten (ab Schema 5, Etappe A2): die Antworten des Inhabers auf Fragen aus daten/fragen.toml, mit freiwilliger Anmerkung (notiz); Schlüssel projekt/id/gestellt, nie überschrieben.',
+  'antworten_archiv (ab Schema 5): Antworten nach sieben Tagen; nie gelöscht, die Frage bleibt beantwortet.',
+  'meldungen (ab Schema 6, Etappe A3): Meldungen für den Inhaber (Bau oder Prüfung rot, Frist nah oder vorbei, Bote fehlt, Arbeit fertig, „fertig“ und „info“ der Chats) mit Schlüssel gegen Wiederholungen, Anzahl, gelesen und behoben; höchstens 20 ungelesene je Projekt (ältere werden als gelesen abgelegt und in einer Sammelmeldung gezählt).',
+  'meldungen_archiv (ab Schema 6): gelesene und behobene Meldungen nach sieben Tagen; nie gelöscht. Fehler und Fristen bleiben, bis sie behoben sind, auch gelesen (sonst kämen sie nach dem Umzug als neu zurück).',
+  'Ort: %USERPROFILE%/.var/dashboard/dashboard.redb, außerhalb des Repos. Mit DASHBOARD_DATEN lässt sich eine andere Datei wählen; der Testserver auf Port 8788 bekommt so eine eigene Datei und fasst die echte nie an.',
+  'Nur der Server öffnet die Datei. Ist sie schon offen, startet ein zweites Dashboard nicht und meldet: „Läuft das Dashboard bereits in einem anderen Fenster?“',
+  'Sicherung: beim Start und danach jede Stunde prüft der Server, ob heute schon gesichert wurde, sonst sichert er. Die Kopie landet im Ordner sicherung/ neben der Datei als dashboard-JJJJ-MM-TT.redb und daneben dashboard-JJJJ-MM-TT.toml zum Lesen. Die letzten 14 bleiben, ältere werden gelöscht.',
+  'Seite http://localhost:8787/daten: zeigt Datei, Größe, Schema, Stand der Sicherung als Ampel (grün: heute oder gestern, gelb: 2 bis 7 Tage, rot: älter oder nie), die Tabellen, den PC-Verlauf der letzten 24 Stunden und den Export. Der Knopf „Jetzt sichern“ legt sofort eine Sicherung an.',
+  'Export: /api/daten/export?format=toml zum Ansehen (Standard), ?format=json zum Herunterladen. Er enthält nie Passwörter.',
+  'Schema: In der Datei steht eine Schema-Nummer (heute 6). Ist sie älter, sichert der Server erst und baut die Datei dann Schritt für Schritt um (2: Vorgänge, 3: Aufgaben, 4: Arbeiten und Einstufungen, 5: Antworten, 6: Meldungen; jeder Schritt legt nur neue, leere Tabellen an; vorher entsteht eine Sicherung …-vor-schema-<alte Nummer>.redb). Eine Datei aus Etappe 2a (Schema 1) wird so beim ersten Start umgebaut: vorher entsteht sicherung/dashboard-JJJJ-MM-TT-vor-schema-1.redb (mit .toml daneben), dann kommen die neuen Tabellen leer dazu; der PC-Verlauf bleibt erhalten. Hat eine neuere Fassung des Dashboards die Datei geschrieben, lässt der Server sie unverändert liegen und sagt das in der Konsole und auf /daten.',
+  'Ist die Datei kaputt, zu neu oder nicht lesbar, startet das Dashboard trotzdem: Projekte, PC und Schlüssel laufen weiter. /daten zeigt rot mit einem Satz, der den Sicherungsordner nennt; PC-Verlauf, Export, „Jetzt sichern“ und die Wege unter /api/vorgaenge, /api/aufgaben, /api/arbeiten, /api/einstufung, /api/antworten und /api/meldungen antworten so lange mit 503 (speicher-fehlt) und demselben Satz. /api/anstehend und /api/projekte/<slug>/stand antworten weiter mit dem, was in den Dateien steht, und einem Hinweis; die Ampel heißt dann „unbekannt“ statt grün, solange nichts auf Sie wartet.',
+]

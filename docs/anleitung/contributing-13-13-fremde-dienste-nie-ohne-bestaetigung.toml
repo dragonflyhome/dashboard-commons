@@ -1,0 +1,17 @@
+# Abschnitt „13. Fremde Dienste: nie ohne ausdrückliche Bestätigung“ (Etappe 6b, Format wie docs/zielbild).
+titel = '13. Fremde Dienste: nie ohne ausdrückliche Bestätigung'
+reihenfolge = 113
+
+[[block]]
+text = 'Jede Aufzeichnung in einem fremden Dienst (etwa einem Notizdienst im Netz) erfordert eine ausdrückliche Bestätigung. Kein automatischer Start.'
+
+[[block]]
+punkte = [
+  'Kein Chat und kein Teil des Dashboards schreibt, liest oder gleicht von sich aus mit einem fremden Dienst ab. Es gibt keinen Zeitplan, keinen Auslöser beim Speichern, keinen Hintergrundlauf.',
+  'Jeder einzelne Vorgang mit dem Dienst (ein Protokoll ablegen, eine Tabelle lesen, einen Fahrplan abgleichen) braucht vorher das ausdrückliche Ja des Inhabers zu genau diesem Vorgang, als Frage im Dashboard oder im Chat. Ein Ja gilt nur für diesen einen Vorgang, nicht für die nächsten.',
+  'Das gilt für jeden fremden Dienst, in dem Daten des Inhabers oder Dritter liegen.',
+  'Zugangsdaten für den Dienst gehen nur über /schluessel (Abschnitt 7), nie in Dateien oder Nachrichten.',
+]
+
+[[block]]
+text = 'Ein fremder Dienst wird nur hinter einer klaren Grenze angebunden; keine Kernfunktion hängt von ihm ab. Er ist höchstens eine zusätzliche Quelle oder Ablage hinter einer klar abgegrenzten Schnittstelle. Fällt er aus oder fehlt der Zugang, laufen Dashboard, Projektseiten, Datenspeicher, Aufgaben, Fragen und alle Rechenteile unverändert weiter. Kein Vertrag, kein Baustein und kein Endpunkt des Kerns darf seine Daten voraussetzen.'

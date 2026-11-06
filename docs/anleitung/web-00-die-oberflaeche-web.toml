@@ -1,0 +1,15 @@
+# Abschnitt „Die Oberfläche (web/)“ (Nacharbeit Etappe 6b).
+titel = 'Die Oberfläche (web/)'
+reihenfolge = 300
+
+[[block]]
+text = 'Die Oberfläche liegt in web/. Diese drei Befehle laufen dort (aus web/package.json). Die Pakete liegen schon in web/node_modules; ein neues Paket nur mit dem Ja des Inhabers, nie npx mit Download.'
+
+[[block]]
+[block.tabelle]
+spalten = ['Befehl', 'Was er tut']
+zeilen = [
+  ['npm run dev', 'startet die Oberfläche zum Ausprobieren (vite dev, Port 5173). Jede Änderung zeigt sich sofort. Die Daten (/api, /schluessel, /projects) holt sie vom laufenden Dashboard.'],
+  ['npm run verify', 'alles, was vor einem Commit grün sein muss, nacheinander: lint (prettier, eslint, stylelint), check (svelte-check), test (vitest) und build. Es bricht beim ersten Fehler ab.'],
+  ['npm run build', 'baut die fertige Oberfläche nach web/build (vite build). Diesen Ordner liefert das Dashboard aus; scripts/Dienst.ps1 -Neustart baut ihn selbst.'],
+]

@@ -1,0 +1,81 @@
+titel = "Der Datenspeicher des Dashboards"
+reihenfolge = 5
+text = """Das Dashboard hat einen eigenen Datenspeicher für Laufzeitdaten, wie jede gut gebaute Full-Stack-Anwendung.
+
+Damit gilt: Projektordner = Inhalt der Projekte (TOML, Svelte, Assets, in Git). Datenspeicher = was zur Laufzeit entsteht (Antworten, Vorgänge, Zustände, Verläufe). Er liegt nicht in Git, wird aber gesichert."""
+
+[[block]]
+titel = "Wahl der Technik: redb"
+[block.tabelle]
+spalten = ["Kandidat", "Was es ist", "Bewertung"]
+zeilen = [
+  ["redb 4.4.0", "eingebettete Datenbank in reinem Rust, eine Datei, Transaktionen (alles oder nichts), absturzsicher", "geeignet: keine Windows-Abhängigkeit (nur libc auf Linux/Mac), kein C, Lizenz MIT/Apache-2.0, aktiv gepflegt"],
+  ["SQLite über rusqlite 0.41 mit bundled", "die bekannteste eingebettete Datenbank, mit SQL", "ungeeignet: braucht zum Bauen einen C-Compiler, den die Bauumgebung nicht voraussetzt; ginge nur mit einem installierten C-Compiler"],
+  ["SQLite über winsqlite3.dll von Windows", "dieselbe Datenbank, von Windows mitgeliefert", "heikel: braucht eine selbst erzeugte Import-Bibliothek für den GNU-Linker; fehleranfällig, Version bestimmt Windows"],
+  ["fjall 3.1", "reine Rust-Datenbank, für sehr viele Schreibvorgänge gebaut", "geeignet, aber mehr Abhängigkeiten und für kleine Datenmengen überdimensioniert"],
+]
+
+[[block]]
+text = """Entscheidung: redb. Gründe: baut ohne C und ohne Windows-Bibliotheken, eine einzige Datei, echte Transaktionen, gepflegt. Was wegfällt: SQL zum freien Abfragen. Das ersetzen die Seite /daten und der Export (unten). Die Abfragen sind einfach (nach Projekt, nach Nummer, nach Zeit)."""
+
+[[block]]
+titel = "Aufbau"
+punkte = [
+  "Ort: im Benutzerordner unter .var/dashboard/dashboard.redb. Außerhalb des Repos (nicht in Git, kein Worktree teilt sie aus Versehen). Der Sicherungsplan (data/pc.toml) nimmt .var in die externe Sicherung auf. Der Testserver auf Port 8788 nimmt eine eigene Datei (DASHBOARD_DATEN=…).",
+  "Ein Schreiber: Nur der Server öffnet die Datei. Projekt-Assistenten schreiben nie direkt, nur über die API.",
+  "Typisierte Zugriffsschicht src/speicher/: eine Struktur Speicher mit Methoden wie antwort_speichern, vorgang_anlegen, ereignis_anhaengen, vorgaenge_offen(slug). Jede Tabelle ist eine feste Definition im Code. Werte sind die Typen aus src/vertrag/ (dieselben, aus denen ts-rs die TypeScript-Typen macht), gespeichert als JSON (serde_json ist schon da). Schreiben läuft in spawn_blocking, damit der Server nicht stockt.",
+  "Tabellen (erste Fassung):",
+]
+
+[[block]]
+[block.tabelle]
+spalten = ["Tabelle", "Schlüssel", "Inhalt"]
+zeilen = [
+  ["meta", "Name", "Schema-Version, Zeitpunkt der letzten Sicherung"],
+  ["ereignisse", "Nummer", "das Journal (nur anhängen)"],
+  ["vorgaenge", "Kennung", "aktueller Zustand jedes Vorgangs"],
+  ["vorgaenge_je_slug", "(slug, Kennung)", "Index zum schnellen Finden"],
+  ["antworten", "(slug, frage-id)", "Antworten des Inhabers mit Zeit und Herkunft"],
+  ["wunsch_zustand", "(slug, wunsch-id)", "eingereiht, zugeordnet, gebaut, abgelehnt"],
+  ["bau_laeufe", "Nummer", "Baumeister: Projekt, Dauer, grün/rot, Meldung"],
+  ["warter", "slug", "„wartet seit“, „zuletzt übernommen“"],
+  ["pc_verlauf", "Zeit", "PC-Werte alle 5 min (bisher nur 15 min im Arbeitsspeicher), 90 Tage"],
+]
+
+[[block]]
+text = """Nachtrag (Stand Schema 6, die Liste oben war die erste Fassung): aufgaben, aufgaben_links (DPAPI) und aufgaben_archiv (5a); arbeiten, arbeiten_archiv und einstufungen (A1); antworten und antworten_archiv mit Schlüssel projekt/id/gestellt (A2); meldungen und meldungen_archiv (A3). wunsch_zustand und bau_laeufe kommen mit ihren Etappen. Erledigtes zieht nach sieben Tagen ins Archiv, nichts wird gelöscht."""
+
+[[block]]
+punkte = [
+  "Zeiten als RFC-3339-Text im JSON; das Feature chrono von redb bleibt aus.",
+  "Tests bekommen je Test eine frische Datei im Temp-Ordner, der Testserver auf 8788 eine eigene Datei im Worktree-Temp. cargo test fasst die echte Datei nie an.",
+  "Migrationen: In meta steht schema = 1, dazu je Tabelle die Fassung ihres Vertragstyps. So macht ein geänderter Typ alte Zeilen nicht stumm unlesbar (Migration heißt dann: Zeile lesen, umschreiben, zurückschreiben). Beim Start prüft der Server die Nummer und führt fehlende Schritte aus einer festen Liste im Code aus (migration_2, migration_3 …), jeder in einer Transaktion, jeder mit Test. Vor jeder Migration legt er eine Sicherung an. Eine Datei mit höherer Nummer, als der Code kennt, öffnet er nicht (sonst zerstört eine alte Fassung neue Daten), sondern meldet es in einfachem Deutsch.",
+  "Sicherung: Eine offene Datenbankdatei kann man nicht gefahrlos kopieren, während geschrieben wird. Darum schreibt der Server selbst jede Nacht (und vor jeder Migration) eine Sicherungskopie sicherung/dashboard-JJJJ-MM-TT.redb (aus einer Lese-Transaktion, also in sich stimmig) und daneben einen Export als TOML. Die letzten 14 bleiben. Die externe Sicherung spiegelt diese Kopien, nicht die laufende Datei. Damit gilt die 3-Kopien-Regel auch hier.",
+]
+
+[[block]]
+titel = "Was TOML bleibt, was in den Datenspeicher wandert"
+[block.tabelle]
+spalten = ["Bisher", "Künftig", "Warum"]
+zeilen = [
+  ["projects/** (Kopf, Daten, Seiten, Assets)", "bleibt TOML/Svelte in Git", "Inhalt, den Projekt-Assistenten schreiben"],
+  ["daten/fragen.toml", "bleibt TOML", "Projekt-Assistenten stellen die Fragen"],
+  ["wuensche.toml", "bleibt TOML; Zustand des Wunsches im Datenspeicher", "Wunsch ist Inhalt, Bearbeitungsstand ist Laufzeit"],
+  ["antworten.toml (geplant)", "entfällt, Antworten im Datenspeicher", "Antworten sind Laufzeit"],
+  ["Journal data/vorgaenge/ (geplant)", "entfällt, Tabelle ereignisse", "Laufzeit"],
+  ["data/pc.toml (Sicherungsplan, Historie, Fahrplan)", "bleibt TOML", "von einem Assistenten gepflegter Inhalt"],
+  ["PC-Messwerte (bisher nur 15 min im Arbeitsspeicher)", "pc_verlauf im Datenspeicher, 90 Tage", "Laufzeit, ergibt einen echten Verlauf"],
+  ["data/schluessel.toml (welche Passwörter gebraucht werden)", "bleibt TOML", "Anforderungen der Projekte, keine Werte"],
+  ["Passwörter", "bleiben nur im Windows-Tresor, nie im Datenspeicher", "Sicherheit"],
+  ["Ordnergrößen-Cache (.cache/…/folders.json)", "später meta oder eigene Tabelle", "Laufzeit; kein Eilbedarf"],
+  ["Bau-Läufe, Abnahmen, „wartet seit“", "Datenspeicher", "Laufzeit"],
+]
+
+[[block]]
+titel = "Seite /daten"
+punkte = [
+  "Ort der Datei, Größe, Schema-Version.",
+  "Letzte Sicherung (grün: vom selben Tag, gelb: älter als 2 Tage, rot: älter als 7 Tage) und letzter Stand der externen Sicherung, sobald es sie gibt.",
+  "Zahl der Einträge je Tabelle (Vorgänge offen/gesamt, Antworten, Bau-Läufe …).",
+  "Knopf „als TOML ansehen“ / „als JSON herunterladen“ (GET /api/daten/export?format=toml|json). Der Export enthält nie Passwörter, weil keine im Datenspeicher sind.",
+]

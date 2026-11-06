@@ -1,0 +1,20 @@
+# Abschnitt „Der Bote“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Der Bote'
+reihenfolge = 14
+
+[[block]]
+text = 'Der Bote (dashboard-bote.exe) ist ein kleines Programm ohne Fenster, das unter Ihrem Konto läuft und dem Dienst zuarbeitet.'
+
+[[block]]
+punkte = [
+  'Was er tut: Er schreibt Werte der Schlüsselseite in Ihren Tresor (ranke/<name>) und sieht nach, ob es einen Eintrag gibt. Dazu holt er die Benutzer-Daten der PC-Seite: installierte Programme (winget), Autostart, Ordnergrößen im Benutzerordner, Werkzeug-Versionen und den Git-Stand der Repos.',
+  'Warum: Der Dienst läuft unter seinem eigenen Konto. Das sieht Ihren Tresor, Ihren Benutzerordner, Ihre Programme und Ihre Git-Einstellungen nicht. Der Bote hat keine Rechte, die nicht jedes Programm unter Ihrem Konto schon hat.',
+  'Wann er läuft: nur, wenn Sie angemeldet sind; die Aufgabenplanung startet bei der Anmeldung dashboard-bote.exe --waechter --einstellungen C:/ProgramData/Dashboard/dienst.toml. Der Wächter startet den Boten und nach einem Fehler neu; es laufen also zwei Prozesse mit demselben Programm. Ohne ihn speichert die Schlüsselseite nichts und sagt das in einem Satz; die Benutzer-Daten auf der PC-Seite zeigen den letzten Stand mit Uhrzeit. Alles andere läuft weiter.',
+  'Wie er mit dem Dienst spricht: über eine benannte Pipe (\\.\pipe\dashboard-bote), eine JSON-Zeile je Anfrage und Antwort. Nur Ihr Konto und das Dienstkonto dürfen an die Pipe, und es gibt nur einen Boten zugleich. Bevor der Dienst etwas sendet, prüft er, wem die Pipe gehört, welches Programm dahinter läuft (C:/ProgramData/Dashboard/bin/dashboard-bote.exe) und unter welchem Konto (Ihre SID aus dienst.toml). Passt etwas nicht, sendet er nichts und schreibt es ins Protokoll.',
+  'Prozess und Token: Ein Prozess unter Ihrem Konto lässt sich normalerweise nur von Ihnen und SYSTEM abfragen. Damit der Dienst die Prüfung oben machen kann, ergänzt der Bote beim Start je einen Eintrag: Das Dienstkonto darf seinen Prozess abfragen (PROCESS_QUERY_LIMITED_INFORMATION, liefert den Programmpfad) und sein Token lesen (TOKEN_QUERY, liefert das Konto). Mehr nicht: kein Beenden, kein Lesen des Speichers, kein Ändern. Gelingt das nicht, steht es im Protokoll, und der Dienst lehnt die Pipe ab.',
+  'Nie ein Passwort zurück: Der Bote gibt nie einen Passwortwert zurück, nur „vorhanden“, das Datum und den Benutzernamen.',
+  'Protokoll: bote-JJJJ-MM-TT.log im eigenen Unterordner C:/ProgramData/Dashboard/protokoll/bote, 14 Tage lang. Dort darf Ihr Konto schreiben (der Bote läuft als Sie); im übrigen Protokollordner nur lesen.',
+]
+
+[[block]]
+text = 'Ohne Einstellungsdatei (Start ohne Argumente, etwa mit cargo run) gibt es keinen Boten; der Server holt die Benutzer-Daten dann wie früher selbst.'

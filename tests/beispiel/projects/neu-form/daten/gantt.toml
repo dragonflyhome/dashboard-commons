@@ -1,0 +1,13 @@
+start = "2031-03"
+
+[[balken]]
+name = "Beete umgraben"
+von = "2031-03"
+bis = "2031-04"
+farbe = "aktiv"
+gruppe = "Frühjahr"
+
+[[balken]]
+name = "Aussaat und Pflege"
+von = "2031-04"
+bis = "2031-09"

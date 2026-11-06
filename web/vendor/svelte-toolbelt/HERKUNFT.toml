@@ -1,0 +1,17 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "svelte-toolbelt"
+version = "0.10.6"
+quelle = "https://registry.npmjs.org/svelte-toolbelt/-/svelte-toolbelt-0.10.6.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-YWuX+RE+CnWYx09yseAe4ZVMM7e7GRFZM6OYWpBKOb++s+SQ8RBIMMe+Bs/CznBMc0QPLjr+vDBxTAkozXsFXQ=="
+lizenz = "MIT"
+lizenz_hinweis = "package.json hat kein Feld license; Lizenztext in LICENSE am 30.10.2026 gelesen: MIT, Copyright 2024 Hunter Johnston und Thomas G. Lopes"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 56
+entfernt = ["README.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 55
+inhalt_sha256 = "011e6757da51480e71ce873b71db45a1cedb3c93c368b2602b98014458a78d95"

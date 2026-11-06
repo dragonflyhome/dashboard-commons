@@ -1,0 +1,9 @@
+# Absichtlich kaputt: Rückwärtsstriche im Pfad (in TOML ein Steuerzeichen).
+schema = 3
+title = "Kaputt: Rückwärtsstrich"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."
+
+[[repos]]
+label = "beispiel"
+path = "D:\Ablage\beispiel"

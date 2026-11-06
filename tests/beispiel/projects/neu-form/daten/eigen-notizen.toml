@@ -1,0 +1,6 @@
+# Eigene Daten: der Server prüft nur, dass es TOML ist, und reicht es als JSON durch.
+stand = 2026-10-26
+
+[[notiz]]
+text = "Eine eigene Notiz"
+wichtig = true

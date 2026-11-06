@@ -1,0 +1,7 @@
+# Beispiel in neuer Form mit Daten, aus denen der Server rechnet (Etappe 4v):
+# GET /api/projekte/neu-daten und /api/projekte/neu-daten/daten/<name>.
+schema = 3
+title = "Beispiel: Daten und Ableitungen"
+status = "aktiv"
+summary = "Feste Beispielseite für die allgemeinen Endpunkte: Fortschritt, Balkenplan, eigene Schritte und berechnete Kennzahlen."
+order = 45

@@ -1,0 +1,8 @@
+schema = 3
+title = "B mit haengendem Repo"
+status = "aktiv"
+order = 2
+
+[[repos]]
+path = "tests/beispiel/haengt"
+label = "haengt-b"

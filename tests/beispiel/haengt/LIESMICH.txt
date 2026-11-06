@@ -1,0 +1,1 @@
+Dieser Ordner steht fuer ein Git-Repo, dessen git haengt (nur fuer Tests).

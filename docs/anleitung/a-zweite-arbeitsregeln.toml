@@ -1,0 +1,50 @@
+# Arbeitsregeln für Assistenten: ein Verweis auf die globale Regeldatei, erklärt im
+# Zielbild (docs/zielbild/e2-arbeitsregeln.toml); dazu seit T5 die Regel für
+# Teilschritte (Zielbild docs/zielbild/f4-teilschritte.toml).
+titel = 'Arbeitsregeln für Assistenten'
+reihenfolge = 2
+
+[[block]]
+text = '''
+Verbindlich stehen die Arbeitsregeln (nach ponytail, MIT) in einer globalen Regeldatei, die jeder Chat beim Start liest; sie gelten ab seinem nächsten Start. Strengere Regeln dieses Repos und des Dashboards (diese Anleitung) gehen vor. Erklärung und Befundformat stehen auf /zielbild im Abschnitt „Arbeitsregeln für Assistenten“; hier nur die Stichworte.'''
+
+[[block]]
+punkte = [
+  'Leiter vor jedem Code: erst verstehen, dann die kleinste vollständige Änderung.',
+  'Sparsam bei der Lösung, nie bei der Änderung: Aufrufer, Tests und Daten, die eine Änderung berührt, gehören dazu.',
+  'Nie kürzen bei Vertrauensgrenzen, Datenverlust, Sicherheit, Datenschutz und Barrierefreiheit.',
+  'Kleiner Pflichttest bei Verzweigung, Schleife, Parser, Geld oder Sicherheit.',
+  'Jeder Bericht endet mit „Übersprungen oder nicht geprüft“ und dem Restrisiko.',
+  'Befunde als Tabelle: Ort, Schwere (Muss, Sollte, Hinweis), was der Code tut, was schiefgeht, wie beheben, wenn man es lässt.',
+  'Eine bewusste Abkürzung im Code bekommt den Kommentar „shortcut: <Grenze>, <wann aufrüsten>“.',
+]
+
+[[block]]
+titel = 'Wer woran arbeitet: Teilschritte (seit T5, Zweig teilschritte)'
+text = 'Damit nie zwei Chats aufeinander warten, gilt das Dashboard als Sperre (Mutex). Wie die Anfragen aussehen, steht im Abschnitt „9. Vorgänge“ unter „Arbeiten melden“.'
+
+[[block]]
+punkte = [
+  'Jede Arbeit kann Teilschritte haben. An jedem Schritt ist genau ein Chat dran.',
+  'Ein Chat arbeitet nur an einem Schritt, an dem er selbst steht (besitzer ist sein Chat).',
+  'Zu Beginn jedes Zugs nachsehen, wem was gehört: GET /api/arbeiten?projekt=<slug> mit Api.ps1. Steht dort ein anderer Chat, nicht anfangen.',
+  'Übergeben geht nur so: Der eine bietet den Schritt an (anbieten), der andere übernimmt ihn (uebernehmen). Erst dann ist er übergeben. Eine Chat-Nachricht allein ist keine Übergabe.',
+  'Eine Abnahme ist ein eigener Schritt mit fuer = chat:architektur, kein Vorgang der Art abnahme mehr.',
+  'Zweig, Commit und Dauer von Bau und Test für die Abnahme stehen in der notiz des eigenen Bau-Schritts, nicht in einer Chat-Nachricht.',
+  'Wer wartet, wartet auf einen bestimmten Schritt (wartet_auf = schritt:<nr>). Das Dashboard weckt ihn, sobald dieser Schritt fertig ist.',
+  'Funde aus einer Abnahme: Der Abnehmende schreibt die Funde in die notiz seines Abnahme-Schritts, bietet den fertigen Bau-Schritt wieder an und wartet danach an seinem Abnahme-Schritt auf ihn (zwei Aufrufe). Der Bauende wird geweckt, übernimmt, bessert nach und setzt den Bau-Schritt fertig; dann läuft die Abnahme wieder (Beispiel im Abschnitt „9. Vorgänge“ unter „Arbeitsregel für Teilschritte“).',
+  'Hat eine Etappe eine Arbeit im Tracker, steht in den Handdateien (fortschritt.toml, ampel.toml, Status im Gantt-Balken) nur noch „Stand: siehe Arbeit im Kasten Arbeiten“. Es gilt allein der Tracker.',
+]
+
+[[block]]
+text = 'Abgelöst: Die Übergangsregel aus dem Zielbild („Bis der Zweig live war (abgelöst seit T5)“: Übergabe zur Abnahme als Vorgang der Art abnahme, vollzogen mit POST /api/vorgaenge/<id>/uebernommen; Besitzer in der Notiz) gilt nicht mehr. Es gelten die Schritte oben.'
+
+[[block]]
+titel = 'Hilfs-Assistenten'
+text = 'Wer Arbeit an Hilfs-Assistenten gibt, schreibt in den Auftrag: Zerstörende Skripte und Schalter (-Scharf, Löschen, Bereinigen) laufen nie gegen echte Wurzeln, nur gegen eine Testwurzel im Arbeitsordner oder über den eingebauten Selbsttest. Ein Fehler in einer neuen Schutzliste trifft sonst gleich die echten Ordner.'
+
+[[block]]
+text = 'Ausblick, keine Regel und kein Bau: pruefe könnte die shortcut-Kommentare später als Schuldenliste einsammeln.'
+
+[[block]]
+text = 'Quelle: nach ponytail (MIT), github.com/DietrichGebert/ponytail.'

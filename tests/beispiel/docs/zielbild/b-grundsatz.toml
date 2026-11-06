@@ -1,0 +1,8 @@
+# Beispiel für /api/zielbild (Etappe 4d).
+titel = "Grundsatz"
+reihenfolge = 1
+text = """
+Erster Absatz.
+
+Zweiter Absatz."""
+punkte = ["Erstens", "Zweitens"]

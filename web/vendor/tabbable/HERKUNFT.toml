@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "tabbable"
+version = "6.5.1"
+quelle = "https://registry.npmjs.org/tabbable/-/tabbable-6.5.1.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-dMCuwDUY6Noz3zVKLefBC4wq+aJV20yc7vWmM7uTNGwtQSFF5kX7OUIUsxuVajz/bdt5Xqdah3/0NLjth+cM5A=="
+lizenz = "MIT"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 19
+entfernt = ["CHANGELOG.md", "README.md", "SECURITY.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 16
+inhalt_sha256 = "fc1ec1879b35966a7f032347722f6af0d742b35d7b73ca8cf28bd7a7b5e70f1a"

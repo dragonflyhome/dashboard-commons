@@ -1,0 +1,155 @@
+titel = "Vorgänge und Rückruf"
+reihenfolge = 4
+text = """Assistenten warten auf einen Rückruf von der API des Dashboards. Jeder Vorgang ist abfragbar, damit er sich wiederherstellen lässt."""
+
+[[block]]
+titel = "Was ein Vorgang ist"
+text = """Alles, was zwischen Dashboard, Benutzer und Assistenten hin und her geht, ist ein Vorgang: eine Sache mit Nummer, Besitzer und Zustand, die nicht verloren gehen darf."""
+
+[[block]]
+[block.tabelle]
+spalten = ["Art", "entsteht, wenn", "Besitzer (wer handeln muss)"]
+zeilen = [
+  ["antwort", "der Benutzer beantwortet eine Frage", "der Projekt-Assistent"],
+  ["frage", "ein Assistent stellt eine Frage (fragen.toml)", "der Benutzer"],
+  ["wunsch", "ein Assistent schreibt wuensche.toml", "der Leit-Assistent (reihen), dann der Bau-Assistent"],
+  ["bau", "der Baumeister ist rot für ein Projekt", "der Projekt-Assistent"],
+  ["abnahme", "der Bau-Assistent meldet „bereit zur Abnahme“; der Prüf-Assistent sagt Ja oder Nein", "Prüf-Assistent, dann Bau-Assistent"],
+]
+
+[[block]]
+text = """Zustände, immer nur vorwärts:"""
+
+[[block]]
+beispiel = """offen  ->  zugestellt  ->  uebernommen  ->  erledigt"""
+
+[[block]]
+punkte = [
+  "offen: entstanden, noch niemand gerufen.",
+  "zugestellt: das Warten des Assistenten hat ihn geliefert (oder die Seite hat ihn dem Benutzer gezeigt).",
+  "uebernommen: der Assistent hat bestätigt „ich kümmere mich“.",
+  "erledigt: der Assistent hat gehandelt (etwa die Frage aus fragen.toml genommen).",
+]
+
+[[block]]
+titel = "Das Journal: nichts geht verloren"
+punkte = [
+  "Jedes Ereignis bekommt eine fortlaufende Nummer und wird nur angehängt, nie geändert, nie gelöscht (append-only). Es liegt in der Tabelle ereignisse des Datenspeichers (Abschnitt „Der Datenspeicher des Dashboards“), nicht in TOML-Dateien. Ein Ereignis sieht so aus (hier als TOML gezeigt, wie im Export):",
+]
+
+[[block]]
+beispiel = """[[ereignis]]
+nr = 1042                       # fortlaufend: der Cursor
+zeit = "<Zeitpunkt nach RFC 3339>"
+vorgang = "v-JJJJMMTT-0007"
+art = "antwort"
+slug = "garten"
+zustand = "offen"
+titel = "Antwort des Benutzers: Aussaat"
+bezug = "antwort:garten/aussaat"
+von = "browser"                 # browser | baumeister | server | chat:<slug>"""
+
+[[block]]
+punkte = [
+  "Ereignis anhängen und Zustand des Vorgangs ändern geschieht in einer Transaktion (alles oder nichts): Nach einem Absturz ist entweder beides da oder keines.",
+]
+
+[[block]]
+titel = "Abfragen und Bestätigen (für Assistenten, per curl oder PowerShell)"
+[block.tabelle]
+spalten = ["Anfrage", "Was sie tut"]
+zeilen = [
+  ["GET /api/vorgaenge?fuer=<slug>&offen=1", "alles, was dieser Assistent noch nicht übernommen hat"],
+  ["GET /api/vorgaenge?fuer=<slug>&seit=<nr>", "alle Ereignisse nach Nummer nr (Wiederherstellung, wenn ein Assistent neu anfängt)"],
+  ["GET /api/vorgaenge/<id>", "ein Vorgang mit allen Ereignissen"],
+  ["POST /api/vorgaenge/<id>/uebernommen", "Assistent bestätigt: übernommen"],
+  ["POST /api/vorgaenge/<id>/erledigt", "Assistent bestätigt: erledigt, optional mit Satz notiz"],
+]
+
+[[block]]
+punkte = [
+  "Idempotent (gleiche Anfrage zweimal schadet nicht): Ein zweites „übernommen“ für denselben Vorgang ändert nichts und antwortet wieder mit 200. Sieht ein Assistent einen Vorgang zweimal, prüft er an seiner Kennung, ob er ihn schon bearbeitet hat. Alle Handlungen eines Assistenten auf Vorgänge müssen so gebaut sein, dass Wiederholen nicht schadet (etwa „Frage schlusssatz aus fragen.toml entfernen“ statt „letzte Frage entfernen“).",
+  'Die POSTs laufen hinter allen Schleusen. Sie kommen von curl ohne Origin; die CSRF-Schicht lässt das durch (sie schützt vor fremden Websites, nicht vor Programmen auf demselben Rechner). Das ist richtig so: Auf dem Rechner kann ein Assistent ohnehin Dateien schreiben. Der Schutz gegen „ein Assistent antwortet anstelle des Benutzers“ ist darum eine Regel plus Protokoll: Antworten entstehen nur mit von = "browser", und die Seite /vorgaenge zeigt jedes Ereignis mit Herkunft.',
+]
+
+[[block]]
+titel = "Der Rückruf: der Assistent wartet mit curl im Hintergrund"
+text = """Assistenten warten mit curl und langem Timeout als Hintergrundprozess. Der Prozess endet beim Rückruf.
+
+Warum das funktioniert: Ein Assistent hat keine Adresse, die der Server anrufen könnte. Aber er kann einen Befehl im Hintergrund starten. Endet dieser Befehl, wird der Assistent geweckt und liest das Ergebnis. Der Server hält die Anfrage so lange offen, bis es etwas gibt (Long-Polling: lange warten statt oft fragen). curl.exe gehört zu Windows, es muss nichts installiert werden."""
+
+[[block]]
+beispiel = """Assistent startet Warten im Hintergrund -> Server hält die Leitung offen
+Benutzer antwortet -> Server schreibt Antwort und Vorgang in den Datenspeicher -> Leitung antwortet
+curl endet -> Assistent wacht auf -> liest, übernimmt, bestätigt -> wartet wieder"""
+
+[[block]]
+text = """Der Warte-Endpunkt:
+
+GET /api/vorgaenge/warten?fuer=<slug>&timeout=<sekunden>[&seit=<nr>]"""
+
+[[block]]
+punkte = [
+  "Gibt es für diesen Slug schon Vorgänge, die noch nicht uebernommen sind (oder mit seit: Ereignisse nach Nummer nr), antwortet der Server sofort.",
+  "Sonst hält er die Verbindung offen und antwortet beim nächsten Vorgang für diesen Slug, oder leer, wenn timeout abläuft.",
+  "timeout: Standard 1 500 s (25 Minuten), Obergrenze 3 600 s, 0 heißt „nur nachsehen, nicht warten“.",
+  'Antwort: { "vorgaenge": [ … ], "cursor": 1042 }. Beim Antworten setzt der Server die Vorgänge auf zugestellt.',
+  "Ausnahme von der Schleuse „Zeitlimit 10 s“, wie der Live-Kanal.",
+  "Im Server: je Slug ein tokio::sync::Notify; höchstens 3 gleichzeitige Warter je Slug (ein vierter beendet den ältesten mit leerer Antwort, damit ein neu gestarteter Assistent nicht an einem vergessenen Warter scheitert).",
+  "Kein Vorgang geht verloren, wenn die Leitung reißt: „zugestellt“ ist nur ein Hinweis. Erst „übernommen“ zählt. Was nicht übernommen ist, kommt beim nächsten Warten wieder.",
+]
+
+[[block]]
+text = """Auf der Seite des Assistenten ein fertiges Skript, damit leere Läufe ihn nicht wecken (jedes Wecken kostet Rechenzeit):"""
+
+[[block]]
+beispiel = """# scripts/Warten.ps1 -Slug garten
+# Wartet, bis es Vorgänge gibt, und endet erst dann. Leere Antworten (Timeout)
+# und Verbindungsfehler (Server startet neu) führen zu erneutem Warten.
+param([Parameter(Mandatory)] [string] $Slug)
+while ($true) {
+  $antwort = curl.exe -s --max-time 1600 "http://127.0.0.1:8787/api/vorgaenge/warten?fuer=$Slug&timeout=1500"
+  if ($LASTEXITCODE -eq 0 -and $antwort -match '"vorgaenge":[[][{]') { $antwort; break }
+  Start-Sleep -Seconds 5
+}"""
+
+[[block]]
+text = """Ablauf für jeden Projekt-Assistenten (kommt fertig zum Kopieren in die Anleitung):"""
+
+[[block]]
+punkte = [
+  '1. Bei Arbeitsbeginn: curl.exe -s "http://127.0.0.1:8787/api/vorgaenge?fuer=<slug>&offen=1" und alles Offene bearbeiten (Wiederherstellung nach Pause oder Neustart).',
+  "2. Dann pwsh scripts/Warten.ps1 -Slug <slug> im Hintergrund starten.",
+  "3. Endet das Skript: Vorgänge lesen, für jeden POST …/<id>/uebernommen, handeln, POST …/<id>/erledigt, und sofort wieder Schritt 2.",
+]
+
+[[block]]
+text = """Der Cursor muss nicht beim Assistenten liegen: Der Server weiß, was übernommen ist, und offen=1 liefert alles Fehlende. seit=<nr> (oder seit=0 für alles) bleibt für eine vollständige Wiederherstellung und zum Nachlesen.
+
+Grenzen:"""
+
+[[block]]
+punkte = [
+  "Ein Assistent, dessen Sitzung geschlossen ist oder dessen App nicht läuft, wartet nicht. Seine Vorgänge bleiben „offen“ und kommen bei Schritt 1 an, sobald er wieder arbeitet. Die Seite /vorgaenge zeigt je Assistent, ob er gerade wartet; wartet einer nicht, kann der Leit-Assistent ihn per Nachricht wecken.",
+  "Ob ein fertiger Hintergrund-Befehl einen ruhenden Assistenten zuverlässig weckt, wird in Etappe 2b einmal mit echten Assistenten geprüft (Bau- und Prüf-Assistent über die Vorgangsart abnahme), bevor alle Projekt-Assistenten es benutzen.",
+  "Verworfen: Live-Kanal für Assistenten (ein ruhender Assistent hört nicht zu), ein Bote als geplante Aufgabe (kostet bei jedem Lauf Rechenzeit, verzögert, braucht eine dauerhafte App-Einstellung, nicht mehr nötig), eine interne Nachrichten-Schnittstelle der App vom Server aus (nicht dokumentiert).",
+]
+
+[[block]]
+titel = "Die Seite /vorgaenge"
+punkte = [
+  "Oben drei Zahlen: offen, zugestellt, übernommen (heute).",
+  "Je Assistent eine Zeile: „wartet seit …“ (oder „wartet nicht“), „zuletzt übernommen …“, Zahl der offenen Vorgänge.",
+  "Darunter eine Liste je Vorgang: Art, Projekt, Titel, Zustand als farbiger Punkt, seit wann, Herkunft jedes Schritts.",
+  "Rot markiert: Vorgänge, die länger als einen Tag „zugestellt“ sind, ohne übernommen zu sein (der Assistent hat nicht reagiert).",
+  "Live: neue Ereignisse erscheinen über den Live-Kanal (Ereignis vorgang).",
+]
+
+[[block]]
+titel = "Später: abgehakt heißt noch nicht erledigt"
+punkte = [
+  "Grund: Ein Haken kann „gesehen“ meinen, obwohl nichts geschehen ist.",
+  "Zwei Knöpfe statt einem: „gesehen“ (der Benutzer weiß Bescheid, die Aufgabe bleibt offen) und „erledigt“ (er hat es getan).",
+  "Hat eine Aufgabe ein prüfbares Ergebnis (etwa ein gesetztes Recht oder eine laufende geplante Aufgabe), heißt der Haken zuerst „abgehakt, wird geprüft“. Erledigt ist sie erst, wenn der Assistent das Ergebnis nachgesehen hat. Fehlt es, geht die Aufgabe mit einem Satz dazu an den Benutzer zurück.",
+  "Rang: ohne Eile, nach den Ideen zu Wecken und Stillstand (Stop-Hook, Angebot mit Grund ablehnen, Hinweis „steht still“).",
+]

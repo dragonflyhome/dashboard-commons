@@ -1,0 +1,13 @@
+# Beispiel-Schwerpunkte für die Tests (Etappe A1). Keine echten Projekte.
+# Absichtlich: Das Projekt gibt-es-nicht fehlt (Hinweis), mehrere Beispielprojekte
+# haben keinen Schwerpunkt und stehen unter „Sonstiges“ (Hinweise).
+
+[[schwerpunkt]]
+name = "Chor und Verein"
+reihenfolge = 4
+projekte = ["schaufenster", "neu-form"]
+
+[[schwerpunkt]]
+name = "Bienen und Honig"
+reihenfolge = 5
+projekte = ["dashboard", "gibt-es-nicht"]

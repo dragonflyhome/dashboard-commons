@@ -1,0 +1,267 @@
+titel = "Inhaltsmodell: Ein Projekt ist ein Ordner mit drei Sprachen"
+reihenfolge = 2
+
+[[block]]
+titel = "Was in einem Projektordner liegt"
+beispiel = """
+projects/<slug>/
+  projekt.toml          Kopf: Titel, Status, Assistent (Feld chat), Backup, Unterseiten
+  daten/
+    kennzahlen.toml     Daten für den Baustein „Kennzahlen“
+    zeitstrahl.toml     … je Baustein eine Datei, nur die nötigen
+    fragen.toml         Fragen an den Benutzer
+    eigen-<name>.toml   eigene Daten, die kein Baustein abdeckt
+  Seite.svelte          Hauptseite: setzt Bausteine zusammen
+  seiten/<name>.svelte  Unterseiten
+  <name>.ts             Hilfsfunktionen, eigene Typen, Tests
+  assets/               SVG, Bilder, PDF, Vorschau-HTML
+  wuensche.toml         Wünsche an den Katalog und den Server
+Alle Dateien schreibt der Projekt-Assistent.
+"""
+
+[[block]]
+text = """
+Der Projektordner ist reiner Inhalt der Projekt-Assistenten. Was zur Laufzeit entsteht (Antworten des Benutzers, Vorgänge, Zustände von Wünschen, Bau-Läufe, Abnahmen), liegt im Datenspeicher des Dashboards (Abschnitt „Der Datenspeicher des Dashboards“), nie im Projektordner.
+
+Alle Zeilen in TOML stehen als Tabellen-Arrays mit Feldnamen ([[balken]] mit name, von, bis), nie als Text mit Trennzeichen ("a | b | c"). Sonst wäre es Markdown mit anderem Namen.
+
+Drei Sprachen, drei Aufgaben:"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Sprache", "Wofür", "Wann sichtbar"]
+zeilen = [
+  ["TOML", "alle Daten: Zahlen, Termine, Listen, Texte", "sofort beim Speichern (der Server liest live)"],
+  ["Svelte + TS", "wie die Seite aussieht und sich verhält", "nach dem automatischen Bau (einige Sekunden)"],
+  ["Rust", "das Backend jedes Projekts: allgemeine Endpunkte aus TOML für alle (ab 4v); eigenes Modul des Projekts in projects/<slug>/server/, mit dem Dienst gebaut (ab 4b)", "allgemeine sofort; eigenes Modul nach Merge-Request, Prüfung, Abnahme und Neustart"],
+]
+
+[[block]]
+text = """
+Rust je Projekt: Braucht ein Projekt einen Server-Teil, schreibt der Projekt-Assistent einen Wunsch (art = "funktion") mit genauer Beschreibung, gern mit einem Rust-Entwurf als Anhang in seinem Ordner (vorschlag-server.rs.txt, wird nicht gebaut). Der Bau-Assistent baut ihn als src/projekte/<slug>.rs. Grund: Ein Fehler in Rust stoppt den ganzen Server und damit alle Projekte. Ein Projekt-Assistent kann seinen Rust-Teil nicht prüfen, ohne den ganzen Server zu bauen. Jede Rust-Abhängigkeit kann den Server zum Absturz bringen.
+
+Die Trennung ist Absicht: Projekte ändern meistens Daten. Die sind sofort da, ohne Bau. Aussehen ändert sich selten; dafür lohnt der Bau."""
+
+[[block]]
+titel = "Der Kopf: projekt.toml"
+beispiel = """
+schema = 3
+title = "Garten"
+status = "aktiv"               # aktiv | pausiert | geplant | fertig | problem
+summary = "Ein Satz für die Kachel."
+order = 30
+chat = "Garten"
+backup = "rot"                 # rot | gelb | grün
+backup_note = "nur lokal"
+vorschau = "assets/vorschau.html"   # optional
+open = ["Offener Punkt"]
+
+[[seiten]]                     # Unterseiten: Datei seiten/<name>.svelte
+name = "beet-a"
+title = "Beet A: Hochbeete"
+order = 10
+
+[[links]]
+name = "Ordner"
+url = "D:/daten/garten"
+
+[[repos]]
+path = "D:/code/garten"
+label = "garten"
+"""
+
+[[block]]
+text = """
+schema = 3: Fassung 1 war page.md ohne Nummer, Fassung 2 war page.md mit Nummer (nie gebaut), Fassung 3 ist dieser Ordner. Feste Wörter bei status und backup. Unbekannte Felder sind ein Fehler."""
+
+[[block]]
+titel = "Daten für Bausteine: daten/*.toml"
+text = """
+Jeder Baustein im Katalog hat genau einen Datentyp. Der Typ steht in Rust; TOML-Datei, Prüfung und TypeScript-Typ folgen daraus. Beispiele (JJJJ-MM-TT steht für ein Datum, JJJJ-MM für einen Monat):"""
+
+[[block]]
+beispiel = """
+# daten/zeitstrahl.toml
+[[eintrag]]
+datum = "JJJJ-MM-TT"
+titel = "Beet angelegt"
+text = "Erde, Saatgut, Wasser"
+farbe = "fertig"
+"""
+
+[[block]]
+beispiel = """
+# daten/gantt.toml
+start = "JJJJ-MM"              # optional: Plan-Monate in echte Daten umrechnen
+[[balken]]
+name = "Beete umgraben"
+von = "JJJJ-MM"
+bis = "JJJJ-MM"
+farbe = "aktiv"
+"""
+
+[[block]]
+beispiel = """
+# daten/fluss.toml
+[[kasten]]
+id = "aussaat"
+text = "Aussaat"
+[[kasten]]
+id = "ernte"
+text = "Erntefest"
+[[pfeil]]
+von = "aussaat"
+nach = "ernte"
+"""
+
+[[block]]
+text = """
+Eine Datei kann mehrere benannte Teile haben, wenn eine Seite zwei Zeitstrahlen braucht: [teil.vergangenheit] und [teil.plan]; die Seite wählt dann daten.zeitstrahl.teil.plan.
+
+Die vorhandenen Bausteine und ihr Datentyp nach schema 3 (bestehende Bausteine werden darauf umgestellt):"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Baustein", "Datei", "Typ in Rust"]
+zeilen = [
+  ["Kennzahlen (kpi)", "kennzahlen.toml", "Kennzahlen"],
+  ["Ampel", "ampel.toml", "Ampel"],
+  ["Fortschritt (progress)", "fortschritt.toml", "Fortschritt"],
+  ["Zeitstrahl (timeline)", "zeitstrahl.toml", "Zeitstrahl"],
+  ["Gantt", "gantt.toml", "Gantt"],
+  ["Kanban", "kanban.toml", "Kanban"],
+  ["Fluss (flow)", "fluss.toml", "Fluss"],
+  ["Fragen", "fragen.toml", "Fragen"],
+  ["Reiter (tabs)", "–", "wird eine Komponente <Reiter>, Inhalt in Svelte"],
+]
+
+[[block]]
+text = """
+Eigene Daten (daten/eigen-<name>.toml): Braucht ein Projekt Daten, die kein Baustein abdeckt, schreibt es sie dort hin. Der Server prüft nur, dass es gültiges TOML ist, und reicht es als JSON durch. Das Projekt beschreibt den Typ in seiner .ts-Datei und prüft ihn mit dem kleinen Helfer $katalog/pruefen (kein zusätzliches Paket), mit einem Vitest-Test dazu. Wird so ein Typ von mehreren Projekten gebraucht, wird er ein Katalog-Baustein (Abschnitt „Zusammenarbeit“, Wünsche)."""
+
+[[block]]
+titel = "Text ohne Markdown"
+text = """
+Fließtext steht direkt in Svelte, mit den Text-Bausteinen aus dem Katalog:"""
+
+[[block]]
+beispiel = """
+<script lang="ts">
+  import { Abschnitt, Absatz, Liste, Zeitstrahl, Kennzahlen } from '$katalog';
+  import type { ProjektDaten } from '$vertrag';
+  let { daten }: { daten: ProjektDaten } = $props();
+</script>
+
+<Abschnitt titel="Auf einen Blick">
+  <Kennzahlen daten={daten.kennzahlen} />
+</Abschnitt>
+
+<Abschnitt titel="Was bisher geschah">
+  <Absatz>Das Beet ist angelegt.</Absatz>
+  <Zeitstrahl daten={daten.zeitstrahl} />
+  <Liste punkte={['Git', 'PowerShell 7', 'Rust']} />
+</Abschnitt>
+"""
+
+[[block]]
+text = '''
+Lange Texte, die sich oft ändern (etwa ein Entwurf zur Prüfung durch den Benutzer), dürfen in TOML stehen (text = """…"""). Die Komponente <Text> zeigt sie als Absätze (Leerzeile = neuer Absatz). Es gibt keine Auszeichnung im Text: kein **, kein #. Hervorhebung macht die Svelte-Seite.'''
+
+[[block]]
+titel = "Assets: SVG, Bilder, Dateien"
+text = """
+Projekte dürfen SVG-Dateien, Bilder und andere Dateien erstellen. Es gelten diese Regeln:"""
+
+[[block]]
+[block.tabelle]
+spalten = ["Regel", "Wert"]
+zeilen = [
+  ["Ort", "projects/<slug>/assets/, einfache Namen a-z 0-9 . _ -, keine Unterordner"],
+  ["Formate", "svg, png, jpg, webp, gif, pdf, csv, txt, json, Vorschau html"],
+  ["Größe", "Bild höchstens 2 MB, SVG höchstens 500 KB, alles je Projekt höchstens 50 MB"],
+  ["SVG", 'kein <script>, keine on…-Attribute, kein <foreignObject>, keine Verweise nach außen (href="http…"), keine eingebetteten Schriften'],
+  ["HTML (Vorschau)", "alles eingebettet, nichts aus dem Netz, keine Formulare; Server setzt CSP mit sandbox (Regel wie bisher)"],
+  ["Keine", "Schriften (woff, ttf), ausführbare Dateien, Archive"],
+]
+
+[[block]]
+text = """
+Wann was:"""
+
+[[block]]
+punkte = [
+  'SVG als Bild (<img src="assets/plan.svg">): feste Grafiken, die in hell und dunkel gleich aussehen dürfen.',
+  'SVG als Svelte-Komponente (Logo.svelte im Projektordner): wenn die Grafik den Farben der Seite folgen soll (hell/dunkel). Farben dann nur über Token (fill="var(--farbe-ok)") oder currentColor.',
+]
+
+[[block]]
+text = """
+Die Prüfung beim Bau (pruefe, Abschnitt „Oberfläche und Bau“) misst Formate, Größen und SVG-Regeln. Ein Verstoß nimmt nur dieses Projekt aus dem Bau."""
+
+[[block]]
+titel = "Fragen und Antworten"
+text = """
+daten/fragen.toml, vom Projekt-Assistenten:"""
+
+[[block]]
+beispiel = """
+[[frage]]
+id = "schlusssatz"                     # bleibt für immer gleich
+text = "Welcher Schlusssatz in der Rundmail an den Verein?"
+art = "wahl"                           # wahl | ja-nein | text | bestaetigen
+optionen = ["Herzliche Grüße vom Vorstand", "Wir sehen uns beim Sommerfest!"]
+empfehlung = "Wir sehen uns beim Sommerfest!"
+gestellt = "JJJJ-MM-TT"
+"""
+
+[[block]]
+text = """
+Die Antwort des Benutzers speichert der Server im Datenspeicher (Abschnitt „Der Datenspeicher des Dashboards“, Tabelle antworten, nach sieben Tagen antworten_archiv). Schlüssel ist projekt/id/gestellt, die Felder heißen antwort und notiz (freiwillige Anmerkung, nicht bei text), dazu Zeit und Herkunft. Der Server legt dazu einen Vorgang antwort für den Projekt-Assistenten an (Abschnitt „Vorgänge und Rückruf“). Der Assistent holt die Antwort über die API (GET /api/antworten/<slug>/<id> oder GET /api/vorgaenge/<id>), nicht aus einer Datei. (Nachtrag A2: früher hieß das Feld hier wert.)
+
+bestaetigen ist der „Konzept bestätigen“-Knopf. Beantwortet wird in „Anstehend“, in „Jetzt für dich“ auf der Startseite und im Unter-Dashboard jeder Projektseite. Die Seite /fragen entfällt; „Anstehend“ mit dem Filter Fragen ersetzt sie (Konzept Anstehendes).
+
+Immer auch „Etwas anderes“: Wo der Benutzer eine von mehreren vorgegebenen Antworten anklickt (Fragen, Aufgaben mit Knöpfen, Abstimmungen), steht als letzter Knopf „Etwas anderes …“. Ein Klick klappt darunter ein Feld für eigene Worte auf. Die Antwort geht denselben Weg wie ein Klick (Antwort und Vorgang mit Zeit) und weckt den Assistenten genauso. Den Knopf setzt die Oberfläche selbst, ein Assistent kann ihn nicht abschalten. Nicht gemeint ist die Bedienung des Dashboards (Navigation, Anmelden, Bauen, Sicherheitsbestätigungen)."""
+
+[[block]]
+titel = "Farben sind Bedeutungen"
+text = """
+Im JSON stehen Bedeutungen (ok, laeuft, wartet, problem, info, neutral), keine CSS-Klassen. Die deutschen Farbwörter in TOML (grün, fertig, rot …) übersetzt der Server in diese Bedeutungen."""
+
+[[block]]
+titel = "Fehlermeldungen in einfachem Deutsch"
+text = """
+Jede Meldung nennt Datei, Zeile, was falsch ist, wie es richtig geht:"""
+
+[[block]]
+text = """
+projects/garten/projekt.toml, Zeile 3: Bei status steht „aktief“. Erlaubt sind: aktiv, pausiert, geplant, fertig, problem."""
+
+[[block]]
+text = '''
+projects/garten/daten/gantt.toml, Zeile 12: Dem Balken „Phase 1“ fehlt bis. Beispiel: bis = "JJJJ-MM"'''
+
+[[block]]
+text = """
+projects/garten/Seite.svelte, Zeile 40: Farbe #ff0000 direkt im Stil. Bitte ein Token nehmen, etwa var(--farbe-problem)."""
+
+[[block]]
+text = """
+Ein Rückwärtsstrich in einem TOML-Text bekommt eine eigene Erklärung („Schrägstrich / nehmen“)."""
+
+[[block]]
+titel = "Was ein Projekt-Assistent darf und was nicht"
+[block.tabelle]
+spalten = ["Ein Projekt-Assistent darf", "Ein Projekt-Assistent darf nicht"]
+zeilen = [
+  ["alles im eigenen Projektordner schreiben", "in den Datenspeicher schreiben, außer über die API (übernommen, erledigt)"],
+  ["Bausteine und Token aus dem Katalog benutzen", "eigene Farben, Schriften, @import, Stile für fremde Teile (:global)"],
+  ["eigene Svelte-Teile und TS-Hilfen bauen", "fetch, EventSource, WebSocket, localStorage, {@html} im Projekt-Code"],
+  ["SVG, Bilder, Vorschau-HTML in assets/", "Dateien aus dem Netz einbinden"],
+  ["pruefe <slug> ausführen", "src/, web/, data/ ändern (nur der Bau-Assistent; data/pc.toml auch der Leit-Assistent)"],
+  ["Server-Teile als Wunsch mit Entwurf vorschlagen", "Rust-Code selbst ins Programm bringen"],
+  ["Wünsche in wuensche.toml schreiben", "dem Bau-Assistenten Bauaufträge direkt schicken"],
+]
+
+[[block]]
+text = """
+Die Verbote im Projekt-Code sind keine Bitte: ESLint und die Stil-Prüfung lehnen sie ab, und das Projekt wird dann nicht gebaut."""

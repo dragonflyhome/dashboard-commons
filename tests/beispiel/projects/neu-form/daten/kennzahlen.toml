@@ -1,0 +1,10 @@
+[[kennzahl]]
+titel = "Regenwasser"
+wert = "40–60"
+einheit = "Liter"
+hinweis = "Schätzung nach dem Regen"
+farbe = "grün"
+
+[[kennzahl]]
+titel = "Offene Fragen"
+wert = "2"

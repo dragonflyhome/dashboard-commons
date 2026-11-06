@@ -1,0 +1,571 @@
+# Abschnitt „9. Vorgänge: so holt ein Chat seine Arbeit ab“ (Etappe 6b, Format wie docs/zielbild).
+titel = '9. Vorgänge: so holt ein Chat seine Arbeit ab'
+reihenfolge = 109
+
+[[block]]
+text = '''
+Ein Vorgang ist eine Sache mit Nummer und Zustand, die nicht verloren gehen darf: eine Antwort vom Inhaber, eine Frage, ein Wunsch, ein roter Bau, eine Abnahme (abgelöst seit T5; Abnahme ist jetzt ein Schritt) (mehr im Abschnitt „Vorgänge“). Das Dashboard kann einen Chat nicht anrufen. Darum wartet der Chat selbst: Er startet einen Befehl im Hintergrund, der Server hält die Leitung offen, und wenn es etwas gibt, endet der Befehl und der Chat wacht auf.
+
+Ablauf für jeden Projekt-Chat, <slug> ist der Name der eigenen Projektseite (etwa beispiel):'''
+
+[[block]]
+punkte = [
+  '1. Bei Arbeitsbeginn alles Offene holen und bearbeiten (Wiederherstellung nach Pause oder Neustart):',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/vorgaenge?fuer=<slug>&offen=1"'''
+
+[[block]]
+punkte = [
+  '2. Dann das Warten im Hintergrund starten (als Hintergrundprozess, dessen Ende den Chat weckt):',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Warten.ps1 -Slug <slug>'''
+
+[[block]]
+text = 'Das Skript endet erst, wenn es Vorgänge gibt; leere Antworten und ein Neustart des Servers wecken den Chat nicht. Je Chat läuft nur ein Warten.ps1 zugleich, und alles Zugestellte wird immer übernommen, sonst kehrt das nächste Warten sofort wieder zurück. Exit-Codes: 0 Vorgänge da (JSON auf stdout), 2 Anfrage unlesbar (422), 3 Server weist ab oder Datenspeicher zu (403, 404, 503), 4 anderer HTTP-Code, 5 Anfrage.ps1 fehlt neben dem Skript, 6 -Server ist nicht 127.0.0.1 oder localhost, 7 Anmeldung fehlt (401 nach drei Versuchen: läuft das Skript unter dem Konto des Inhabers?) oder fremdes Konto (403, sofort); bei 2 bis 7 steht ein Satz auf stderr.'
+
+[[block]]
+punkte = [
+  '3. Endet das Skript: Vorgänge lesen (die Ausgabe ist die JSON-Antwort des Servers, offen=1 wie in Schritt 1 geht auch), für jeden Vorgang übernehmen,',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/vorgaenge/<id>/uebernommen -Post'''
+
+[[block]]
+text = 'handeln, dann erledigen, gern mit einem Satz dazu,'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/vorgaenge/<id>/erledigt -Json '{"notiz":"Frage schlusssatz aus fragen.toml entfernt"}''''
+
+[[block]]
+text = '''
+und sofort wieder mit Schritt 2 warten.
+
+Regeln dabei:'''
+
+[[block]]
+punkte = [
+  'Idempotent handeln (zweimal dasselbe schadet nicht): Sieht ein Chat einen Vorgang zweimal, prüft er an der Kennung (v-JJJJMMTT-NNNN), ob er ihn schon bearbeitet hat. Handlungen so bauen, dass Wiederholen nicht schadet: „Frage schlusssatz entfernen“ statt „letzte Frage entfernen“. Ein zweites uebernommen oder erledigt ändert nichts und antwortet wieder mit 200 ("geaendert": false).',
+  'Nie direkt in die Datenbank, immer über /api/vorgaenge.',
+  'von ehrlich setzen: ein Chat schreibt chat:<slug> mit seinem eigenen Slug. Fehlt von bei uebernommen und erledigt, setzt der Server chat:<slug des Vorgangs>. von = "browser" gibt es nur für Anfragen aus dem Dashboard selbst; per Api.ps1 (ohne Origin) lehnt der Server es mit 422 ab.',
+  'Vorgänge der Art antwort entstehen nur im Browser (der Inhaber antwortet auf der Seite). Ein Chat legt nie eine antwort an; versucht er es per Api.ps1 (ohne Origin), antwortet der Server mit 422.',
+  '„Zugestellt“ heißt nur, das Warten hat den Vorgang geliefert. Erst „übernommen“ zählt; was nicht übernommen ist, kommt wieder.',
+  'Wer alles nachlesen will: ?fuer=<slug>&seit=0 liefert alle Ereignisse, ?seit=<nr> nur die nach Nummer nr.',
+]
+
+[[block]]
+text = 'Einen Vorgang anlegen, etwa eine Bitte an einen anderen Chat. Eine Abnahme gibst du seit T5 nicht mehr so weiter, sondern als eigenen Schritt der Arbeit mit fuer = chat:architektur (siehe „Arbeitsregel für Teilschritte“ weiter unten, nach „Arbeiten melden“). slug ist der Chat, der handeln muss; titel höchstens 200 Zeichen, bezug (freiwillig, höchstens 200 Zeichen) ein kurzes Stichwort, worauf sich der Vorgang bezieht:'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/vorgaenge -Json '{"art":"wunsch","slug":"dashboard","titel":"Kasten Termine auf meiner Projektseite","bezug":"wunsch:termine","von":"chat:beispiel"}''''
+
+[[block]]
+text = '''
+Die Antwort (201) enthält den neuen Vorgang mit seiner Kennung und das erste Ereignis. Mögliche Arten: antwort, frage, wunsch, bau, abnahme (abgelöst seit T5; Abnahme ist jetzt ein Schritt) und merge (Merge-Request, Abschnitt 12). Ein falsches Feld oder ein ungültiger Slug gibt 422 (unlesbar) mit einem Satz, was erwartet wird.
+
+Die JSON-Körper oben mit einfachen Anführungszeichen funktionieren in PowerShell 7 und in Git Bash. Den Weg ohne führenden Schrägstrich schreiben (api/…): Git Bash macht aus /api/… sonst einen Windows-Pfad.
+
+Jeder POST auf /api/vorgaenge und darunter braucht Content-Type: application/json, auch ohne Körper (uebernommen); Api.ps1 schickt ihn mit -Json und -Post immer mit. Fehlt der Kopf oder steht etwas anderes darin, antwortet der Server mit 415 und dem Satz „Bitte den Körper als JSON schicken (Content-Type: application/json).“
+
+Zum Ausprobieren gegen den Testserver auf Port 8788: Api.ps1 und Warten.ps1 je -Server 127.0.0.1:8788 mitgeben. Der Testserver hat seinen eigenen Datenspeicher.'''
+
+[[block]]
+titel = 'Aufgaben für den Inhaber (ab 5a)'
+text = 'Alles, worauf der Inhaber klicken soll, und jede Aufgabe für ihn wird eine Aufgabe im Dashboard: ein Anmeldelink, eine Bestätigung, eine Frage mit Ja oder Nein, „bitte X ansehen“. Sie steht auf der Startseite oben unter „Für dich“ und auf der Projektseite; der Inhaber hakt sie im Browser ab, und dein Chat wird geweckt.'
+
+[[block]]
+punkte = [
+  'Aufgabe statt open = [...]: open sind offene Punkte der Seite, ohne Haken und ohne Wecken. Muss der Inhaber etwas tun, ist es eine Aufgabe.',
+  'Aufgabe statt nur Chat: Im Chat geht ein Link leicht unter. Im Chat darfst du zusätzlich darauf hinweisen.',
+  'Einmalige Links nur hier: Links für Anmeldung, Bestätigung oder Einladung (oft mit token=, code=, key=, sig=) enthalten ein Geheimnis. Sie gehören nur in eine Aufgabe, nie ins Repo, nie in TOML, nie in einen Commit.',
+]
+
+[[block]]
+text = 'Anlegen (PowerShell 7, projekt ist der Slug deiner Projektseite):'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben -Json '{"projekt":"beispiel","von":"chat:beispiel","titel":"Beim Beispielportal anmelden","link":"https://portal.example/anmelden?code=…","frist":"2026-10-30","ablauf":"2026-10-29T18:00:00+01:00"}''''
+
+[[block]]
+text = 'Die Antwort (201) ist {"id":"a-20261028-0001"}. Mit Knöpfen statt Haken:'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben -Json '{"projekt":"beispiel","titel":"Einladung an den Verein abschicken?","knopf":["ja","nein"]}''''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['projekt', 'ja', 'Slug der Projektseite; dessen Chat wird geweckt'],
+  ['titel', 'ja', 'ein Satz, was zu tun ist, höchstens 200 Zeichen'],
+  ['von', 'nein', 'dein Chat, chat:<slug>; fehlt es, chat:<projekt>'],
+  ['link', 'nein', 'nur https://… oder http://localhost[:port]/…, höchstens 2 KiB'],
+  ['knopf', 'nein', '1 bis 6 Antworten, je höchstens 40 Zeichen; ohne Knöpfe gibt es den Haken „erledigt“'],
+  ['frist', 'nein', 'Datum JJJJ-MM-TT; heute oder überschritten erscheint in der Farbe für Achtung'],
+  ['frist_bezug', 'nein', 'statt frist: bewegliche Frist {"ereignis": "<kennung>", "abstand": "+14 Tage"} (Etappe B3, siehe Abschnitt 11)'],
+  ['ablauf', 'nein', 'Zeitpunkt mit Zeitzone, in der Zukunft; danach gilt der Link nicht mehr'],
+]
+
+[[block]]
+text = '''
+Ein Link mit javascript:, data:, file:, einem anderen Schema, http:// auf eine fremde Adresse oder http://127.0.0.1 (dort greift die Anmeldung im Browser nicht; localhost nehmen) gibt 422 mit einem Satz.
+
+Geweckt werden: Der Haken des Inhabers (oder sein Klick auf einen Knopf) legt einen Vorgang der Art antwort für projekt an, mit bezug = aufgabe:<id> oder aufgabe:<id> antwort:<antwort>.
+
+„Etwas anderes …“: Neben deinen Knöpfen (oder dem Haken) steht immer der Knopf „Etwas anderes …“; du kannst ihn nicht abschalten, und einen eigenen Knopf mit diesem Namen lehnt POST /api/aufgaben ab (422). Schreibt der Inhaber dort eigene Worte, bleibt die Aufgabe offen. Du bekommst einen Vorgang antwort mit bezug = aufgabe:<id> antwort:etwas-anderes, dem Titel „Der Inhaber hat etwas anderes geschrieben (eigene Worte): …“ und seinem Text als notiz (am Vorgang und am ersten Ereignis, in GET /api/vorgaenge/<id>). Die Aufgabe selbst trägt dann antwort = "etwas-anderes" und den Text in eigene (sonst null). Bis du handelst, liegt die Aufgabe beim Chat: Sie zählt nicht in GET /api/aufgaben/anzahl, und in /api/anstehend steht sie mit zustand = "beim-chat", wartet_auf = "chat:<projekt>", wartet_auf_dich = false und dem Text in eigene; der Inhaber sieht sie ohne Knöpfe. Das ist eine Rückmeldung: Lies den Text, frag nach, wenn nötig, und entscheide, wie es weitergeht: Aufgabe zurückziehen und, wenn er noch einmal wählen soll, neu anlegen (eine Aufgabe beim Chat hat für ihn keine Knöpfe mehr).
+
+Für alle Antworten auf Aufgaben gilt: Dein Warten.ps1 -Slug <projekt> wacht davon auf wie bei jedem Vorgang (Abschnitt oben); übernehmen und erledigen wie immer. Ohne laufendes Warten holt ?fuer=<slug>&offen=1 den Vorgang beim nächsten Arbeitsbeginn.
+
+Nachsehen: GET /api/aufgaben?projekt=<slug> (alle des Projekts) oder ?offen=1 (alle offenen), mit Api.ps1 (etwa pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/aufgaben?offen=1"). Den Link gibt es dort nur, solange die Aufgabe offen und nicht abgelaufen ist.
+
+Ändern ohne neue Nummer (ab Etappe B2): Titel, Knöpfe und Frist einer offenen Aufgabe änderst du mit POST /api/aufgaben/<id>; Kennung, Link, Ablauf und die Einstufung des Inhabers bleiben (Beispiele in Abschnitt 11, „Etappe B2“). Zurückziehen und neu anlegen brauchst du dafür nicht mehr.
+
+Zurückziehen, wenn sich die Aufgabe erledigt hat, ohne dass der Inhaber klicken muss:'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/<id>/zurueckgezogen -Post'''
+
+[[block]]
+text = 'Regeln dabei:'
+
+[[block]]
+punkte = [
+  'Den Haken setzt nur der Inhaber im Browser; per Api.ps1 (ohne Origin) gibt erledigt 422. Ein Knopf speichert nur die Antwort; der Server tut dabei sonst nichts.',
+  'Der Link liegt verschlüsselt im Datenspeicher (DPAPI unter dem Konto des Dienstes) und ist nur hinter der Windows-Anmeldung sichtbar. Nach dem Haken, nach dem Ablauf (der Server sieht jede Minute nach) und nach dem Zurückziehen löscht der Server den Link; es bleibt nur der Titel.',
+  'Im Export und auf /daten steht nie der Link, nur „Link (verborgen)“ und die Zahl der gespeicherten Links.',
+  'von ist eine Angabe, kein Nachweis (alle Chats laufen unter dem Konto des Inhabers); trotzdem ehrlich setzen.',
+  'Zweimal abhaken oder zurückziehen schadet nicht: Die Antwort ist 200 mit "geaendert": false.',
+  'Höchstens 20 offene Aufgaben je Projekt und 100 insgesamt; darüber gibt es 429 mit einem Satz. Erledigte, abgelaufene und zurückgezogene Aufgaben kommen nach sieben Tagen ins Archiv: Listen zeigen sie nicht mehr, im Datenspeicher, in der Sicherung und im Export bleiben sie (nur der Link ist schon beim Abschluss gelöscht).',
+  'Neben „Öffnen“ zeigt die Seite das Ziel des Links (den Host, bei Umlauten in der ASCII-Form xn--…). Links mit unsichtbaren Unicode-Zeichen (etwa U+200B oder einer Richtungsumkehr) oder einem Port über 65535 gibt es nicht (422).',
+  'Eine Antwort vom Inhaber ist kein Nachweis: Ein Chat darf nie allein wegen einer Antwort eine riskante Handlung auslösen (Geld, Löschen, Senden, Rechte); dafür fragt er den Inhaber direkt.',
+  'Neu ab A1: "prioritaet": "jetzt" | "bald" | "irgendwann" (freiwillig, ohne Angabe bald) schlägt der Inhaber vor, wie dringend die Aufgabe ist.',
+]
+
+[[block]]
+titel = 'Arbeiten melden (ab A1)'
+text = 'Eine Arbeit ist das, was dein Chat gerade tut oder als Nächstes vorhat. Der Inhaber sieht sie in der Übersicht „Anstehend“ und oben auf deiner Projektseite (Unter-Dashboard). Er liest nur; ändern tust nur du.'
+
+[[block]]
+punkte = [
+  'Wann eine Arbeit: Du arbeitest an etwas, das länger als eine Sitzung dauert, oder du wartest auf jemanden (den Inhaber, einen anderen Chat, jemanden draußen), oder etwas steht als Nächstes an. Kleinigkeiten, die in einer Sitzung fertig werden, brauchen keine Arbeit.',
+  'Arbeit, Aufgabe oder Frage? Muss der Inhaber etwas tun (klicken, unterschreiben), ist es eine Aufgabe. Muss er entscheiden, ist es eine Frage (in daten/fragen.toml). Was du selbst tust, ist eine Arbeit. Wartet deine Arbeit auf seine Antwort, setz "stand": "wartet", "wartet_auf": "inhaber" und als verweis die Kennung der Aufgabe oder Frage; dann zählt nur die Aufgabe oder Frage, die Arbeit bekommt den Vermerk „wartet auf deine Antwort“.',
+  'Statt open = [...]: Offene Punkte gehören in Arbeiten, Fragen oder Aufgaben. open zeigt das Unter-Dashboard nur als Notizen.',
+]
+
+[[block]]
+text = 'Anlegen (PowerShell 7, projekt ist der Slug deiner Projektseite):'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten -Json '{"projekt":"beispiel","von":"chat:beispiel","titel":"Rundmail zum Vereinsfest entwerfen","stand":"laeuft","prioritaet":"bald","frist":"2026-11-05"}''''
+
+[[block]]
+text = 'Die Antwort (201) ist {"id":"ar-20261029-0001"}. Die Kennung merkst du dir (etwa in deinen Notizen), um die Arbeit fortzuschreiben.'
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['projekt', 'ja', 'Slug der Projektseite'],
+  ['titel', 'ja', 'ein Satz, was du tust, höchstens 200 Zeichen'],
+  ['stand', 'ja', 'laeuft, wartet, als-naechstes oder fertig'],
+  ['von', 'ja', 'dein Chat, chat:<name> (a–z, 0–9, Bindestrich); fehlt es oder hat es eine andere Form, 422 (ab T3, Zweig teilschritte)'],
+  ['wartet_auf', 'bei wartet', 'inhaber, chat:<name> (etwa chat:architektur) oder extern; nur beim Stand wartet'],
+  ['verweis', 'nein', 'Kennung der Aufgabe (a-…) oder Frage (ihre id), auf die du wartest'],
+  ['prioritaet', 'nein', 'jetzt, bald (Standard) oder irgendwann; dein Vorschlag, der Inhaber kann umstufen'],
+  ['frist', 'nein', 'Datum JJJJ-MM-TT; heute oder vorbei heißt „Jetzt“, in höchstens sieben Tagen mindestens „Bald“'],
+  ['notiz', 'nein', 'kurze Notiz, höchstens 1000 Zeichen, Zeilenumbrüche erlaubt'],
+]
+
+[[block]]
+text = 'Fortschreiben: Schick von und nur die Felder, die sich ändern; der Rest bleibt. null oder "" leert ein Feld (etwa "frist": null). von ist auf jedem schreibenden Weg der Arbeiten Pflicht (ohne von 422), auch wenn sich nur die Notiz ändert.'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001 -Json '{"von":"chat:beispiel","stand":"wartet","wartet_auf":"inhaber","verweis":"a-20261029-0003"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001 -Json '{"von":"chat:beispiel","stand":"fertig"}''''
+
+[[block]]
+text = '''
+Die Antwort ist {"arbeit":{…},"geaendert":true}; war schon alles so, "geaendert": false.
+
+Wer dran ist (ab T3): Eine laufende oder wartende Arbeit hat einen besitzer, den Chat, der sie angelegt oder auf laeuft gesetzt hat. Nur er schreibt sie fort; schickt ein anderer Chat etwas, antwortet der Server mit 409 und nennt im Körper besitzer und seit, und es bleibt alles, wie es war. Bei als-naechstes oder fertig wird der Besitzer frei; wer sie danach auf laeuft setzt, ist der neue.
+
+Umbenennen: Auch titel lässt sich fortschreiben, mit denselben Grenzen wie beim Anlegen (nicht leer, höchstens 200 Zeichen; null oder "" geben 422, statt zu leeren). Hat die Arbeit einen Besitzer, benennt nur er sie um; sonst nur der Chat des Projekts (von ist chat:<projekt> der Arbeit, sonst 403). Umbenennen erzeugt keine Meldung (keine Glocke); die Arbeit bekommt einen Eintrag in verlauf mit art: "titel", alt, neu, zeit, von und dem Satz Titel geändert: „alt“ → „neu“ (der Verlauf bleibt vollständig, nichts fällt weg; ohne Einträge fehlt verlauf). von ist eine Angabe ohne Nachweis, eine Absprache unter Chats gegen Versehen; mit dem Chat-Schlüssel (C1) kommt der Name aus dem Schlüssel.'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001 -Json '{"titel":"Rundmail zum Sommerfest entwerfen","von":"chat:beispiel"}''''
+
+[[block]]
+text = '''
+Nachsehen: GET /api/arbeiten?projekt=<slug> mit Api.ps1; jede Arbeit bringt ihre Schritte mit (Feld schritte, fehlt ohne Schritte).
+
+Teilschritte (ab T3, Zweig teilschritte): Eine Arbeit kann bis zu 20 Schritte haben; an jedem Schritt, an dem gearbeitet wird, ist genau ein Chat dran (besitzer). Hat eine Arbeit Schritte, rechnet der Server ihren Stand daraus (direkt setzen gibt 422). Anlegen (201 mit nr; fuer ist freiwillig: nur dieser Chat darf den Schritt bekommen), übernehmen und ändern, immer mit von. Die Nummer eines neuen Schritts steht in der Antwort 201 (nr); nimm sie von dort. Läuft oder wartet die Arbeit schon, legt der Server beim ersten neuen Schritt zuerst Schritt 1 „bisherige Arbeit“ mit dem bisherigen Besitzer an; dein erster Schritt ist dann Nr. 2. Im Beispiel läuft ar-20261029-0001 schon: Bauen wird Schritt 2, Prüfen (nur für die Architektur-Rolle) Schritt 3; dann Schritt 2 übernehmen und bauen, Schritt 2 mit den Angaben für die Abnahme in der notiz fertig setzen und danach Schritt 3 der Architektur-Rolle anbieten (das darf, wer in der Arbeit einen Schritt besitzt, auch einen fertigen). Schritt 1 setzt sein Besitzer fertig, wenn die bisherige Arbeit in den neuen Schritten aufgegangen ist:'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte -Json '{"von":"chat:beispiel","titel":"Entwurf bauen"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte -Json '{"von":"chat:beispiel","titel":"Entwurf prüfen","fuer":"chat:architektur"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte/2/uebernehmen -Json '{"von":"chat:beispiel"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte/2 -Json '{"von":"chat:beispiel","stand":"fertig","notiz":"Zweig entwurf 1a2b3c4, Tests grün"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte/3 -Json '{"von":"chat:beispiel","anbieten":"chat:architektur"}''''
+
+[[block]]
+punkte = [
+  'Übernehmen antwortet 200 mit {"arbeit":{…},"geaendert":true}; ein zweites Mal "geaendert": false. Ist ein anderer Chat dran, 409 mit besitzer und seit. Einen Schritt, an dem über 24 Stunden niemand geschrieben hat oder der so lange angeboten ist, übernimmst du nur mit "statt":"<wer dran ist>".',
+  'Ändern (stand, wartet_auf, verweis, notiz, anbieten, freigeben) darf nur, wer dran ist; sonst 409, wenn ein anderer dran ist, und 422 an einem freien oder dir angebotenen Schritt (erst übernehmen). wartet_auf ist bei Schritten schritt:<nr>, inhaber (dann mit verweis) oder extern. anbieten und fuer haben die Form chat:<name> wie von.',
+  'Anbieten heißt: der Schritt ist frei, bis der Empfänger übernimmt. Wer zuletzt angeboten hat, darf das Angebot umlenken oder mit "freigeben": true zurücknehmen, solange der Empfänger nicht übernommen hat. Nimmst du so ein Angebot an einem Schritt zurück, der vorher fertig war, steht er danach auf als-naechstes ohne Besitzer, und die Arbeit ist nicht mehr fertig; setz ihn wieder fertig, wenn das so bleiben soll.',
+  'Wecken: Der Empfänger eines Angebots und der Besitzer eines wartenden Schritts, der wieder läuft (der Schritt, auf den er wartete, ist fertig oder frei), bekommen einen Vorgang der Art schritt (bezug schritt:<arbeit>/<nr>; weckt eine Anfrage mehrere deiner Schritte, nennt bezug nur den ersten, sieh dann die Schritte der Arbeit durch); dein Warten.ps1 wacht davon auf. Ändert sich der Schritt (übernommen, umgelenkt, fertig, eine Notiz), erledigt der Server den Vorgang selbst.',
+]
+
+[[block]]
+text = 'Regeln dabei:'
+
+[[block]]
+punkte = [
+  'Wechselt der Stand weg von wartet, fällt wartet_auf weg. wartet ohne wartet_auf gibt 422 mit Satz.',
+  'Fertige Arbeiten bleiben sieben Tage in der Liste der API und ziehen dann ins Archiv (nichts wird gelöscht). Eine Arbeit im Archiv lässt sich nicht mehr fortschreiben (422); dann eine neue anlegen.',
+  'Höchstens 30 nicht fertige Arbeiten je Projekt; darüber 429 mit Satz.',
+  'Nur per Api.ps1: Aus dem Browser nimmt der Server keine Arbeit an (der Inhaber liest nur). Umstufen (Jetzt, Bald, Irgendwann) kann nur der Inhaber im Browser.',
+  'Die Übersicht holst du mit GET /api/anstehend (Filter projekt, stufe, art, schwerpunkt, nur_fuer_mich=1), das Unter-Dashboard deiner Seite mit GET /api/projekte/<slug>/stand. Ab Etappe 3a+ kommen dort alle offenen Einträge (auch alle offenen Fragen) in fester, neutraler Ordnung (Projekt, Art, Kennung), ohne Zähler und ohne Auswahl; je Eintrag stehen die Fakten stufe.wirksam, frist_stufe, tage_bis, wartet_auf_dich, schwerpunkt und schwerpunkt_reihenfolge. Wie der Inhaber sie sieht (Reihenfolge, Gruppen, Zahlen), rechnet die Oberfläche in web/src/lib/anstehend.ts; welche Frage je Projekt sichtbar ist, sagt seit Etappe B2 der Server (warteschlange, siehe „Fragen an den Inhaber“). Ohne Anmeldung hat /stand keine Einträge, nur zahlen.',
+  'Ab Etappe 3a-4 hat jeder Eintrag mit Frist frist_stufe (ueberfaellig, heute, bald bis frist_bald_tage Tage, sonst spaeter); frist_bald_tage (7) steht in der Liste und im Stand des Unter-Dashboards. Aus derselben Stufe hebt der Server die wirksame Stufe (überfällig und heute: Jetzt). Sie hängt vom Tag ab; die Oberfläche lädt um Mitternacht neu.',
+  'von ist eine Angabe, kein Nachweis; trotzdem ehrlich setzen. Arbeiten nur für dein eigenes Projekt anlegen und fortschreiben.',
+]
+
+[[block]]
+titel = 'Arbeitsregel für Teilschritte (ab T5)'
+punkte = [
+  'Jede Arbeit kann Teilschritte haben. An jedem Schritt ist genau ein Chat dran, und du arbeitest nur an einem Schritt, an dem du selbst stehst.',
+  'Zu Beginn jedes Zugs prüfen, wem was gehört: GET /api/arbeiten?projekt=<slug> mit Api.ps1. Steht ein anderer Chat am Schritt, fang nicht an.',
+  'Übergabe nur mit anbieten und übernehmen. Erst wenn der andere Chat den Schritt übernommen hat, ist er übergeben. Eine Chat-Nachricht allein ist keine Übergabe.',
+  'Abnahme: ein eigener Schritt mit "fuer":"chat:architektur" (so nimmt sich niemand selbst ab), statt eines Vorgangs der Art abnahme. Die Übergangsregel (Vorgang abnahme, Übernahme mit api/vorgaenge/<id>/uebernommen, Besitzer in der Notiz) ist abgelöst.',
+  'Was die Abnahme braucht (Zweig, Commit, Dauer von Bau und Test), schreibst du in die notiz deines eigenen Bau-Schritts, bevor er fertig ist (das geht im selben Aufruf mit "stand":"fertig"). Bietest du einen Schritt an, der dir nicht gehört, schickst du nur von und anbieten, nichts sonst (keine notiz, kein stand); sonst lehnt der Server ab. Deine Angaben gehören in die notiz deines eigenen Schritts.',
+  'Funde aus einer Abnahme, Seite des Abnehmenden: die Funde in die notiz des eigenen Abnahme-Schritts schreiben, den fertigen Bau-Schritt dem Bauenden wieder anbieten (nur von und anbieten) und danach am eigenen Abnahme-Schritt auf genau diesen Bau-Schritt warten ("wartet_auf":"schritt:<nr>"). Anbieten und warten sind getrennte Aufrufe, erst anbieten, dann warten; auf einen fertigen Schritt kann niemand warten, nur auf einen angebotenen oder laufenden (Beispiel unten).',
+  'Funde aus einer Abnahme, Seite des Bauenden: Das Dashboard weckt dich mit einem Vorgang der Art schritt. Du übernimmst den Bau-Schritt, besserst nach, schreibst Zweig, Commit und Läufe in seine notiz und setzt ihn fertig. Dann weckt das Dashboard den Abnehmenden, sein Abnahme-Schritt läuft wieder. Die Runde endet, wenn der Abnehmende seinen Abnahme-Schritt fertig setzt (mit dem Urteil in der notiz).',
+  'Hat eine Etappe eine Arbeit im Tracker, schreibst du in fortschritt.toml, ampel.toml und in den Status des Gantt-Balkens nur noch „Stand: siehe Arbeit im Kasten Arbeiten“. Der Zeitstrahl bleibt als Geschichte, der Gantt-Balken als Plan; den Stand sagt allein der Tracker.',
+]
+
+[[block]]
+text = 'Funde aus einer Abnahme am Beispiel: Schritt 2 ist der fertige Bau-Schritt, Schritt 3 der eigene Abnahme-Schritt der Architektur-Rolle. Erst anbieten, dann warten:'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte/2 -Json '{"von":"chat:architektur","anbieten":"chat:beispiel"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten/ar-20261029-0001/schritte/3 -Json '{"von":"chat:architektur","stand":"wartet","wartet_auf":"schritt:2"}''''
+
+[[block]]
+titel = 'Fragen an den Inhaber und Schwerpunkte (ab A1)'
+text = '''
+Kurz für dich (Inhaber): Jeder Chat kann dir Fragen stellen. Er schreibt dazu, wie dringend sie ist und bis wann du antworten solltest. Damit es nicht zu viel wird, siehst du je Projekt immer nur eine Frage; die anderen warten dahinter, und ein Satz sagt dir, wie viele noch kommen. Jedes Projekt gehört zu einem Schwerpunkt, etwa „Bienen und Honig“. Diese Liste wird für dich gepflegt. Ein Projekt, das dort noch fehlt, steht unter „Sonstiges“.
+
+Eine Frage stellen: Fragen stehen in projects/<slug>/daten/fragen.toml (von Hand, wie die anderen Dateien in daten/). Beispiel:'''
+
+[[block]]
+beispiel = '''
+[[frage]]
+id = "schlusssatz"
+text = "Welcher Schlusssatz in der Rundmail an den Verein?"
+art = "wahl"
+optionen = ["Herzliche Grüße vom Vorstand", "Wir sehen uns beim Sommerfest!"]
+empfehlung = "Wir sehen uns beim Sommerfest!"
+gestellt = "2026-10-25"
+prioritaet = "bald"
+frist = "2026-11-02"'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['id', 'ja', 'bleibt für immer gleich; Kleinbuchstaben, Ziffern, Bindestriche'],
+  ['text', 'ja', 'die Frage in einem Satz, in einfacher Sprache'],
+  ['art', 'ja', 'wahl (mit optionen, mindestens zwei), ja-nein, text oder bestaetigen'],
+  ['optionen', 'bei wahl', 'die Antworten zum Auswählen'],
+  ['empfehlung', 'nein', 'was du empfiehlst'],
+  ['gestellt', 'ja', 'Datum JJJJ-MM-TT, an dem du die Frage gestellt hast'],
+  ['prioritaet', 'nein', 'jetzt, bald (Standard) oder irgendwann; dein Vorschlag, der Inhaber kann umstufen'],
+  ['frist', 'nein', 'Datum JJJJ-MM-TT, bis wann der Inhaber antworten sollte; heute oder vorbei heißt „Jetzt“, in höchstens sieben Tagen mindestens „Bald“. Eine Frist senkt nie'],
+]
+
+[[block]]
+text = '''
+Die Einstufung des Inhabers gilt für die Frage mit genau dieser id und diesem gestellt. Stellst du dieselbe Frage neu (neues gestellt), gilt wieder dein Vorschlag. Um Mitternacht rechnet das Dashboard neu: Eine Frist für morgen ist „Bald“, ab 0 Uhr ist sie heute und damit „Jetzt“.
+
+Eine Frage auf einmal (Warteschlange, ab Etappe B2): Je Projekt zeigt das Dashboard immer nur eine Frage, in „Anstehend“, auf der Startseite unter „Jetzt für dich“, im Unter-Dashboard, im Backlog und im Baustein Fragen. Welche, rechnet der Server an einer Stelle und schreibt jeder offenen Frage ihren Platz an (warteschlange = { platz, offen } in /api/anstehend und /stand/voll; Platz 1 ist die sichtbare): zuerst die höchste wirksame Stufe (also prioritaet, Frist und Einstufung des Inhabers), bei Gleichstand die frühere frist (ohne Frist danach), dann die Reihenfolge in fragen.toml (bis B1: die älteste nach gestellt, dann nach id). Die übrigen nennt ein Vermerk an dieser Frage: „noch 1 Frage wartet“ bzw. „noch N Fragen warten“, ohne ihren Text. Auch die Zähler (Jetzt, Bald, Irgendwann, „wartet auf dich“) zählen je Projekt höchstens eine Frage. Für dich als Chat heißt das:'''
+
+[[block]]
+punkte = [
+  'Leg mehrere Fragen ruhig auf einmal ab: Der Inhaber sieht nur die erste, die nächste rückt nach seiner Antwort nach.',
+  'Die wichtigste Frage bekommt die höchste prioritaet oder eine Frist; bei gleicher Stufe kommt die frühere Frist zuerst, dann die Reihenfolge in der Datei (oben zuerst).',
+  'Stuft der Inhaber eine wartende Frage hoch, wird sie die sichtbare.',
+  'Eine beantwortete Frage ist sofort nicht mehr offen; die nächste rückt nach, auch bevor du sie aus fragen.toml herausnimmst (siehe „Antworten auf Fragen“ unten).',
+  'Gib jeder Frage eine prioritaet. pruefe meldet einen Hinweis bei einer Frage ohne prioritaet; eine doppelte id ist ein Fehler. Wie viele Fragen in der Warteschlange stehen, meldet pruefe seit Etappe B2 nicht mehr.',
+]
+
+[[block]]
+text = 'Schwerpunkte (data/schwerpunkte.toml): Die Datei liegt im Repo des Dashboards (data/, neben projects/) und ordnet jedes Projekt genau einem Schwerpunkt zu. Die Ansicht „nach Schwerpunkt“ in „Anstehend“ und das Unter-Dashboard benutzen sie. Aufbau:'
+
+[[block]]
+beispiel = '''
+[[schwerpunkt]]
+name = "Bienen und Honig"
+reihenfolge = 3
+projekte = ["bienenstand", "honigernte", "schwarmkontrolle"]'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['name', 'ja', 'Name des Schwerpunkts, jeder nur einmal'],
+  ['reihenfolge', 'ja', 'Zahl für den Platz in der Übersicht; kleiner steht weiter vorn (bei Gleichstand nach Name)'],
+  ['projekte', 'nein', 'Slugs der Projekte (Ordnernamen in projects/)'],
+]
+
+[[block]]
+text = 'Andere Felder sind ein Fehler. Regeln:'
+
+[[block]]
+punkte = [
+  'Wer pflegt sie: die Koordination, nach der Antwort des Inhabers (die Schwerpunkte gibt der Inhaber frei). Projekt-Chats ändern die Datei nicht selbst; ein neues Projekt meldest du über die Koordination mit dem Schwerpunkt, zu dem es gehört.',
+  '„Sonstiges“: Ein Projekt ohne Eintrag steht unter „Sonstiges“, das immer als letzte Gruppe kommt. Fehlt die Datei oder lässt sie sich nicht lesen, stehen alle Projekte dort, und „Anstehend“ zeigt einen Hinweis.',
+  'Steht ein Projekt in zwei Schwerpunkten, gilt der vordere (der mit der kleineren reihenfolge); das ist trotzdem ein Fehler.',
+  'pruefe ohne Slug (alle Projekte) prüft auch diese Datei: doppelter Name oder doppeltes Projekt ist ein Fehler; ein Projekt ohne Schwerpunkt, ein Slug ohne Ordner in projects/ oder die fehlende Datei ein Hinweis.',
+  'Der Server liest die Datei bei jeder Anfrage; eine Änderung sieht man beim nächsten Laden, ohne Neustart.',
+]
+
+[[block]]
+text = 'Projektgruppen (data/gruppen.toml): Zwei oder mehr Projekte, die als eine Karte und eine Seite erscheinen (Entscheidung projektgruppe). Die Projekte selbst bleiben unverändert: eigener Ordner, eigener Chat, eigene Daten, Fragen, Aufgaben, Arbeiten und Seiten unter ihren Adressen. Die Gruppe steht nur hier, neben schwerpunkte.toml. Aufbau (die Slugs sind Beispiele):'
+
+[[block]]
+beispiel = '''
+[[gruppe]]
+slug = "alpha-und-beta"   # Adresse /gruppen/alpha-und-beta; darf kein Projekt-Slug sein
+titel = "Alpha und Beta"
+teile = ["alpha", "beta"] # Reihenfolge = Reihenfolge auf der Seite'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['slug', 'ja', 'Adresse der Gruppe (/gruppen/<slug>): Kleinbuchstaben, Ziffern, Bindestrich; eigener Raum, kein Projekt-Slug'],
+  ['titel', 'ja', 'Titel der Gruppe auf Karte, Seite, Seitenleiste und vor dem Projekt („Alpha und Beta › Alpha-Vorhaben“)'],
+  ['teile', 'nein', 'Slugs der Projekte, in der Reihenfolge der Seite'],
+]
+
+[[block]]
+text = 'Andere Felder sind ein Fehler. Regeln:'
+
+[[block]]
+punkte = [
+  'Wer pflegt sie: die Koordination. Kein Projekt-Chat muss den Ordner eines anderen ändern; rückgängig ist es durch Entfernen des Eintrags.',
+  'Fehlt die Datei, gibt es keine Gruppen (kein Fehler, kein Hinweis).',
+  'Ein Projekt gehört höchstens einer Gruppe an. Steht es doppelt, gilt das erste Vorkommen; das ist trotzdem ein Fehler.',
+  'Wo die Gruppe wirkt: Seite /gruppen/<slug> (je Teil ein Abschnitt mit eigener Fehlergrenze, oben „Wartet auf dich“ mit Sprungmarken); Seitenleiste und Schublade (ein Eintrag, die Teile eingerückt); Startseite (eine Karte an der Stelle des ersten Teils, Status = der dringendere Teil: Problem, pausiert, aktiv, Hinweis, geplant, fertig; die Zählzeile zählt die Gruppe wie die Karten einmal); Brotkrumen, „Anstehend“ und Glocke mit dem Gruppentitel vor dem Projekt; Filter /anstehend?gruppe=<slug>; „Jetzt für dich“ zählt die Gruppe einmal. Fragen und Aufgaben bleiben beim Projekt; Antworten gehen an dessen Chat.',
+  'Archiv: Ein archivierter Teil fehlt auch in der Gruppe; sind alle Teile archiviert, verschwindet die Gruppe (ihre Seite ist dann 404).',
+  'Auch zur Laufzeit: Eine Gruppe mit ungültigem Slug oder mit dem Slug eines Projekts (auch eines archivierten) zeigt der Server nicht; „Anstehend“ nennt sie als Hinweis. Ein Tippfehler legt so keine Seite lahm.',
+  'pruefe ohne Slug (alle Projekte) prüft auch diese Datei: unbekannter oder doppelter Teil, ein Slug, den es als Projekt gibt, ein doppelter oder ungültiger Slug und ein leerer Titel sind Fehler; eine Gruppe ohne Teile ein Hinweis.',
+  'Der Server liest die Datei wie schwerpunkte.toml beim Abgleich (alle 2 s) neu; Seitenleiste, Startseite und „Anstehend“ folgen live (Ereignis daten mit Name gruppen, auch auf dem freien Kanal), ohne Neustart.',
+]
+
+[[block]]
+titel = 'Antworten auf Fragen (ab A2)'
+text = '''
+Kurz für dich (Inhaber): Eine Frage beantwortest du direkt dort, wo sie steht: in „Anstehend“, auf der Startseite unter „Jetzt für dich“ und oben auf der Projektseite. Bei einer Auswahl und bei Ja oder Nein klickst du auf deine Antwort (die Empfehlung des Chats ist vermerkt). Bei einer freien Antwort schreibst du ins Feld und klickst „Absenden“. Soll die Frage nur bestätigt werden, gibt es einen Knopf „Bestätigen“. Willst du etwas dazu sagen, öffne vorher „Anmerkung (freiwillig)“ unter den Knöpfen, schreib hinein und klick dann deine Antwort; die Anmerkung geht mit. Ohne Anmerkung reicht ein Klick. Danach steht da „Gesendet – der Chat ist geweckt. Falsch geklickt? Schreib es dem Chat.“, und die nächste Frage des Projekts erscheint. Eine Antwort gilt; ändern geht nur, wenn der Chat die Frage neu stellt. Sag es ihm einfach im Chat.
+
+Passt keine der Antworten, klickst du den letzten Knopf „Etwas anderes …“. Darunter klappt ein Feld auf; schreib in eigenen Worten, was du meinst, und klick „Senden“. „Abbrechen“ klappt das Feld nur zu, dein Text bleibt stehen; weg ist er nur mit „Text verwerfen“. Esc schließt das Feld, solange es leer ist. Das geht bei jeder Antwort mit Klick: bei Fragen (Auswahl, Ja oder Nein, Bestätigen) und bei Aufgaben mit Knöpfen oder dem Haken. Danach steht da „Deine Antwort: …“ mit deinem Text, und der Chat ist geweckt wie bei einem Klick. Was im Feld steht, geht beim Neuladen und beim Seitenwechsel nicht verloren (es bleibt in diesem Browser-Tab). Eine Aufgabe bleibt danach offen, steht aber „beim Chat“: Sie zählt nicht mehr als „für dich“ und hat keine Knöpfe mehr, bis der Chat sie abschließt, zurückzieht oder neu stellt.
+
+Für dich als Chat: So kommt die Antwort des Inhabers zu dir.'''
+
+[[block]]
+nummeriert = true
+punkte = [
+  'Geweckt werden. Seine Antwort legt einen Vorgang der Art antwort für dein Projekt an, mit bezug = antwort:<projekt>/<id> und von = "browser", in derselben Transaktion wie die Antwort selbst. Dein Warten.ps1 wacht sofort auf. Bei wahl und ja-nein steht die Antwort schon im titel (die gewählte Option in Anführungszeichen bzw. „ja“ oder „nein“, dann nach dem Doppelpunkt die Frage); bei text und bestaetigen sagt der Titel nur, dass geantwortet (Text) bzw. bestätigt wurde. Hat der Inhaber eine Anmerkung geschrieben, steht vor dem Doppelpunkt „(mit Anmerkung)“. Die Anmerkung selbst steht nie im Titel; lies sie wie unten. Hat er „Etwas anderes …“ gewählt, heißt der Titel „Der Inhaber hat etwas anderes geschrieben (eigene Worte): …“.',
+  'Antwort lesen. Immer über die API, nie aus einer Datei:',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/antworten/beispiel/schlusssatz"'''
+
+[[block]]
+text = 'Die Antwort (200) ist die neueste Antwort auf diese Frage: {"projekt", "id", "gestellt", "art", "frage", "antwort", "eigene", "notiz", "zeit", "von", "vorgang"}. antwort ist bei wahl die gewählte Option, bei ja-nein „ja“ oder „nein“, bei text sein Text (bis 2000 Zeichen, mit Zeilenumbrüchen), bei bestaetigen „bestaetigt“. notiz ist die freiwillige Anmerkung des Inhabers (bis 1000 Zeichen, mit Zeilenumbrüchen) oder null; es gibt sie bei wahl, ja-nein und bestaetigen, nie bei text (dort steht alles in antwort). Lies beides: Eine Anmerkung kann die Antwort einschränken („ja, aber erst ab Montag“). eigene ist bei einem Klick null. Hat der Inhaber statt eines Klicks „Etwas anderes …“ gewählt, steht in antwort der feste Wert etwas-anderes und in eigene sein Text (nicht leer, bis 20 000 Zeichen, mit Zeilenumbrüchen); eine Anmerkung kann daneben stehen. Das gibt es bei wahl, ja-nein und bestaetigen immer, ein Chat kann es nicht abschalten. etwas-anderes heißt: Lies den Text und frag nach, wenn nötig (etwa mit einer neu gestellten Frage); nimm nie stillschweigend eine der Optionen an. Dieselbe Antwort steht auch in GET /api/vorgaenge/<vorgang-id> im Feld antwort. Prüfe, dass gestellt zu deiner Frage passt. Ohne Antwort: 404. Alle Antworten deines Projekts zum Nachlesen: GET /api/antworten?projekt=<slug> (neueste zuerst; nach sieben Tagen ziehen sie ins Archiv, sind über /api/antworten/<projekt>/<id> aber weiter lesbar).'
+
+[[block]]
+punkte = [
+  '3. Übernehmen: POST /api/vorgaenge/<id>/uebernommen (wie bei jedem Vorgang).',
+  '4. Handeln und die Frage herausnehmen: Nimm die Frage mit genau dieser id aus projects/<slug>/daten/fragen.toml heraus (so ist Wiederholen harmlos) und committe. Das Dashboard zeigt sie schon vorher nicht mehr als offen; ohne Herausnehmen meldet pruefe sie aber weiter mit. Gelöscht wird dabei nichts: Die Antwort bleibt im Datenspeicher.',
+  '5. Erledigt: POST /api/vorgaenge/<id>/erledigt, gern mit notiz (etwa „Schlusssatz übernommen, Frage entfernt“).',
+]
+
+[[block]]
+text = 'Regeln:'
+
+[[block]]
+punkte = [
+  'Nur der Inhaber antwortet. POST /api/antworten/<projekt>/<id> nimmt nur Anfragen, die wie aus dem Browser aussehen: Der Server prüft die Kopfzeilen Origin und Sec-Fetch-Site; ohne sie (also per Api.ps1) gibt es 422. Das schützt vor Versehen, ist aber keine Sicherheitsgrenze: Wer die Kopfzeilen selbst setzt, kommt durch (wie bei von = "browser" in Abschnitt 9). Antworte darum nie an ihrer Stelle, auch nicht mit gefälschten Kopfzeilen. Eine Antwort ist kein Nachweis gegenüber einem anderen Chat und gibt nie allein eine riskante Handlung frei (Abschnitt 9).',
+  'Eine Antwort wird nie überschrieben. Dieselbe Antwort mit derselben Anmerkung zweimal (etwa ein Doppelklick) ändert nichts (200, geaendert: false, kein zweiter Vorgang). Eine andere Antwort auf dieselbe Frage gibt 409, ebenso dieselbe Antwort mit einer anderen oder ohne Anmerkung: Antwort und Anmerkung gehören zusammen.',
+  'Neu fragen: neues Datum oder neue id. Soll der Inhaber neu entscheiden, stellst du die Frage neu: gleiche id, aber gestellt mit einem anderen Datum als vorher. Das zählt als neue Frage mit eigener Antwort und eigener Einstufung. Bleibt gestellt gleich, gilt die alte Antwort weiter, und die Frage bleibt unsichtbar (sie ist ja beantwortet). Am selben Tag wie die erste Frage geht das nicht; nimm dann eine neue id (etwa schlusssatz-2).',
+  'Die Frage muss in fragen.toml stehen, sonst 404 („Diese Frage ist nicht mehr offen.“); steht dort inzwischen ein anderes gestellt als im Browser, 409. Die Seite lädt danach von selbst neu.',
+  'Neu gestellt, während der Inhaber antwortet: Stellst du eine Frage neu (anderes gestellt), während der Inhaber sie gerade beantwortet, bekommt sein Klick 409, und seine Anmerkung ist nicht gespeichert: Sie gehörte zur alten Frage und geht mit dem neuen Schlüssel nicht mit. Nach dem Neuladen steht die neue Frage leer da; der Inhaber muss Antwort und Anmerkung neu geben. Das ist so gewollt (eine Antwort gehört zu genau einer Frage). Stell darum eine Frage nicht neu, während sie offen vor dem Inhaber liegt, oder sag ihm im Chat, dass sie neu kommt.',
+  'Ins Protokoll schreibt der Server nur, dass geantwortet wurde, nie die Antwort, die eigenen Worte oder die Anmerkung selbst.',
+  '„Etwas anderes …“ setzt das Dashboard selbst. Schreib keine Option wie „Etwas anderes“ oder „etwas-anderes …“ in optionen: pruefe meldet sie als Fehler (sie stünde doppelt da), ebenso einen solchen Knopf in knopf einer Aufgabe (422). Eigene Worte sendet nur der Inhaber im Browser ({"antwort": "etwas-anderes", "eigene": "…"}, dieselben Regeln wie ein Klick); leer oder nur Leerzeichen gibt 422, mehr als 20 000 Zeichen ebenso.',
+]
+
+[[block]]
+titel = 'Meldungen (ab A3)'
+text = '''
+Kurz für dich (Inhaber): Eine Meldung sagt dir, dass etwas passiert ist: Etwas ist fertig, eine Frist ist nah oder vorbei, oder etwas ist kaputt (etwa der Bau der Oberfläche oder die Prüfung einer Seite, oder der Bote fehlt). Was jetzt wichtig ist (Fehler und Fristen), steht oben auf jeder Seite in einem schmalen Band, höchstens drei auf einmal; die Zahl steht auch am Reiter „Anstehend“ und vorn im Titel des Browser-Tabs, etwa „(2) Anstehend · Dashboard“. Es gibt kein Fenster und keinen Ton. Ein Klick auf den Titel führt zur Seite, zu der die Meldung gehört (bei „Bote fehlt“ zur PC-Seite). Hast du sie gelesen, klick „gelesen“; dann verschwindet sie aus dem Band. „alle ansehen“ zeigt alle Meldungen in „Anstehend“. Gelesene Meldungen stehen noch sieben Tage oben auf der Projektseite unter „Aktualisierungen“ und liegen danach im Archiv; gelöscht wird nichts. Ein Fehler bleibt rot, bis er behoben ist, auch wenn du ihn gelesen hast; ebenso bleibt eine gelesene Frist stehen, solange sie besteht. Was in einer Meldung steht, siehst du nur mit Anmeldung: Ohne zeigt die Projektseite nur, wie viele es gibt und wie viele neu sind.
+
+Was der Server selbst meldet (du musst dafür nichts tun):'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Ereignis', 'Art', 'Projekt']
+zeilen = [
+  ['Bau der Oberfläche rot', 'fehler', 'dein Projekt, wenn du gebaut hast; behoben beim nächsten grünen Bau'],
+  ['Deine Seite fehlt im Bau (Scanner rot)', 'fehler', 'dein Projekt'],
+  ['Prüfung deiner Seite rot (Fehler, nicht Hinweise)', 'fehler', 'dein Projekt; behoben, sobald pruefe ohne Fehler ist'],
+  ['Frist einer Aufgabe, Frage oder Arbeit in höchstens zwei Tagen, oder vorbei', 'frist', 'das Projekt des Eintrags; behoben, wenn erledigt oder verschoben (nicht, wenn sich deine fragen.toml gerade nicht lesen lässt)'],
+  ['Bote fehlt länger als zehn Minuten, während der Inhaber angemeldet ist', 'fehler (System)', 'dashboard, Ziel PC-Seite'],
+  ['Deine Arbeit steht auf fertig', 'fertig', 'dein Projekt'],
+]
+
+[[block]]
+text = '''
+Die Stufe einer Meldung ist fest: fehler und frist Jetzt, fertig Bald, info Irgendwann. Der Inhaber kann sie nicht umstufen, nur wegklicken. Wiederholt sich etwas (derselbe schluessel), entsteht keine zweite Meldung: anzahl zählt hoch, und sie ist wieder ungelesen. Ein Zustand (Prüfung rot, Frist nah, Bote fehlt) meldet sich nur einmal, bis er behoben ist.
+
+Selbst melden (nur fertig oder info, nur für dein Projekt):'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/meldungen -Json '{"projekt":"beispiel","art":"fertig","titel":"Rundmail zum Vereinsfest ist fertig","verweis":"ar-20261030-0001"}''''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Pflicht', 'Was']
+zeilen = [
+  ['projekt', 'ja', 'Slug deiner Projektseite'],
+  ['art', 'ja', 'fertig (etwas ist fertig) oder info (zur Kenntnis); fehler und frist gibt es nur vom Server (422)'],
+  ['titel', 'ja', 'ein Satz, höchstens 200 Zeichen'],
+  ['text', 'nein', 'Einzelheiten, höchstens 1000 Zeichen, Zeilenumbrüche erlaubt'],
+  ['verweis', 'nein', 'Kennung der Arbeit, Aufgabe oder Frage, um die es geht'],
+  ['schluessel', 'nein', 'kurzes Wort (a–z, 0–9, Bindestrich), das Wiederholungen zusammenfasst; ohne gilt der Titel'],
+  ['von', 'nein', 'dein Chat, chat:<slug>; fehlt es, chat:<projekt>'],
+]
+
+[[block]]
+punkte = [
+  'Mit verweis ist es dieselbe Meldung wie die, die der Server beim Setzen deiner Arbeit auf fertig anlegt (Schlüssel <projekt>/fertig:<verweis>): Sie zählt nur einmal. Die Antwort ist dann 200 mit "neu": false. Setzt du also eine Arbeit auf fertig, brauchst du keine eigene Meldung mehr; schick eine nur, wenn sie etwas Eigenes sagt (etwa ohne Arbeit dazu).',
+  'Ohne verweis zählt eine Wiederholung hoch (200, "neu": false, anzahl höher); neu ist 201 mit {"id","neu":true,"anzahl":1}.',
+  'Nichts Vertrauliches in Meldungen. Titel und Text stehen im Band, in „Anstehend“ und auf der Projektseite. Ohne Anmeldung zeigt das Dashboard nur die Zahl der Meldungen, doch schreib trotzdem keine Passwörter, Schlüssel, Links mit Zugangsdaten oder persönlichen Angaben hinein. Das gehört in eine Aufgabe (Link verschlüsselt) oder den Tresor.',
+  'Sparsam melden. Höchstens 20 ungelesene Meldungen je Projekt; darüber legt der Server die ältesten als gelesen ab und zählt sie in einer Sammelmeldung („Ältere Meldungen sind als gelesen abgelegt …“). Melde nur, was der Inhaber wirklich wissen sollte; Zwischenstände gehören in deine Arbeit.',
+  'Nur per Api.ps1. Aus dem Browser nimmt der Server keine Meldung an (422). „gelesen“ (POST /api/meldungen/<id>/gelesen) nimmt er umgekehrt nur aus dem Browser an: Er prüft die Kopfzeilen Origin und Sec-Fetch-Site. Das schützt vor Versehen, ist aber keine Sicherheitsgrenze; klick nie an Stelle des Inhabers „gelesen“.',
+  'Nachsehen: GET /api/meldungen?projekt=<slug> (alle außerhalb des Archivs, neueste zuerst, mit gelesen, behoben, anzahl). In GET /api/anstehend stehen die ungelesenen als art: "meldung"; mit ?projekt=<slug> steht dort auch aktualisierungen (alle Meldungen und Vorgänge des Projekts; die neuesten fünf wählt die Oberfläche). GET /api/projekte/<slug>/stand hat ohne Anmeldung nur zahlen.meldungen (neu, gesamt), keine Titel und Texte.',
+  'Ziel: Jede Meldung führt auf /projects/<slug>#meldung-<id>; dort steht sie im Unter-Dashboard unter „Aktualisierungen“ zum Aufklappen. Systemmeldungen führen auf /pc#meldung-<id>.',
+  'von ist eine Angabe, kein Nachweis; trotzdem ehrlich setzen.',
+]
+
+[[block]]
+titel = 'Anmeldung mit dem Windows-Konto (ab Etappe 7b)'
+text = 'Das Dashboard prüft bei Vorgängen, Aufgaben, Daten, Schlüsseln und dem Live-Kanal, dass die Anfrage vom Windows-Konto des Inhabers kommt (integrierte Windows-Anmeldung, Negotiate). Ein Passwort wird dabei nie eingegeben; Windows schickt den Nachweis des angemeldeten Kontos selbst mit. Regeln:'
+
+[[block]]
+punkte = [
+  "Chats und Skripte: scripts/Api.ps1 (Weg, dazu -Json '…' oder -Post für einen POST), etwa pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 \"api/vorgaenge?fuer=<slug>&offen=1\". Es fragt über .NET (scripts/Anfrage.ps1, HttpClient mit UseDefaultCredentials). Kein curl: Das curl 8.22, das Windows mit KB5127936 eingespielt hat, kann kein NTLM; mit --negotiate -u : bricht es für ein lokales Konto mit SEC_E_NO_CREDENTIALS ab, der Server antwortet 401. Das curl aus Git oder MSYS2 konnte es nie.",
+  'PowerShell 7: Invoke-WebRequest -UseDefaultCredentials -AllowUnencryptedAuthentication (der zweite Schalter gilt nur für diesen Aufruf, keine Systemeinstellung). PowerShell 5.1: nur -UseDefaultCredentials.',
+  'Browser: http://localhost:8787. Nur dort meldet der Browser ohne Rückfrage an. Eine geschützte Seite über 127.0.0.1 leitet der Server auf dieselbe Seite unter localhost um.',
+  '127.0.0.1 bleibt für Api.ps1, Warten.ps1 und Lebenszeichen; dort klappt die Anmeldung mit den Befehlen oben.',
+  'Warten.ps1 macht das alles schon selbst (Exit-Code 7, wenn die Anmeldung fehlt oder das Konto fremd ist).',
+  'Schluessel-Lesen.ps1 ändert sich nicht: Es liest den Windows-Tresor direkt und spricht nicht mit dem Server.',
+]
+
+[[block]]
+text = '''
+Antworten des Servers: ohne Anmeldung 401 mit {"fehler":"Bitte mit dem Windows-Konto anmelden.","art":"anmeldung"} und WWW-Authenticate: Negotiate; angemeldet, aber nicht als Inhaber (anderes Windows-Konto ohne gültigen Passkey-Ausweis, seit Etappe 7c): 401 mit "art":"passkey" (ohne Negotiate), Browser-Seiten leiten auf /anmelden?ziel=…. Als Inhaber gilt auch ein gültiger Ausweis (JWT) im Cookie __Host-dashboard nach Anmeldung mit einem registrierten Passkey; für die Skripte und die Chats ändert sich nichts.
+
+Pfade unter /api enthalten nie ein % (sonst 400, Art fehlerhaft; Hotfix Prozent), weil die Schleuse den rohen Pfad prüft, axum Platzhalter aber dekodiert; wer einen Weg mit Platzhalter baut, dessen Wert über den Zugang entscheidet, prüft im Handler zusätzlich Angemeldet (geschützte Dateien in daten/ stehen allein in sicherheit::GESCHUETZTE_DATEIEN).'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Nur mit dem Konto des Inhabers (oder Passkey)', 'Ohne Anmeldung']
+zeilen = [
+  ['/schluessel, /api/schluessel (auch /api/schluessel/passkeys…, …/sitzungen-beenden)', 'Projektseiten, /api/projects, Assets'],
+  ['', '/anmelden, /api/passkey/stand, /api/passkey/anmelden/…, /api/passkey/abmelden; /api/passkey/antrag… mit Windows-Anmeldung irgendeines Kontos'],
+  ['/vorgaenge, /api/vorgaenge (auch warten)', '/pc und /api/pc mit Rechner-Werten (CPU, Speicher, Platte)'],
+  ['/daten, /api/daten (auch Export und Sichern)', 'Dateien der Oberfläche (index.html, JS, CSS)'],
+  ['/api/aufgaben (Aufgaben für den Inhaber, auch Haken und Zurückziehen)', ''],
+  ['/api/arbeiten, /api/einstufung, /api/anstehend (ab A1), /api/antworten (ab A2)', '/api/projekte/<slug>/stand (Unter-Dashboard; Aufgaben und Meldungen ohne Anmeldung nur als Zahl)'],
+  ['/api/events (Live-Kanal)', '/healthz, /api/betrieb, /api/pruefung, /api/anmeldung/… (Probe)'],
+  ['/api/pc/benutzer: Benutzer-Daten der PC-Seite (Programme, Autostart, Werkzeuge, Ordnergrößen, Stand der Schlüssel, Bote-Stand)', '/api/pc/verlauf (für Werkzeuge; Starts, Meldungen, Vorgänge nur auf einer schon angemeldeten Verbindung)'],
+  ['/api/pc/verlauf/voll, /api/projekte/<slug>/stand/voll (ab Hotfix 3a-1, für die Oberfläche)', ''],
+]
+
+[[block]]
+text = '''
+/api/pc ist frei und enthält nur Rechner-Werte (Prozessor, Speicher, Platte, Dienste, Windows-Stand, pc.toml, Backup je Projekt). Die Benutzer-Daten liegen getrennt unter /api/pc/benutzer; der Browser schickt den Nachweis nur auf geschützten Wegen mit. Ohne Anmeldung antwortet /api/pc/benutzer mit 401, die Seite zeigt dann einen Hinweis statt der Benutzer-Teile.
+
+Dasselbe gilt für Wege, die mit Anmeldung mehr zeigen (Hotfix 3a-1): Ein freier Weg bekommt den Nachweis nur, wenn die Verbindung zufällig schon angemeldet ist, denn Edge meldet erst nach einer 401 mit WWW-Authenticate: Negotiate an. Die Oberfläche liest darum die geschützten Fassungen /api/pc/verlauf/voll und /api/projekte/<slug>/stand/voll und nimmt die freien (/api/pc/verlauf, /api/projekte/<slug>/stand) nur nach 401 oder 403. Die freien Wege bleiben für Werkzeuge. Geprüft: /api/anstehend, /api/antworten und /api/meldungen sind ohnehin geschützt; /api/passkey/stand sagt auf einer nicht angemeldeten Verbindung wie: keine statt hauptkonto. Die Seite /anmelden fragt darum seit 3a+ zuerst den geschützten /api/passkey/antrag (meldet die Verbindung an; sein hauptkonto ist sicher) und erst danach den Stand; den Satz „Du bist mit dem Hauptkonto angemeldet“ setzt sie aus beidem (anmeldeArt in web/src/lib/passkey.ts).'''
+
+[[block]]
+titel = 'Passkey und Ausweis (ab 7c)'
+text = '''
+Schlüssel der Ausweise. Die JWT werden mit Ed25519 signiert. Der Schlüssel (32 Bytes) liegt in geheim/jwt-schluessel neben dem Ordner des Datenspeichers, im Dienst also in C:/ProgramData/Dashboard/geheim/jwt-schluessel. Der Dienst legt Ordner und Datei beim ersten Start selbst an: Vererbung aus, Zugriff nur für SYSTEM, die Administratoren und das Dienstkonto. Eine vorhandene Datei überschreibt er nie. Hat sie nicht genau 32 Bytes, bleibt die Anmeldung mit Passkey aus, und der Grund steht im Protokoll; die Windows-Anmeldung geht weiter. Ohne Einstellungsdatei (Altweg, Testserver) nennt die Umgebungsvariable DASHBOARD_JWT_SCHLUESSEL den Dateipfad; ohne sie gilt geheim/jwt-schluessel neben der Datei aus DASHBOARD_DATEN. Tests nehmen einen Schlüssel nur im Speicher. Nie den echten Schlüssel aus C:/ProgramData kopieren oder anzeigen.
+
+Einmaliger Schritt für bestehende Installationen. Das Dienstkonto darf unter C:/ProgramData/Dashboard selbst keinen Ordner anlegen (Vererbung aus, kein Recht an der Wurzel). Dienst-Einrichten.ps1 legt geheim seit 7c mit an. Wurde der Dienst vorher eingerichtet, einmal als Administrator (Windows-Taste+R, einfügen, Strg+Umschalt+Enter; mit -Pruefen nur ansehen, das geht ohne Administrator):'''
+
+[[block]]
+beispiel = '''
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File %USERPROFILE%/dev/dashboard/scripts/Dienst-Einrichten.ps1 -NurGeheim'''
+
+[[block]]
+text = '''
+Das legt nur C:/ProgramData/Dashboard/geheim an (oder setzt seine Rechte): Vererbung aus, SYSTEM und Administratoren voll, NT SERVICE/Dashboard ändern, sonst niemand; bricht ab außerhalb von main und wenn der Ordner unter ProgramData nicht den Administratoren gehört. Danach ohne Administrator scripts/Dienst.ps1 -Neustart; der Dienst legt den Schlüssel selbst an.
+
+Die einfachen Anführungszeichen sind in PowerShell nötig; ohne sie liest PowerShell die Klammern als Ausdruck („Der Begriff OI wird nicht erkannt“).
+
+Danach den Dienst neu starten; er legt jwt-schluessel darin an. Ohne diesen Schritt bleibt nur die Anmeldung mit Passkey aus (Satz im Protokoll), alles andere läuft.
+
+Edge-Probe. tests/skripte/passkey-edge.mjs prüft den ganzen Weg mit Edge headless (Wegwerf-Profil im Temp-Ordner) und virtuellen Authenticatoren über das DevTools-Protokoll: anlegen (ES256 und RS256), anmelden, Antrag aus einem „anderen“ Konto (dafür stellt die Probe die erwartete SID um), Freigabe mit Vergleichszahl, Widerruf, Abmelden. Server auf Port 8788 aus einer Kopie der exe, mit eigener dienst.toml und eigenen Daten im Temp-Ordner; nie 8787, nie echte Passkeys oder Windows Hello. Aufruf aus dem Repo, nach cargo build und einem Bau der Oberfläche:'''
+
+[[block]]
+beispiel = '''
+cd web; $env:DASHBOARD_BUILD_ZIEL = "$env:TEMP/dashboard-web-e2e"; npm run build; Remove-Item Env:DASHBOARD_BUILD_ZIEL; cd ..
+node tests/skripte/passkey-edge.mjs --web "$env:TEMP/dashboard-web-e2e"'''
+
+[[block]]
+text = '''
+Ohne --web nimmt sie web/build. Exit 0 heißt bestanden; Server und Edge laufen danach nicht weiter, der Temp-Ordner ist weg (--behalten lässt ihn zum Nachsehen liegen).
+
+Edge-Probe Zeitachse (Etappe 3a-1). tests/skripte/zeitachse-edge.mjs arbeitet genauso (Edge headless, Wegwerf-Profil, Port 8788, Kopie der exe, Daten im Temp-Ordner), aber mit einer KOPIE von projects/ und data/ aus dem Repo, damit alle echten Seiten dabei sind. Die eigene SID steht als inhaber_sid darin; der Sammler liest die Windows-Ereignisse dieses PCs (nur lesend) in den Wegwerf-Speicher. Sie besucht alle Projektseiten mit Zeitstrahl oder Gantt (aus daten/*.toml), /pc und / bei 1280 und 375 px und prüft: keine Fehler in der Konsole, der neue Baustein ist da, keine überlappenden Beschriftungen (Rechtecke der Beschriftungen je Achse), bei 375 px kein seitliches Scrollen (mit Handy-Emulation zählt die Breite des Geräts); dazu Tastatur (Zoom, Verschieben, Pos1, kein Alt+Pfeil) und Touch-Ersatz (Antippen und Ziehen über Input.dispatchTouchEvent) auf Dichtestreifen, Verlauf und Gantt. Mit --bilder <Ordner> legt sie Bildschirmfotos (PNG, ganze Seite) der Dashboard-Projektseite, von /pc und einer Projektseite mit Zeitstrahl bei beiden Breiten ab. Damit die Seiten in neuer Form im Bau sind, vorher die Bauliste schreiben:'''
+
+[[block]]
+beispiel = '''
+./target/debug/dashboard.exe pruefe --bauliste
+cd web; $env:DASHBOARD_BUILD_ZIEL = "$env:TEMP/dashboard-web-e2e"; npm run build; Remove-Item Env:DASHBOARD_BUILD_ZIEL; cd ..
+node tests/skripte/zeitachse-edge.mjs --web "$env:TEMP/dashboard-web-e2e" --bilder "$env:TEMP/zeitachse-bilder"'''
+
+[[block]]
+text = '''
+--nur /pc,/ besucht nur diese Seiten (schneller beim Nachprüfen), --sammler-sekunden 120 sagt, wie lange sie auf die Windows-Ereignisse wartet. Am Ende steht, was nicht bestanden hat, mit Einzelheiten; ein Bericht je Seite liegt als bericht.json neben den Bildern.
+
+Edge-Probe PC (Etappe 3a-4). tests/skripte/pc-edge.mjs arbeitet wie die beiden anderen (Kopie der exe, Kopie von projects/, Port 8788, Netzsperre); aus data/ kopiert sie seit 3a+ nur die eingecheckten Dateien (git ls-files data). Ist Port 8788 oder ein Debug-Port belegt, bricht sie vor dem Start mit klarem Satz ab. Sie wartet, bis der Server gemessen und den Defender gelesen hat, und prüft auf /pc und / bei 375 und 1280 px, hell und dunkel: Die Ampeln Defender, Neustart und Schlüssel und die drei Ringe zeigen die Fachgröße aus /api/pc und /api/pc/benutzer in der passenden Farbe, unbekannt nie grün; keine Fehler in der Konsole, bei 375 px kein seitliches Scrollen. Dazu der freie Weg: ein zweites Edge mit eigenem Profil, das sich bei localhost nicht bei Windows anmeldet; dort sind die geschützten Wege 401, das Cockpit zeigt den Schlüssel als unbekannt, /pc den Satz zur fehlenden Anmeldung und keine Ordner, Starts, Meldungen oder Vorgänge. Aufruf nach cargo build und npm run build: node tests/skripte/pc-edge.mjs.
+
+Edge-Probe Thema (Etappe 3b). tests/skripte/thema-edge.mjs arbeitet wie pc-edge.mjs (Kopie der exe, Kopie von projects/, eingecheckte Dateien aus data/, Port 8788, Netzsperre). Sie prüft die CSP (Prüfsumme des Thema-Skripts, kein 'unsafe-inline' in script-src), dass „Dunkel“ bei hellem System und „Hell“ bei dunklem schon im ersten Bild gelten (gemessen vor allen Skripten der Seite, bei DOMContentLoaded und nach load), den Schalter mit der Tastatur, die Startseite als Spalten (375 px untereinander, 1280 px nebeneinander, Summe gleich der Zählzeile), den Abschnitt „Als Text“ im Katalog und die Logo-Entwürfe hell und dunkel. Aufruf nach cargo build und einem Bau: node tests/skripte/thema-edge.mjs --web <Ordner>.
+
+Für alle Edge-Proben (seit 3a+). Gemeinsames steht in tests/skripte/edge-gemeinsam.mjs (Fristen für CDP in cdp-frist.mjs): Die Netzsperre greift nicht nur auf der Seite, sondern über Target.setAutoAttach (flatten) auf Browser-Ebene auch für Service-Worker, Worker, weitere Seiten und Frames; was nicht an 127.0.0.1 oder localhost geht, bricht ab und lässt die Probe scheitern. Nur Anfragen des Browser-Prozesses selbst erfasst sie nicht; die schalten die Startschalter ab. Server, Edge und Temp-Ordner räumt ein einziges Aufräumen ab (beiAbbruch): im finally um main(), bei Strg+C und bei einem unbehandelten Fehler oder abgelehnten Versprechen (etwa einer Frist, auf die niemand mehr wartet); so bleibt nach keinem Abbruch ein Debug-Port belegt. Das Aufräumen schließt nur ein Edge, das die Probe selbst gestartet hat, und jeder Schritt hat eine Frist.
+
+Ports der Edge-Proben (seit 4b). Jede Probe prüft vor dem Start Port 8788 und beide Edge-Debug-Ports (9788 und 9789; portePruefen in edge-gemeinsam.mjs) und bricht ab, wenn einer belegt ist; jede nimmt --port <n> (dann n, n+1000 und n+1001). Nie zwei Proben zugleich laufen lassen; sonst die zweite mit --port.
+
+Edge-Probe Baumeister (Etappe 4b). tests/skripte/baumeister-edge.mjs --web <Ordner mit index.html> legt eine Wegwerf-Kopie von web/ (Module als Junction), projects/ und den TOML-Dateien aus data/ an, startet den Server im Altweg auf Port 8788 mit DASHBOARD_BAUMEISTER=direkt (baut ohne Boten im eigenen Prozess, gleicher Ablauf wie im Boten; nur für solche Kopien, nie im Dienst) und Edge headless mit Netzsperre. Sie misst ESLint je Projektordner mit --cache und den echten Lauf vom Speichern einer Seite.svelte bis zur neuen Seite in Edge (je Median aus 5, mit den Schritten des Baus). Gemessen wird nie an einem echten Projekt, sondern am erfundenen zz-messung, das die Probe in der Kopie anlegt (projekt.toml und eine minimale Seite.svelte mit dem Messfeld der Probe; ohne Seite.svelte käme die Seite nicht aus dem Bau); für den Klick in 5c ebenso zz-messung-b. Mit --projekt <slug> misst sie an einem echten Projekt (hängt einen Absatz an dessen Seite) und sagt klar, wenn das Feld dort nicht zu sehen ist (Seite rot im Bau oder zeigt den Absatz nicht). Dann die Abnahme: ein absichtlich kaputtes Projekt mit Svelte-Fehler (bleibt in der letzten grünen Fassung), mit Fehler beim Zeichnen (Fehlergrenze mit „neu versuchen“) und mit Fehler beim Klicken (Rahmen); alle anderen Seiten laufen weiter. Dann (mit dem Hinweis am Live-Punkt) ein zweites, bei localhost angemeldetes Edge: Nach dem Bau steht am Live-Punkt „Daten live, App wird gleich aktualisiert“ (Knopf, 44 px, einmal angesagt, bei 360 px ohne Überbreite), und der Tab lädt nach etwa 30 s von selbst (5a); mit Fokus in einem Feld lädt er auch nach 35 s nicht, dort steht „App wird aktualisiert, sobald du fertig bist“, und der Klick auf den Hinweis lädt (5b). In 5c gilt Zustand 1 „Keine Verbindung zum Dienst, Daten können veraltet sein“ (Link, kein Knopf, 360 px): ohne Live-Kanal lädt ein fehlender Teil des alten Baus nicht von selbst neu (unser Merker bleibt leer), und reißt die Verbindung in Zustand 2 ab (Edge offline; spätestens die Frage vor dem Neuladen merkt es), lädt der Tab auch nach 35 s nicht neu; wieder online steht wieder Zustand 2. Zum Schluss der Bau-Stand im Kopf (grün, rot mit „letzte gute Fassung“, ohne Zeitzeile und ohne Kreispfeil, mit und ohne Anmeldung). Optional --runden, --projekt, --behalten, --nur fassung (nur Aufwärmen und der Teil mit dem Hinweis), --nur bau (alter Name --nur knopf; nur Aufwärmen und der Bau-Stand).'''

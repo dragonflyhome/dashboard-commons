@@ -1,0 +1,62 @@
+# Abschnitt „2. Aufbau der Datei“ (Etappe 6b, Format wie docs/zielbild),
+# umgeschrieben auf den Kopf projekt.toml.
+titel = '2. Aufbau der Datei'
+reihenfolge = 102
+
+[[block]]
+text = '''
+Der Kopf eines Projekts steht in projects/<slug>/projekt.toml, reines TOML. <slug> ist der Name in der Adresse (http://localhost:8787/projects/<slug>): Kleinbuchstaben, Ziffern, Bindestrich, etwa notizen, garten oder reise-plan. Die Datei ist UTF-8 (mit oder ohne BOM), Zeilenenden sind egal. Speichern reicht, kein Neustart nötig; nach höchstens etwa zwei Sekunden steht der neue Stand da (Abschnitt 4).
+
+Unbekannte Felder sind ein Fehler. Ein Feld updated gibt es nicht; als letzte Änderung gilt das Dateidatum.
+
+Markdown gibt es im Projekt nicht mehr: Eine Datei mit der Endung .md im Projektordner ist ein FEHLER in pruefe (die genaue Regel steht im Abschnitt „Prüfen der Projekte: pruefe“). Ohne projekt.toml gibt es das Projekt nicht.'''
+
+[[block]]
+titel = 'Beispiel'
+beispiel = '''
+schema = 3                            # Pflicht, immer 3
+title = "Mein Projekt"                # Pflicht
+status = "aktiv"                      # aktiv | pausiert | geplant | fertig | problem | archiviert
+summary = "Ein Satz, worum es geht."  # steht auf der Kachel
+order = 50                            # Reihenfolge auf der Startseite, klein = vorn (Standard 50)
+chat = "Haus und Garten"              # welcher Chat das Projekt verwaltet
+backup = "gelb"                       # rot | gelb | grün
+backup_note = "liegt nur auf C:"      # kurzer Hinweis zum Backup
+processes = ["mein-programm.exe"]     # optional: läuft das Programm gerade?
+open = [                              # offene Punkte, als Liste
+  "Erster offener Punkt",
+  "Zweiter offener Punkt",
+]
+
+# Wichtig: Ab hier kommen Tabellen in doppelten Klammern. Einfache Felder
+# wie open oder processes müssen OBEN stehen, vor der ersten [[tabelle]],
+# sonst gehören sie zur Tabelle darüber und das Dashboard meldet einen Fehler.
+
+[[seiten]]                            # optional: Unterseite seiten/plan.svelte
+name = "plan"
+title = "Der Plan"
+
+[[repos]]                             # beliebig viele; Git-Stand liest das Dashboard selbst
+path = "%USERPROFILE%/dev/mein-projekt"
+label = "mein-projekt"
+private = false                       # true: nur Zahlen, keine Commit-Texte
+
+[[links]]
+name = "Doku"
+url = "https://example.org"           # http(s) wird anklickbar, Pfade nur angezeigt
+
+[[checks]]                            # optional: antwortet eine Adresse? (grün/rot)
+name = "Server lokal"
+url = "http://127.0.0.1:8080/"        # geprüft wird nur http://, kein https'''
+
+[[block]]
+punkte = [
+  '[[repos]]: path ist der Ordner des Repos, mit Schrägstrichen (%USERPROFILE% steht wie überall in dieser Anleitung für den eigenen Benutzerordner), label der angezeigte Name. private = true heißt: nur Zahlen, keine Commit-Texte.',
+  '[[links]]: name und url. Eine Adresse mit http:// oder https:// wird anklickbar; ein Pfad (etwa D:/Ablage/Projekte) wird nur als Text angezeigt. Eine andere Adresse meldet pruefe als FEHLER.',
+  '[[checks]]: name und url eines Lebenszeichens. Der Server fragt nur http:// ab, kein https; eine https-Adresse lässt pruefe zwar durch, sie bleibt aber rot.',
+  'processes: Dateinamen von Programmen, die laufen sollen (etwa mein-programm.exe); das Dashboard zeigt, ob sie gerade laufen.',
+  '[[seiten]]: Unterseiten mit name (Datei seiten/<name>.svelte, Kleinbuchstaben, Ziffern, Bindestriche), title und optional order (Abschnitt 11).',
+]
+
+[[block]]
+text = 'Alles in projekt.toml und daten/ ist nur lokal sichtbar. Trotzdem: keine Passwörter, keine Texte aus dem privaten Repo hineinkopieren, nur Zusammenfassungen. Ein vollständiges Beispiel liegt in tests/beispiel/projects/neu-form/projekt.toml.'

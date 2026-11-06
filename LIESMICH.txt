@@ -1,0 +1,48 @@
+﻿DAS DASHBOARD
+=============
+
+Dieses Repo ist das lokale Dashboard: ein kleiner Server (Rust) mit einer
+Oberfläche im Browser (Ordner web). Es zeigt die Projekte, was ansteht und
+den Stand des PCs. Es ist nur von diesem PC aus erreichbar:
+http://localhost:8787
+
+Die Anleitung
+-------------
+Die ganze Anleitung steht im laufenden Dashboard unter
+http://localhost:8787/anleitung. Ihre Quelle sind die Dateien
+docs\anleitung\*.toml in diesem Repo, eine Datei je Abschnitt.
+
+Wenn das Dashboard nicht läuft
+------------------------------
+Dann geht auch /anleitung nicht auf. In PowerShell im Ordner dieses Repos,
+ohne Administrator:
+
+  Als Dienst eingerichtet:  scripts\Dienst.ps1 -Status
+                            scripts\Dienst.ps1 -Start
+  Ohne Dienst:              scripts\Start-Dashboard.ps1
+
+Mehr steht in den Abschnitten „Starten“ und „Das Dashboard als Dienst“ der
+Anleitung. Ohne Dashboard lassen sie sich mit dem Editor lesen:
+docs\anleitung\readme-01-starten.toml und
+docs\anleitung\readme-03-das-dashboard-als-dienst.toml. Zum Dienst gehört
+außerdem scripts\LIESMICH-Dienst.txt.
+
+Öffentlich als dashboard-commons
+--------------------------------
+Auf GitHub heißt dieses Repo dashboard-commons. Hinaus geht nur ein
+frischer Wurzel-Commit (scripts\Hochladen.ps1 -Wurzel), geprüft von
+scripts\Vor-Push.ps1. Commit-Meldungen ohne Anhänge (kein Co-Authored-By,
+kein Generated with), Autor Ranke <ranke2@proton.me>.
+
+Der Beispielbenutzer in tests\beispiel heißt ranke, benannt nach dem
+Hauptentwickler Ranke.
+
+Lizenz
+------
+Copyright (C) 2026 Ranke
+
+Der Code steht unter der GNU Affero General Public License, Fassung 3
+oder später (AGPL-3.0-or-later). Der Text steht in LICENSE.
+
+Die Dokumentation in docs\anleitung und docs\zielbild ist gemeinfrei
+(CC0-1.0). Der Text steht in LICENSES\CC0-1.0.txt.

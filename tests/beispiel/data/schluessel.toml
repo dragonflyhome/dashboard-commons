@@ -1,0 +1,8 @@
+# Beispiel-Anforderung für die Tests. Nie Werte.
+
+[[key]]
+name = "beispiel-test"
+zweck = "Beispiel-Kennwort (nur Tests, nie speichern)"
+hinweis = "Nur für Tests"
+angefordert_von = "Test"
+benutzer = "ranke"   # Beispielbenutzer, benannt nach dem Hauptentwickler Ranke

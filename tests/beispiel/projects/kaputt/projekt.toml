@@ -1,0 +1,5 @@
+# Absichtlich kaputt: doppelter Schlüssel; die Startseite muss das als Fehler melden.
+schema = 3
+title = "Absichtlich kaputt"
+status = "aktiv"
+status = "fertig"

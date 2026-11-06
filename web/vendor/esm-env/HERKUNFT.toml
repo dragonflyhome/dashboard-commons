@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "esm-env"
+version = "1.2.2"
+quelle = "https://registry.npmjs.org/esm-env/-/esm-env-1.2.2.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-Epxrv+Nr/CaL4ZcFGPJIYLWFom+YeV1DqMLHJoEd9SYRxNbaFruBwfEX/kkHUJf55j2+TUbmDcmuilbP1TmXHA=="
+lizenz = "MIT"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 10
+entfernt = ["CHANGELOG.md", "README.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 8
+inhalt_sha256 = "7d4a57f9595c5a01917c169ad6a3d7c3e43c4dd08b6fe22db8a8a888f956b988"

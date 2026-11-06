@@ -1,0 +1,85 @@
+titel = "Arbeitsregeln für Assistenten"
+reihenfolge = 7
+text = """
+Für alle Assistenten gelten gemeinsame Arbeitsregeln. Sie stehen verbindlich in einer globalen Regeldatei und gelten damit für jeden Assistenten in jedem Ordner. Strengere Regeln eines Projekts oder des Dashboards gehen vor.
+
+Dieser Abschnitt erklärt die Regeln nur; er ist keine zweite Fassung. Ändert sich etwas, wird es in der globalen Datei geändert. Die Regeln sind sinngemäß auf Deutsch an eine MIT-lizenzierte Regelvorlage angelehnt."""
+
+[[block]]
+titel = "Worum es geht"
+punkte = [
+  "Erst verstehen, dann die kleinste vollständige Änderung: Muss es existieren? Gibt es das schon? Kann es die Standardbibliothek, die Plattform oder eine vorhandene Abhängigkeit? Reicht eine Zeile? Erst dann neuer Code.",
+  "Sparsam bei der Lösung, nie bei der Änderung: Aufrufer, Tests und Daten, die eine Änderung berührt, gehören dazu.",
+  "Nie kürzen bei Prüfungen an Vertrauensgrenzen, Schutz vor Datenverlust, Sicherheit, Datenschutz und Barrierefreiheit.",
+  "Logik mit Verzweigung, Schleife, Parser, Geld oder Sicherheit bekommt einen kleinen Test.",
+  "Eine bewusste Abkürzung bekommt einen Kommentar „shortcut: Grenze, wann aufrüsten“.",
+  "Jeder Bericht und jede Abnahme endet mit „Übersprungen oder nicht geprüft“ und dem Restrisiko.",
+]
+
+[[block]]
+titel = "Befundformat für Prüfungen und Abnahmen"
+[block.tabelle]
+spalten = ["Feld", "Inhalt"]
+zeilen = [
+  ["Ort", "Datei und Zeile"],
+  ["Schwere", "Muss (vor dem Merge), Sollte (in derselben Runde), Hinweis (gern, später)"],
+  ["Was der Code tut", "kurz und sachlich"],
+  ["Was schiefgeht", "mit konkretem Auslöser"],
+  ["Wie beheben", "der kleinste Weg"],
+  ["Wenn man es lässt", "was dann passiert, in einfachen Worten"],
+]
+
+[[block]]
+titel = "Grundsatz: Warme Builds"
+punkte = [
+  "Bauordner werden einmal täglich gelöscht, nicht nach jeder Arbeit. Ein Bau, der jedes Mal in einem leeren Ordner beginnt, ist immer „kalt“ und dauert Minuten statt Sekunden.",
+  "Je Repo gibt es wenige feste Bauordner im Windows-Cache, einen je Rolle, die gleichzeitig baut, statt eigener Ordner je Zweig oder je Abnahme. Für das Dashboard unter %LOCALAPPDATA%/Dashboard/cache/: arbeit-1, arbeit-2 (Bau-Assistent), abnahme (Prüf-Assistent), dienst (Einspielen); jeweils als CARGO_TARGET_DIR.",
+  "Warum nicht einer für alle: Zwei gleichzeitige Bauten im selben Ordner stoßen sich (eine laufende Test-Exe lässt sich nicht neu linken, Zweige überschreiben sich gegenseitig das Ergebnis).",
+  "Einmal täglich räumt eine Aufräumaufgabe die Bauordner auf; der erste Bau danach ist einmal kalt.",
+  "Kein Assistent löscht Bauordner nach seiner Arbeit, und keiner legt zusätzliche an.",
+]
+
+[[block]]
+titel = "Grundsatz: Ablage nach Windows-Standardpfaden"
+[block.tabelle]
+spalten = ["Was", "Wohin"]
+zeilen = [
+  ["Cache, alles neu Erzeugbare (Bauordner, Zwischenstände)", "%LOCALAPPDATA%/<Anwendung>/cache"],
+  ["Persistente Daten eines Dienstes (Datenspeicher, Protokolle, installierte Fassung)", "%PROGRAMDATA%/<Anwendung>"],
+  ["Persistente Daten eines Programms für einen Benutzer allein", "%APPDATA%/<Anwendung>"],
+  ["Quellen (Repos)", "%USERPROFILE%/dev"],
+  ["Arbeitsordner der Assistenten (im Temp-Ordner)", "so klein wie möglich: nur Notizen, Skripte und kurzlebige Proben, keine Bauordner und keine großen Kopien"],
+]
+
+[[block]]
+titel = "Grundsatz: Verläufe der Assistenten bleiben erhalten"
+punkte = [
+  "Alte Verläufe der Assistenten werden nicht gelöscht; sie sind Teil der Geschichte des Systems.",
+  "Das gilt für jede Bereinigung, auch die tägliche: Verläufe und Sitzungsdaten der Assistenten (der Datenordner des Assistenten-Werkzeugs im Benutzerprofil) sind ausgenommen.",
+  "Archivieren ist erlaubt, Löschen nicht.",
+]
+
+[[block]]
+titel = "Grundsatz: Commit-Meldungen ohne Anhänge"
+punkte = [
+  "Commit- und Merge-Meldungen haben keine Trailer: kein Co-Authored-By, kein Hinweis auf erzeugende Werkzeuge, keine Angabe zu Modell oder Werkzeug. Autor und Committer ist nur Ranke.",
+  "Angaben über die Nutzung von Modellen und Werkzeugen gehören in private Aufzeichnungen, nicht in die Öffentlichkeit.",
+  "Das gilt in allen Repos, auch in privaten, und für jeden Assistenten. Der commit-msg-Hook und der Vor-Push-Prüfer weisen solche Zeilen ab.",
+]
+
+[[block]]
+titel = "Freigaberegeln für Assistenten"
+punkte = [
+  "Ein automatischer Freigabe-Prüfer entscheidet, welche Aktionen ein Assistent ohne Rückfrage ausführen darf. Seine Regeln liegen in einer persönlichen Einstellung, nicht in einem Repo. Die Assistenten verwalten diese Einstellung nach dem Bedarf des Systems.",
+  "Niemand bearbeitet diese Einstellung von Hand. Verfahren je Regel: Ein Assistent liest den Regeltext im Gespräch vor, Satz für Satz, ohne dafür eine Datei anzulegen. Bei Zustimmung genügt ein Klick auf eine Zeile zum Ausführen, deren Inhalt genau dieser Text ist.",
+  "Sicherung: Eine Dashboard-Aufgabe kopiert die Einstellung danach ins private Inhalts-Repo (Ordner einstellungen), immer in diese Richtung, nie umgekehrt.",
+  "Regelkreis: Sperrt der Prüfer einen Assistenten, meldet dieser das als Fund an den Prüf-Assistenten (Regelname in eckigen Klammern, was er tun wollte, wofür). Der Prüf-Assistent macht daraus einen Vorschlag in einfachen Worten; danach Vorlesen und Klick wie oben. Die Konfiguration des Prüfers dürfen Assistenten nur lesend prüfen.",
+  "Risiko: Wer Regeln vorliest, formuliert seine eigenen Freigaben vor; das Lesen Satz für Satz ist der einzige Schutz dagegen. Weitreichende Freigaben (Push, Repos anlegen, Anmeldung erneuern, geplante Aufgaben, Installationen, Rechte, eigene Regeldateien) sparen Rückfragen, aber auch die Gelegenheit, einen Fehler zu bemerken. Empfohlen bleibt, Force-Push, ferne Zweige oder Tags löschen, Veröffentlichen an Hochladen.ps1 vorbei und Änderungen an Rechten nie freizugeben.",
+]
+
+[[block]]
+titel = "Später, nur auf Anweisung"
+punkte = [
+  "pruefe sammelt die shortcut-Kommentare als Schuldenliste auf einer Seite (Idee für eine Etappe nach Schritt 6).",
+  "Plugin, Hooks und Board der Regelvorlage werden nicht eingerichtet, solange es nicht verlangt wird; vorher würden die übrigen Hook-Dateien geprüft.",
+]

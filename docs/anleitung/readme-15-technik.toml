@@ -1,0 +1,29 @@
+# Abschnitt „Technik“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Technik'
+reihenfolge = 215
+
+[[block]]
+text = '''
+Server: Rust. Tokio (Laufzeit), Hyper und Tower/tower-http (HTTP), axum als dünne Schicht darüber, Tracing (Protokoll nach stdout), sysinfo (PC-Daten), serde, serde_json und toml, redb (Datenspeicher), ts-rs (TypeScript aus den Rust-Typen), nur unter Windows windows-service 0.8.1 (Dienst-Modus) und windows-sys 0.61.2 (Pipe des Boten, Tresor, Windows-Anmeldung über SSPI). Beide Versionen sind in Cargo.toml festgehalten; windows-sys baut nur mit dem llvm-dlltool aus .cargo/config.toml (siehe „Stolpersteine beim Bauen“).
+
+Oberfläche: SvelteKit 3, Svelte 5 (Runes), TypeScript (strict), Vite, Vitest, ESLint (strict-type-checked), Prettier. Keine Laufzeit-Abhängigkeiten aus dem Netz.
+
+Ein Typ, drei Nutzungen (seit Etappe 2c): Alle Typen des Vertrags zwischen Server und Oberfläche stehen nur in src/vertrag/. Dieselben Rust-Typen lesen die TOML-Dateien der Chats (serde), gehen als JSON über die API und werden mit ts-rs zu TypeScript. cargo test schreibt die TypeScript-Dateien nach web/src/lib/vertrag/ (eingecheckt, Kopfzeile „Nicht von Hand ändern“); die Oberfläche importiert sie als $vertrag (import type { X } from '$vertrag';, Alias in web/vite.config.ts). Sind die Dateien veraltet, schreibt cargo test sie neu und schlägt einmal fehl; der zweite Lauf ist grün, einchecken muss man selbst. Die von Hand gepflegte web/src/lib/api/types.ts gibt es nicht mehr.
+
+Schleusen: Jede Anfrage läuft durch acht Prüfungen, bevor sie bei der eigentlichen Seite ankommt. 1) Absturzfänger: ein Fehler im Code wird eine höfliche Fehlerseite statt eines Abbruchs. 2) Protokoll: jede Anfrage bekommt eine Nummer, Dauer und Ergebnis kommen ins Protokoll, nie Formularinhalte. 3) Adress-Prüfung: nur 127.0.0.1:<port> und localhost:<port> werden angenommen, sonst 421 (Schutz gegen DNS-Rebinding, also gegen fremde Websites, die sich als 127.0.0.1 ausgeben). 4) Herkunftsprüfung: Formulare (POST) nur vom Dashboard selbst. 5) Zeitlimit: 10 Sekunden je Anfrage; der Live-Kanal /api/events und das Warten /api/vorgaenge/warten sind davon ausgenommen. 6) Größenlimit: höchstens 16 KB je Anfrage (Schlüssel 4 KB). 7) Sicherheits-Kopfzeilen (CSP, nosniff, kein Referrer). 8) Zwischenspeicher-Regeln: die festen Dateien unter /_app/immutable/ darf der Browser lange behalten, alles andere nie (no-store).
+
+Fehlerantworten: Unter /api/ hat jede Fehlerantwort dieselbe Form, {"fehler": "...", "art": "..."}. fehler ist ein Satz in einfachem Deutsch, art ein festes Wort für die Oberfläche: nicht-gefunden, unlesbar, abgelehnt, zu-gross, zu-lange, falsche-adresse, intern, speicher-fehlt (503, der Datenspeicher ließ sich beim Start nicht öffnen; der Satz nennt den Sicherungsordner), dazu methode (405, falsche Art Anfrage, etwa POST statt GET) und fehlerhaft (400). Auch Ablehnungen, die axum selbst schickt, bekommen so einen Satz. Auf Browser-Wegen (alles außerhalb von /api/, sofern die Anfrage nicht Accept: application/json trägt) kommt derselbe Satz als lesbarer Text statt als JSON. Scheitert das Schlüssel-Formular (POST auf /schluessel/<name> aus dem Browser) an einer Schleuse (403, 408, 413), geht es mit dem Satz zurück ins Formular (303 auf /schluessel?fehler=…). Technische Einzelheiten stehen nur im Protokoll.
+
+Prüfen:'''
+
+[[block]]
+beispiel = '''
+cargo build
+cargo test
+cd web && npm run verify'''
+
+[[block]]
+text = '''
+cargo test läuft gegen das feste Beispiel-Repo in tests/beispiel/ und liest die echten projects/ nie; eine kaputte Projektseite eines anderen Chats bricht die Tests also nicht. npm run verify in web/ prüft die Oberfläche (Prettier, ESLint, svelte-check, Vitest, Build).
+
+Dienst und Bote prüft cargo test ohne Administrator: tests/dienst_konsole.rs startet dashboard.exe --konsole mit einer eigenen dienst.toml in einem Temp-Ordner (Ports 8789, 8790, 8792), und tests/bote_pipe.rs startet den Boten mit eigener Pipe (dashboard-test-<nummer>) und prüft die Verbindung samt Prüfung von Programm, Konto und Besitzer. Den echten Dienst gibt es erst nach dem Einrichten (Etappe 7a2).'''

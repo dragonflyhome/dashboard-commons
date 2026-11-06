@@ -1,0 +1,90 @@
+# Abschnitt „8. Datenspeicher: nur über die API“ (Etappe 6b, Format wie docs/zielbild).
+titel = '8. Datenspeicher: nur über die API'
+reihenfolge = 108
+
+[[block]]
+text = 'Der Server merkt sich Laufzeitdaten (heute den PC-Verlauf, die Vorgänge und die Aufgaben für den Inhaber) in einer redb-Datei, %USERPROFILE%/.var/dashboard/dashboard.redb. Mehr dazu im Abschnitt „Datenspeicher“.'
+
+[[block]]
+punkte = [
+  'Chats schreiben nie direkt in die redb-Datei und öffnen sie auch nicht. Lesen und Sichern nur über die API (/api/daten, /api/daten/export, POST /api/daten/sichern), Vorgänge nur über /api/vorgaenge (Abschnitt 9).',
+]
+
+[[block]]
+text = 'Für den Betreuer des Dashboards, wenn er neue Tabellen anlegt:'
+
+[[block]]
+punkte = [
+  'Eine neue Tabelle braucht drei Dinge: einen Eintrag in tabellen::ALLE, eine Fassung in tabellen::FASSUNGEN (beides in src/speicher/tabellen.rs) und einen Umbauschritt in SCHRITTE, der sie in alten Dateien anlegt (wie migration_2 für die Vorgänge).',
+  'Aus ALLE lesen Sicherungskopie, Export und die Seite /daten. Tabellen mit heiklen Werten bekommen exportieren: None. Eine Tabelle, die nicht in der Liste steht, stoppt die Sicherung mit einem Fehler.',
+  'Umbauschritte in SCHRITTE (src/speicher/migration.rs) nur hinten anhängen, nie einen vorhandenen Schritt ändern oder entfernen; jeder Schritt hebt das Schema um genau eins.',
+  'Jeder Test nimmt seine eigene Datei über Speicher::temporaer(); sie verschwindet nach dem Test und fasst die echte Datei nie an.',
+]
+
+[[block]]
+titel = 'Backup in data/pc.toml (Eingabe von Hand)'
+text = '''
+In [backup] stehen external_disk (true/false), cloud (freier Text: wo, wie viel) und cloud_stand mit einem der Wörter vorhanden, teilweise oder fehlt, etwa cloud_stand = "teilweise". Bitte cloud_stand immer setzen, sobald cloud etwas sagt: Fehlt es, gilt teilweise, wenn cloud nicht leer ist, sonst fehlt. Der Server liest den Text in cloud nicht; auch cloud = "keine" zählt darum als teilweise. pruefe meldet in diesem Fall einen Hinweis, ein anderes Wort in cloud_stand einen Fehler mit Zeile. copies ist veraltet: es wird noch gelesen, zählt aber nicht mehr. /api/pc liefert dazu backup_stand mit den drei Kopien (ort, stand, text) und regel_321 (erfuellt, teilweise, nicht-erfuellt); Ampel und Satz macht die Oberfläche daraus.
+
+Nach demselben Muster (Etappe 3a-4) rechnet der Server die übrigen Urteile der PC-Seite; die Oberfläche (web/src/lib/pc.ts) ordnet nur Farbe und Satz zu. Werte und Gründe sind Kennungen in kebab-case, nie Sätze; Schwellen sind Konstanten im Server und gehen als Fakt mit.'''
+
+[[block]]
+punkte = [
+  'snapshot.defender: befund (in-ordnung, ansehen, unbekannt), gruende (virenschutz-aus, echtzeit-aus, signatur-alt, noch-nicht-gelesen, abfrage-fehlgeschlagen) und signatur_schwelle_tage (3: genau 3 Tage alt ist noch in Ordnung).',
+  'snapshot.neustart: neustart (aussteht, nicht-noetig, unbekannt) und gruende (windows-update, systemkomponenten, dateien-warten).',
+  'snapshot.cpu_belegung, mem_belegung und disks[].belegung (normal, hoch, kritisch, unbekannt), dazu belegung_schwellen (hoch_ab 70, kritisch_ab 90; genau 70 % ist hoch). Auch im Live-Kanal (pc).',
+  '/api/pc/benutzer schluessel: vollstaendig (ja, nein, unbekannt), gespeichert, fehlen und bei unbekannt ein grund (bote-fehlt, liste-unlesbar). Kommt /api/pc/benutzer mit 401 oder 403, gilt der Stand als unbekannt mit anmeldung oder fremdes-konto (die Fehlerart des Servers).',
+]
+
+[[block]]
+text = 'unbekannt zeigt die Oberfläche nie wie „in Ordnung“, sondern neutral mit dem Grund. Der freie Weg /api/pc zeigt dadurch nicht mehr als vorher: Die Urteile sind nur aus Fakten gerechnet, die er schon hatte.'
+
+[[block]]
+titel = 'Historie in data/pc.toml und der Verlauf (ab 2e)'
+text = 'Jeder Eintrag in [[history]] bekommt eine kennung: Kleinbuchstaben, Ziffern und Bindestriche, in der Datei nur einmal. Sie bleibt, auch wenn sich Datum oder Titel ändern, und ist die Kennung des Ereignisses im Verlauf (hand:<kennung>).'
+
+[[block]]
+beispiel = '''
+[[history]]
+kennung = "netzteil-getauscht"
+date = "2025-04-01"
+title = "Netzteil getauscht"
+note = "650 W, leiser"'''
+
+[[block]]
+text = '''
+Ohne kennung geht es bis Schritt 6 noch: Der Server bildet sie dann aus Datum und Titel, pruefe gibt einen Hinweis. Eine doppelte oder nicht einfache kennung ist ein Fehler mit Zeile. Erledigte Schritte aus [[steps]] schreibt der Chat zusätzlich als Eintrag in [[history]]; der Fahrplan selbst ist kein Verlauf.
+
+GET /api/pc/verlauf?seit=<datum>&bis=<datum> liefert den Verlauf des PCs als Ereignisse (kennung, zeit mit Zone, genauigkeit minute, tag, monat oder jahr, bei Spannen bis, titel, text, quelle, art, verweis). Quellen: hand, update, windows-installiert, sicherung, mit Anmeldung auch start (Startzeiten verraten Anwesenheit), meldung (Systemmeldungen) und vorgang (nur Slug dashboard). seit und bis gehen als JJJJ-MM-TT oder RFC 3339; ohne Angabe die letzten 90 Tage ab Tagesanfang (dann liest der Server auch das Archiv, denn das beginnt erst bei jetzt minus 90 Tage). Der Server sortiert und gruppiert nicht; hinweise sagt, was fehlt (etwa ohne Anmeldung, oder wenn der Sammler die Grenze von 5000 Ereignissen erreicht hat). Seit Etappe 3a-4 ist jeder Hinweis {art, text}: art ist eine Kennung (ohne-anmeldung, beginnt-ab, ohne-speicher, sammler-unvollstaendig, sicherungen-fehlen, hand-fehlt, datum-unlesbar, ohne-kennung, kennung-doppelt), text der Satz. Die Oberfläche filtert nach art; eine Art, die sie nicht kennt, zeigt sie mit dem Satz unverändert. Höchstens 400 Tage auf einmal; ein längerer Zeitraum ist 422 mit Satz. /api/pc hat seit Etappe 3a-1 keine hotfixes, updates und boots mehr: Wer Updates oder Starts braucht, liest den Verlauf.
+
+Den Verlauf gibt es auf zwei Wegen (Hotfix 3a-1):'''
+
+[[block]]
+punkte = [
+  'GET /api/pc/verlauf: frei, für Werkzeuge und Api.ps1. Starts, Meldungen und Vorgänge nur, wenn die Verbindung schon angemeldet ist.',
+  'GET /api/pc/verlauf/voll: dieselbe Antwort mit denselben seit und bis, immer mit Starts, Meldungen und Vorgängen. Geschützt wie /api/pc/benutzer: ohne Anmeldung 401 mit WWW-Authenticate: Negotiate.',
+]
+
+[[block]]
+text = 'Warum zwei: Edge schickt die Windows-Anmeldung (Negotiate) nur auf einer Verbindung, die vorher eine 401 mit WWW-Authenticate: Negotiate bekam. Ein freier Weg fordert nie dazu auf. Lädt die Seite mehreres zugleich, landet die Anfrage oft auf einer neuen Verbindung ohne Anmeldung; dann fehlten die Starts nur zufällig (8 gleichzeitige Abrufe: 4 mit Starts, 4 ohne). Darum liest die Oberfläche (PC-Seite, Startseite, Neuladen über den Live-Kanal) /api/pc/verlauf/voll. Bei 401 oder 403 (keine Anmeldung möglich, etwa ein anderes Windows-Konto ohne Passkey) nimmt sie den freien Weg und zeigt den ruhigen Hinweis „Starts, Meldungen und Vorgänge zeigt der Verlauf nur mit Anmeldung.“ Regel für neue Wege: Zeigt ein Weg mit Anmeldung mehr und braucht die Oberfläche dieses Mehr, bekommt er eine geschützte Fassung. Seit Etappe 3a-4 merkt sich die Seite den Rückfall nach 401 oder 403 (web/src/lib/rueckfall.ts, im Speicher, nicht in sessionStorage, weil die Anmeldung mit Passkey die Seite neu lädt); weitere Ladungen gehen dann gleich den freien Weg. Seit 3a+ gilt das höchstens 5 Minuten; danach versucht die nächste Ladung wieder /voll. Öffnet der Live-Kanal (er ist geschützt, offen heißt also angemeldet), fällt der Rückfall sofort weg und die Seite lädt neu (Nachholen mit Grund angemeldet). So bleibt ein kurzes 401 auf dem eigenen Konto nicht bis zum Neuladen hängen. Dasselbe gilt für /api/projekte/<slug>/stand/voll.'
+
+[[block]]
+titel = 'Der Baustein Verlauf (Etappe 3a-1)'
+text = '''
+Der Verlauf auf /pc, auf der Startseite („Was mit dem PC passiert ist“, die letzten sieben Tage) und als Zeitstrahl auf Projektseiten ist derselbe Baustein: web/src/lib/katalog/zeit/Verlauf.svelte. Daneben liegen Zeitachse.svelte (die gemeinsame Achse), Dichtestreifen.svelte (der Streifen über dem Verlauf auf /pc) und Gantt.svelte (Balkenplan auf derselben Achse). Die Logik dahinter steht ohne DOM in web/src/lib/zeit/ (verlauf.ts, achse.ts, dichte.ts, tage.ts) und hat Vitest-Tests.
+
+Wer was macht (Grenze aus zustand-vom-server):'''
+
+[[block]]
+punkte = [
+  'Server: Fakten. Ereignisse mit stabiler kennung, Zeit und Genauigkeit, quelle und fachlicher art (erledigt, begonnen, geplant, abgebrochen, routine, problem); Doppelte erkennt er, Routine kennzeichnet er. Keine Reihenfolge, keine Gruppen, keine Farben.',
+  'Oberfläche: neueste oben, gruppiert nach Tag (Heute, Gestern, Wochentag mit Datum), darüber Woche, Monat und Jahr; Heute und Gestern offen, der Rest aufklappbar; Routine eines Tages je Quelle in einer Zeile („4 Updates installiert ▸“); Filter nach Quelle mit Anzahl; Uhrzeit bei minute, sonst „ganzer Tag“, Monat oder Jahr; lange Texte zwei Zeilen, dann „mehr“. Auf Projektseiten (modus="projekt") steht Kommendes über der Heute-Linie aufsteigend, Vergangenes darunter je Jahr absteigend. Die einzige Bewertung im Web ist die Zuordnung art zu Farbe (bedeutungAusArt in verlauf.ts: erledigt grün, begonnen türkis, geplant blau, problem rot, routine und abgebrochen grau).',
+]
+
+[[block]]
+text = '''
+Gruppen (seit 3a+): „Demnächst“ einheitlich aufsteigend, auch Einträge ohne genauen Tag. Ist heute Montag, steht Gestern (Sonntag) für sich, und „Letzte Woche“ endet am Samstag davor (der Titel sagt das). Nur die Gruppe Heute trägt data-heute, auch am Monatsersten und am 1.1.; Jahre stehen unter allen Monaten, auch das laufende Jahr. Heute läuft über Mitternacht weiter: Ohne jetzt rechnen Verlauf und Dichtestreifen um 0:00 neu (LaufendesJetzt in web/src/lib/zeit/jetzt.svelte.ts, über beiTageswechsel).
+
+Bedienung: Pfeile gehen von Eintrag zu Eintrag, Enter klappt auf, Pos1 springt auf heute. Der Dichtestreifen zeigt 91 Tage (heute und die 90 davor, so viel liefert der Server ohne seit) und zählt nur die Quellen, die der Filter des Verlaufs zeigt (aus, dieselbe Menge für beide). Seine Pfeile wählen einen Tag, Bild auf und Bild ab gehen eine Woche, Enter springt hin, + und - zoomen (alle Tage, 30, 14), Pos1 geht auf heute, Ende auf den ältesten Tag; der Text für Bildschirmleser nennt den gezoomten Ausschnitt. Antippen springt zum Tag, Ziehen wählt einen Zeitraum. Ein Sprung auf einen leeren Tag zeigt genau einen Satz. Im Gantt verschieben die Pfeile um eine Einheit der Stufe, + und - zoomen (Alles, Jahr, Monat, Woche, Tag), Pos1 zeigt heute, 0 alles; Ziehen verschiebt. Alt+Pfeil bleibt überall beim Browser.
+
+Farben nur als Token (var(--…)), wie überall in web/src (siehe „Für den Betreuer des Dashboards: Token und Stil-Prüfung“).'''

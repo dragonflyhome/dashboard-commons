@@ -1,0 +1,31 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+/builds
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Erzeugt von Rust (Bauliste) bzw. scripts/projekte-vorbereiten.mjs
+/src/lib/projekte.generated.ts
+
+# Baumeister (Etappe 4b): letzte grüne Fassung je Projekt und Arbeitsordner
+/.projekte-gruen/
+/.baumeister/

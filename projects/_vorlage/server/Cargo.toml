@@ -1,0 +1,25 @@
+# Vorlage für ein Backend-Modul (Etappe 4b). Kopieren nach
+# projects/<slug>/server/, dann hier `name = "projekt-<slug>"` setzen und in
+# src/lib.rs den Slug. Erklärung in der Anleitung, Abschnitt „12. Backend-Module“.
+#
+# Erlaubt sind nur diese Abhängigkeiten (Liste geprüfter Kisten des
+# Betreuers des Dashboards). Eine neue Kiste braucht eine Entscheidung der
+# Architektur-Rolle und einen Baunachweis auf diesem PC.
+[package]
+name = "projekt-vorlage"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+dashboard-projekt = { path = "../../../crates/dashboard-projekt" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat"] }
+
+[dev-dependencies]
+# Prüfstand und Schreiben der TypeScript-Typen, nur in Tests.
+dashboard-projekt = { path = "../../../crates/dashboard-projekt", features = ["pruefstand"] }
+# tokio nur für Tests (#[tokio::test]); im Modul kommt die Laufzeit über das SDK.
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -1,0 +1,23 @@
+# Balken mit Tagen: tage_bis und tage_seit je Spalte von und bis; erledigt nach farbe.
+[[balken]]
+name = "Phase 0"
+von = "2026-01-05"
+bis = "2026-03-31"
+farbe = "fertig"
+
+[[balken]]
+name = "Phase 1"
+von = "2026-04-01"
+bis = "2026-09-30"
+farbe = "grün"
+
+[[balken]]
+name = "Phase 2"
+von = "2026-10-01"
+bis = "2031-06-30"
+farbe = "aktiv"
+
+[[balken]]
+name = "Phase 3"
+von = "2031-07-01"
+bis = "2032-12-31"

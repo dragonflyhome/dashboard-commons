@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "inline-style-parser"
+version = "0.2.7"
+quelle = "https://registry.npmjs.org/inline-style-parser/-/inline-style-parser-0.2.7.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA=="
+lizenz = "MIT"
+lizenzdatei = "LICENSE"
+dateien_im_tarball = 14
+entfernt = ["README.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 13
+inhalt_sha256 = "c5a37895e81d04bfed4ee7086630f274eb8e26fba334e7c4cfcf7ec8fdd26c40"

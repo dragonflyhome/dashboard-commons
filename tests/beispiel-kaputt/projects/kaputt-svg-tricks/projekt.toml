@@ -1,0 +1,5 @@
+# Absichtlich kaputt: siehe assets/tricks.svg (versteckte Skripte, Dokumenttyp, Verweise nach außen).
+schema = 3
+title = "Kaputt: SVG mit Tricks"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

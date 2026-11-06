@@ -1,0 +1,98 @@
+[package]
+name = "dashboard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Lokales Dashboard: Zustand des PCs und aller Projekte im Browser"
+license = "AGPL-3.0-or-later"
+publish = false
+
+# Workspace aus dem Dienst, dem SDK für Projekt-Module und der Vorlage eines
+# Moduls (baut mit, damit sie gültig bleibt). Rechenteile der Projekte stehen
+# hier nie ([code_nur_kern], [zusammenbau]): Sie liegen in der Inhaltsquelle
+# und kommen über eine Zusammenbau-Kiste (vorlagen/dashboard-lokal) hinein.
+[workspace]
+members = [
+    ".",
+    "crates/dashboard-projekt",
+    "projects/_vorlage/server",
+]
+default-members = [
+    ".",
+    "crates/dashboard-projekt",
+    "projects/_vorlage/server",
+]
+
+[dependencies]
+# SDK der Backend-Module (Etappe 4b); angemeldet werden sie nur über dashboard::starten.
+dashboard-projekt = { path = "crates/dashboard-projekt", features = ["dienst"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "sync", "time", "net", "io-util", "signal", "fs"] }
+hyper = { version = "1", features = ["server", "http1"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "tower-log", "tracing", "json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "set-header", "catch-panic", "timeout", "limit", "csrf"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+serde = { version = "1", features = ["derive"] }
+# preserve_order: Teile (`[teil.<name>]`) und eigene Daten bleiben in der Reihenfolge der Datei.
+toml = { version = "1", features = ["preserve_order"] }
+# sysinfo bleibt bei 0.33: ab 0.35 stürzt das Programm mit der GNU-Toolchain ohne MinGW
+# beim Start ab (windows-Crate per raw-dylib + llvm-dlltool). 0.33 nutzt fertige Import-Libs.
+sysinfo = "~0.33"
+# chrono bleibt bei 0.4.38: neuere Versionen holen kernel32 per raw-dylib, genau wie tokio.
+# Der GNU-Linker vermischt dann beide Import-Bibliotheken, und Local::now() stürzt ab.
+chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std", "serde"] }
+zeroize = "1"
+tokio-stream = { version = "0.1", features = ["sync", "time"] }
+futures-util = { version = "0.3", default-features = false }
+anyhow = "1"
+# preserve_order: auch serde_json::Value behält die Reihenfolge der Schlüssel.
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+sha2 = { version = "0.11.1", default-features = false }
+# redb: eingebettete Datenbank in reinem Rust (Zielbild c3), ohne Feature chrono.
+redb = { version = "4.4", default-features = false }
+# ts-rs: TypeScript-Typen aus den Rust-Typen (Zielbild, Etappe 2c); ohne chrono-impl, Zeiten als Text.
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat"] }
+# Etappe 7c (Passkey und JWT): nur reines Rust von RustCrypto, Bauprobe bestanden,
+# alle gepinnt. webauthn-rs und jsonwebtoken scheiden aus (OpenSSL, ring, aws-lc brauchen C).
+# ed25519-dalek: Signatur der JWT. p256: Passkeys mit ES256. rsa nur zum Prüfen von RS256
+# (Windows Hello); RUSTSEC-2023-0071 betrifft nur private Schlüssel, hier wird nur geprüft.
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std", "fast", "zeroize"] }
+p256 = { version = "=0.13.2", default-features = false, features = ["ecdsa", "std"] }
+rsa = { version = "=0.9.10", default-features = false, features = ["std", "sha2", "u64_digit"] }
+# sha2 0.10 neben 0.11: rsa 0.9 braucht die Fassung mit digest 0.10 (und `oid`).
+sha2_010 = { package = "sha2", version = "=0.10.9", default-features = false, features = ["oid"] }
+# CBOR für attestationObject und COSE-Schlüssel.
+ciborium = { version = "=0.2.2", default-features = false, features = ["std"] }
+base64 = { version = "=0.22.1", default-features = false, features = ["std"] }
+# Zufall für Challenges, jti und den JWT-Schlüssel (OsRng über getrandom 0.2.17).
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
+getrandom = { version = "=0.2.17", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+# windows-service bleibt bei 0.8.1: Dienst-Modus (`--dienst`, Etappe 7a). Bauprobe bestanden.
+windows-service = "=0.8.1"
+# windows-sys bleibt bei 0.61.2 (dieselbe Fassung, die windows-service mitbringt). Bauprobe
+# bestanden; baut nur mit .cargo/config.toml (llvm-dlltool), siehe dort.
+# Features für Dienst, Pipe (Bote), Tresor, SSPI (7b), exklusives Binden (WinSock)
+# DPAPI für die Links der Aufgaben (5a) und WTS-Sitzungen (A3, „Bote fehlt“ nur bei Anmeldung).
+# Shell und WindowsAndMessaging: ShellExecuteW und AssocQueryStringW für „Öffnen“ im Boten
+# (Entscheidung lokal-oeffnen).
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation", "Win32_Security", "Win32_Security_Authorization",
+    "Win32_Security_Authentication_Identity", "Win32_Security_Credentials",
+    "Win32_System_Pipes", "Win32_System_Threading", "Win32_System_IO",
+    "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_Diagnostics_Debug",
+    "Win32_System_Console", "Win32_Networking_WinSock", "Win32_System_JobObjects",
+    "Win32_Security_Cryptography", "Win32_System_RemoteDesktop",
+    "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+# Prüfstand und Schreiben der Modul-Typen nur in Tests (Etappe 4b).
+dashboard-projekt = { path = "crates/dashboard-projekt", features = ["dienst", "pruefstand"] }
+# Die Vorlage eines Moduls als neutrales Beispiel für die Tests des Registers.
+projekt-vorlage = { path = "projects/_vorlage/server" }

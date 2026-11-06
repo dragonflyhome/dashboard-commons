@@ -1,0 +1,20 @@
+titel = "Wo das Zielbild den sieben Punkten des Bau-Assistenten folgt"
+reihenfolge = 11
+
+[[block]]
+text = """
+Der Bau-Assistent hat sieben Punkte vorgeschlagen. Die Tabelle zeigt, wie Fassung 2 des Zielbilds sie umsetzt.
+"""
+
+[[block]]
+[block.tabelle]
+spalten = ["#", "Vorschlag", "Zielbild 2"]
+zeilen = [
+  ["1", "Zielbild aufschreiben", "✅"],
+  ["2", "Vertrag aus einer Quelle, Schema mit Version, Prüfbefehl", "✅ ts-rs, schema = 3, pruefe. Kein JSON-Schema: eine Prüfung in Rust reicht"],
+  ["3", "AppError, Schichten, ContentStore, git mit Zeitlimit", "✅, dazu Adress-Prüfung, CsrfLayer, Panic-Fänger; keine Komprimierung"],
+  ["4", "Ordner mit Unterseiten, antworten.toml, Bedeutung statt CSS-Klasse", "✅ ohne Markdown (TOML + Svelte); Antworten liegen nicht als Datei vor (antworten.toml entfällt), sondern im Datenspeicher"],
+  ["5", "Verschachtelte Layouts, Katalog", "✅, Katalog wird zur Pflicht ($katalog), keine Remote Functions"],
+  ["6", "Tests gegen Beispiel-Repo", "✅; echte Projekte prüft pruefe, nicht cargo test"],
+  ["7", "Wünsche in den Rückstand", "✅, als wuensche.toml je Projekt, gebündelt in Katalog-Runden"],
+]

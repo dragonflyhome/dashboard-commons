@@ -1,0 +1,16 @@
+# Herkunft dieser Vendor-Kopie (Etappe 3a-3, Entscheidung ui-toolkit-als-vendor).
+# Inhalt unverändert aus der npm-Registry; nur Markdown entfernt (siehe entfernt).
+paket = "clsx"
+version = "2.1.1"
+quelle = "https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz"
+datum = "2026-10-30"
+# Prüfsumme des Tarballs aus der Registry (npm integrity, sha512, base64); vor dem Auspacken nachgerechnet.
+pruefsumme = "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="
+lizenz = "MIT"
+lizenzdatei = "license"
+dateien_im_tarball = 10
+entfernt = ["readme.md"]
+umbenannt = []
+# Prüfsumme der Kopie (ohne HERKUNFT.toml), Rechnung siehe scripts/Vendor-Pruefen.ps1.
+dateien = 9
+inhalt_sha256 = "a6a8798a0fa6c90f7bc4ff3b23cf94200cc84336759049c432fca7e879d10c80"

@@ -1,0 +1,52 @@
+# Abschnitt „Projekte in neuer Form (schema = 3)“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Projekte in neuer Form (schema = 3)'
+reihenfolge = 213
+
+[[block]]
+text = 'Ein Projekt ist ein Ordner, die Daten stehen in TOML (Zielbild, Abschnitt b). Seit 6a gibt es nur diese Form.'
+
+[[block]]
+beispiel = '''
+projects/<slug>/
+  projekt.toml          Kopf: Titel, Status, Chat, Backup, Unterseiten
+  daten/                je Baustein eine Datei, nur die nötigen
+    kennzahlen.toml
+    eigen-<name>.toml   eigene Daten, die kein Baustein abdeckt
+  assets/               SVG, Bilder, PDF, Vorschau-HTML
+  Seite.svelte          Hauptseite (Darstellung)'''
+
+[[block]]
+punkte = [
+  'projekt.toml beginnt mit schema = 3. Feste Wörter bei status (aktiv, pausiert, geplant, fertig, problem, archiviert) und backup (rot, gelb, grün). Unbekannte Felder sind ein Fehler. archiviert (Entscheidung archiv-status) heißt ruhig: Das Projekt steht nur noch in der Archivansicht /projekte/archiviert und auf seiner Seite (Abschnitt „3. Felder im Überblick“, Teil „Archivieren“).',
+  'In daten/ dürfen genau diese acht Dateien stehen:',
+  '– kennzahlen.toml: Kacheln mit Zahl ([[kennzahl]] mit titel, wert),',
+  '– ampel.toml: Zeilen mit Farbe ([[zeile]] mit titel, farbe),',
+  '– fortschritt.toml: Balken mit prozent oder erreicht und gesamt,',
+  '– zeitstrahl.toml: Ereignisse mit datum (JJJJ-MM-TT oder JJJJ-MM), kennung (eindeutig in der Datei) und art (erledigt, begonnen, geplant, abgebrochen, routine, problem; ersetzt farbe, das bis Schritt 6 noch gilt). Der Server liefert die Einträge zusätzlich als Ereignisse des Verlaufs in abgeleitet.ereignisse,',
+  '– gantt.toml: Balkenplan ([[balken]] mit name, von, bis),',
+  '– kanban.toml: Spalten mit Karten ([[spalte]], [[spalte.karte]]),',
+  '– fluss.toml: Kästen und Pfeile ([[kasten]] mit id, [[pfeil]] mit von, nach),',
+  '– fragen.toml: Fragen an den Inhaber (art ist wahl, ja-nein, text oder bestaetigen).',
+  'Dazu beliebig viele eigen-<name>.toml (Name aus Kleinbuchstaben, Ziffern, Bindestrichen). Der Server prüft nur, dass es TOML ist, und reicht es als JSON durch.',
+  'Eine Datei kann statt eines Ganzen auch benannte Teile haben, etwa [teil.vergangenheit] und [teil.plan] in zeitstrahl.toml.',
+  'Alle Zeilen stehen als Tabellen mit Feldnamen, nie als Text mit Trennzeichen. Ein vollständiges Beispiel liegt in tests/beispiel/projects/neu-form/.',
+  'Markdown gibt es im Projekt nicht mehr: Eine Datei *.md im Projektordner ist ein FEHLER in pruefe (die genaue Regel steht im Abschnitt „Prüfen der Projekte: pruefe“). Ohne projekt.toml gibt es das Projekt nicht.',
+]
+
+[[block]]
+text = 'Farben sind Bedeutungen: Im JSON stehen nur sechs Wörter, die Farbe wählt die Oberfläche. In TOML dürfen auch die gewohnten Wörter stehen; der Server übersetzt sie (Groß und klein egal):'
+
+[[block]]
+[block.tabelle]
+spalten = ['Bedeutung', 'Farbe', 'verstanden werden auch']
+zeilen = [
+  ['ok', 'grün', 'grün, gruen, green, fertig, erledigt, erreicht'],
+  ['laeuft', 'türkis', 'läuft, aktiv'],
+  ['wartet', 'gelb', 'gelb, yellow, offen, pausiert, vertagt, läuft bald, teils, warn'],
+  ['problem', 'rot', 'rot, red, blockiert, fehlt, kritisch, kaputt, fehler, keins, bad'],
+  ['info', 'blau', 'blau, blue, in arbeit, aktuell'],
+  ['neutral', 'grau', 'geplant, idee, grau, plan'],
+]
+
+[[block]]
+text = 'In TOML ist ein unbekanntes Farbwort ein Fehler.'

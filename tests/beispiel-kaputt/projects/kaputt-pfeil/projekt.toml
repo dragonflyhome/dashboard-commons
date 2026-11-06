@@ -1,0 +1,5 @@
+# Absichtlich kaputt: siehe daten/fluss.toml.
+schema = 3
+title = "Kaputt: Pfeil ins Leere"
+status = "aktiv"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

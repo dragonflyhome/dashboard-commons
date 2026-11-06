@@ -1,0 +1,17 @@
+# Abschnitt „Stolpersteine beim Bauen (GNU-Toolchain ohne MinGW)“ (Etappe 6b, Format wie docs/zielbild).
+titel = 'Stolpersteine beim Bauen (GNU-Toolchain ohne MinGW)'
+reihenfolge = 218
+
+[[block]]
+text = 'Rust ist hier über rustup mit der GNU-Toolchain installiert, ohne eigenes MinGW und ohne Visual Studio. Drei Dinge waren nötig, damit es baut und läuft:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'dlltool. Einige Windows-Crates brauchen beim Bauen ein dlltool. Das von rustup mitgelieferte verlangt einen Assembler, der fehlt. Lösung: rustup component add llvm-tools, dann llvm-ar.exe aus <sysroot>/lib/rustlib/x86_64-pc-windows-gnu/bin/ nach %USERPROFILE%/.cargo/bin/llvm-dlltool.exe kopieren. .cargo/config.toml nennt nur den Namen; rustc findet ihn über PATH. Ohne PATH gehört der volle Pfad in %USERPROFILE%/.cargo/config.toml (Abschnitt 14, Teil „Bauen mit der GNU-Toolchain (llvm-dlltool)“).',
+  'sysinfo bleibt bei 0.33. Neuere Versionen stürzen beim Start ab.',
+  'chrono bleibt bei 0.4.38. Neuere Versionen stürzen bei Local::now() ab, weil zwei Crates dieselbe Windows-DLL auf zwei Arten einbinden und der GNU-Linker das vermischt.',
+]
+
+[[block]]
+text = 'Beide Pins stehen mit Kommentar in Cargo.toml. Wer sie anhebt, sollte cargo test laufen lassen: ein Absturz zeigt sich dort als STATUS_ACCESS_VIOLATION.'

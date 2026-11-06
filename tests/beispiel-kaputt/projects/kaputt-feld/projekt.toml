@@ -1,0 +1,6 @@
+# Absichtlich kaputt: ein Feld, das es in projekt.toml nicht gibt.
+schema = 3
+title = "Kaputt: unbekanntes Feld"
+status = "aktiv"
+updated = "2026-10-26"
+summary = "Fehlerbeispiel für die Prüfung, kein echtes Projekt."

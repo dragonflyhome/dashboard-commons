@@ -1,0 +1,16 @@
+# Zwei Teile: die Seite wählt daten.zeitstrahl.teil.plan oder .vergangenheit.
+# Der erste Eintrag in neuer Form (kennung, art), der zweite noch in alter
+# Form (ohne kennung, mit farbe; bis Schritt 6 erlaubt, mit Hinweis).
+[teil.vergangenheit]
+[[teil.vergangenheit.eintrag]]
+kennung = "kran-geliefert"
+datum = "2025-03-17"
+titel = "Kran geliefert"
+text = "Hydraulik, Kette, Haken"
+art = "erledigt"
+
+[teil.plan]
+[[teil.plan.eintrag]]
+datum = "2026-12"
+titel = "Pilot"
+farbe = "geplant"

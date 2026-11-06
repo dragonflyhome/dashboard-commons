@@ -1,0 +1,4 @@
+# Reine Formatierungs-Commits; git blame überspringt sie mit
+# git config blame.ignoreRevsFile .git-blame-ignore-revs
+# cargo fmt --all mit rustfmt.toml (Aufräumen 1)
+49b434da1ed730cbd047e492032d1b922fd7251a

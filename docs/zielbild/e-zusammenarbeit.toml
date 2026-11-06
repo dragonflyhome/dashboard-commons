@@ -1,0 +1,111 @@
+titel = "Zusammenarbeit"
+reihenfolge = 7
+
+[[block]]
+titel = "Wer schreibt wo"
+[block.tabelle]
+spalten = ["Wer", "Schreibt"]
+zeilen = [
+  ["Projekt-Assistenten", "projects/<eigener-slug>/ (direkt), Rust nie"],
+  ["Bau-Assistent", "src/, web/ (mit Token, Toolkit, Katalog), tests/, scripts/, System-Seite docs/anleitung/ (nur im eigenen Worktree, Testport 8788; nach main nur mit Merge-Commit (git merge --no-ff), dann Bau aus main)"],
+  ["Prüf-Assistent", "docs/zielbild/, docs/entscheidungen/, der eigene Projektordner"],
+  ["Prüfer (misst die Projekte)", "der eigene Projektordner"],
+  ["Leit-Assistent", "der eigene Projektordner, data/pc.toml"],
+  ["Server", "Datenspeicher im Benutzerordner unter .var/dashboard/, außerhalb des Repos (Antworten, Vorgänge, Zustände, Verläufe, Sicherungen), web/builds/ (mit aktuell), web/.projekte-gruen/ (nichts davon in Git)"],
+]
+
+[[block]]
+text = """
+Commit-Regel: nur eigene Pfade, Nachricht mit -F, nie add -A, kein stash, kein reset, kein Branch-Wechsel im gemeinsamen Baum. Code in src/ und web/ entsteht nur im Worktree, nie im gemeinsamen Baum.
+"""
+
+[[block]]
+titel = "Wünsche und Stil-Abstimmung, ohne den Bau-Assistenten zu überrollen"
+text = """
+Jeder Projekt-Assistent hat eine eigene Datei projects/<slug>/wuensche.toml:
+"""
+
+[[block]]
+beispiel = """
+[[wunsch]]
+id = "gantt-meilensteine"
+art = "baustein"            # baustein | stil | token | funktion
+was = "Gantt soll Meilensteine als Raute zeigen"
+warum = "Termine eines Projekts"
+behelf = "bis dahin: Balken mit 1 Tag Länge"
+seit = "JJJJ-MM-TT"
+"""
+
+[[block]]
+punkte = [
+  "Der Projekt-Assistent schreibt nur in seine Datei. Keine Nachricht, kein Zuruf.",
+  "Der Server sammelt alle Wünsche auf der Seite /katalog/wuensche.",
+  "Der Leit-Assistent reiht sie täglich, der Prüf-Assistent ordnet sie einer Etappe oder einer „Katalog-Runde“ zu oder lehnt sie begründet ab.",
+  "Der Bau-Assistent baut Wünsche gebündelt in Katalog-Runden (etwa wöchentlich), nicht einzeln.",
+  "Bis dahin benutzt der Projekt-Assistent den nächstbesten Token oder Baustein (Feld behelf). Freie Farben sind nie der Behelf: die Prüfung lehnt sie ab.",
+  "Eilt etwas wirklich (kaputt), darf es dazwischen. Neues eilt nie.",
+]
+
+[[block]]
+titel = "Code und Inhalt, mehrere Inhaltsquellen"
+punkte = [
+  "Das Code-Repo enthält nur Kern und gemeinsame Module (Server, Oberfläche, Katalog, Vertrag, SDK, Werkzeuge, Tests, Vorlage). Mitwirkende sehen Kern und gemeinsame Module, nicht die Module anderer Projekte. Inhalt und projekteigene Rechenteile liegen nie darin.",
+  "Privater Inhalt aller Projekte liegt in einem lokalen Inhalts-Repo außerhalb des Code-Repos; es wird nie hochgeladen.",
+  "Ein Projekt, das mit anderen geteilt wird, bekommt ein eigenes Inhalts-Repo. Es hängt über dashboard-version.toml vom Code-Repo ab, ohne Submodul.",
+  "Der Server liest mehrere Inhaltsquellen (DASHBOARD_PROJECTS_DIR als Liste mit ;); jede Installation hat ihren eigenen Datenspeicher.",
+  "Ganzer Text: in den Entscheidungen zur Trennung von Code und Inhalt und zu den Inhaltsquellen.",
+]
+
+[[block]]
+titel = "Basis-Repo ohne Namen, Projekte als Forks"
+punkte = [
+  "Das Code-Repo ist das Basis-Repo: Kern, gemeinsame Module und allgemeine Domänenlogik nach gängiger Praxis (zum Beispiel Backlog, Finanzberechnungen, Briefverwaltung). Kein Modul kennt ein bestimmtes Projekt.",
+  "Im Basis-Repo steht kein Name: keine Person, kein Assistent, kein Projekt; auch nicht in Bezeichnern, Tests, Kommentaren und Dateinamen. Texte sprechen mit „du“, die Rolle im Code heißt inhaber. Der Pre-Push-Prüfer hält die Liste der Namen (sie liegt nur im Inhalt).",
+  "Projekte sind der Ort der privaten Domänenlogik über der Basis. In einem Projekt-Repo dürfen Namen stehen.",
+  "Später wird jedes Projekt ein Fork des Basis-Repos, der nur projects/<slug>/ ergänzt und per Rebase auf neue Fassungen der Basis gehoben wird. Ein privates Repo führt Basis und Forks per Merge-Commit zusammen; daraus läuft das eigene Dashboard. Module melden sich ohne eine gemeinsame Datei an, damit der Rebase ohne Konflikte geht.",
+  "Merge-Commits gelten beim Zusammenführen in main und ins private Repo; ein Fork hebt sich per Rebase auf die Basis. Jeder neue Fork-Stand wird vor dem Zusammenführen geprüft.",
+  "Reihenfolge: Namen raus aus dem Basis-Repo vor dem ersten Push; Forks und privates Repo als eigene spätere Stufe; allgemeine Domänenmodule als eigene Etappen.",
+  "Ganzer Text: in den Entscheidungen der privaten Inhaltsquelle (Basis und Forks).",
+]
+
+[[block]]
+titel = "Veröffentlichung auf GitHub: Lizenzen, Verlauf, Versionen"
+text = """
+Code steht unter AGPL-3.0-or-later, Dokumentation unter CC0-1.0. Das ganze Git-Bundle (nicht nur der Baum) ist frei von sensiblen Namen. Nach der Veröffentlichung gibt es Commits in herkömmlicher Form, ein Changelog und Tags. Vor Version 1 gibt es keine Abwärtskompatibilität. Der Bau-Assistent baut es als Arbeit mit Schritten, der Prüf-Assistent nimmt jeden Schritt ab. Der erste Push braucht die Freigabe des Inhabers.
+"""
+
+[[block]]
+punkte = [
+  "Name: Das öffentliche Repo heißt dashboard-commons.",
+  "Beispielbenutzer: Braucht dashboard-commons einen Beispielbenutzer (in Tests, Vorlagen, Anleitung), heißt er ranke, und es steht dabei, dass er nach dem Hauptentwickler benannt ist. Der Name ranke ist darum kein sensibler Name; der Prüfer sperrt ihn nicht.",
+  "Lizenzen: Code (Rust, Svelte, TypeScript, Skripte, Tests, Vorlagen) steht unter AGPL-3.0-or-later, die Dokumentation (docs/anleitung, docs/zielbild) unter CC0-1.0. Im Repo: die Lizenztexte als LICENSE (AGPL, im Wurzelordner, damit GitHub sie erkennt) und LICENSES/CC0-1.0.txt (CC0, Ort nach REUSE), license in Cargo.toml und web/package.json, ein Satz dazu in LIESMICH.txt. Kopierte Pakete unter web/vendor behalten ihre eigene Lizenz. Jede Abhängigkeit muss mit der AGPL verträglich sein (MIT, Apache-2.0, BSD, ISC ja); die Prüfung dafür gibt es schon für web/vendor, sie gilt dann auch für die Rust-Kisten.",
+  "Das ganze Bundle prüfen: Vor jedem Push prüft der Vor-Push-Prüfer nicht nur den Baum, sondern alles, was hinausgeht: jede Datei in jedem Commit (git rev-list --objects), jede Commit- und Tag-Nachricht, Autor und Committer. Ein Fund hält den Push an. Ein Test zeigt: ein Name nur in einem alten Commit oder nur in einer Nachricht wird gefunden.",
+  "Nur UTF-8, damit der Prüfer einfach bleibt: Jeder Text im Bundle (Dateiinhalte, Pfade, Bäume, Commit- und Tag-Meldungen, Autoren) muss gültiges UTF-8 sein, sonst ist es ein Fund. Es gibt kein zweites Lesen in einem anderen Zeichensatz. Ausgenommen sind nur Binärdateien mit einer Endung aus der festen Liste (Bilder, Schriften); sie prüft der Prüfer wie bisher auf eingebettete Texte.",
+  "Erster Verlauf: Der bisherige Verlauf enthält Namen in Nachrichten und Autor-Angaben und wird darum nie veröffentlicht. Die Veröffentlichung beginnt mit einem neuen Wurzel-Commit aus dem geprüften Stand (Tag v0.1.0). Der alte Verlauf bleibt als Bundle im privaten Archiv; gearbeitet wird danach auf dem neuen Verlauf, darum erst, wenn keine Zweige offen sind.",
+  "Commits ab der Veröffentlichung in der herkömmlichen Form (Conventional Commits): <typ>(<bereich>): <kurzer Satz>, Typen feat, fix, docs, style, test, refactor, perf, build, ci, chore, revert; Merge-Commits ebenso (etwa chore(merge): <zweig>), die Standardmeldung „Merge branch …“ gilt nicht; ein Bruch trägt ! hinter Typ oder Bereich; eine Zeile BREAKING CHANGE gibt es nicht, denn Meldungen haben keine Anhänge. Der Satz darf deutsch sein. Auch Merge-Commits folgen der Form (Typ der wichtigsten Änderung des Zweigs); Merge-Commits bleiben Pflicht. Ein commit-msg-Hook prüft die Form. Meldungen haben keine Trailer (keine Mitautoren, keine Angaben zu Modell oder Werkzeug); Autor ist nur Ranke (Arbeitsregeln, „Commit-Meldungen ohne Anhänge“).",
+  "Changelog: CHANGELOG.txt im Basis-Repo, reiner Text (kein Markdown) nach Keep a Changelog, je Version ein Abschnitt mit Datum (Hinzugefügt, Geändert, Entfernt, Behoben); jeder Bruch steht dort ausdrücklich als Bruch; ganz oben „Unreleased“. Wer einen Zweig einbringt, trägt ihn dort ein.",
+  "Versionen und Tags: leichte Tags v0.x.y (ohne eigenes Tag-Objekt, damit nichts außer dem Commit Angaben trägt), nur auf Commits der Hauptlinie von main. Vor 1.0 hebt ein Bruch oder etwas Neues die mittlere Zahl (0.2.0), eine reine Behebung die letzte (0.2.1).",
+  "Keine Abwärtskompatibilität vor 1.0: Alte Felder, Formen, Wege und Schalter fallen ohne Übergang weg; Brüche werden im Changelog genannt, nicht gestützt. Ausgenommen sind die Daten der Nutzer: Der Datenspeicher wird bei einer neuen Form weiter umgestellt (mit Sicherung vorher), nie aufgegeben.",
+  "Die öffentlichen Commits erscheinen unter einer festen Autor-Identität; der Prüfer lässt nur diese eine Autor-Adresse durch.",
+]
+
+[[block]]
+titel = "Hilfs-Assistenten für Teilaufgaben"
+punkte = [
+  "Als Standard, nicht als Ausnahme, setzt jeder Assistent für abgegrenzte Teilaufgaben Hilfs-Assistenten ein: große Mengen lesen, Entwürfe, Prüfungen, zweite Meinungen, Recherche zu Versionen und Mustern.",
+  "Der Auftrag an den Hilfs-Assistenten nennt immer die geltenden Regeln: keine Geheimnisse, nur eigene Pfade, nichts löschen oder installieren, keine persönlichen Daten nach außen, die verbotenen Ordner nie öffnen.",
+  "Der Assistent prüft das Ergebnis selbst und bleibt verantwortlich. Ein Hilfs-Assistent committet nicht und schreibt nicht in fremde Pfade.",
+  "Abnahmen: Der Prüf-Assistent prüft jede Etappe selbst (Tests, Abnahmekriterium, Anleitung) und lässt sie zusätzlich von einem unabhängigen Hilfs-Assistenten gegenlesen, der nur den Diff und das Kriterium bekommt, nicht das eigene Urteil.",
+  "Bau-Assistent: Hilfs-Assistenten für Vergleiche, Messungen und das Glätten beim Umzug der Seiten; Code, der nach main geht, verantwortet er selbst.",
+]
+
+[[block]]
+titel = "Wie der Prüfer misst"
+[block.tabelle]
+spalten = ["Frage", "Messpunkt"]
+zeilen = [
+  ["Richtigkeit", "/api/pruefung 0 Fehler; alle Projekte im letzten Bau grün; Tests grün; keine Werte in API-Antworten"],
+  ["Vollständigkeit", 'jedes Projekt schema = 3, chat, backup; offene Fragen höchstens 7 Tage alt; 0 Markdown-Dateien (git ls-files "*.md" leer)'],
+  ["Schönheit", "/katalog hell/dunkel, 360/1280 px ohne Überlappung; Kontrast; Start unter 0,5 s; Bau unter 60 s"],
+  ["Aktualität", "Abhängigkeiten auf neuestem stabilen Stand, außer begründeten Pins"],
+]

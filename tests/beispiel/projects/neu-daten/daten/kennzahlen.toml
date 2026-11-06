@@ -1,0 +1,37 @@
+# Eingetippt (wert) und vom Server gerechnet (berechnet), nebeneinander.
+[[kennzahl]]
+titel = "Kompost"
+wert = "45 kg"
+
+[[kennzahl]]
+titel = "Schritte"
+berechnet = { quelle = "eigen-schritte", art = "anzahl" }
+
+[[kennzahl]]
+titel = "Erledigt"
+berechnet = { quelle = "eigen-schritte", liste = "schritt", art = "anteil" }
+
+[[kennzahl]]
+titel = "Kosten"
+einheit = "€"
+berechnet = { quelle = "eigen-schritte", art = "summe", feld = "kosten" }
+
+[[kennzahl]]
+titel = "Bis zum nächsten Termin"
+berechnet = { quelle = "eigen-schritte", art = "tage_bis", feld = "termin" }
+
+[[kennzahl]]
+titel = "Seit dem letzten Phasenende"
+hinweis = "aus dem Balkenplan"
+[kennzahl.berechnet]
+quelle = "gantt"
+art = "tage_seit"
+feld = "bis"
+
+[[kennzahl]]
+titel = "Phasen fertig"
+berechnet = { quelle = "gantt", art = "anteil" }
+
+[[kennzahl]]
+titel = "Erreicht"
+berechnet = { quelle = "fortschritt", art = "summe", feld = "erreicht" }

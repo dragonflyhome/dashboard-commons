@@ -1,0 +1,4 @@
+# Absichtlich kaputt: falsches Wort bei status (Zielbild-Beispiel für Fehlermeldungen).
+schema = 3
+title = "Absichtlich kaputt, neue Form"
+status = "aktief"

@@ -1,0 +1,32 @@
+titel = "Eigener Schlüssel je Chat"
+reihenfolge = 8
+text = """
+Jeder Chat hat einen eigenen geheimen Schlüssel in der Windows-Anmeldeinformationsverwaltung des Benutzers und einen eigenen Passkey beim Dienst. Damit stellt er sich selbst ein kurzes JWT für die API aus. Kein Windows Hello, keine Abfrage; der Benutzer meldet sich nur bei Windows an.
+
+Die Windows-Anmeldung bleibt der zweite Weg zum JWT. Über sie richtet ein neuer Chat seinen Schlüssel ein, ohne Klick des Benutzers.
+
+Grenze: Das bringt Ordnung und Nachvollziehbarkeit (wer hat was getan, Widerruf je Chat), aber keine Abschottung der Chats voneinander. Alle Chats laufen unter demselben Windows-Konto.
+
+Reihenfolge: folgt auf den Umzug der Projektseiten und auf Etappe 6 (Markdown raus)."""
+
+[[block]]
+titel = "So läuft es"
+punkte = [
+  "Passkey heißt hier: ein Schlüsselpaar je Chat (ES256). Der geheime Teil liegt in der Anmeldeinformationsverwaltung unter dashboard-chat/<slug>, der öffentliche beim Dienst.",
+  "Einrichten: Der Chat holt sich per Windows-Anmeldung eine Herausforderung, erzeugt sein Paar, speichert den geheimen Teil und meldet den öffentlichen Teil mit Beweis an. Der Benutzer bekommt eine Meldung zur Kenntnis.",
+  "Zugriff: dashboard.exe signiert ein JWT, höchstens 5 Minuten gültig und nur einmal verwendbar; Api.ps1 und Warten.ps1 schicken es mit. Der Schlüssel wird nie angezeigt.",
+  "Rechte: keine feinen Rechte, aber zwei Klassen. Ein Chat darf, was Chats bisher tun. Dem Benutzer vorbehalten bleiben seine Schlüssel und Passkeys, Antworten auf Fragen an ihn, das Abhaken seiner Aufgaben und der Export des Datenspeichers.",
+  "Widerruf auf der Seite Schlüssel; ein unbenutzter Schlüssel ruht nach 30 Tagen.",
+]
+
+[[block]]
+titel = "Etappen"
+[block.tabelle]
+spalten = ["Etappe", "Was"]
+zeilen = [
+  ["C0", "Proben: Anmeldeinformationsverwaltung, Signatur, Testvektor aus PowerShell, Laufzeit"],
+  ["C1", "Dienst: Tabelle, Wege /api/chats, Prüfer, Schleuse, Liste erlaubter Wege; Schalter aus"],
+  ["C2", "Werkzeug dashboard.exe chat, Api.ps1 und Warten.ps1; Pilot mit dem Bau-Assistenten; Schalter an"],
+  ["C3", "Verwaltung auf der Seite Schlüssel, Meldungen"],
+  ["C4", "Alle Chats umgestellt; Windows-Anmeldung mit von = chat:* abgewiesen"],
+]

@@ -1,0 +1,16 @@
+{
+	"name": "Dashboard",
+	"short_name": "Dashboard",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"theme_color": "#1b2538",
+	"background_color": "#1b2538",
+	"lang": "de",
+	"icons": [
+		{ "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml" },
+		{ "src": "/icons/symbol-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "/icons/symbol-256.png", "sizes": "256x256", "type": "image/png" },
+		{ "src": "/favicon.ico", "sizes": "16x16 24x24 32x32 48x48 64x64", "type": "image/x-icon" }
+	]
+}

@@ -1,0 +1,71 @@
+{
+	"name": "dashboard-web",
+	"private": true,
+	"version": "0.1.0",
+	"license": "AGPL-3.0-or-later",
+	"type": "module",
+	"description": "Oberfläche des Dashboards (SvelteKit). Der Rust-Server liefert die Daten und das fertige Build aus.",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "node scripts/projekte-vorbereiten.mjs && vite build",
+		"preview": "vite preview",
+		"check": "node scripts/projekte-vorbereiten.mjs && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"lint": "node scripts/projekte-vorbereiten.mjs && svelte-kit sync && prettier --check . && eslint --cache --cache-location node_modules/.cache/eslint/ . && stylelint \"src/**/*.{css,svelte}\"",
+		"format": "prettier --write .",
+		"test:unit": "vitest",
+		"test": "node scripts/projekte-vorbereiten.mjs && vitest --run",
+		"verify": "npm run lint && npm run check && npm run test && npm run build",
+		"pruefe": "node scripts/werkzeug.mjs pruefe"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@floating-ui/core": "file:vendor/@floating-ui/core",
+		"@floating-ui/dom": "file:vendor/@floating-ui/dom",
+		"@floating-ui/utils": "file:vendor/@floating-ui/utils",
+		"@internationalized/date": "file:vendor/@internationalized/date",
+		"@sveltejs/adapter-static": "^4.0.0",
+		"@sveltejs/kit": "^3.0.0",
+		"@sveltejs/vite-plugin-svelte": "^7.2.0",
+		"@swc/helpers": "file:vendor/@swc/helpers",
+		"@testing-library/jest-dom": "^6.6.3",
+		"@testing-library/svelte": "^5.2.8",
+		"@types/node": "^24",
+		"bits-ui": "file:vendor/bits-ui",
+		"clsx": "file:vendor/clsx",
+		"dequal": "file:vendor/dequal",
+		"eslint": "^10.4.1",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.19.0",
+		"esm-env": "file:vendor/esm-env",
+		"globals": "^17.6.0",
+		"inline-style-parser": "file:vendor/inline-style-parser",
+		"jsdom": "^27.0.0",
+		"lz-string": "file:vendor/lz-string",
+		"postcss-html": "^2.0.0",
+		"prettier": "^3.8.3",
+		"prettier-plugin-svelte": "^4.1.0",
+		"runed": "file:vendor/runed",
+		"style-to-object": "file:vendor/style-to-object",
+		"stylelint": "^17.16.0",
+		"stylelint-declaration-strict-value": "^1.12.1",
+		"svelte": "^5.57.1",
+		"svelte-check": "^4.6.0",
+		"svelte-toolbelt": "file:vendor/svelte-toolbelt",
+		"tabbable": "file:vendor/tabbable",
+		"tslib": "file:vendor/tslib",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.60.1",
+		"vite": "^8.3.0",
+		"vitest": "^5.0.5"
+	},
+	"imports": {
+		"#lib": "./src/lib/index.js",
+		"#lib/*": "./src/lib/*"
+	},
+	"overrides": {
+		"runed": {
+			"@sveltejs/kit": "$@sveltejs/kit"
+		}
+	}
+}

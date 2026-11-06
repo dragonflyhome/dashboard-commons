@@ -1,0 +1,502 @@
+# Abschnitt „11. Seiten in Svelte (Startpaket, ab Etappe 4v)“ (Etappe 6b, Format wie docs/zielbild).
+titel = '11. Seiten in Svelte (Startpaket, ab Etappe 4v)'
+reihenfolge = 111
+
+[[block]]
+text = 'Die Projekt-Chats schreiben ihre Seite in Svelte und TypeScript. Alle Daten kommen vom Server über die API (Entscheidung svelte-jetzt).'
+
+[[block]]
+titel = 'Was wohin gehört'
+[block.tabelle]
+spalten = ['Datei', 'Was darin steht']
+zeilen = [
+  ['projekt.toml', 'der Kopf: Titel, Status, Satz, offene Punkte, Links'],
+  ['daten/<name>.toml', 'was der Chat von Hand eingibt: Schritte, Termine, Kosten, Fragen'],
+  ['Seite.svelte', 'die Seite: Überschriften, Texte, welcher Baustein wo steht'],
+  ['seiten/<name>.svelte', 'Unterseiten, zu sehen unter /projects/<slug>/<name>'],
+  ['assets/', 'Bilder und fertige Grafiken'],
+]
+
+[[block]]
+text = 'Nie in TOML: was sich ausrechnen lässt. „3 von 45 erledigt“, „7 %“ oder „noch 12 Tage“ rechnet der Server aus den Einträgen. In kennzahlen.toml steht dafür statt wert ein berechnet, zum Beispiel:'
+
+[[block]]
+beispiel = '''
+[[kennzahl]]
+titel = "Phasen fertig"
+berechnet = { quelle = "gantt", art = "anteil" }'''
+
+[[block]]
+text = 'art ist anzahl, anteil, summe, tage_seit oder tage_bis; bei summe und den Tagen nennt feld die Spalte.'
+
+[[block]]
+titel = 'Gemeinsame Bausteine, Etappe B1'
+text = '''
+Alle Beispiele sind erfunden; der Katalog (/katalog) zeigt jede Option lebend.
+
+Leere Liste ergibt 0. Eine berechnete Kennzahl über eine leere Liste ist 0 (anteil: 0 %, Tage: –), kein Prüffehler. Leer ist eine Liste, wenn die Datei sie als leeres Array hat (posten = []) oder wenn der Baustein sie kennt und noch kein Eintrag da ist (fragen.toml ohne [[frage]], kanban.toml ohne [[spalte.karte]]). Ein Tippfehler im Namen der Liste bleibt ein Fehler, ebenso ein feld, das es in der Liste eines Bausteins nicht gibt, auch solange sie leer ist (bei eigenen Dateien kennt der Server die Spalten erst mit dem ersten Eintrag).
+
+Keine nan und inf. TOML erlaubt sie, rechnen kann der Server damit nicht: Solche Werte zählen nicht als Zahl (keine Summe), und pruefe meldet jeden mit Zeile.'''
+
+[[block]]
+beispiel = '''
+[[kennzahl]]
+titel = "Offene Fragen"
+berechnet = { quelle = "fragen", liste = "frage", art = "anzahl" }   # „0“, solange es keine gibt'''
+
+[[block]]
+text = 'anzahl und anteil mit eigenem Treffer. Mit feld und wert zählt der Server, wo die Spalte diesen Wert hat, statt nach dem Status-Feld: „2 von 5“ oder „40 %“. wert ist Text (groß und klein egal), true/false oder eine Zahl. wert ohne feld, feld ohne wert und wert bei summe oder den Tagen meldet pruefe.'
+
+[[block]]
+beispiel = '''
+# daten/eigen-seiten.toml
+[[seite]]
+name = "Start"
+freigabe = "freigegeben"
+
+# daten/kennzahlen.toml
+[[kennzahl]]
+titel = "Seiten freigegeben"
+berechnet = { quelle = "eigen-seiten", art = "anteil", feld = "freigabe", wert = "freigegeben" }'''
+
+[[block]]
+text = '„Stand vom …“ an Kennzahl und Ampel-Zeile. Für Werte, die du von Hand einträgst (eine Momentaufnahme): stand ist der Tag, alt_ab die Zahl der Tage, ab der er als alt gilt (ohne Angabe 7). Alter und Stufe rechnet der Server bei jeder Anfrage (stand_alter = { tage, stufe }, frisch oder alt; nie in die Datei schreiben). Die Oberfläche zeigt „Stand vom 30.10.2026“, alt in Gelb mit „12 Tage alt“.'
+
+[[block]]
+beispiel = '''
+[[kennzahl]]
+titel = "Ungelesene Briefe"
+wert = "14"
+stand = "2026-10-30"
+
+[[zeile]]            # daten/ampel.toml
+titel = "Postfach"
+farbe = "gelb"
+stand = "2026-10-30"
+alt_ab = 14'''
+
+[[block]]
+text = 'Fortschritt mit Kommazahl. erreicht und gesamt dürfen Kommazahlen sein (in TOML mit Punkt), dazu einheit: „0,2 von 1,5 GB“. gesamt ist größer als 0, erreicht liegt zwischen 0 und gesamt; einheit gibt es nur bei erreicht/gesamt, nicht bei prozent.'
+
+[[block]]
+beispiel = '''
+[[zeile]]
+titel = "Ablage gesichert"
+erreicht = 0.2
+gesamt = 1.5
+einheit = "GB"'''
+
+[[block]]
+text = 'Tabelle aus Daten. <Tabelle> gibt es schon (Abschnitt „Der Katalog“); sie nimmt jetzt auch gleich eine Liste aus daten/ und kann je Spalte drei Dinge mehr:'
+
+[[block]]
+punkte = [
+  'summe: true: eine Summenzeile unten. Die Summe rechnet der Server für jede Spalte, in der nur Zahlen stehen (abgeleitet.listen.<liste>.summe); die Tabelle rechnet nie selbst.',
+  "link: '<spalte>': die Zelle wird ein Link mit der Adresse aus dieser Spalte der Zeile. Nur https://… (öffnet in neuem Tab) oder ein Pfad dieser App (/projekte/…); alles andere bleibt Text.",
+  "art: 'marke': das Wort steht als Marke mit seiner Bedeutung. Welche Bedeutung ein Wort hat, sagt der Server für jede Textspalte mit mindestens einem Farb- oder Statuswort (fertig, offen, wartet, fehlt, rot …, wie bei farbe; abgeleitet.listen.<liste>.marken). Ein unbekanntes Wort ist nur in seiner Zeile neutral.",
+]
+
+[[block]]
+beispiel = '''
+# daten/eigen-kosten.toml
+[[posten]]
+name = "Druckerei"
+betrag = 120.5
+zustand = "fertig"
+adresse = "/projekte/beispiel-a"
+
+[[posten]]
+name = "Versand"
+betrag = 18.9
+zustand = "offen"'''
+
+[[block]]
+beispiel = '''
+<Tabelle beschriftung="Kosten im Oktober" daten={ladeDaten('eigen-kosten')} liste="posten"
+	spalten={[
+		{ schluessel: 'name', titel: 'Posten', link: 'adresse' },
+		{ schluessel: 'zustand', titel: 'Stand', art: 'marke' },
+		{ schluessel: 'betrag', titel: 'Betrag in €', art: 'zahl', summe: true }
+	]} />'''
+
+[[block]]
+text = '''
+Bei Teilen heißt die Liste teil.<name>.posten. Wer die Zeilen selbst baut (zeilen={…}), gibt das Abgeleitete mit abgeleitet dazu, etwa abgeleitet={kosten.abgeleitet?.listen['posten']} mit const kosten = ladeDaten('eigen-kosten'). Für ein Wort mit Bedeutung außerhalb einer Tabelle gibt es den Baustein <Marke bedeutung="ok">bezahlt</Marke>, für „Stand vom …“ an eigenen Stellen <StandHinweis stand={…} alter={…} /> (beide aus $katalog). Eigene Stile für Marken (.marke-…) braucht es nicht mehr.
+
+Im Zeitstrahl (daten/zeitstrahl.toml, ab 2e) hat jeder Eintrag eine kennung (eindeutig in der ganzen Datei, auch über Teile) und statt farbe eine art: erledigt, begonnen, geplant, abgebrochen, routine oder problem. Die Farbe wählt die Oberfläche.'''
+
+[[block]]
+beispiel = '''
+[[eintrag]]
+kennung = "pilot-start"
+datum = "2026-12"
+titel = "Pilot"
+art = "geplant"'''
+
+[[block]]
+text = 'farbe und Einträge ohne kennung gehen bis Schritt 6 noch (pruefe gibt je einen Hinweis); aus farbe wird problem zu problem, wartet und aktiv zu begonnen, plan (geplant, grau) zu geplant, wenn das Datum noch kommt, sonst erledigt. Der Server liefert die Einträge zusätzlich als Ereignisse in abgeleitet.ereignisse (/api/projekte/<slug>/daten/zeitstrahl).'
+
+[[block]]
+titel = 'Gemeinsame Bausteine, Etappe B2: Modul Backlog'
+text = '''
+Alle Beispiele sind erfunden. Der Server liest und rechnet; er schreibt nichts in den Inhalt. Was in TOML steht, schreibst du und committest es.
+
+Kurz für dich (Inhaber): Auf jeder Projektseite steht unter „Aufgaben für dich“ das Backlog: fünf Spalten „Für dich“, „Läuft“, „Wartet“, „Als Nächstes“ und „Fertig“ (die letzten sieben Tage), darunter „Wer ist dran“: was auf dich wartet, was auf einen Chat und was auf jemanden draußen. Jede Karte führt zu ihrem Eintrag oben auf der Seite; dort antwortest du wie bisher (mit „Etwas anderes …“). Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
+
+Backlog auf jeder Projektseite. Das Dashboard setzt es selbst in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Spalte', 'Was darin steht']
+zeilen = [
+  ['Für dich', 'offene Aufgaben, die eine sichtbare Frage, Arbeiten mit "wartet_auf": "inhaber" ohne verweis'],
+  ['Läuft', 'Arbeiten mit "stand": "laeuft"'],
+  ['Wartet', 'Arbeiten mit "stand": "wartet" (auf einen Chat, extern oder auf den Inhaber mit verweis), Aufgaben beim Chat (eigene Worte des Inhabers)'],
+  ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes"'],
+  ['Fertig', 'fertige Arbeiten, erledigte, abgelaufene und zurückgezogene Aufgaben, bis sie ins Archiv ziehen (sieben Tage)'],
+]
+
+[[block]]
+text = 'Nachsehen, was der Inhaber sieht (geschützt wie /stand/voll, die Antwort nennt Titel, nie Links):'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/projekte/beispiel/backlog"'''
+
+[[block]]
+text = '''
+Die Antwort hat spalten (alle fünf, je mit karten), wartend (je Verantwortlichem), fragen_weitere, kanban_datei und speicher_fehlt.
+
+Wer ist dran (wartende Arbeiten je Verantwortlichem). wartend fasst alles zusammen, was wartet, nach wartet_auf: zuerst inhaber („Wartet auf dich“), dann jeder Chat für sich (chat:<name>, nach Name), zuletzt extern („Wartet auf jemanden draußen“). Es gibt keine neuen Rollen; es sind die Werte, die du bei einer Arbeit schon setzt:'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten -Json '{"projekt":"beispiel","von":"chat:beispiel","titel":"Angebot der Druckerei abwarten","stand":"wartet","wartet_auf":"extern"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/arbeiten -Json '{"projekt":"beispiel","von":"chat:beispiel","titel":"Texte vom Nachbarprojekt übernehmen","stand":"wartet","wartet_auf":"chat:nachbar"}''''
+
+[[block]]
+text = '''
+Kanban als Sicht; kanban.toml läuft aus. Was du bisher in daten/kanban.toml von Hand gepflegt hast, zeigt jetzt das Backlog aus dem Datenspeicher. Eine bestehende kanban.toml wird vorerst weiter gelesen und gezeigt; pruefe gibt dazu einen Hinweis (keinen Fehler). So ziehst du um: jede Karte, an der noch gearbeitet wird, als Arbeit melden (Stand wie die Spalte), Erledigtes weglassen, dann die Datei herausnehmen und committen.
+
+Fragen-Warteschlange. Leg ruhig mehrere Fragen auf einmal ab; der Inhaber sieht je Projekt genau eine. Reihenfolge: zuerst die wirksame Stufe (prioritaet, Frist, Einstufung des Inhabers), dann die frühere frist (ohne Frist danach, damit eine überfällige Frage nie hinter einer anderen verschwindet), dann die Reihenfolge in der Datei. Die Datei ist die Warteschlange, die du selbst ordnest; ein Datum (gestellt) oder die Kennung ordnen nicht. Beispiel:'''
+
+[[block]]
+beispiel = '''
+# daten/fragen.toml: sichtbar ist „farbe“ (bald, steht oben); „name“ wartet
+# dahinter, „termin“ (irgendwann) zuletzt. Stuft der Inhaber „termin“ auf
+# jetzt, wird sie die sichtbare.
+[[frage]]
+id = "farbe"
+text = "Welche Farbe bekommt der Umschlag?"
+art = "wahl"
+optionen = ["Blau", "Grün"]
+gestellt = "2026-11-03"
+prioritaet = "bald"
+
+[[frage]]
+id = "name"
+text = "Wie soll die Unterseite heißen?"
+art = "text"
+gestellt = "2026-11-03"
+prioritaet = "bald"
+
+[[frage]]
+id = "termin"
+text = "Passt der Termin im Dezember?"
+art = "ja-nein"
+gestellt = "2026-11-01"
+prioritaet = "irgendwann"'''
+
+[[block]]
+text = '''
+Nach der Antwort auf „farbe“ rückt „name“ nach, sofort, auch bevor du „farbe“ herausnimmst. Die Seite zeigt „noch 2 Fragen warten“ ohne deren Text. Dieselbe Rechnung gilt überall: Startseite, „Anstehend“, Glocke (Frist-Meldungen), Unter-Dashboard, Backlog und der Baustein Fragen (der in deiner Seite.svelte jetzt auch nur die sichtbare Frage zeigt). Technisch: jede offene Frage hat in /api/anstehend und /stand/voll das Feld warteschlange = { platz, offen }; /api/projekte/<slug>/daten/fragen hat abgeleitet.warteschlange = { sichtbar, gestellt, weitere }.
+
+Fragen sind nicht frei lesbar. Fragen an den Inhaber sind persönlicher Inhalt. /api/projekte/<slug>/daten/fragen verlangt darum die Windows-Anmeldung (wie /stand/voll), und /api/projects/<slug> lässt daten.fragen ohne Anmeldung weg. Die anderen Dateien in daten/ bleiben frei wie die Seite. Ohne Anmeldung gibt kein Weg Fragentexte, Titel oder Notizen von Aufgaben und Arbeiten oder Texte von Meldungen heraus, nur Zahlen (/stand); ein Test geht dafür jeden freien Weg des Routers durch (src/frei_test.rs). Der Baustein Fragen zeigt ohne Anmeldung nur „Anmelden, um die Fragen an dich zu sehen“.
+
+Ohne Anmeldung nur Zahlen (Entscheidung der Architektur). Dasselbe gilt für:'''
+
+[[block]]
+punkte = [
+  'Offene Punkte (open = [...] in projekt.toml): In /api/projects, /api/projects/<slug> und /api/projekte/<slug> steht ohne Anmeldung nur open_zahl, in /stand nur notizen_zahl. Karte, Unter-Dashboard und einfacher Aufbau zeigen dann nur die Zahl.',
+  'Befunde der Prüfung: /api/pruefung und /api/pruefung/<slug> geben ohne Anmeldung nur die Zahlen (gesamt und je Projekt fehler, hinweise), die Sätze nur mit Anmeldung. Auch eine kaputte Seite oder Datei nennt ohne Anmeldung nur einen neutralen Satz statt des Fehlers (/api/projects, /api/projects/<slug>, /api/projekte/<slug> und …/daten/<name>); Datei und Zeile bleiben.',
+  'Wege der Backend-Module: geschützt, siehe Abschnitt 12.',
+]
+
+[[block]]
+text = 'Aufgabe ändern ohne neue Nummer. Titel, Knöpfe und Frist einer offenen Aufgabe ändern, statt sie zurückzuziehen und neu anzulegen:'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/a-20261103-0001 -Json '{"titel":"Getränkeliste prüfen und abschicken","knopf":["abgeschickt","später"],"frist":"2026-11-25","von":"chat:beispiel"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/a-20261103-0001 -Json '{"knopf":null,"frist":null}''''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Was']
+zeilen = [
+  ['titel', 'neuer Titel, wie beim Anlegen (nicht leer, höchstens 200 Zeichen); null oder "" geben 422'],
+  ['knopf', 'neue Knöpfe wie beim Anlegen (1 bis 6, kein „Etwas anderes“); null: nur der Haken'],
+  ['frist', 'neues Datum JJJJ-MM-TT; null oder "": ohne Frist'],
+  ['von', 'freiwillig; nur chat:<projekt> der Aufgabe, sonst 403'],
+]
+
+[[block]]
+text = 'Regeln:'
+
+[[block]]
+punkte = [
+  'Nur der Chat des Projekts, wie beim Anlegen; aus dem Browser 422. Was du nicht schickst, bleibt. Ohne eines der drei Felder: 422.',
+  'Die Antwort ist {"aufgabe":{…},"geaendert":true}; stand schon alles so, "geaendert": false. Kennung, Link, Ablauf, Stufe und die Einstufung des Inhabers bleiben.',
+  'Jede Änderung kommt in verlauf der Aufgabe (art titel, knopf oder frist, alt, neu, zeit, von, ein Satz in text; Knöpfe als JSON-Liste). Nichts fällt weg. Es gibt keine Meldung, und niemand wird geweckt. Die Fassung steht im Datenspeicher, nie im Inhalt.',
+  'Lag die Aufgabe beim Chat (der Inhaber hat „Etwas anderes …“ geschrieben) und du änderst Titel oder Knöpfe, steht sie wieder für ihn offen (Eintrag wieder-offen im Verlauf; seine Worte bleiben in eigene). Nur die Frist zu ändern lässt sie beim Chat.',
+  'Nur offene Aufgaben; erledigte, abgelaufene, zurückgezogene und archivierte geben 422. Dann eine neue anlegen.',
+]
+
+[[block]]
+text = 'Für den Betreuer des Dashboards: gesperrte Knöpfe. Gesperrt (disabled) heißt überall: gestrichelter Rand, keine Deckkraft (eine Regel in app.css). Bausteine setzen bei gesperrt keine eigene opacity (gesperrt.spec.ts prüft das); einen anderen cursor dürfen sie setzen.'
+
+[[block]]
+titel = 'Gemeinsame Bausteine, Etappe B3: Modul Fristen'
+text = '''
+Alle Beispiele sind erfunden. Der Server liest und rechnet; er schreibt nichts in den Inhalt. Was in TOML steht, schreibst du und committest es.
+
+Kurz für dich (Inhaber): Eine Frist ist fest (ein Datum) oder beweglich: „ein Monat, nachdem die Zusage für den Festplatz da ist“. Solange die Zusage nicht da ist, steht die Frist mit „hängt an „Zusage ist da““ ohne Datum am Ende der Fristenliste; sobald der Chat das Datum der Zusage einträgt, rechnet das Dashboard das Datum der Frist aus. Die nächste Frist eines Projekts kommt nur aus Aufgaben und Fristen, nie aus dem Zeitstrahl. Alle Fristen aller Projekte stehen unten in „Anstehend“ unter „Alle Fristen“ (zugeklappt).
+
+Wo was steht.'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Was', 'Wo', 'Wer schreibt']
+zeilen = [
+  ['Ereignisse (Kennung, Titel, Datum, sobald eingetreten)', 'daten/fristen.toml, [[ereignis]]', 'du, mit Commit'],
+  ['Fristen, die laufen, ohne dass der Inhaber gerade etwas tun muss', 'daten/fristen.toml, [[frist]]', 'du, mit Commit'],
+  ['Fristen, bei denen der Inhaber etwas tun muss', 'Aufgabe mit frist oder frist_bezug (Datenspeicher)', 'du, per API'],
+  ['Plan und Rückblick (zählt für keine Frist)', 'daten/zeitstrahl.toml', 'du, mit Commit'],
+]
+
+[[block]]
+text = 'Ein Ereignis tritt ein, indem du sein datum in fristen.toml setzt und committest. Einen API-Weg dafür gibt es nicht: Das Datum kommt fast immer aus einem Brief oder einer Nachricht, die du ohnehin liest; so bleibt es eine Quelle mit Verlauf in Git, und der Server muss nichts speichern.'
+
+[[block]]
+beispiel = '''
+# daten/fristen.toml
+[[ereignis]]
+kennung = "zusage-da"
+titel = "Zusage ist da"
+datum = "2026-10-31"          # erst setzen, wenn sie da ist
+
+[[ereignis]]
+kennung = "aufbau"
+titel = "Termin für den Aufbau"  # noch kein Datum: die Fristen daran hängen
+
+[[frist]]
+kennung = "standanmeldung"
+titel = "Stand anmelden"
+ereignis = "zusage-da"
+abstand = "+1 Monat"           # 31.10. + 1 Monat = 30.11.
+
+[[frist]]
+kennung = "helferliste"
+titel = "Helferliste verschicken"
+ereignis = "aufbau"
+abstand = "-3 Tage"            # mindestens drei volle Tage vorher
+hinweis = "kurz und sachlich"
+
+[[frist]]
+kennung = "plakate"
+titel = "Plakate bestellen"
+datum = "2026-11-10"
+erledigt = "2026-11-06"        # gewahrt: zählt nirgends mehr'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Feld', 'Was']
+zeilen = [
+  ['kennung', 'Kleinbuchstaben, Ziffern, Bindestriche; in der ganzen Datei nur einmal (Ereignisse und Fristen zusammen, auch über Teile)'],
+  ['titel', 'Pflicht'],
+  ['datum', 'beim Ereignis der Tag, an dem es eingetreten ist; bei der Frist eine feste Frist. JJJJ-MM-TT'],
+  ['ereignis, abstand', 'bewegliche Frist: Kennung eines Ereignisses dieser Datei und Abstand'],
+  ['erledigt', 'JJJJ-MM-TT, wenn die Frist gewahrt ist; dann zählt sie nicht mehr'],
+  ['hinweis', 'freiwillig, ein kurzer Satz'],
+]
+
+[[block]]
+text = '''
+Abstand: Vorzeichen, Zahl, Leerzeichen, Einheit: +14 Tage, +2 Wochen, +1 Monat, +3 Monate, +1 Jahr, -3 Tage. Monate und Jahre enden sauber am Monatsende (31.01. + 1 Monat = 28.02., im Schaltjahr 29.02.). Werktage gibt es nicht: Sie hingen an den Feiertagen je Bundesland. Gerechnet wird in Kalendertagen, ohne Verschiebung auf den nächsten Werktag; das Datum liegt so nie nach dem echten Fristende. Muss es genau sein, nimm eine feste Frist.
+
+Rückwärts (Minus) heißt „mindestens so viele volle Tage, Wochen, Monate oder Jahre vor dem Ereignis“: Die Frist endet darum einen Tag früher als das bloße Abziehen. Ereignis am 20.11. mit -3 Tage ergibt den 16.11., mit -1 Monat den 19.10.
+
+Aufgabe mit beweglicher Frist. Statt frist schickst du frist_bezug; das Ereignis muss es in daten/fristen.toml des Projekts schon geben (erst eintragen und committen, sonst 422 mit Satz):'''
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben -Json '{"projekt":"beispiel","titel":"Standanmeldung prüfen und abschicken","knopf":["abgeschickt","später"],"frist_bezug":{"ereignis":"zusage-da","abstand":"+14 Tage"}}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/a-20261104-0001 -Json '{"frist_bezug":{"ereignis":"aufbau","abstand":"-3 Tage"}}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/a-20261104-0001 -Json '{"frist":"2026-12-01"}'
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/aufgaben/a-20261104-0001 -Json '{"frist_bezug":null}''''
+
+[[block]]
+punkte = [
+  'frist und frist_bezug zusammen geben 422. Eine feste frist (auch null) ersetzt beim Ändern eine bewegliche, frist_bezug ersetzt eine feste. Jede Änderung steht in verlauf (Art frist, etwa alt zusage-da +14 Tage, neu 2026-12-01).',
+  'Die Antwort von api/aufgaben zeigt in frist das aufgelöste Datum, sonst null, dazu frist_bezug und ereignis (kennung, titel, datum). Gespeichert ist nur der Bezug; das Datum rechnet der Server bei jeder Anfrage. Ältere Aufgaben und Aufgaben mit fester Frist bleiben, wie sie sind.',
+  'Erst mit Datum hebt die Frist die Stufe an, macht die Ampel rot (wenn sie vorbei ist) und weckt „Frist naht“; vorher steht die Aufgabe mit „hängt an …“ da.',
+]
+
+[[block]]
+text = '''
+Nächste Frist je Projekt (Unter-Dashboard, /api/projekte/<slug>/stand): die früheste aus den offenen Aufgaben, der sichtbaren Frage, den Arbeiten mit Frist und den offenen Fristen aus fristen.toml mit Datum. Eine Frist aus der Datei, die vorbei ist, macht die Ampel rot („Eine Frist ist vorbei.“, mit Anmeldung mit Titel). zeitstrahl.toml zählt nie; eine Kennzahl „Nächste Frist“ von Hand braucht es nicht mehr. Ohne Anmeldung steht nur das Datum da.
+
+Fristenliste. In Seite.svelte:'''
+
+[[block]]
+beispiel = '''
+<Fristenliste daten={ladeDaten('fristen')} />'''
+
+[[block]]
+text = '''
+Sie zeigt alle offenen Fristen des Projekts nach Datum, die überfälligen zuerst; bewegliche ohne Datum am Ende mit „hängt an …“. Die Liste rechnet der Server (abgeleitet.fristen von /api/projekte/<slug>/daten/fristen). Fristen aus der Datei haben den Anker #frist-<kennung>; dorthin führt auch das Widget „Fristen“ oben auf der Seite. Im einfachen Aufbau (ohne Seite.svelte) steht sie von selbst unter „Fristen“. Alle Projekte zusammen: unten in „Anstehend“ (GET /api/fristen).
+
+Nur mit Anmeldung. Titel von Fristen und Namen von Ereignissen sind persönlicher Inhalt: /api/projekte/<slug>/daten/fristen und /api/fristen verlangen die Windows-Anmeldung, /api/projects/<slug> lässt daten.fristen ohne sie weg. Ohne Anmeldung gibt es nur das Datum der nächsten Frist (in zahlen).
+
+Archivierte Projekte. Eine Frist mit Datum folgt der Sicherheitsregel (sieben Tage vorher in „Anstehend“, neutraler Satz). Eine bewegliche Frist, deren Ereignis noch kein Datum hat, steht dort als „Eine Frist in einem archivierten Projekt hängt an einem Ereignis.“, je Projekt einmal, ohne Titel und ohne Farbe, mit Link zur Projektseite, bis das Ereignis ein Datum hat. Diese Zeile steht nur auf der Seite „Anstehend“, nicht auf der Startseite (sie hat kein Ende); Fristen mit Datum stehen in den sieben Tagen auch auf der Startseite. Lässt sich fristen.toml eines archivierten Projekts nicht lesen, steht dort ebenso „Fristen eines archivierten Projekts lassen sich nicht lesen.“, bis pruefe grün ist; die Fristen verschwinden nie still.
+
+pruefe meldet als Fehler: ein Ereignis, das es in der Datei nicht gibt, eine Kennung zweimal, einen Abstand im falschen Format, eine Frist ohne datum und ohne ereignis (ebenso datum mit ereignis, ereignis ohne abstand, abstand ohne ereignis und Daten nicht als JJJJ-MM-TT); als Hinweis ein Ereignis mit einem Datum in der Zukunft (ein Ereignis bekommt sein Datum, wenn es eingetreten ist; für einen Termin besser eine feste Frist).'''
+
+[[block]]
+titel = 'So fängst du an'
+nummeriert = true
+punkte = [
+  'Kopiere den Inhalt von projects/_vorlage/ in deinen Projektordner. Oben in Seite.svelte steht, was jede Zeile tut.',
+  'Trage deine Daten in daten/*.toml ein, nicht in die Seite.',
+  'Prüfe im Ordner des Dashboards mit ./target/release/dashboard.exe pruefe <slug> (Abschnitt 4). Für eine Seite in Svelte dauert das 5 bis 25 Sekunden, weil auch svelte-check läuft, seit 4b dazu ESLint für deinen Ordner (mit Cache) und Vitest für eigene *.spec.ts.',
+  'Committe nur deine Pfade (Abschnitt 5).',
+  'Gebaut wird von selbst (seit 4b, der Baumeister). Sobald du eine .svelte- oder .ts-Datei speicherst, merkt es das Dashboard. Nach 5 Sekunden Ruhe prüft es nur dein Projekt (TOML, Assets, Stil, ESLint, svelte-check, Vitest) und baut die Oberfläche neu; deine Seite ist danach ohne Neustart zu sehen. Eine Änderung nur an TOML-Dateien baut nie (die Daten liest der Server ohnehin live). Ist deine Seite rot, bleibt sie in ihrer letzten grünen Fassung stehen (gibt es keine, fehlt sie), und der Inhaber sieht eine Meldung; die anderen Seiten stört das nicht. Wirft deine Seite beim Zeichnen oder Klicken einen Fehler, zeigt das Dashboard an ihrer Stelle „Diese Seite hat gerade einen Fehler“ mit dem Knopf „neu versuchen“. Den Vorgang bau gibt es weiter, er läuft in dieselbe Warteschlange. Nach 4b brauchst du ihn nur, wenn der Beobachter etwas verpasst hat (die Seite ist nach einer Minute noch alt), oder wenn du per Warten.ps1 hören willst, ob der Bau grün war (in PowerShell; wie in Abschnitt 9 steht der Text in einfachen Anführungszeichen):',
+]
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 api/vorgaenge -Json '{"art":"bau","slug":"<slug>","titel":"Seite neu bauen"}''''
+
+[[block]]
+text = '''
+Ist der Bau fertig, weckt dich Warten.ps1 mit grün oder rot. Bei rot steht in der Meldung, was nicht ging. Den Vorgang erledigt das Dashboard dabei selbst (Zustand erledigt, Ergebnis in bau, Satz in notiz, Zeit in geaendert); du musst ihn weder übernehmen noch erledigen.
+
+Seit 4c steht der Bau-Stand deiner Seite im Kopf der Projektseite (in Ordnung, mit Fehler, wird gebaut, noch nicht gebaut; bei Fehler „zeigt die letzte gute Fassung von …“ mit Tag und Uhrzeit). Einen Knopf zum Neubauen gibt es dort nicht; du brauchst weiter nur den Vorgang bau, und auch den nur, wenn der Beobachter etwas verpasst hat. Offene Tabs merken die neue Fassung selbst: Am Live-Punkt steht „Daten live, neue Fassung wird gebaut“, dann „Daten live, App wird gleich aktualisiert“, und nach 30 s lädt der Tab von selbst; klicken musst du nichts. Was genau falsch ist, zeigt dir npm run pruefe -- <slug> im Ordner web; der Satz im Dashboard nennt bewusst keine Dateien.'''
+
+[[block]]
+punkte = [
+  '6. Sieh dir die Seite unter http://localhost:8787/projects/<slug> an.',
+]
+
+[[block]]
+titel = 'Die Regeln'
+punkte = [
+  'Svelte 5 mit Runes ($state, $derived, $props), <script lang="ts">.',
+  'Importe nur aus deinem Ordner und aus $katalog (Bausteine), $projekt (ladeDaten, ladeKopf) und $vertrag (Typen), diese drei ohne Unterpfad (einzige Ausnahme: $vertrag/projekte/<dein-slug>). Nie aus dem Ordner eines anderen Projekts oder aus web/src.',
+  'Im Projektordner nur .svelte und .ts (dazu projekt.toml, daten/, assets/); keine .js- oder .css-Dateien, keine Verknüpfungen. Stil gehört ins <style> der Datei, ohne :global.',
+  'Kein <svelte:window>, <svelte:body>, <svelte:document>, <svelte:head> oder <svelte:element>: Deine Seite wirkt nur auf sich selbst, nie auf das ganze Dashboard.',
+  "Daten nur über ladeDaten('<name>'). Kein fetch, keine Adressen nach außen.",
+  'Keine Zahlen, Termine oder Zahlenreihen in der Seite. Ein Termin oder eine Reihe ab drei Zahlen ist ein Fehler, eine einzelne Zahl ein Hinweis; 0, 1 und -1 sind frei. Texte dürfen in der Seite stehen.',
+  'Farben, Schriftarten, Ecken-Radius und Schatten nur über die Token (var(--…)), nie frei. Abstände im <style> in rem, em, ch, % oder fr; px nur für Linien (etwa 1px). Schriftgrößen seit 3b nur als Token, auch relative (var(--text-em-lg) statt 1.05em); pruefe sagt es mit Stylelint (Abschnitt 4, „Stil-Prüfung mit Stylelint“).',
+  'Abbildungen als Datei in assets/ oder als Daten in daten/*.toml, kein SVG mit eingetippten Koordinaten. Fotos und Bilder aus assets/ mit dem Baustein Bild aus $katalog.',
+  'Kein {@html}, kein eval, kein import.meta (außer import.meta.env), kein localStorage oder anderer Speicher im Browser, keine Worker, keine Skripte oder Rahmen von fremden Seiten.',
+  'Keine Passwörter und keine persönlichen Daten in Svelte, TOML oder Assets.',
+  'Einmalige Links (mit token=, code= und Ähnlichem) gehören nie ins Repo, sondern ab Etappe 5a in eine Aufgabe für den Inhaber.',
+]
+
+[[block]]
+text = 'Der Prüfbefehl achtet auf diese Regeln. Er hilft gegen Versehen, nicht gegen Absicht. Eine Seite mit Fehlern wird nicht gebaut; die anderen Seiten bauen weiter. Ist eine Seite beim Anzeigen kaputt, zeigt nur sie ein Fehlerbild, der Rest des Dashboards läuft.'
+
+[[block]]
+titel = 'Der Katalog (ab 3a-3)'
+text = 'Alle Bausteine aus $katalog stehen mit lebendem Beispiel, einem Satz und dem Code zum Abschreiben unter http://localhost:8787/katalog, hell und dunkel nach der Einstellung des Systems:'
+
+[[block]]
+punkte = [
+  'Grundteile: Knopf, Schalter, Wahl (eine aus wenigen, ab 3b), Auswahl, Dialog, Kurzinfo (Tooltip), Reiter, Aufklapper, Tabelle. Tastatur und Vorlese-Programm können sie schon; nichts davon selbst nachbauen. Kurzinfo braucht name, wenn der Knopf nur ein Zeichen zeigt; sonst hört ein Vorlese-Programm nur „ⓘ“: <Kurzinfo text="Zählt nur offene Einträge mit Datum" name="Mehr zu Fristen">ⓘ</Kurzinfo>. Was nur in der Kurzinfo steht, sieht man am Handy nicht; Wichtiges gehört in den Text.',
+  'Text: Abschnitt, Absatz, Text, Liste, Hinweis, Bild, Marke und StandHinweis (Etappe B1).',
+  'Daten: Kennzahlen, Ampel, Fortschritt, Kanban (läuft aus), Backlog (Etappe B2), Fristenliste (Etappe B3), Fluss, Fragen, Gantt, Zeitstrahl, Orte (Dateien und Ordner auf diesem PC mit dem Knopf „Öffnen“, siehe „Orte: Dateien und Ordner öffnen“).',
+]
+
+[[block]]
+text = '''
+Textfassung (ab 3b). Jeder Baustein, der ein Bild zeigt (Balken, Ring, Kurve, Streifen, Pfeile), hat eine Textfassung mit denselben Zahlen: eine Tabelle, die Vorlese-Programme immer lesen und die der Knopf „Als Text“ sichtbar macht. Bei Kennzahlen, Fortschritt, Fluss und Gantt kommt sie von selbst mit; der Katalog zeigt alle offen im Abschnitt „Als Text“. Für den Betreuer des Dashboards: Ein neuer Bild-Baustein kommt in BILD_BAUSTEINE (web/src/lib/textfassung.ts) mit einer Funktion, die aus derselben Eingabe die Tabelle baut; textfassung.svelte.spec.ts findet Dateien mit Bild (SVG, role="img", role="progressbar", Breite oder Höhe aus Daten) ohne Eintrag und vergleicht die Zahlen in Bild und Text.
+
+Breite Tabellen immer mit Tabelle. Eine eigene <table> macht die Seite am Handy breiter als den Bildschirm; Tabelle rollt in ihrem eigenen Rahmen, zeigt am Rand einen Schatten und ist mit der Tastatur erreichbar. Umstellen heißt: <table> durch <Tabelle beschriftung="…"> ersetzen, den Inhalt (<thead>, <tbody>) lassen, wie er ist:'''
+
+[[block]]
+beispiel = '''
+<Tabelle beschriftung="Wo was liegt" mindestbreite={36}>
+	<thead><tr><th>Thema</th><th>Ordner</th></tr></thead>
+	<tbody>
+		{#each ablage.eintrag as e, i (i)}
+			<tr><td>{e.thema}</td><td class="ordner">{e.ordner}</td></tr>
+		{/each}
+	</tbody>
+</Tabelle>'''
+
+[[block]]
+text = '''
+beschriftung ist der Name der Tabelle für Vorlese-Programme (sichtbar mit beschriftungZeigen); mindestbreite (in rem) sagt, ab wann sie rollt, statt die Spalten zu quetschen. Ohne eigene Zellen geht es auch mit Daten: spalten={[{ schluessel: 'thema', titel: 'Thema' }]} zeilen={ablage.eintrag}.
+
+Die Widgets oben auf jeder Projektseite (Stand, Frage, Arbeiten, Fristen, Zuletzt) setzt das Dashboard selbst ins Unter-Dashboard, darunter seit Etappe B2 das Backlog; der Katalog zeigt ihre Entwürfe und warum das Designteam welchen gewählt hat. In Seite.svelte nicht noch einmal einbauen.'''
+
+[[block]]
+titel = 'Orte: Dateien und Ordner öffnen'
+text = '''
+Kurz für dich (Inhaber): Neben einem eingetragenen Ort steht ein Knopf „Öffnen“. Ein Klick öffnet die Datei mit dem Programm, das Windows dafür nimmt (Word, PDF-Anzeige …), einen Ordner im Explorer. Das geht nur, wenn du mit deinem eigenen Windows-Konto angemeldet bist; das Fenster erscheint in deiner Sitzung. Höchstens 10 Öffnungen je Minute.
+
+Browser öffnen keine file:-Adressen aus einer http-Seite. Das ist richtig so und wird nicht umgangen (Entscheidung lokal-oeffnen). Darum gibt es keinen file:-Link und kein „Pfad kopieren“ mehr: Orte tragen Chats in daten/orte.toml ein, und die Seite zeigt sie mit dem Baustein Orte.
+
+So trägst du Orte ein (Pfade in einfachen Anführungszeichen, dann bleiben die Rückstriche, wie sie sind):'''
+
+[[block]]
+beispiel = '''
+# projects/<slug>/daten/orte.toml
+[[ort]]
+kennung = "bauplan"            # bleibt gleich; Kleinbuchstaben, Ziffern, Bindestriche
+titel = "Bauplan (Word)"
+pfad = 'C:\Users\beispiel\Documents\Werkstatt\bauplan.docx'
+hinweis = "Fassung zum Ausdrucken"    # freiwillig
+
+[[ort]]
+kennung = "fotos"
+titel = "Ordner mit den Fotos"
+pfad = 'C:\Users\beispiel\Documents\Garten\Fotos''''
+
+[[block]]
+text = '''
+Mehrere Gruppen gehen als Teile ([[teil.garten.ort]]); jede kennung nur einmal in der Datei. In Seite.svelte: <Orte daten={ladeDaten('orte')} />. Ohne eigene Seite zeigt der einfache Aufbau die Orte von selbst.
+
+Was aufgeht (der Server prüft beim Klick den Text, der Bote alles noch einmal selbst, dashboard pruefe meldet Verstöße schon beim Bau als Fehler):'''
+
+[[block]]
+punkte = [
+  'Ein vollständiger Pfad mit Laufwerk (C:\…). Nicht: .. oder ., Netzwerkpfade (\\server\…) und Netzlaufwerke, Gerätepfade (\\?\…, \\.\…), ein Doppelpunkt nach dem Laufwerk (Datenstrom), Kurznamen mit ~1, Gerätenamen wie NUL, ein % (Umgebungsvariablen) und Shell-Ordner (Name mit .{…} am Ende).',
+  'Nach dem Auflösen aller Verknüpfungen und Junctions nur im Profil des Inhabers oder in einer Inhaltsquelle. Nie unter AppData, nie in einem Ordner .git, nie unter ProgramData oder im Ordner des Dienstes, nie in oder unter einem Tabu-Ordner. Die Tabu-Ordner der Entscheidung sind fest eingebaut (im Code nur als Prüfsumme), dazu gilt die Liste inventar-ausschluss.toml im Daten-Ordner des Inhalts; Groß/Klein, Leer-, Binde- und Unterstriche zählen nicht. Fehlt diese Liste oder ist sie leer, öffnet das Dashboard gar nichts.',
+  'Dateien nur mit diesen Endungen: pdf, docx, xlsx, pptx, odt, ods, odp, txt, csv, md, png, jpg, jpeg, gif, webp, svg. zip geht als Ordner im Explorer auf. Ordner gehen im Explorer auf, mit \. am Ende: So hängt die Shell nie eine Endung wie .cmd an, und vor dem schließenden Anführungszeichen steht kein \ (mit \\" öffnete der Explorer „Dokumente“ statt des Ordners, geprüft). Nie: Programme und Skripte (exe, bat, cmd, ps1, js, vbs, msi, …), Verknüpfungen (lnk, url), Office-Dateien mit Makros (docm, xlsm, pptm, dotm), Dateien ohne Endung oder mit doppelter Endung wie x.pdf.exe.',
+  'Die Datei geht nur auf, wenn Windows ihrer Endung ein Programm der Positivliste zuordnet: txt und md mit Editor oder VS Code; csv zusätzlich mit Excel oder LibreOffice; pdf mit Edge oder Acrobat; Word, Excel, PowerPoint und die odt/ods/odp-Gegenstücke mit Office oder LibreOffice; Bilder (auch svg) nur mit Fotos. Ist etwas anderes zugeordnet (etwa ein Browser für svg oder das Programm eines Cloud-Dienstes für md), bleibt sie zu: „… ist mit einem Programm verknüpft, das das Dashboard nicht öffnet“.',
+  'Den Ort muss es geben. Gibt es ihn nicht, liegt er außerhalb oder in einem Tabu-Ordner, zeigt der Knopf in allen drei Fällen denselben Satz, damit die Antwort nicht verrät, ob dort etwas liegt. pruefe und die Prüfung im Dienst sehen nur den Text (Form, Endung, Tabu, Lage unter deinem Profil oder einer Inhaltsquelle), nie die Platte: Das Dienstkonto darf dein Profil nicht lesen. Ob es den Ort gibt, merkt erst der Bote beim Öffnen. pruefe misst eine Endung an der Positivliste oben (wie der Bote), nicht nur an der Sperrliste; ein Ordner mit Punkt im Namen (Projekt.v2) steht darum mit \ am Ende in orte.toml. Im Dienst kennt die Prüfung beim Bau auch die Ordner des Dienstes aus den Einstellungen.',
+]
+
+[[block]]
+text = '''
+Den Pfad bekommt die Oberfläche nie (auch kein Backend-Modul): Sie schickt nur projekt und kennung an POST /api/oeffnen (geschützt, nur aus dem Browser, nie GET). Jede Öffnung steht im Journal als Vorgang oeffnen (gleich erledigt, mit Projekt und Kennung, ohne Pfad); er weckt keinen Chat, macht keine Meldung und läutet keine Glocke. Der Bote nimmt „Öffnen“ nur vom Dienstkonto an (er liest das Konto des Clients an der Pipe) und öffnet höchstens 10 je Minute, auch wenn ihm jemand anderes schreibt. Ohne bekanntes Profil des Inhabers (im Dienst leere konten.inhaber_sid) gibt es 503, nie das Profil des Dienstkontos: Dann geht kein Ort auf, auch keiner in deinem Profil. Der Dienst meldet das beim Start als Störung auf der PC-Seite (Systemmeldung dashboard/inhaber-fehlt), pruefe sagt es als Hinweis.
+
+Wer was prüft. Das Dienstkonto darf C:/Users/<Inhaber> nicht lesen; ein Auflösen dort scheitert für den Dienst als „unlesbar“. Darum prüft der Server nur den Text (Form, Tabu-Namen, Lage unter Profil oder Inhaltsquelle, AppData, ProgramData, Ordner des Dienstes, Ordner, die er nicht auflösen kann, als Text), und erst der Bote löst im Konto des Inhabers auf und prüft alles am Ergebnis (Junctions, Endung, harte Verknüpfungen, Programm). Das reicht, weil der Bote jede Regel selbst noch einmal anwendet und nur vom Dienst Aufträge annimmt.
+
+Was bleibt (bekannte Restrisiken):'''
+
+[[block]]
+punkte = [
+  'Zwischen der Prüfung im Boten und dem Öffnen liegt ein kurzer Moment; wer im Profil schreiben darf, könnte in dieser Zeit einen Ordner gegen eine Junction tauschen. Der Bote öffnet den aufgelösten Pfad unmittelbar nach der Prüfung, ganz schließen lässt sich das Fenster nicht.',
+  'Ein Chat könnte mit einer eigenen Anfrage und einem passenden Origin-Kopf Orte aus orte.toml öffnen lassen. Das ist nicht mehr, als sein Konto ohnehin kann (es ist das Konto des Inhabers), und es steht im Journal.',
+  'Eine geöffnete docx kann eine Vorlage aus dem Netz nachladen, und ein geöffneter Ordner mit einer desktop.ini kann Windows dazu bringen, sich mit NTLM bei einem fremden Rechner anzumelden. Das Dashboard prüft den Inhalt von Dateien nicht.',
+  'Der Ordner des Code-Repos und Punkt-Ordner im Profil (etwa .ssh, .var) sind nicht gesperrt, solange sie in keiner der Sperren oben liegen.',
+  'Die Positivliste der Programme prüft nur den Dateinamen des zugeordneten Programms. Wer in HKCU/Software/Classes schreiben kann, kommt daran vorbei (etwa mit einer notepad.exe aus einem anderen Ordner oder mit DelegateExecute); dafür muss aber schon Code im Konto laufen. Später härten: nur volle Pfade unter %SystemRoot%, %ProgramFiles% oder WindowsApps zulassen.',
+  'Nach dem Auflösen gibt es noch eigene Sätze (AppData, ProgramData, Ordner des Dienstes, „unlesbar“); sie verraten über eine Junction, dass es den Ort gibt. Später auf den Satz „gibt es nicht“ abbilden.',
+]
+
+[[block]]
+titel = 'Eigene Endpunkte'
+text = 'Braucht deine Seite mehr, als die allgemeinen Endpunkte liefern (rechnen über mehrere Dateien, Werte über die Zeit speichern), schreibst du ein eigenes Backend-Modul in Rust (Abschnitt 12). Ein bau-Vorgang baut nur die Oberfläche neu, keine Endpunkte.'
