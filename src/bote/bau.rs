@@ -1539,7 +1539,7 @@ pub fn schritte_text(s: &[BauSchritt]) -> String {
 
 /// Ein Satz zu den Hinweisen der Stil-Prüfung (Etappe 3b): welche Projekte
 /// wie viele haben und wie man sie sieht. `None` ohne Hinweise. Die
-/// Hinweise brechen den Bau nicht (`werkzeug::stil::STIL_ALS_FEHLER`).
+/// Hinweise brechen den Bau nicht; mit `werkzeug::stil::STIL_ALS_FEHLER` sind Stil-Funde Fehler und landen nicht hier.
 pub fn stil_satz(stil: &[crate::inhalt::pruefung::Befund]) -> Option<String> {
     let mut je: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for b in stil {
@@ -1550,10 +1550,7 @@ pub fn stil_satz(stil: &[crate::inhalt::pruefung::Befund]) -> Option<String> {
         return None;
     }
     let liste: Vec<String> = je.iter().map(|(s, n)| format!("{s} ({n})")).collect();
-    Some(format!(
-        "Stil-Hinweise von Stylelint (werden Fehler, sobald STIL_ALS_FEHLER umgestellt ist): {}. Einzelheiten mit dashboard.exe pruefe <slug>.",
-        liste.join(", ")
-    ))
+    Some(format!("Stil-Hinweise von Stylelint: {}. Einzelheiten mit dashboard.exe pruefe <slug>.", liste.join(", ")))
 }
 
 /// Warum ein Lauf von npm nicht grün war.
@@ -1735,10 +1732,7 @@ mod tests {
             Befund::hinweis("projects/a/Seite.svelte", Some(1), "x"),
             Befund::hinweis("projects/b/seiten/c.svelte", Some(2), "x"),
         ];
-        assert_eq!(
-            stil_satz(&b).unwrap(),
-            "Stil-Hinweise von Stylelint (werden Fehler, sobald STIL_ALS_FEHLER umgestellt ist): a (1), b (2). Einzelheiten mit dashboard.exe pruefe <slug>."
-        );
+        assert_eq!(stil_satz(&b).unwrap(), "Stil-Hinweise von Stylelint: a (1), b (2). Einzelheiten mit dashboard.exe pruefe <slug>.");
     }
 
     #[test]
