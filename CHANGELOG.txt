@@ -14,6 +14,11 @@ Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Anleitung, Abschnitt 15: im Team an einem Projekt-Repo mitarbeiten
+  (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
+  und was der Prüfer ohne Namenslisten tut).
+
 0.1.0 - 2026-11-06
 ------------------
 

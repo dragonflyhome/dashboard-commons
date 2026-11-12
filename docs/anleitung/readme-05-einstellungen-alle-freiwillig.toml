@@ -28,7 +28,7 @@ spalten = ['Umgebungsvariable', 'Wirkung', 'Standard']
 zeilen = [
   ['DASHBOARD_PORT', 'anderer Port', '8787'],
   ['DASHBOARD_PROJECTS_DIR', 'anderer Ordner mit Projektseiten; ab 4b auch eine Liste, getrennt durch ; (je Eintrag ein Ordner mit Projekten oder ein einzelnes Projekt mit projekt.toml; ein Slug in zwei Quellen: die erste gilt, dazu ein Satz unter /api/pruefung)', 'projects/ im Repo'],
-  ['DASHBOARD_BAUMEISTER', 'direkt: baut ohne Boten im eigenen Prozess (nur eine Testkopie auf Port 8788, nie der Dienst; tests/skripte/baumeister-edge.mjs)', 'aus'],
+  ['DASHBOARD_BAUMEISTER', 'direkt: baut ohne Boten im eigenen Prozess (nur ohne Dienst: Testkopie oder lokaler Start, nie im Dienst; tests/skripte/baumeister-edge.mjs)', 'aus'],
   ['DASHBOARD_WEB_DIR', 'anderer Ordner mit dem gebauten Frontend', 'web/build im Repo'],
   ['DASHBOARD_PC_DATA', 'andere Datei mit den PC-Eckdaten', 'data/pc.toml'],
   ['DASHBOARD_KEYS_DATA', 'andere Datei mit den Schlüssel-Anforderungen', 'data/schluessel.toml'],

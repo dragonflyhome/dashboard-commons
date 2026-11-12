@@ -67,8 +67,8 @@ pub const NOTIZ_HOECHSTENS: usize = 500;
 pub const RUHE: Duration = Duration::from_secs(5);
 /// So oft schaut der Beobachter auf die Dateien.
 pub const BLICK: Duration = Duration::from_secs(1);
-/// Umgebungsvariable: `direkt` baut ohne Boten im eigenen Prozess (nur für
-/// eine Testkopie, die als Inhaber läuft; nie im Dienst).
+/// Umgebungsvariable: `direkt` baut ohne Boten im eigenen Prozess (nur ohne
+/// Dienst: Testkopie oder lokaler Start; nie im Dienst).
 pub const UMGEBUNG_DIREKT: &str = "DASHBOARD_BAUMEISTER";
 
 /// Bau-Tempo, Zweig C: So oft fragt der Baumeister während eines Baus nach dem Fortschritt.
@@ -193,7 +193,7 @@ pub fn ueber_boten(bote: Option<Arc<Bote>>) -> Bauen {
 }
 
 /// Bauen im eigenen Prozess, ohne Boten (`DASHBOARD_BAUMEISTER=direkt`): nur
-/// für eine Testkopie auf Port 8788, die als Inhaber läuft. Gleicher Ablauf wie
+/// ohne Dienst (Testkopie oder lokaler Start), nie im Dienst. Gleicher Ablauf wie
 /// im Boten (`bote::bau::bauen`).
 pub fn direkt(ort: crate::bote::bau::BauOrt) -> Bauen {
     Arc::new(move || {

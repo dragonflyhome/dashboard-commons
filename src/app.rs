@@ -379,9 +379,9 @@ impl AppState {
         api::schluessel::spawn_tresor_wache(state.clone());
         // Etappe 4b: der Baumeister (eine Warteschlange für Beobachter und
         // Bau-Vorgänge, auch solche, die vor einem Neustart liegen blieben).
-        // Gebaut wird über den Boten; ohne Boten nur in einer Testkopie mit
-        // DASHBOARD_BAUMEISTER=direkt (im eigenen Prozess). Ein Neustart baut
-        // nicht: Die Oberfläche kommt aus web/builds/aktuell (`WebOrt`).
+        // Gebaut wird über den Boten; ohne Boten nur ohne Dienst (Testkopie oder
+        // lokaler Start, nie im Dienst) mit DASHBOARD_BAUMEISTER=direkt (im
+        // eigenen Prozess). Ein Neustart baut nicht: Die Oberfläche kommt aus web/builds/aktuell (`WebOrt`).
         let direkt = state.bote.is_none() && baumeister::direkt_gewollt();
         let bauen = if direkt {
             let web = state.web.build().parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("web"));

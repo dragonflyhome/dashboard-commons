@@ -1,0 +1,91 @@
+# Abschnitt „15. Im Team an einem Projekt-Repo mitarbeiten“ (Format wie docs/zielbild).
+titel = '15. Im Team an einem Projekt-Repo mitarbeiten'
+reihenfolge = 115
+
+[[block]]
+text = '''
+Dieser Abschnitt ist für Teammitglieder, die an einer einzelnen Projektseite mitarbeiten, ohne das ganze Dashboard des Betreibers zu haben: kein Dienst, kein Inhalts-Repo, keine Namenslisten. Hier steht nur, was dabei anders ist. Wie eine Seite aufgebaut ist, steht in den Abschnitten 1 bis 4 und 11, wie committet wird in Abschnitt 5, wie der Prüfer arbeitet in Abschnitt 14.
+
+Die Beispiele sind erfunden: das Projekt gartenplaner der Organisation beispiel-org auf git.example.invalid.'''
+
+[[block]]
+titel = '1. Was ein Projekt-Repo ist'
+text = 'Ein Projekt-Repo ist ein Overlay: Es enthält genau ein Projekt und legt sich beim Start über das Code-Repo des Dashboards. Es ist kein Fork des Code-Repos und ersetzt es nicht; das Code-Repo kommt immer getrennt dazu. Die folgenden Regeln prüft der Prüfer nur, wenn die Liste der Repos beim Betreiber die Adresse des Repos als Projekt führt; sonst prüft er es als Code-Repo. Erlaubt sind dann nur diese Pfade, alles andere weist der Prüfer ab:'
+
+[[block]]
+punkte = [
+  'projects/<slug>/ mit allem darunter, für genau einen Slug (im Beispiel projects/gartenplaner/ mit projekt.toml, daten/*.toml, Seite.svelte und assets/)',
+  'dashboard-version.toml in der Wurzel mit einer Zeile tag = "v0.1.0": die Fassung des Code-Repos, gegen die die Seite gebaut ist',
+  '.gitignore und .gitattributes in der Wurzel',
+]
+
+[[block]]
+text = 'Nicht hinein gehören: ein zweites Projekt (Fund „fremdes Projekt“), jede Datei mit der Endung .md (auch keine Beschreibung des Repos; was Leser wissen müssen, steht in projekt.toml oder auf der Seite), Skripte, Notizen, Exporte, Zugangsdaten und gebaute Dateien. Ein Rechenteil in projects/<slug>/server/ (Abschnitt 12) darf im Repo liegen, läuft aber nur, wenn der Betreiber ihn in sein Dashboard aufnimmt; lokal bleibt er liegen, die Seite geht trotzdem.'
+
+[[block]]
+titel = '2. Das Dashboard lokal mit nur diesem Projekt starten'
+text = 'Gebraucht werden Windows (die Anmeldung im Browser ist die Windows-Anmeldung, Abschnitt „Anmeldung“), Git, Rust mit rustup und Node.js. Unter Windows die Standard-Toolchain von rustup nehmen (MSVC, dazu die Build-Tools für Visual Studio); wer die GNU-Toolchain nutzt, findet das Nötige im Abschnitt „Stolpersteine beim Bauen (GNU-Toolchain ohne MinGW)“. Code-Repo und Projekt-Repo liegen nebeneinander:'
+
+[[block]]
+nummeriert = true
+punkte = [
+  'In dashboard-version.toml des Projekt-Repos die Fassung ablesen (im Beispiel v0.1.0).',
+  'Das Code-Repo genau in dieser Fassung klonen: git clone --branch v0.1.0 <adresse-des-code-repos> dashboard. Der Klon steht dann auf dem Tag, ohne Zweig; ändern muss man darin nichts.',
+  'Das Projekt-Repo daneben klonen, direkt das Repo der Organisation, keinen Fork (ein Fork holt mit git pull nur seinen eigenen Stand; Änderungen gehen ohnehin als Issue, Teil 3): git clone https://git.example.invalid/beispiel-org/gartenplaner.git',
+  'Im Code-Repo die Inhaltsquelle setzen, das Programm bauen, die Bauliste schreiben und starten:',
+]
+
+[[block]]
+beispiel = '''
+cd dashboard
+$env:DASHBOARD_PROJECTS_DIR = (Resolve-Path ../gartenplaner/projects).Path
+cargo build --release
+./target/release/dashboard.exe pruefe --bauliste
+./scripts/Start-Dashboard.ps1'''
+
+[[block]]
+text = 'Was dabei geschieht:'
+
+[[block]]
+punkte = [
+  'DASHBOARD_PROJECTS_DIR nennt die eine Quelle, den Ordner projects des Projekt-Repos (Abschnitt „Einstellungen“). Ohne die Variable zeigt das Dashboard nur projects/ des Code-Repos; dort liegt nur projects/_vorlage, und _vorlage ist kein gültiger Slug, also bleibt die Projektliste leer. Die Variable gilt nur in diesem PowerShell-Fenster.',
+  'pruefe --bauliste schreibt die Liste der Seiten, die die Oberfläche mitbaut (web/src/lib/projekte.generated.ts). Ohne sie baut die Oberfläche keine Projektseite.',
+  'Start-Dashboard.ps1 baut die Oberfläche mit npm run build (beim ersten Mal vorher npm ci) und startet dann cargo run --release; beide erben DASHBOARD_PROJECTS_DIR aus dem Fenster. Das Skript selbst kennt nur drei Schalter: -Port (Standard 8787), -NoBrowser und -SkipWeb (die Oberfläche nicht neu bauen). Ist der Port belegt, hört es mit einem Satz auf (Rückgabe 3); dann mit -Port einen anderen wählen, etwa 8788. Lässt die Ausführungsrichtlinie von PowerShell das Skript nicht laufen, ruft man es im selben Fenster so auf: powershell -ExecutionPolicy Bypass -File ./scripts/Start-Dashboard.ps1 (wie die Aufrufe im Abschnitt „Das Dashboard als Dienst“); die Variable wird mitgegeben, die Richtlinie selbst bleibt unverändert.',
+  'Dann im Browser: http://localhost:8787/projects/gartenplaner (oder der gewählte Port).',
+  'Passt dashboard-version.toml nicht zur gestarteten Fassung, startet das Dashboard trotzdem und nennt den Unterschied als Hinweis in seiner Prüfung (im laufenden Dashboard, nicht bei pruefe auf der Kommandozeile). Dann das Code-Repo in der passenden Fassung klonen, nicht die Datei ändern.',
+]
+
+[[block]]
+text = 'Nach einer Änderung an Seite.svelte oder einer .ts-Datei: Strg+C, dann pruefe --bauliste und Start-Dashboard.ps1 noch einmal. Änderungen an daten/*.toml und projekt.toml zeigt das laufende Dashboard ohne Neustart. Ohne Dienst gibt es keinen Boten, der von selbst baut (Abschnitt „Der Bote“); wer trotzdem beim Speichern bauen lassen will, setzt vor dem Start zusätzlich $env:DASHBOARD_BAUMEISTER = "direkt" (Abschnitt „Einstellungen“). Ein solcher Bau landet in web/builds, und das Dashboard liefert danach von dort aus, auch nach einem Neustart; was Start-Dashboard.ps1 später nach web/build baut, gilt dann nicht (Abschnitt „Die Oberfläche“). Wer zum Weg mit Neustart zurück will, löscht vorher den Ordner web/builds im Code-Repo. Geprüft wird wie immer mit pruefe <slug> (Abschnitt 4), hier etwa ./target/release/dashboard.exe pruefe gartenplaner im selben Fenster.'
+
+[[block]]
+titel = '3. Mitarbeiten: lesen und Issue'
+punkte = [
+  'Wer das Projekt-Repo lesen darf, legt der Betreiber fest; die Rechte vergibt er. Vor jeder Arbeit main des Projekt-Repos holen (git pull), damit die Änderung auf dem neuesten Stand aufsetzt.',
+  'Änderungen kommen als Issue im Projekt-Repo, nicht als Pull-Request. Ein Pull-Request würde auf dem Server zusammengeführt, an Hook und Prüfer vorbei. Der Betreiber übernimmt die Änderung stattdessen selbst und prüft sie dabei. Ein gutes Issue nennt Datei und Stelle, den gewünschten Text oder Wert und den Grund; eine größere Änderung hängt man als Ausgabe von git diff an. Auch im Issue gilt: keine privaten Namen, Adressen oder Pfade.',
+  'Committen auf main und hochladen tut nur der Betreiber: Er übernimmt die Änderung auf einem eigenen Zweig und führt ihn mit git merge --no-ff nach main zusammen. Auf main kommen nur Merge-Commits, kein Fast-Forward und kein Rebase von main; Zweige gehen nicht hinaus, hochgeladen wird nur main. Ein Teammitglied kann auch mit Schreibrecht nicht selbst hochladen, weil der Prüfer nur die feste Autor-Angabe annimmt (nächster Punkt).',
+  'Commit-Nachrichten nach Conventional Commits (Abschnitt 5), etwa feat(gartenplaner): Beetplan um Hochbeete ergänzt oder chore(merge): beetplan nach main. Keine Anhänge wie Co-Authored-By oder Signed-off-by.',
+  'Keine private Adresse in Autor oder Committer und nirgends im Text; Beispieladressen nur mit erfundener Endung wie .invalid oder .example. Der Prüfer nimmt nur Commits mit genau der Autor- und Committer-Angabe an, die im Prüfer des Code-Repos festgelegt ist (Abschnitt 14, Commit-Adresse); ein Commit unter anderem Namen wird beim Hochladen abgewiesen. Darum übernimmt der Betreiber Änderungen als eigenen Commit, statt fremde Commits hochzuladen.',
+]
+
+[[block]]
+titel = '4. Prüfer und Hooks'
+text = 'Das Projekt-Repo hat kein scripts/. Die Hooks kommen aus dem Code-Repo, einmal je Klon mit absolutem Pfad:'
+
+[[block]]
+beispiel = '''
+cd gartenplaner
+git config core.hooksPath (Resolve-Path ../dashboard/scripts/hooks).Path'''
+
+[[block]]
+text = 'Was die Hooks dann ohne Namenslisten tun (nachgelesen in scripts/Vor-Push.ps1 und scripts/hooks):'
+
+[[block]]
+punkte = [
+  'commit-msg prüft nur die Nachricht und braucht keine Listen: erste Zeile nach Conventional Commits, keine Anhänge, keine Namen von Assistenz-Werkzeugen. Committen geht also auch ohne Inhalts-Repo.',
+  'pre-commit hat im Projekt-Repo nichts zu tun: Er prüft Rust nur mit einer Cargo.toml in der Wurzel und Prettier nur für Dateien unter web/.',
+  'pre-push und scripts/Hochladen.ps1 -Repo <projekt-repo> brauchen die Namenslisten. Sie liegen nur im Inhalts-Repo des Betreibers (pruefer/namen.toml und pruefer/tokens/), weil sie selbst die privaten Namen enthalten, und werden nicht weitergegeben. Fehlen sie, prüft der Prüfer nicht durch und lässt nichts durch: Er bricht mit einem FEHLER ab („Die Namensliste … fehlt“) und Rückgabe 2, und der Push findet nicht statt. Er prüft nie stillschweigend ohne Listen.',
+]
+
+[[block]]
+text = 'Für ein Teammitglied ohne Listen heißt das: lokal committen ist in Ordnung, hochladen nicht. Die Änderung geht als Issue an den Betreiber (oben); er prüft und lädt sie mit Hochladen.ps1 -Repo hoch. Den Hook nie mit --no-verify umgehen und das Projekt-Repo nie auf anderem Weg als über Hochladen.ps1 hochladen. Wer nur prüfen will, ob ein Stand durchginge, kann das ohne Listen nicht; die Prüfung der Seite selbst (pruefe <slug>) geht dagegen immer.'
