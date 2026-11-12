@@ -45,12 +45,11 @@ text = 'Seit 3b prüft pruefe auch die Stile in den .svelte-Dateien eines Projek
 
 [[block]]
 beispiel = '''
-HINWEIS projects/x/Seite.svelte, Zeile 118: Stil: Die Schriftgröße „1.05em“ ist frei. … (Regel scale-unlimited/declaration-strict-value) Wird ein Fehler, sobald STIL_ALS_FEHLER umgestellt ist.'''
+FEHLER projects/x/Seite.svelte, Zeile 118: Stil: Die Schriftgröße „1.05em“ ist frei. … (Regel scale-unlimited/declaration-strict-value)'''
 
 [[block]]
 punkte = [
-  'Bis der Schalter STIL_ALS_FEHLER (src/werkzeug/stil.rs) umgestellt ist, sind die Funde HINWEIS (jeder sagt das in seinem letzten Satz): Sie brechen nichts, die Seite wird gebaut. Danach werden sie FEHLER, und eine Seite mit Fund wird nicht mehr gebaut (wie bei jedem anderen Fehler; die anderen Seiten bauen weiter).',
-  'Neue Projektseiten (ab 3b angelegt) müssen schon jetzt ohne Stil-Hinweis sein. Das prüft heute kein Programm, sondern der Betreuer des Dashboards beim ersten bau-Vorgang des Projekts; nach der Umstellung gilt es ohnehin für alle.',
+  'Die Funde sind FEHLER (Schalter STIL_ALS_FEHLER in src/werkzeug/stil.rs): Eine Seite mit Fund wird nicht gebaut, wie bei jedem anderen Fehler; die anderen Seiten bauen weiter.',
   'stylelint-disable wirkt in Projekten nicht; abschalten geht nicht. Seit 3b-2 sind auch @ts-nocheck, @ts-ignore, @ts-expect-error, svelte-ignore, eslint-disable… und ESLint-Regeln im Kommentar in Projekten ein FEHLER von pruefe (die Liste der erlaubten Abschaltungen unten gilt nur für web/src).',
   'Läuft bei pruefe <slug> (Projekte mit Svelte-Dateien), bei pruefe --alle und im Bau über den Boten (der Satz des Baus nennt Projekte mit Hinweisen). Dauer: unter einer Sekunde. Braucht Node und web/node_modules; fehlt eines, steht dort ein Hinweis, dass die Stil-Prüfung übersprungen ist. --ohne-stil lässt sie weg. Stürzt Stylelint bei einer Datei ab, steht nur bei ihr ein Hinweis; alle anderen Dateien und Projekte werden weiter geprüft (seit 3b-2).',
 ]

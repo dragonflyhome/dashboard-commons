@@ -35,7 +35,7 @@
 //! `--cache`, `web/eslint.projekte.config.js`) und Vitest für eigene
 //! `*.spec.ts` (`werkzeug::projektpruefung`), wie im Baumeister;
 //! `--ohne-svelte` lässt beide weg.
-//! Bis `stil::STIL_ALS_FEHLER` umgestellt ist, sind ihre Funde Hinweise.
+//! Ihre Funde sind Fehler (`stil::STIL_ALS_FEHLER`).
 //!
 //! `--bauliste` schreibt `web/src/lib/projekte.generated.ts`. Ohne
 //! `--svelte` prüft nur der Scanner (grün aus dem Ordner, rot mit Fehlern;

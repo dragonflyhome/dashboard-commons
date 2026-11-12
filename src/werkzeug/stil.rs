@@ -20,8 +20,8 @@
 //! Prüfung: Das Skript fängt ihn je Datei ab, und läuft der gemeinsame Lauf
 //! trotzdem nicht durch, läuft er je Projekt einzeln ([`pruefen_mit`]).
 //!
-//! Bis [`STIL_ALS_FEHLER`] umgestellt ist, sind alle Funde Hinweise: Sie
-//! machen kein Projekt rot und brechen keinen Bau.
+//! Mit [`STIL_ALS_FEHLER`] sind alle Funde Fehler: Ein Projekt mit Fund
+//! wird nicht gebaut, die anderen bauen weiter.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -34,11 +34,9 @@ use crate::werkzeug::scanner;
 
 /// Stil-Funde als Fehler statt als Hinweis.
 ///
-/// Heute `false`: Funde sind `HINWEIS` und brechen nichts. Auf `true` geht
-/// das, sobald die Projekte ihre Zeilen erledigt haben, in einem kleinen
-/// eigenen Commit mit Abnahme. Dann ist jeder Fund ein `FEHLER`,
-/// und ein Projekt mit Fund fällt aus der Bauliste (wird nicht gebaut).
-pub const STIL_ALS_FEHLER: bool = false;
+/// `true`: Jeder Fund ist ein `FEHLER`, und ein Projekt mit Fund fällt aus
+/// der Bauliste (wird nicht gebaut). `false` machte sie zu Hinweisen.
+pub const STIL_ALS_FEHLER: bool = true;
 
 /// Steht bis zur Umstellung hinter jedem Fund (ohne Datum).
 pub const SATZ_BIS_UMSTELLUNG: &str = "Wird ein Fehler, sobald STIL_ALS_FEHLER umgestellt ist.";
