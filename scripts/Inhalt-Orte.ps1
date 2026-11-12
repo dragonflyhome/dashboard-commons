@@ -1,6 +1,6 @@
 ﻿# Die Orte des privaten Inhalts im Code-Repo (Umzug des Inhalts, Entscheidung
 # github-trennung mit [docs_oeffentlich]). Eingebunden von
-# Inhalt-Umziehen.ps1 und Wurzel-Entwurf.ps1 (mit `. $PSScriptRoot\Inhalt-Orte.ps1`),
+# Inhalt-Umziehen.ps1 und Dienst-Einrichten.ps1 (mit `. $PSScriptRoot\Inhalt-Orte.ps1`),
 # damit beide dieselben Orte meinen. Ändert nichts, legt nur Werte fest.
 
 # Was in den Inhalt zieht (relativ zum Code-Repo, mit /). projects/_vorlage bleibt.

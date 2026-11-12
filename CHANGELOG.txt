@@ -19,6 +19,18 @@ Hinzugefügt
   (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
   und was der Prüfer ohne Namenslisten tut).
 
+Geändert
+- Bruch: scripts/Hochladen.ps1 lädt refs/heads/main nach refs/heads/main
+  hoch (nur Fast-Forward), geprüft wie bisher: der ganze Baum, alle neuen
+  Commits, auf der First-Parent-Linie nur Merge-Commits. -Pruefen prüft,
+  was hinausginge, ohne Push. Vor-Push.ps1 -Pruefen prüft ohne -Ref
+  refs/heads/main; lokal geht nur noch main nach main hinaus.
+
+Entfernt
+- Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig
+  refs/heads/oeffentlich; ein Aufruf mit -Wurzel bricht mit einem Satz ab.
+- scripts/Wurzel-Entwurf.ps1 (Entwurf eines frischen Wurzel-Commits).
+
 0.1.0 - 2026-11-06
 ------------------
 
