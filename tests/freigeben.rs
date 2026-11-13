@@ -628,3 +628,91 @@ fn main_draussen_origin_weg_und_voraus() {
     assert_eq!(git_in(&o.fern(), &["rev-parse", "main"]), fern_main, "main draußen unverändert");
     assert_eq!(o.neustarts(), 1);
 }
+
+/// Wiederaufnahme: Der Tag vor der Fassung fehlt draußen. Abbruch vor den Prüfungen,
+/// nichts geht hinaus.
+#[test]
+fn luecke_beim_letzten_tag_in_der_wiederaufnahme() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    o.git(&["tag", "v0.3.9"]);
+    o.zweig("feat(web): neu", |o| o.changelog("Hinzugefügt\n- Neu.\n"));
+    o.festschreiben_allein();
+    let vorher = o.stand();
+    let (code, text) = o.lauf(false);
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("Der letzte Tag v0.3.9 auf main ist nicht auf origin") && text.contains("Es ging nichts hinaus."), "{text}");
+    assert!(!text.contains("cargo test ..."), "{text}");
+    assert_eq!(o.stand(), vorher);
+}
+
+/// main ist draußen, der Tag nicht; beim Commit der Lock-Datei landet ein Merge auf
+/// main. Der Tag geht nicht hinaus.
+#[test]
+fn main_bewegt_sich_vor_dem_tag() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    o.zweig("feat(web): neu", |o| o.changelog("Hinzugefügt\n- Neu.\n"));
+    // Nach dem Push von main zeigt origin ins Leere: main ist draußen, der Tag nicht.
+    let weg = o.0.join("gibt-es-nicht.git");
+    let fern_url = o.fern().to_str().unwrap().replace('\\', "/");
+    let haken = o.fern().join("hooks").join("post-receive");
+    schreiben(
+        &haken,
+        &format!(
+            "#!/bin/sh\nunset GIT_DIR\ngit -C '{}' remote set-url origin '{}'\n",
+            o.repo().to_str().unwrap().replace('\\', "/"),
+            weg.to_str().unwrap().replace('\\', "/")
+        ),
+    );
+    let (code, text) = o.lauf(false);
+    assert_eq!(code, 1, "{text}");
+    std::fs::remove_file(&haken).unwrap();
+    o.git(&["remote", "set-url", "origin", &fern_url]);
+    let kopf = o.git(&["rev-parse", "main"]);
+    assert_eq!(git_in(&o.fern(), &["rev-parse", "main"]), kopf);
+    assert_eq!(git_in(&o.fern(), &["tag", "--list", "v0.4.0"]), "");
+    // Den Commit der Lock-Datei zurücknehmen, damit er erneut läuft und der Hook greift.
+    assert!(git_in(&o.inhalt(), &["log", "-1", "--format=%s"]).contains("Cargo.lock auf Fassung 0.4.0"));
+    git_in(&o.inhalt(), &["reset", "-q", "--hard", "HEAD~1"]);
+    o.git(&["checkout", "-q", "-b", "nebenher"]);
+    o.commit("chore: nebenher");
+    o.git(&["checkout", "-q", "main"]);
+    schreiben(
+        &o.inhalt().join(".git").join("hooks").join("pre-commit"),
+        &format!(
+            "#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE\ncd '{}' && git merge -q --no-ff --no-verify -m 'chore(merge): nebenher nach main' nebenher\n",
+            o.repo().to_str().unwrap().replace('\\', "/")
+        ),
+    );
+    let (code, text) = o.lauf(false);
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("Seit den Prüfungen hat sich main bewegt") && text.contains("main ist draußen, der Tag v0.4.0 nicht."), "{text}");
+    assert_eq!(git_in(&o.fern(), &["tag", "--list", "v0.4.0"]), "", "Tag nicht draußen");
+    assert_eq!(o.neustarts(), 0);
+}
+
+/// Wiederaufnahme: npm run verify verschiebt den Tag, main bleibt. Nichts geht hinaus.
+#[test]
+fn tag_bewegt_sich_in_der_wiederaufnahme() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    o.zweig("feat(web): neu", |o| {
+        o.changelog("Hinzugefügt\n- Neu.\n");
+        let p = o.repo().join("web/package.json");
+        schreiben(&p, &std::fs::read_to_string(&p).unwrap().replace("node --version", "git tag -f v0.4.0 main~1"));
+    });
+    o.festschreiben_allein();
+    let fern_vorher = git_in(&o.fern(), &["for-each-ref", "--format=%(refname) %(objectname)"]);
+    let (code, text) = o.lauf(false);
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("steht nicht mehr darauf"), "{text}");
+    assert_eq!(git_in(&o.fern(), &["for-each-ref", "--format=%(refname) %(objectname)"]), fern_vorher, "draußen nichts");
+    assert_eq!(o.neustarts(), 0);
+}

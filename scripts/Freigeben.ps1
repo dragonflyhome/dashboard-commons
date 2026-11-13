@@ -252,7 +252,7 @@ try {
     foreach ($z in @((GitLauf $repo @('for-each-ref', '--format=%(refname:short)', 'refs/heads/freigabe/')).Text -split "`n" | Where-Object { $_ })) {
         $t = $z.Substring('freigabe/'.Length)
         if ((GitLauf $repo @('rev-parse', '--verify', '--quiet', "refs/tags/$t") -Still).Code -ne 0) {
-            Ende 1 "Abbruch: Der Zweig $z liegt ohne Tag $t da (eine abgebrochene Freigabe). Steht main auf seinem Merge chore(release): $($t), fehlt nur der Tag: git tag $t main, git branch -d $z, dann erneut. Sonst den Zweig klären. $NICHTS"
+            Ende 1 "Abbruch: Der Zweig $z liegt ohne Tag $t da (eine abgebrochene Freigabe). Steht main auf seinem Merge chore(release): $($t), fehlt nur der Tag, sonst ist offen, was der Zweig trägt. Das ist von Hand zu klären (ein Fall für einen Chat), dann erneut aufrufen. $NICHTS"
         }
     }
     $tag = @((GitLauf $repo @('tag', '--points-at', 'refs/heads/main', '--list', 'v*')).Text -split "`n" | Where-Object { $_ -cmatch $TAG_FORM }) | Select-Object -First 1
