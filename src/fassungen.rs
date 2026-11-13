@@ -43,21 +43,22 @@ pub fn betrieb_angaben() -> (Option<String>, bool) {
 }
 
 /// „Neu in …“: die laufende Fassung mit ihren Zeilen, solange `gezeigt`
-/// (aus dem Datenspeicher) nicht sie ist; ohne Abschnitt oder Einträge nichts.
+/// (aus dem Datenspeicher) älter ist, fehlt oder unlesbar ist; nach dem Weg
+/// zurück auf eine ältere Fassung nichts. Ohne Abschnitt oder Einträge nichts.
 pub fn neu_in(a: &FassungenAntwort, gezeigt: Option<&str>) -> Option<FassungsEintrag> {
-    if gezeigt == Some(a.laufend.as_str()) {
+    if gezeigt.and_then(version_zahlen).is_some_and(|g| version_zahlen(&a.laufend).is_some_and(|l| l <= g)) {
         return None;
     }
     a.fassungen.iter().find(|f| f.version == a.laufend && !f.zeilen.leer()).cloned()
 }
 
-/// `x.y.z` als Zahlen, sonst `None`.
+/// `x.y.z` als Zahlen ohne führende Null, sonst `None`.
 pub fn version_zahlen(v: &str) -> Option<[u64; 3]> {
     let mut teile = v.split('.');
     let mut z = [0u64; 3];
     for stelle in &mut z {
         let t = teile.next()?;
-        if t.is_empty() || !t.bytes().all(|b| b.is_ascii_digit()) {
+        if t.is_empty() || !t.bytes().all(|b| b.is_ascii_digit()) || (t.len() > 1 && t.starts_with('0')) {
             return None;
         }
         *stelle = t.parse().ok()?;
@@ -114,6 +115,11 @@ pub fn lesen(text: &str, laufend: &str) -> FassungenAntwort {
                 continue;
             }
             match fassungs_titel(z) {
+                // Doppelt oder ungeordnet: Die Seite schlüsselt nach Version, `seit` erwartet neueste zuerst.
+                Some((v, _)) if a.fassungen.last().and_then(|f| version_zahlen(&f.version)).is_some_and(|w| version_zahlen(v) >= Some(w)) => {
+                    a.hinweise.push(format!("Zeile {nr}: Die Fassung {v} steht nicht absteigend (doppelt oder ungeordnet); ihre Einträge fehlen hier."));
+                    ziel = Ziel::Nichts;
+                }
                 Some((v, d)) => {
                     a.fassungen.push(FassungsEintrag { version: v.to_string(), tag: format!("v{v}"), datum: d.to_string(), zeilen: FassungsZeilen::default() });
                     ziel = Ziel::Fassung(a.fassungen.len() - 1);
@@ -151,6 +157,11 @@ pub fn lesen(text: &str, laufend: &str) -> FassungenAntwort {
             continue;
         }
         abschliessen(&mut a, &ziel, offen.take());
+        // Ein verschriebener Eintrag („-a“) beendet den Unterabschnitt nicht.
+        if z.starts_with('-') {
+            a.hinweise.push(format!("Zeile {nr}: „{z}“ ist kein Eintrag (Form „- Text“); diese Zeile fehlt hier."));
+            continue;
+        }
         match z {
             "Hinzugefügt" | "Geändert" | "Entfernt" | "Behoben" => unter = Some(z),
             _ => {
@@ -278,6 +289,49 @@ mod tests {
         }
     }
 
+    /// Doppelte oder ungeordnete Fassungen: Hinweis, Abschnitt fehlt; die Liste bleibt eindeutig und absteigend.
+    #[test]
+    fn doppelt_oder_ungeordnet_gibt_hinweis() {
+        let doppelt = beispiel().replace("0.1.0 - 2026-11-06", "0.2.0 - 2026-11-06");
+        let ungeordnet = format!(
+            "{}
+0.3.0 - 2026-11-20
+---
+
+Hinzugefügt
+- Später.
+",
+            beispiel()
+        );
+        for (text, nr) in [(doppelt, "0.2.0"), (ungeordnet, "0.3.0")] {
+            let a = lesen(&text, "0.2.0");
+            let v: Vec<_> = a.fassungen.iter().map(|f| f.version.as_str()).collect();
+            assert!(v.windows(2).all(|w| version_zahlen(w[0]) > version_zahlen(w[1])), "{v:?}");
+            assert_eq!(a.fassungen[0].zeilen.geaendert.len(), 2, "die erste bleibt ganz");
+            assert!(a.hinweise.iter().any(|h| h.contains(&format!("Fassung {nr} steht nicht absteigend"))), "{:?}", a.hinweise);
+        }
+    }
+
+    /// Ein verschriebener Eintrag kostet nur seine Zeile, nicht den Unterabschnitt.
+    #[test]
+    fn verschriebener_eintrag_nur_eine_zeile() {
+        let a = lesen(
+            "Unreleased
+---
+
+Hinzugefügt
+-a
+- b
+-
+- c
+",
+            "0.1.0",
+        );
+        assert_eq!(a.unveroeffentlicht.hinzugefuegt, ["b", "c"]);
+        let kaputt: Vec<_> = a.hinweise.iter().filter(|h| h.contains("ist kein Eintrag")).collect();
+        assert_eq!(kaputt.len(), 2, "{:?}", a.hinweise);
+    }
+
     #[test]
     fn seit_kuerzt_und_prueft() {
         let a = lesen(&beispiel(), "0.2.0");
@@ -286,7 +340,7 @@ mod tests {
         assert_eq!(nur("0.0.9"), ["0.2.0", "0.1.0"]);
         assert_eq!(nur("0.2.0"), Vec::<String>::new());
         assert_eq!(nur("0.1.10"), ["0.2.0"], "Zahlen, nicht Text");
-        for falsch in ["", "0.1", "v0.1.0", "0.1.0.0", "a.b.c", "0.-1.0"] {
+        for falsch in ["", "0.1", "v0.1.0", "0.1.0.0", "a.b.c", "0.-1.0", "0.01.0"] {
             assert!(seit(&a, falsch).is_err(), "{falsch}");
         }
     }
@@ -294,10 +348,13 @@ mod tests {
     #[test]
     fn neu_in_bis_gezeigt() {
         let a = lesen(&beispiel(), "0.2.0");
-        for gezeigt in [None, Some("0.1.0"), Some("0.3.0")] {
+        for gezeigt in [None, Some("0.1.0"), Some("0.1.10"), Some("kaputt")] {
             assert_eq!(neu_in(&a, gezeigt).map(|f| f.version), Some("0.2.0".to_string()), "{gezeigt:?}");
         }
-        assert_eq!(neu_in(&a, Some("0.2.0")), None);
+        // Gezeigt oder nach dem Weg zurück von einer neueren Fassung: nichts.
+        for gezeigt in ["0.2.0", "0.3.0", "0.10.0"] {
+            assert_eq!(neu_in(&a, Some(gezeigt)), None, "{gezeigt}");
+        }
         // Ohne Einträge oder ohne Abschnitt der laufenden Version: nichts zu zeigen.
         let leer = lesen("Unreleased\n---\n\n0.2.0 - 2026-11-13\n---\n", "0.2.0");
         assert_eq!(neu_in(&leer, None), None);

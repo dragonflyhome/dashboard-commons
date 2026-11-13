@@ -32,6 +32,12 @@ Hinzugefügt
   gezeigt wurde, merkt sich der Datenspeicher (GET und POST
   /api/fassungen/gezeigt, geschützt).
 
+Behoben
+- Fassung-Festschreiben.ps1 bricht ab, wenn Unreleased einen
+  Unterabschnitt Veraltet oder Sicherheit hat; das Changelog kennt nur
+  Hinzugefügt, Geändert, Entfernt und Behoben. Der Wächter für das
+  Changelog liest es mit demselben Leser wie der Dienst.
+
 0.2.0 - 2026-11-13
 ------------------
 
