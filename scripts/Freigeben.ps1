@@ -8,9 +8,19 @@
          Abbruch mit einem Satz. Steht main genau auf einem Merge
          chore(release): v0.x.y mit Tag v0.x.y, geht es bei der Lock-Datei
          des Inhalts (Ende von 4) weiter; beide Pushes sind wiederholbar.
+         Ist main noch nicht draußen, laufen vorher die Prüfungen von 2 noch
+         einmal (Arbeitsbaum sauber auf main): Der Merge kann auch ohne
+         Freigeben.ps1 entstanden sein. Draußen heißt: origin/main enthält
+         main (nach git fetch), der Tag zeigt dort auf denselben Commit.
+         Jeder Satz sagt dann, was von ihr schon draußen ist. Sind main und
+         Tag draußen, hält die Lock-Datei Schritt 6 nicht auf; sie wird nur
+         gemeldet (Exit 1).
       1. Vorbedingungen: git fetch origin (ohne Verbindung Abbruch), auf main,
          sauberer Arbeitsbaum, main enthält origin/main (nur Fast-Forward),
-         die Lock-Datei der Zusammenbau-Kiste im Inhalt ist unverändert.
+         der letzte Tag v0.x.y auf main liegt auch auf origin (auf demselben
+         Commit), dashboard-lokal
+         im Inhalt hat keine offenen Änderungen (außer an Cargo.lock, die
+         cargo update neu rechnet).
       3. Version und Changelog: Fassung-Festschreiben.ps1 -Pruefen (Version
          aus den Commits seit dem letzten Tag, Zählregel, künftiger Tag, auch
          auf origin). Der Stand von main wird hier gemerkt; Schritt 4 schreibt
@@ -38,7 +48,8 @@
     hinaus); 1 abgewiesen oder ein Schritt rot (der Satz sagt, was schon
     geschehen ist); 2 Fehler.
 .PARAMETER Pruefen
-    Nur 1 bis 3: sagt, welche Fassung es würde. Ändert nichts.
+    Nur 1 bis 3: sagt, welche Fassung es würde. Ändert nichts. Steht main
+    schon auf einer fertigen Fassung (0), sagt es das und was davon draußen ist.
 .PARAMETER Inhalt
     Das Inhalts-Repo (Namenslisten, dashboard-lokal). Standard:
     DASHBOARD_INHALT, sonst der Nachbarordner dashboard-inhalt des Code-Repos.
@@ -101,40 +112,85 @@ function Skript([string]$datei, [string[]]$a) {
     return (Aufruf $repo $ps (@('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $datei) + $a))
 }
 
-function LockSauber {
-    if (-not (Test-Path -LiteralPath (Join-Path $lokal 'Cargo.toml') -PathType Leaf)) { return }
+# Offene Änderungen in dashboard-lokal als Satz ('' ohne). Eine offene Cargo.lock
+# allein zählt nicht: cargo update rechnet sie neu (etwa nach einem gescheiterten Lock-Commit).
+function LockOffen {
+    if (-not (Test-Path -LiteralPath (Join-Path $lokal 'Cargo.toml') -PathType Leaf)) { return '' }
     $s = GitLauf $Inhalt @('status', '--porcelain', '--untracked-files=no', '--', 'dashboard-lokal') -Still
-    if ($s.Code -ne 0) { Ende 1 "Abbruch: Der Inhalt $Inhalt ist kein Git-Repo (git status: $($s.Text)). $NICHTS" }
-    if ($s.Text) { Ende 1 "Abbruch: dashboard-lokal im Inhalt (Cargo.toml oder Cargo.lock) hat offene Änderungen; erst committen oder verwerfen. $NICHTS" }
+    if ($s.Code -ne 0) { return "Der Inhalt $Inhalt ist kein Git-Repo (git status: $($s.Text))." }
+    # GitLauf kürzt die Leerzeichen am Anfang der ersten Zeile: der Pfad steht nach dem Status (ein oder zwei Zeichen).
+    if (@($s.Text -split "`n" | Where-Object { $_ -and ($_ -replace '^\s*\S{1,2}\s+', '') -cne 'dashboard-lokal/Cargo.lock' }).Count) {
+        return 'dashboard-lokal im Inhalt hat offene Änderungen außer an Cargo.lock; erst committen oder verwerfen.'
+    }
+    return ''
 }
 
 # Ende von 4: Lock-Datei der Zusammenbau-Kiste auf die neue Fassung; wiederholbar.
+# Gibt '' zurück oder den Satz, was fehlt.
 function LockNachziehen([string]$version) {
     if (-not (Test-Path -LiteralPath (Join-Path $lokal 'Cargo.toml') -PathType Leaf)) {
         Write-Host "Hinweis: Neben dem Inhalt gibt es keine Zusammenbau-Kiste dashboard-lokal; keine Lock-Datei nachzuziehen."
-        return
+        return ''
     }
-    LockSauber
-    $weiter = "main trägt Fassung $version lokal (Merge und Tag). $NICHTS Nach der Behebung erneut aufrufen; es geht bei der Lock-Datei weiter."
+    $o = LockOffen
+    if ($o) { return $o }
     $u = Aufruf $lokal 'cargo' @('update', '-p', 'dashboard', '-p', 'dashboard-projekt', '--offline')
-    if ($u.Code -ne 0) { Ende 1 "Abbruch: cargo update in dashboard-lokal ist gescheitert (siehe oben). $weiter" }
+    if ($u.Code -ne 0) { return 'cargo update in dashboard-lokal ist gescheitert (siehe oben).' }
     $lock = [IO.File]::ReadAllText((Join-Path $lokal 'Cargo.lock'))
-    if ($lock -notmatch "(?m)^name = `"dashboard`"\r?\nversion = `"$([regex]::Escape($version))`"") { Ende 1 "Abbruch: dashboard-lokal/Cargo.lock trägt dashboard nicht mit $version. $weiter" }
+    if ($lock -notmatch "(?m)^name = `"dashboard`"\r?\nversion = `"$([regex]::Escape($version))`"") { return "dashboard-lokal/Cargo.lock trägt dashboard nicht mit $version." }
     if (-not (GitLauf $Inhalt @('status', '--porcelain', '--', 'dashboard-lokal/Cargo.lock')).Text) {
         Write-Host "dashboard-lokal/Cargo.lock steht schon auf $version."
-        return
+        return ''
     }
     # commit -- <pfad>: nur dieser Pfad, auch wenn im Inhalt anderes vorgemerkt ist.
     $c = GitLauf $Inhalt @('commit', '-q', '-m', "chore(dashboard-lokal): Cargo.lock auf Fassung $version", '--', 'dashboard-lokal/Cargo.lock') -Still
-    if ($c.Code -ne 0) { Ende 1 "Abbruch: Der Commit der Lock-Datei im Inhalt ging nicht durch: $($c.Text) $weiter" }
+    if ($c.Code -ne 0) { return "Der Commit der Lock-Datei im Inhalt ging nicht durch (git commit Exit $($c.Code))$(if ($c.Text) { ": $($c.Text)" } else { '.' })" }
     Write-Host "Inhalt: dashboard-lokal/Cargo.lock auf $version festgeschrieben."
+    return ''
 }
 
-# Der Stand einer Ref auf origin ('' ohne sie); ohne Verbindung Abbruch.
-function Fern([string]$ref) {
+# Der Stand einer Ref auf origin ('' ohne sie); ohne Verbindung Abbruch, $stand sagt, was draußen ist.
+function Fern([string]$ref, [string]$stand) {
     $l = GitLauf $repo @('ls-remote', 'origin', $ref) -Still
-    if ($l.Code -ne 0) { Ende 1 "Abbruch: origin ist nicht erreichbar (git ls-remote): $($l.Text) Lokal trägt main Fassung $version; nach der Behebung erneut aufrufen." }
+    if ($l.Code -ne 0) { Ende 1 "Abbruch: origin ist nicht erreichbar (git ls-remote): $($l.Text) $stand Nach der Behebung erneut aufrufen." }
     return (("$($l.Text)" -split "`n" | Select-Object -First 1) -split '\s+')[0]
+}
+
+# Was von der fertigen Fassung (main auf ihrem Merge mit Tag) schon draußen ist, als Satz.
+# main ist draußen, sobald origin/main es enthält (dort darf schon mehr liegen).
+function Draussen([string]$tag) {
+    $offen = "main trägt Fassung $($tag.Substring(1)) lokal (Merge und Tag); was davon schon draußen ist, ist offen."
+    $f = GitLauf $repo @('fetch', '-q', 'origin') -Still
+    if ($f.Code -ne 0) { Ende 1 "Abbruch: origin ist nicht erreichbar (git fetch origin): $($f.Text) $offen Nach der Behebung erneut aufrufen." }
+    $m = (GitLauf $repo @('rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main') -Still).Code -eq 0 -and
+        (GitLauf $repo @('merge-base', '--is-ancestor', 'refs/heads/main', 'refs/remotes/origin/main') -Still).Code -eq 0
+    $t = (Fern "refs/tags/$tag" $offen) -ceq (GitLauf $repo @('rev-parse', "refs/tags/$tag")).Text
+    $satz = if ($m -and $t) { "main und Tag $tag sind schon draußen." }
+    elseif ($m) { "main ist schon draußen, der Tag $tag noch nicht." }
+    elseif ($t) { "Der Tag $tag ist schon draußen, main noch nicht." }
+    else { "main trägt Fassung $($tag.Substring(1)) lokal (Merge und Tag). $NICHTS" }
+    return [pscustomobject]@{ Main = $m; Alles = ($m -and $t); Satz = $satz }
+}
+
+# Schritt 2 auf dem Arbeitsbaum (main); rot: Abbruch mit $stand (was schon draußen ist).
+function Pruefungen([string]$stand) {
+    $web = Join-Path $repo 'web'
+    foreach ($s in @(
+            @('cargo fmt --check', $repo, 'cargo', @('fmt', '--all', '--check')),
+            @('cargo clippy -D warnings', $repo, 'cargo', @('clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings')),
+            @('cargo test', $repo, 'cargo', @('test', '--workspace', '--locked')),
+            @('npm run verify', $web, 'npm', @('run', 'verify')),
+            @('pruefe --system docs/anleitung', $repo, 'cargo', @('run', '-q', '--locked', '--bin', 'dashboard', '--', 'pruefe', '--system', 'docs/anleitung')),
+            @('pruefe --system docs/zielbild', $repo, 'cargo', @('run', '-q', '--locked', '--bin', 'dashboard', '--', 'pruefe', '--system', 'docs/zielbild'))
+        )) {
+        Write-Host "$($s[0]) ..."
+        $r = Aufruf $s[1] $s[2] $s[3]
+        # pruefe ist erst mit 0 Fehlern und 0 Hinweisen grün.
+        if ($r.Code -ne 0 -or ($s[0] -like 'pruefe*' -and $r.Text -notmatch '(?m)^0 Fehler, 0 Hinweise\s*$')) { Ende 1 "Abbruch: $($s[0]) ist rot (siehe oben). $stand" }
+    }
+    Write-Host 'Prüfer über das, was hinausginge (Hochladen.ps1 -Pruefen) ...'
+    $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Pruefen', '-Inhalt', $Inhalt)
+    if ($h.Code -ne 0) { Ende 1 "Abbruch: Hochladen.ps1 -Pruefen ist rot (siehe oben). $stand" }
 }
 # Port wie Dienst.ps1: dienst.toml aus dem Aufruf des Dienstes, sonst 8787.
 function BetriebAdresse {
@@ -180,10 +236,20 @@ try {
     }
     $tag = @((GitLauf $repo @('tag', '--points-at', 'refs/heads/main', '--list', 'v*')).Text -split "`n" | Where-Object { $_ -cmatch $TAG_FORM }) | Select-Object -First 1
     $kopf = (GitLauf $repo @('log', '-1', '--format=%P%n%s', 'refs/heads/main')).Text -split "`n"
-    $wieder = -not $Pruefen -and $tag -and $kopf[1] -ceq "chore(release): $tag" -and @($kopf[0] -split ' ' | Where-Object { $_ }).Count -eq 2
-    if ($wieder) {
+    $fertig = $tag -and $kopf[1] -ceq "chore(release): $tag" -and @($kopf[0] -split ' ' | Where-Object { $_ }).Count -eq 2
+    if ($fertig) {
         $version = $tag.Substring(1)
-        Write-Host "Wiederaufnahme: main steht auf dem Merge chore(release): $tag mit Tag; weiter bei der Lock-Datei und Schritt 5."
+        $draussen = Draussen $tag
+        # Merge und Tag können ohne die Prüfungen entstanden sein (Fassung-Festschreiben.ps1 -Basis allein, von Hand): vor dem Hinaus prüfen.
+        if (-not $draussen.Main) {
+            if ((GitLauf $repo @('symbolic-ref', '--quiet', '--short', 'HEAD') -Still).Text -cne 'main' -or (GitLauf $repo @('status', '--porcelain')).Text) {
+                Ende 1 "Abbruch: Der Arbeitsbaum steht nicht sauber auf main; die Prüfungen vor dem Hinaus laufen auf ihm. $($draussen.Satz)"
+            }
+            Write-Host "Fassung $version ist lokal fertig, main noch nicht draußen: erst die Prüfungen."
+            Pruefungen $draussen.Satz
+        }
+        if ($Pruefen) { Ende 0 "Probe: Fassung $version ist lokal fertig (Merge chore(release): $tag mit Tag). $($draussen.Satz) Ein Aufruf ohne -Pruefen setzt bei der Lock-Datei fort und lädt hoch, was fehlt. Geändert wurde nichts." }
+        Write-Host "Wiederaufnahme: main steht auf dem Merge chore(release): $tag mit Tag; weiter bei der Lock-Datei und Schritt 5. $($draussen.Satz)"
     } else {
         # 1. Vorbedingungen.
         $f = GitLauf $repo @('fetch', '-q', 'origin') -Still
@@ -194,7 +260,18 @@ try {
             (GitLauf $repo @('merge-base', '--is-ancestor', 'refs/remotes/origin/main', 'refs/heads/main') -Still).Code -ne 0) {
             Ende 1 "Abbruch: main enthält origin/main nicht (kein Fast-Forward); erst origin/main einbringen. $NICHTS"
         }
-        LockSauber
+        # Die nächste Fassung leitet vom letzten Tag auf main ab; fehlt er draußen, entstünde dort eine Lücke in der Reihe.
+        $letzter = @((GitLauf $repo @('tag', '--merged', 'refs/heads/main', '--list', 'v*', '--sort=-v:refname')).Text -split "`n" | Where-Object { $_ -cmatch $TAG_FORM }) | Select-Object -First 1
+        if ($letzter) {
+            $l = GitLauf $repo @('ls-remote', '--tags', 'origin', "refs/tags/$letzter") -Still
+            if ($l.Code -ne 0) { Ende 1 "Abbruch: origin ist nicht erreichbar (git ls-remote): $($l.Text) $NICHTS" }
+            if (-not $l.Text) { Ende 1 "Abbruch: Der letzte Tag $letzter auf main ist nicht auf origin (sein Hochladen ging nicht durch); die nächste Fassung leitete von ihm ab, und draußen fehlte er in der Reihe. Erst main und ihn hinaus (scripts/Hochladen.ps1, dann scripts/Hochladen.ps1 -Tag $letzter), dann erneut aufrufen. $NICHTS" }
+            if ((($l.Text -split "`n")[0] -split '\s+')[0] -cne (GitLauf $repo @('rev-parse', "refs/tags/$letzter")).Text) {
+                Ende 1 "Abbruch: Der letzte Tag $letzter auf main zeigt auf origin auf einen anderen Commit als lokal; die nächste Fassung leitete von einem Stand ab, den es draußen so nicht gibt. Erst klären (kein Verschieben eines Tags draußen). $NICHTS"
+            }
+        }
+        $o = LockOffen
+        if ($o) { Ende 1 "Abbruch: $o $NICHTS" }
 
         # Genau dieser Stand wird geprüft und festgeschrieben; bewegt sich main bis dahin, bricht 4 ab.
         $basis = (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text
@@ -212,23 +289,7 @@ try {
         if ($l.Text) { Ende 1 "Abbruch: Den Tag v$version gibt es auf origin schon (kein Verschieben). $NICHTS" }
 
         # 2. Prüfen.
-        $web = Join-Path $repo 'web'
-        foreach ($s in @(
-                @('cargo fmt --check', $repo, 'cargo', @('fmt', '--all', '--check')),
-                @('cargo clippy -D warnings', $repo, 'cargo', @('clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings')),
-                @('cargo test', $repo, 'cargo', @('test', '--workspace', '--locked')),
-                @('npm run verify', $web, 'npm', @('run', 'verify')),
-                @('pruefe --system docs/anleitung', $repo, 'cargo', @('run', '-q', '--locked', '--bin', 'dashboard', '--', 'pruefe', '--system', 'docs/anleitung')),
-                @('pruefe --system docs/zielbild', $repo, 'cargo', @('run', '-q', '--locked', '--bin', 'dashboard', '--', 'pruefe', '--system', 'docs/zielbild'))
-            )) {
-            Write-Host "$($s[0]) ..."
-            $r = Aufruf $s[1] $s[2] $s[3]
-            # pruefe ist erst mit 0 Fehlern und 0 Hinweisen grün.
-            if ($r.Code -ne 0 -or ($s[0] -like 'pruefe*' -and $r.Text -notmatch '(?m)^0 Fehler, 0 Hinweise\s*$')) { Ende 1 "Abbruch: $($s[0]) ist rot (siehe oben). $NICHTS" }
-        }
-        Write-Host 'Prüfer über das, was hinausginge (Hochladen.ps1 -Pruefen) ...'
-        $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Pruefen', '-Inhalt', $Inhalt)
-        if ($h.Code -ne 0) { Ende 1 "Abbruch: Hochladen.ps1 -Pruefen ist rot (siehe oben). $NICHTS" }
+        Pruefungen $NICHTS
         if ($Pruefen) { Ende 0 "Probe: Fassung $version ginge so hinaus. Geändert wurde nichts." }
 
         # 4. Lokal festschreiben.
@@ -237,18 +298,24 @@ try {
         if ($r.Code -ne 0) { Ende $(if ($r.Code -eq 1) { 1 } else { 2 }) "Abbruch beim Festschreiben (siehe oben). $NICHTS" }
         $tag = "v$version"
         if ((GitLauf $repo @('rev-parse', "refs/tags/$tag^{commit}")).Text -ne (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text) { throw "Der Tag $tag steht nicht auf main." }
+        $draussen = [pscustomobject]@{ Main = $false; Alles = $false; Satz = "main trägt Fassung $version lokal (Merge und Tag). $NICHTS" }
     }
-    LockNachziehen $version
+    # Ist alles draußen, hält die Lock-Datei den Dienst nicht auf; sie wird nur gemeldet.
+    $hinweis = ''
+    $f = LockNachziehen $version
+    if ($f -and $draussen.Alles) {
+        $hinweis = "Die Lock-Datei im Inhalt ist nicht nachgezogen: $f"
+        Write-Host "Hinweis: $hinweis"
+    } elseif ($f) { Ende 1 "Abbruch: $f $($draussen.Satz) Nach der Behebung erneut aufrufen; es geht bei der Lock-Datei weiter." }
 
     # 5. Hinaus. Was origin schon hat, geht nicht noch einmal hinaus: Der Hook
     # bekäme dann keine Ref-Zeilen und wiese den Push ab.
-    $kopf = (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text
-    if ((Fern 'refs/heads/main') -ceq $kopf) { Write-Host 'main ist schon draußen.' } else {
+    if ($draussen.Main) { Write-Host 'main ist schon draußen.' } else {
         Write-Host 'main hinaus (Hochladen.ps1) ...'
         $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Inhalt', $Inhalt)
-        if ($h.Code -ne 0) { Ende 1 "Abbruch: main ging nicht hinaus (siehe oben); der Tag auch nicht. Lokal trägt main Fassung $version. Nach der Behebung erneut aufrufen." }
+        if ($h.Code -ne 0) { Ende 1 "Abbruch: main ging nicht hinaus (siehe oben). $($draussen.Satz) Nach der Behebung erneut aufrufen." }
     }
-    if ((Fern "refs/tags/$tag") -ceq $kopf) { Write-Host "Tag $tag ist schon draußen." } else {
+    if ((Fern "refs/tags/$tag" "main ist draußen; ob der Tag $tag draußen ist, ist offen.") -ceq (GitLauf $repo @('rev-parse', "refs/tags/$tag")).Text) { Write-Host "Tag $tag ist schon draußen." } else {
         Write-Host "Tag $tag hinaus (Hochladen.ps1 -Tag) ..."
         $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Tag', $tag)
         if ($h.Code -ne 0) { Ende 1 "Abbruch: main ist draußen, der Tag $tag nicht (siehe oben). Nach der Behebung erneut aufrufen." }
@@ -265,8 +332,9 @@ try {
     $satz = if (-not $laeuft) { 'Welche Fassung läuft, ist unklar: /api/betrieb nennt keine.' }
     elseif ($laeuft -ceq $version) { "Es läuft Fassung $laeuft." }
     else { "Es läuft Fassung $laeuft, nicht $version." }
-    if ($d.Code -eq 0 -and $laeuft -ceq $version) { Ende 0 "Freigegeben: Fassung $version ist draußen (main und Tag $tag). $satz" }
-    Ende 1 "Fassung $version ist draußen (main und Tag $tag), aber der Dienst ist rot (Dienst.ps1 Exit $($d.Code)). $satz Ein zweiter Aufruf wiederholt nur das Hochladen (ohne Wirkung) und den Dienst."
+    if ($d.Code -eq 0 -and $laeuft -ceq $version -and -not $hinweis) { Ende 0 "Freigegeben: Fassung $version ist draußen (main und Tag $tag). $satz" }
+    $dienstSatz = if ($d.Code -ne 0) { ", aber der Dienst ist rot (Dienst.ps1 Exit $($d.Code))." } elseif ($laeuft -cne $version) { ', aber dass der Dienst sie fährt, ist nicht bestätigt (Dienst.ps1 Exit 0).' } else { '.' }
+    Ende 1 "Fassung $version ist draußen (main und Tag $tag)$dienstSatz $satz $(if ($hinweis) { "$hinweis " })Ein zweiter Aufruf wiederholt nur die Lock-Datei, das Hochladen (ohne Wirkung) und den Dienst."
 } catch {
     Write-Host "FEHLER $($_.Exception.Message)"
     exit 2

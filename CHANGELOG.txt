@@ -49,7 +49,8 @@ Hinzugefügt
   Worktree, Merge-Commit auf main, leichter Tag. Festgeschrieben wird nur
   der geprüfte Stand: Bewegt sich main oder wechselt der Arbeitsbaum den
   Zweig, bricht es ab und nimmt alles zurück. -Pruefen sagt nur, welche
-  Fassung es würde. Hinaus geht nichts.
+  Fassung es würde. Festschreiben geht nur mit -Basis, also aus
+  Freigeben.ps1 nach allen Prüfungen. Hinaus geht nichts.
 - scripts/Freigeben.ps1 gibt eine Fassung in einem Aufruf heraus:
   Vorbedingungen (git fetch, main, sauber, nur Fast-Forward), Version und
   Changelog, alle Prüfungen (cargo fmt, clippy, cargo test, npm run
@@ -57,11 +58,12 @@ Hinzugefügt
   Zusammenbau-Kiste im Inhalt als eigener Commit, Hochladen von main und
   Tag, Dienst.ps1 -Neustart (nur bei sauberem Arbeitsbaum auf dem Tag) und
   die laufende Fassung aus /api/betrieb. Ein Tag, den es auf origin schon
-  gibt, wird vor jeder Wirkung abgewiesen; -Inhalt gilt auch für die Hooks
-  beim Push. Jeder
+  gibt, wird vor jeder Wirkung abgewiesen, ebenso ein letzter Tag auf main,
+  der auf origin fehlt; -Inhalt gilt auch für die Hooks beim Push. Jeder
   rote Schritt bricht vor jeder Wirkung nach außen ab; ein zweiter Aufruf
-  setzt nach dem Festschreiben wieder an. -Pruefen sagt nur, welche Fassung
-  hinausginge.
+  setzt nach dem Festschreiben wieder an, prüft erneut, solange main nicht
+  draußen ist, und seine Sätze nennen, was schon draußen ist. -Pruefen sagt nur, welche Fassung hinausginge, oder dass eine
+  fertige Fassung auf das Hochladen wartet.
 
 Geändert
 - Versionsregel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere
