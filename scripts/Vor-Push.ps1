@@ -46,7 +46,12 @@
                  Elternteil ändert), und ein Merge der Linie, der fremde
                  Commits hereinholt, ändert gegenüber seinem ersten
                  Elternteil keinen Prüfpfad: Änderungen am Prüfer übernimmt der
-                 Betreuer als eigenen Commit. Mit -AufMain und einem Bereich
+                 Betreuer selbst, in einem eigenen Merge ohne fremde Commits.
+                 Grenze: Die Regel hängt an der Angabe von Autor und
+                 Committer, die niemanden nachweist; ein Fork-Commit, der die
+                 feste Angabe fälscht, gilt als eigener (dagegen hilft nur,
+                 vor dem Merge git log --format=fuller zu lesen, Anleitung
+                 Abschnitt 15). Mit -AufMain und einem Bereich
                  a..b setzt die Linie a fort (erster Elternteil des ältesten
                  neuen Linien-Commits ist a). Für alle Commits: eine erste Zeile nicht
                  nach Conventional Commits (wie bei Nachricht, auch für
@@ -1080,6 +1085,8 @@ $beitragsMail = Rx ('^(?:(?:[0-9]+\+)?[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}@u
 # CONTRIBUTING.md bleibt frei: ein Textbeitrag; Regeln, die gelten, setzt dieser Prüfer durch.
 # Gilt in jeder Art. Im Projekt-Repo liegen diese Pfade ohnehin außerhalb der Positivliste;
 # dashboard-version.toml dort bleibt frei, sie nennt nur die Fassung (Abweichung ist ein Hinweis).
+# Grenze: Fremd heißt hier nur „Angabe nicht genau Ranke“. Ein Fork-Commit mit gefälschter
+# Ranke-Angabe ist für den Prüfer ein eigener; das erkennt nur das Lesen vor dem Merge (M2).
 $pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$)'
 
 # Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
@@ -1133,7 +1140,7 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         # M1: Änderungen am Prüfer kommen nie aus einem fremden Commit.
         if ($fremd) {
             foreach ($p in (EigenePfade $c)) {
-                if ($pruefPfad.IsMatch($p)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit" }
+                if ($pruefPfad.IsMatch($p)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
             }
         }
         # Das rohe Objekt: Die Nachricht ganz, auch hinter
@@ -1172,7 +1179,7 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         $wer = @((Git @('log', '--format=%an%x00%ae%x00%cn%x00%ce', "$($eltern[0])..$c")) -split "`n" | Where-Object { $_ })
         if (-not @($wer | Where-Object { $_ -cne $ranke }).Count) { continue }
         foreach ($p in @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $eltern[0], $c)) -split "`0" | Where-Object { $_ })) {
-            if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit" }
+            if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
         }
     }
     if ($nurMain) {

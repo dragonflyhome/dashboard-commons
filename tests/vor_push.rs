@@ -343,8 +343,13 @@ fn lizenzdateien_gehen_durch() {
     assert_eq!(code, 0, "{text}");
     // Das Formular verlangt das Kontrollkästchen zu den Regeln (required: true je Option).
     let formular = std::fs::read_to_string(wurzel.join(".github/ISSUE_TEMPLATE/merge-angebot.yml")).unwrap();
-    let kaesten = formular.split("type: checkboxes").nth(1).expect("Formular ohne Kontrollkästchen");
-    assert_eq!(kaesten.matches("- label:").count(), kaesten.matches("required: true").count(), "jede Option required: true:\n{kaesten}");
+    // Je Option die nächste Zeile, so zählt kein required eines anderen Feldes mit.
+    let zeilen: Vec<&str> = formular.lines().map(str::trim).collect();
+    let optionen: Vec<usize> = (0..zeilen.len()).filter(|&i| zeilen[i].starts_with("- label:")).collect();
+    assert!(!optionen.is_empty(), "Formular ohne Kontrollkästchen");
+    for i in optionen {
+        assert_eq!(zeilen.get(i + 1), Some(&"required: true"), "Option ohne required: true: {}", zeilen[i]);
+    }
     for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "LICENSES/GPL-3.0-only.txt", "docs/LICENSE", "rustfmt.toml.alt"] {
         abgewiesen(pfad, "Positivliste", |o| {
             o.datei(pfad, b"x\n");
@@ -3116,7 +3121,7 @@ fn beitraege_aus_forks_ohne_pruefer() {
     if !bereit() {
         return;
     }
-    let satz = "Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit";
+    let satz = "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits";
     for pfad in [
         "scripts/Vor-Push.ps1",
         "scripts/hooks/pre-push",
@@ -3166,6 +3171,26 @@ fn beitraege_aus_forks_ohne_pruefer() {
     };
     frei("Fork holt main", fork_merge(false));
     abgewiesen("Merge im Fork ändert scripts/", satz, fork_merge(true));
+    // Eine eigene Änderung an scripts/ geht nur in einem eigenen Merge ohne fremde Commits:
+    // im selben Seitenzweig wie ein Beitrag ist sie ein Fund am Merge der Linie.
+    let gemischt = |getrennt: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            if getrennt {
+                o.ueber_merge(|o| o.datei("scripts/p.ps1", b"# p\n"));
+            }
+            o.git(&["checkout", "-q", "-B", "zweig"]);
+            if !getrennt {
+                o.datei("scripts/p.ps1", b"# p\n");
+                o.commit("fix: p", &[]);
+            }
+            o.datei("src/b.rs", b"// b\n");
+            o.commit("feat: b", &als_beitrag(&mail));
+            zusammenfuehren(o);
+        }
+    };
+    frei("eigener Merge für scripts/", gemischt(true));
+    abgewiesen("scripts/ im Seitenzweig eines Beitrags", "der Merge übernimmt fremde Commits und ändert den Prüfpfad scripts/p.ps1", gemischt(false));
 }
 
 /// Hook, Hochladen (-Commits fern..main), -Pruefen und -Bundle bestimmen die Linie
@@ -3238,7 +3263,7 @@ fn beitraege_aus_forks_alter_stand() {
     if !bereit() {
         return;
     }
-    let satz = "Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit";
+    let satz = "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits";
     let mail = NOREPLY.replace('§', "");
     // `erster_fork`: erster Elternteil ist ein eigener Fork-Commit statt main.
     let aufbau = |alt_zurueck: bool, erster_fork: bool| {
@@ -3343,7 +3368,7 @@ fn beitraege_aus_forks_im_overlay() {
             }
             _ => {
                 beitrag(&o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei("scripts/x.ps1", b"# x\n"));
-                "Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit"
+                "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits"
             }
         };
         for (weg, (code, text)) in laeufe(&o) {
@@ -3399,7 +3424,8 @@ fn echter_fork_nach_leitfaden() {
         // Die Betreuer holen die Ref, ohne etwas auszuführen, und übernehmen sie mit einem Merge-Commit.
         o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
         assert_eq!(o.git(&["rev-parse", "FETCH_HEAD"]), angebot);
-        o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "FETCH_HEAD", "-m", "chore(merge): beitrag nach main"]);
+        // Gemergt wird genau die gelesene Kennung, nicht der Zweig (der im Fork weiterwandern kann).
+        o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", &angebot, "-m", "chore(merge): beitrag nach main"]);
         let kopf = o.git(&["rev-parse", "main"]);
         for (weg, (code, text)) in [
             ("Hochladen", o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None)),

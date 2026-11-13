@@ -27,6 +27,7 @@ Hinzugefügt
 - Ein fremder Commit ändert keinen Prüfpfad (scripts/, .cargo/, .github/,
   tests/vor_push.rs, KONTAKT-PGP.asc), und ein Merge der Linie, der fremde
   Commits hereinholt, ändert sie gegenüber seinem ersten Elternteil nicht.
+  Eigene Änderungen daran kommen in einem eigenen Merge ohne fremde Commits.
 - Issue-Formular .github/ISSUE_TEMPLATE/merge-angebot.yml (Fork-URL, Ref,
   Beschreibung, Pflicht-Kontrollkästchen zu den Regeln); die Positivliste
   lässt genau die Formulare darin zu, ohne config.yml.
@@ -41,7 +42,9 @@ Geändert
   Merge falsch herum).
 - Anleitung, Abschnitte 14, 15 und 17: die Regel für Beiträge aus Forks, wie
   die Betreuer ein Angebot übernehmen (erst den ganzen Diff lesen, dann
-  bauen) und wer Antworten in Issues sendet.
+  bauen; genau die gelesene Commit-Kennung mergen; Autor und Committer
+  lesen, weil eine gefälschte Angabe der Betreuer am Prüfer vorbeigeht) und
+  wer Antworten in Issues sendet.
 
 0.4.0 - 2026-11-13
 ------------------
