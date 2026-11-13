@@ -34,13 +34,21 @@ fn grenzwert<'a>(zeiten: impl Iterator<Item = &'a String>, spaeteste: bool) -> O
     beste.map(|(_, z)| z.clone())
 }
 
+/// Erstes Wort eines Zustands im Verlauf („laeuft, dran: chat:x“ → „laeuft“).
+fn erstes_wort(s: &str) -> &str {
+    s.split(',').next().unwrap_or_default().trim()
+}
+
 /// Wann sich der Stand einer Arbeit zuletzt bewegt haben kann: der späteste
 /// Verlaufseintrag `stand` oder zu einem Schritt (Schritte bestimmen den
-/// Stand), sonst `geaendert`. Pflege (`besitzer`, `etappe`, `titel`; Notiz und
-/// Frist ohne Eintrag) rückt `geaendert` vor, diesen Zeitpunkt nicht.
+/// Stand), dessen erstes Wort wechselt, sonst `geaendert`. Pflege (`besitzer`,
+/// `etappe`, `titel`, eine Notiz oder ein neuer Besitzer am Schritt; Notiz und
+/// Frist der Arbeit ohne Eintrag) zählt nicht.
 pub(crate) fn letzte_bewegung(a: &Arbeit) -> &String {
     use ArbeitVerlaufArt::{SchrittAngelegt, SchrittGeaendert, SchrittGeweckt, SchrittUebernommen, Stand};
-    let zaehlt = |e: &&ArbeitVerlauf| matches!(e.art, Stand | SchrittAngelegt | SchrittUebernommen | SchrittGeaendert | SchrittGeweckt);
+    let zaehlt = |e: &&ArbeitVerlauf| {
+        matches!(e.art, Stand | SchrittAngelegt | SchrittUebernommen | SchrittGeaendert | SchrittGeweckt) && erstes_wort(&e.alt) != erstes_wort(&e.neu)
+    };
     a.verlauf.iter().filter(zaehlt).filter_map(|e| zeit(&e.zeit).map(|t| (t, &e.zeit))).max_by_key(|(t, _)| *t).map_or(&a.geaendert, |(_, z)| z)
 }
 
@@ -52,16 +60,15 @@ pub(crate) struct Zeiten {
     pub ungefaehr: bool,
 }
 
-pub(crate) fn zeiten<'a>(a: &'a Arbeit) -> Zeiten {
+pub(crate) fn zeiten(a: &Arbeit) -> Zeiten {
     let mut begonnen = None;
     let (mut fertig_stand, mut fertig_schritt) = (None, None);
     for e in &a.verlauf {
         // SchrittAngelegt trägt in `neu` meist den Titel, keinen Stand.
-        let erstes = |s: &'a str| s.split(',').next().unwrap_or_default().trim();
         let (alt, neu, aus_stand) = match e.art {
             ArbeitVerlaufArt::Stand => (e.alt.as_str(), e.neu.as_str(), true),
             ArbeitVerlaufArt::SchrittUebernommen | ArbeitVerlaufArt::SchrittGeaendert | ArbeitVerlaufArt::SchrittGeweckt => {
-                (erstes(&e.alt), erstes(&e.neu), false)
+                (erstes_wort(&e.alt), erstes_wort(&e.neu), false)
             }
             _ => continue,
         };
@@ -320,15 +327,18 @@ mod tests {
         assert_eq!((p.etappen[0].stand, p.etappen[0].begonnen.clone(), p.etappen[0].dazugekommen), (EtappenStand::Geplant, None, 0));
     }
 
-    /// Altbestand ohne Eintrag „fertig“: Ersatz ist die letzte Bewegung (Eintrag
-    /// zu einem Schritt), nicht ein späterer Besitzer-Eintrag, der `geaendert`
-    /// vorrückt. Gegenprobe: nur Pflege im Verlauf, dann gilt `geaendert`.
+    /// Altbestand ohne Eintrag „fertig“: Ersatz ist die letzte Bewegung (Wechsel
+    /// an einem Schritt), nicht eine spätere Notiz am Schritt oder ein
+    /// Besitzer-Eintrag, die `geaendert` vorrücken. Gegenprobe: nur Pflege im
+    /// Verlauf, dann gilt `geaendert`.
     #[test]
     fn fertig_ungefaehr_ohne_pflege() {
         let mut a = arbeit("ar-20261101-0001", "p", ArbeitsStand::Fertig, Some("p/eins"), t(1, 9), t(13, 9));
         a.verlauf = vec![
             eintrag(ArbeitVerlaufArt::SchrittUebernommen, t(2, 10), "als-naechstes", "laeuft, dran: chat:p"),
-            eintrag(ArbeitVerlaufArt::SchrittGeaendert, t(4, 10), "laeuft, dran: chat:p", "laeuft, dran: chat:p"),
+            eintrag(ArbeitVerlaufArt::SchrittGeaendert, t(4, 10), "laeuft, dran: chat:p", "wartet, dran: chat:p"),
+            // Nur die Notiz am Schritt geändert (gleicher Zustand): Pflege.
+            eintrag(ArbeitVerlaufArt::SchrittGeaendert, t(12, 10), "wartet, dran: chat:p", "wartet, dran: chat:p"),
             eintrag(ArbeitVerlaufArt::Besitzer, t(13, 9), "chat:p", ""),
         ];
         let z = zeiten(&a);

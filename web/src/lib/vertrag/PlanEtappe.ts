@@ -24,8 +24,9 @@ begonnen: string | null,
 fertig: string | null, 
 /**
  * `fertig` ist ungefähr: mindestens eine Arbeit hat keinen Eintrag dazu
- * im Verlauf, für sie gilt ihr letzter Eintrag `stand` oder zu einem
- * Schritt, ohne ihn ihre letzte Änderung (Pflege wie `besitzer` zählt nicht).
+ * im Verlauf, für sie gilt ihr letzter Wechsel im Verlauf (`stand` oder
+ * an einem Schritt), ohne ihn ihre letzte Änderung (Pflege wie `besitzer`
+ * oder eine Notiz am Schritt zählt nicht).
  */
 ungefaehr: boolean, 
 /**

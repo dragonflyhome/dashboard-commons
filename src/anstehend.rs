@@ -1561,11 +1561,13 @@ mod tests {
             neu: neu.into(),
             text: String::new(),
         };
-        // Ohne Eintrag „wartet“ zählt die letzte Bewegung; ein späterer Besitzer-Eintrag (Pflege) nicht.
-        let art = |art, zeit: &str| crate::vertrag::anstehend::ArbeitVerlauf { art, ..eintrag(zeit, "laeuft") };
+        // Ohne Eintrag „wartet“ zählt die letzte Bewegung; eine spätere Notiz am Schritt
+        // (laeuft → laeuft) und ein Besitzer-Eintrag (Pflege) nicht.
+        let art = |art, zeit: &str, neu: &str| crate::vertrag::anstehend::ArbeitVerlauf { art, ..eintrag(zeit, neu) };
         i.speicher.arbeiten[0].verlauf = vec![
-            art(crate::vertrag::anstehend::ArbeitVerlaufArt::SchrittGeaendert, "2026-10-20T08:00:00+01:00"),
-            art(crate::vertrag::anstehend::ArbeitVerlaufArt::Besitzer, "2026-10-29T08:00:00+01:00"),
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::SchrittGeaendert, "2026-10-20T08:00:00+01:00", "wartet"),
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::SchrittGeaendert, "2026-10-25T08:00:00+01:00", "laeuft"),
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::Besitzer, "2026-10-29T08:00:00+01:00", "laeuft"),
         ];
         assert_eq!(grund(&i, "dashboard"), (StandAmpel::Rot, AmpelGrund::WartetLange, Some(9)), "Pflege kürzt das Warten nicht");
         i.speicher.arbeiten[0].verlauf = vec![

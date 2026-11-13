@@ -19,6 +19,6 @@ etappe: string | null,
 fertig: string | null, 
 /**
  * `fertig` ist geschätzt, kein Eintrag dazu im Verlauf: der letzte
- * Eintrag `stand` oder zu einem Schritt, ohne ihn die letzte Änderung.
+ * Wechsel (`stand` oder an einem Schritt), ohne ihn die letzte Änderung.
  */
 ungefaehr: boolean, };
