@@ -1,0 +1,35 @@
+# Abschnitt „Was nur unter Windows läuft“ (Format wie docs/zielbild).
+titel = 'Was nur unter Windows läuft'
+reihenfolge = 219
+
+[[block]]
+text = '''
+Das Dashboard wird unter Windows gebaut, geprüft und betrieben. Alle Prüfwege laufen auf einem Windows-PC; Code, der nur für andere Systeme übersetzt würde, prüft heute niemand. Dieser Abschnitt sagt ehrlich, was davon an Windows hängt und was ohne Windows geht, damit ein Fork für ein anderes System weiß, wo er ansetzen muss.'''
+
+[[block]]
+titel = 'Nur unter Windows'
+punkte = [
+  'Dienst: Der Betrieb als Windows-Dienst (Dienststeuerung, Neustart, Wächter) gibt es nur unter Windows.',
+  'Anmeldung: Die erste Anmeldung läuft über das Windows-Konto (Negotiate). Ohne Windows kommt nur ein schon registrierter Passkey durch; den ersten Passkey kann nur das Hauptkonto über die Windows-Anmeldung anlegen.',
+  'Verschlüsselung: Die Anmeldelinks im Datenspeicher sind mit DPAPI verschlüsselt. Außerhalb von Windows bricht der Bau der Bibliothek deshalb ab; nur cargo test --lib übersetzt dort. Die Schlüssel liegen im Windows-Tresor (Anmeldeinformationsverwaltung).',
+  'Bote: Der Bote (Bauen, Git, Öffnen) läuft als eigener Windows-Prozess mit Job-Objekt. Ohne ihn baut der Dienst nur im eigenen Prozess und ohne Zeitgrenze für Kindprozesse; Öffnen antwortet dann mit 503.',
+  'PC-Seite: Sie liest PowerShell, die Registry und winget und bleibt ohne Windows leer.',
+  'Werkzeugorte: Außerhalb von Windows kennt der Dienst Git nur unter /usr/bin/git.',
+  'Schwärzen: Benutzerpfade werden nur in Windows-Form erkannt (Laufwerksbuchstabe, Profilordner, Windows-Benutzername). Pfade der Form /Users/<name> oder /home/<name> werden heute nicht geschwärzt, auch nicht in der Oberfläche.',
+  'Orte: Mehrere Ablageorte kommen nur aus den Windows-Umgebungsvariablen für Profil und lokale Anwendungsdaten, ohne Rückfall auf HOME (unter anderem Zusammenbau-Wächter, Protokoll des Boten, Herzschlag, Öffnen).',
+  'Chat-Wege: Die Skripte für Chats (Anfrage, Api, Warten) melden sich mit dem Windows-Konto an (Negotiate). Ohne Windows braucht ein Chat einen eigenen Anmeldeweg.',
+  'Skripte: Bau-, Einspiel- und Dienstskripte setzen .exe-Dateien, die Registry (HKCU) und Windows-Schnittstellen (advapi32) voraus.',
+  'Tests: Einige Tests erwarten Windows-Pfade oder Windows PowerShell und laufen auf anderen Systemen nicht durch.',
+]
+
+[[block]]
+titel = 'Geht ohne Windows'
+punkte = [
+  'Der Datenspeicher (redb).',
+  'Das SDK für Projekt-Backends; es hat keinen Bezug zum Betriebssystem.',
+  'Der Bau der Oberfläche (SvelteKit) weitgehend, ebenso ihre Prüfungen (Prettier, ESLint, svelte-check, Vitest).',
+]
+
+[[block]]
+text = '''
+Wer das Dashboard auf einem anderen System betreiben will, portiert im eigenen Fork. Was unter Windows unverändert bleibt und dort mit Tests prüfbar ist, kann als Merge-Angebot zurück ins Basis-Repo kommen; der Weg dafür steht im Leitfaden für Mitwirkende in der Wurzel des Repos.'''

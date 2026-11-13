@@ -14,6 +14,11 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
+  hängt (Dienst, Anmeldung, Verschlüsselung, Bote, PC-Seite, Schwärzen, Orte,
+  Chat-Wege, Skripte) und was ohne Windows geht.
+
 0.4.0 - 2026-11-13
 ------------------
 
