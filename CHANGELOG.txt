@@ -164,8 +164,12 @@ Geändert
   build im Repo ändert die laufende Seite nicht mehr. Der Weg zurück bringt
   Programm und Oberfläche gemeinsam zurück; scheitert der Austausch, bleiben
   beide die alten. Ein grüner Bau über den Boten (web\builds\aktuell) gilt
-  weiter sofort; ohne bin\web (vor dem ersten -Neustart, ohne Dienst) wie
-  bisher web\build.
+  sofort, aber nur mit demselben Grundbau wie bin\web (Abdruck von web/src
+  ohne die Bauliste, in _app/version.json); ein Bau aus einem neueren
+  web/src wartet auf den nächsten -Neustart, und /api/betrieb nennt das
+  unter den Störungen. Dienst-Einrichten.ps1 spielt bin\web mit ein, wenn es
+  Programme erneuert oder bin\web fehlt (nur ohne Verknüpfungen). Ohne
+  bin\web (ohne Dienst) wie bisher web\build.
 - Projektseite: Kennt der laufende Dienst /backlog, /plan oder /verlauf
   nicht (404, 405) oder fehlen in der Antwort Felder, zeigt nur dieser Teil
   „Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.“; die

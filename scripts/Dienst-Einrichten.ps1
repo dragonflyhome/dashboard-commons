@@ -747,6 +747,35 @@ function EntferneRepoRechte([string]$sid, [string]$name) {
     }
 }
 
+# Die Oberfläche des Dienstes ist eine Kopie in bin\web (app::WebOrt) und gehört
+# zu den Programmen: Wurden sie erneuert oder fehlt sie, kommt web\build dazu,
+# die vorige als bin\web.alt (wie Dienst.ps1 -Neustart). Das Skript läuft als
+# Administrator und bin ist für den Inhaber änderbar: kopiert und gelöscht wird
+# nur ohne Verknüpfungen. Gibt den Satz für das Protokoll zurück, wirft sonst.
+function OberflaecheEinspielen([string]$bin, [string]$build, [bool]$programmeNeu) {
+    $web = Join-Path $bin 'web'
+    $neu = Join-Path $bin 'web.neu'
+    $alt = Join-Path $bin 'web.alt'
+    if (-not $programmeNeu -and (Test-Path -LiteralPath (Join-Path $web 'index.html') -PathType Leaf)) { return "Oberfläche in $web ist schon da" }
+    $oben = Split-Path -Parent $build
+    if (((Get-Item -LiteralPath $oben -Force).Attributes -band $rp) -ne 0) { throw "$oben ist eine Verknüpfung; kopiert wird nur ohne Verknüpfungen." }
+    foreach ($o in @($build, $neu, $alt, $web)) {
+        if (-not (Test-Path -LiteralPath $o)) { continue }
+        $v = Erste-Verknuepfung $o
+        if ($v) { throw "In $o liegt eine Verknüpfung ($v); kopiert und gelöscht wird nur ohne Verknüpfungen. Bitte prüfen und entfernen, dann erneut einrichten." }
+    }
+    if (Test-Path -LiteralPath $neu) { Remove-Item -LiteralPath $neu -Recurse -Force }
+    Copy-Item -LiteralPath $build -Destination $neu -Recurse
+    if (-not (Test-Path -LiteralPath (Join-Path $neu 'index.html') -PathType Leaf)) { throw "In $neu fehlt nach dem Kopieren index.html." }
+    $vorige = Test-Path -LiteralPath $web
+    if ($vorige) {
+        if (Test-Path -LiteralPath $alt) { Remove-Item -LiteralPath $alt -Recurse -Force }
+        Move-Item -LiteralPath $web -Destination $alt
+    }
+    Move-Item -LiteralPath $neu -Destination $web
+    return "Oberfläche aus $build nach $web kopiert$(if ($vorige) { " (vorige als $alt)" })"
+}
+
 # Erst die Aufgabe anhalten, dann Wächter (--waechter) und Boten beenden,
 # den Wächter zuerst, damit er den Boten nicht neu startet.
 function StoppeBoten([string]$boteExe, [string]$ordner, [string]$name) {
@@ -875,6 +904,7 @@ function Richte-Ein {
 
     # Programme.
     $script:schritt = "Programme nach $bin kopieren"
+    $programmeNeu = $false
     foreach ($n in $programme) {
         $q = Join-Path $quelle $n
         $z = Join-Path $bin $n
@@ -886,11 +916,16 @@ function Richte-Ein {
             Move-Item -LiteralPath $z -Destination (Join-Path $bin ($n -replace '\.exe$', '.alt.exe')) -Force
             Copy-Item -LiteralPath $q -Destination $z
             Zeile "${vor}$n erneuert (vorige Fassung als $($n -replace '\.exe$', '.alt.exe'))"
+            $programmeNeu = $true
         } else {
             Copy-Item -LiteralPath $q -Destination $z
             Zeile "${vor}$n kopiert"
+            $programmeNeu = $true
         }
     }
+
+    $script:schritt = "Oberfläche nach $bin\web kopieren"
+    Zeile ("${vor}" + (OberflaecheEinspielen $bin (Join-Path $repo 'web\build') $programmeNeu))
 
     # Datenspeicher (nur der echte Dienst).
     if (-not $Test) {

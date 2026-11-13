@@ -523,7 +523,7 @@ function TauscheProgramme([string]$quelle, [string]$oberflaeche) {
             try { Move-Item -LiteralPath $alt -Destination $z -Force -ErrorAction Stop }
             catch { Write-Host "Achtung: $alt ließ sich nicht nach $n zurückholen ($($_.Exception.Message))." }
         }
-        return "Der Austausch der Programme ist gescheitert ($grund); die vorige Fassung liegt wieder in $($script:bin)."
+        return "Der Austausch der Programme ist gescheitert ($grund); die vorige Fassung liegt wieder in $($script:bin).$(if ($webVerschoben -and -not (Test-Path -LiteralPath (Join-Path $web 'index.html'))) { " Nur $web fehlt: Bis zum nächsten -Neustart kommt die Oberfläche aus web\build im Repo." })"
     }
 }
 
@@ -544,7 +544,7 @@ function OberflaecheZurueck {
             throw
         }
     } catch {
-        return "$webAlt ließ sich nicht zurückholen ($($_.Exception.Message)); die Oberfläche bleibt die neue."
+        return "$webAlt ließ sich nicht zurückholen ($($_.Exception.Message)); $(if (Test-Path -LiteralPath (Join-Path $web 'index.html')) { 'die Oberfläche bleibt die neue.' } else { "$web fehlt: Bis zum nächsten -Neustart kommt die Oberfläche aus web\build im Repo." })"
     }
     Remove-Item -LiteralPath $weg -Recurse -Force -ErrorAction SilentlyContinue
     return $null

@@ -11,7 +11,9 @@
     Neustart ohne bin\web, zweiter mit bin\web.alt, Rückweg, gescheiterter
     Austausch (Programm fehlt, Oberfläche fehlt) bringt Programme und
     Oberfläche zurück, ein Bau ohne index.html wird nicht bereitgelegt, ein
-    Bau im Repo nach dem Einspielen ändert bin\web nicht. Die Testwurzel
+    Bau im Repo nach dem Einspielen ändert bin\web nicht. Dazu das Einspielen
+    beim Einrichten (Dienst-Einrichten.ps1, OberflaecheEinspielen): nur mit neuen
+    Programmen oder ohne bin\web, nie über Verknüpfungen. Die Testwurzel
     verschwindet danach wieder.
 
     Ohne Pester, ohne Administrator, ohne Netz. Aufruf aus dem Repo, in beiden Shells:
@@ -41,6 +43,16 @@ foreach ($name in $gesucht) {
     if ($f.Count -ne 1) { Write-Host "FEHLER Dienst.ps1: Funktion $name fehlt (oder steht doppelt)"; exit 1 }
     . ([ScriptBlock]::Create($f[0].Extent.Text))
 }
+# Dazu aus Dienst-Einrichten.ps1 das Einspielen beim Einrichten (mit der Suche nach Verknüpfungen).
+$skriptE = Join-Path (Join-Path $repo 'scripts') 'Dienst-Einrichten.ps1'
+$astE = [System.Management.Automation.Language.Parser]::ParseFile($skriptE, [ref]$token, [ref]$parseFehler)
+if ($parseFehler.Count -gt 0) { Write-Host "FEHLER Dienst-Einrichten.ps1: $($parseFehler[0].Message)"; exit 1 }
+foreach ($name in @('OberflaecheEinspielen', 'Erste-Verknuepfung')) {
+    $f = @($astE.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true))
+    if ($f.Count -ne 1) { Write-Host "FEHLER Dienst-Einrichten.ps1: Funktion $name fehlt (oder steht doppelt)"; exit 1 }
+    . ([ScriptBlock]::Create($f[0].Extent.Text))
+}
+$rp = [IO.FileAttributes]::ReparsePoint
 
 $script:fehler = 0
 function Pruefe([string]$was, [bool]$ok, [string]$sonst = '') {
@@ -124,6 +136,39 @@ try {
     # 7. Ohne Oberfläche (kein web\package.json): nur die Programme, bin\web bleibt.
     $f = TauscheProgramme (Programme (Join-Path $wurzel 'q5') 'p5') $null
     Pruefe '7 nur Programme' (-not $f -and -not $script:oberflaecheGetauscht -and (Seite $web) -eq 'u1' -and (Inhalt (Join-Path $script:bin 'dashboard.exe')) -eq 'p5') "$f"
+
+    # 8. Einrichten (Dienst-Einrichten.ps1): bin\web nur neu, wenn die Programme neu sind oder sie fehlt.
+    $binE = Join-Path $wurzel 'binE'
+    New-Item -ItemType Directory -Force -Path $binE | Out-Null
+    $webE = Join-Path $binE 'web'
+    Bau 'e1'
+    $s = OberflaecheEinspielen $binE $build $false
+    Pruefe '8 frisch: kopiert' ((Seite $webE) -eq 'e1' -and -not (Test-Path (Join-Path $binE 'web.alt')) -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
+    Bau 'e2'
+    $s = OberflaecheEinspielen $binE $build $false
+    Pruefe '8 Programme gleich: bin\web bleibt' ((Seite $webE) -eq 'e1' -and $s -match 'schon da') "$s"
+    $s = OberflaecheEinspielen $binE $build $true
+    Pruefe '8 Programme neu: bin\web e2, web.alt e1' ((Seite $webE) -eq 'e2' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e1') "$s"
+    Bau 'e3'
+    $s = OberflaecheEinspielen $binE $build $true
+    Pruefe '8 noch einmal: web.alt ist die vorige' ((Seite $webE) -eq 'e3' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e2') "$s"
+
+    # 9. Verknüpfungen: in web\build wird nicht kopiert, in web.alt nicht gelöscht; das Ziel bleibt.
+    $ziel = Join-Path $wurzel 'fremd'
+    New-Item -ItemType Directory -Force -Path $ziel | Out-Null
+    [IO.File]::WriteAllText((Join-Path $ziel 'geheim.txt'), 'bleibt')
+    Bau 'e4'
+    $link = Join-Path $build 'link'
+    New-Item -ItemType Junction -Path $link -Target $ziel | Out-Null
+    $s = try { OberflaecheEinspielen $binE $build $true; 'kein Fehler' } catch { $_.Exception.Message }
+    [IO.Directory]::Delete($link)
+    Pruefe '9 Verknüpfung in web\build: Abbruch, bin\web bleibt' ($s -match 'Verknüpfung' -and (Seite $webE) -eq 'e3' -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
+    $link = Join-Path (Join-Path $binE 'web.alt') 'link'
+    New-Item -ItemType Junction -Path $link -Target $ziel | Out-Null
+    $s = try { OberflaecheEinspielen $binE $build $true; 'kein Fehler' } catch { $_.Exception.Message }
+    $bleibt = Inhalt (Join-Path $ziel 'geheim.txt')
+    [IO.Directory]::Delete($link)
+    Pruefe '9 Verknüpfung in web.alt: Abbruch, Ziel unberührt, bin\web bleibt' ($s -match 'Verknüpfung' -and $bleibt -eq 'bleibt' -and (Seite $webE) -eq 'e3') "$s"
 } finally {
     Remove-Item -LiteralPath $wurzel -Recurse -Force -ErrorAction SilentlyContinue
 }

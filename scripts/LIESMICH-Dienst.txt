@@ -11,8 +11,10 @@ Was hier liegt
                 dashboard-bote.exe (der Bote, siehe unten). Daneben die
                 vorige Fassung als *.alt.exe. In bin\web die Oberfläche,
                 die der Dienst ausliefert (eine Kopie von web\build aus dem
-                letzten -Neustart, die vorige in bin\web.alt). Ein Bau im
-                Repo ändert sie nicht.
+                letzten -Neustart oder Einrichten, die vorige in
+                bin\web.alt). Ein npm run build im Repo ändert sie nicht;
+                ein Bau des Boten gilt nur mit demselben Grundbau, sonst
+                erst nach dem nächsten -Neustart.
   daten\        Der Datenspeicher dashboard.redb. Er gehört nur dem Dienst.
                 Bitte nicht öffnen, nicht kopieren, nicht ändern, solange
                 der Dienst läuft. Auch Ihr Konto hat hier absichtlich keinen
