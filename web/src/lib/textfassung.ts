@@ -316,6 +316,12 @@ export const BILD_BAUSTEINE: Readonly<Record<string, BildBaustein>> = {
 		name: 'Ordner (/pc)',
 		ort: 'eingebaut',
 		grund: 'Unter dem Anteils-Balken steht die Tabelle mit Name, Größe und Dateien je Ordner'
+	},
+	'lib/katalog/Plan.svelte': {
+		name: 'Plan (Projektseite)',
+		ort: 'eingebaut',
+		grund:
+			'Zeitstreifen und kleine Balken sind aria-hidden; die Liste der Etappen darunter nennt Stand-Wort, Datum und „x von y Arbeiten fertig“'
 	}
 };
 
