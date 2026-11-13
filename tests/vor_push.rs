@@ -315,7 +315,8 @@ fn sauberes_repo_geht_durch() {
 /// LICENSE (AGPL), LICENSES/CC0-1.0.txt und LICENSES/GPL-3.0-or-later.txt gehen mit ihrem
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
 /// Ebenso die schon committeten Wurzeldateien rustfmt.toml, .git-blame-ignore-revs und
-/// CONTRIBUTING.md (die einzige erlaubte *.md, mit ihrem echten Text).
+/// CONTRIBUTING.md (die einzige erlaubte *.md, mit ihrem echten Text) und der öffentliche
+/// Schlüssel KONTAKT-PGP.asc (nur in der Wurzel; ein privater Block ist überall ein Fund).
 #[test]
 fn lizenzdateien_gehen_durch() {
     if !bereit() {
@@ -324,7 +325,9 @@ fn lizenzdateien_gehen_durch() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
     let o = Ort::neu();
     o.ueber_merge(|o| {
-        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs", "CONTRIBUTING.md"] {
+        for pfad in
+            ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs", "CONTRIBUTING.md", "KONTAKT-PGP.asc"]
+        {
             o.datei(pfad, &std::fs::read(wurzel.join(pfad)).unwrap());
         }
     });
@@ -571,12 +574,41 @@ fn orte_und_dateien() {
         ("docs/CONTRIBUTING.md", "Markdown-Datei"),
         ("web/CONTRIBUTING.md", "Markdown-Datei"),
         ("CONTRIBUTING.md.alt", "Positivliste"),
+        ("docs/KONTAKT-PGP.asc", "Positivliste"),
     ] {
         abgewiesen(pfad, satz, |o| {
             o.datei(pfad, b"x\n");
             o.commit("x", &[]);
         });
     }
+    // Die Blöcke werden zusammengesetzt, damit diese Datei selbst keinen enthält.
+    let strich = "-".repeat(5);
+    for (pfad, art) in [("KONTAKT-PGP.asc", "PGP PRIVATE KEY BLOCK"), ("tests/daten/id.txt", "OPENSSH PRIVATE KEY"), ("src/a.rs", "PRIVATE KEY")] {
+        let block = format!("{strich}BEGIN {art}{strich}\nabc\n{strich}END {art}{strich}\n");
+        abgewiesen(pfad, "privater Schlüssel", |o| {
+            o.datei(pfad, block.as_bytes());
+            o.commit("x", &[]);
+        });
+    }
+    let putty = format!("PuTTY-User-Key-{}-3: ssh-ed25519\n", "File");
+    abgewiesen("PuTTY-Schlüssel", "privater Schlüssel", |o| {
+        o.datei("tests/daten/id.ppk.txt", putty.as_bytes());
+        o.commit("x", &[]);
+    });
+    // Nur in einem Zwischencommit, an der Spitze wieder entfernt: die Verlaufsprüfung findet ihn.
+    let zwischen = format!("{strich}BEGIN RSA PRIVATE KEY{strich}\nabc\n");
+    abgewiesen("privater Block im Zwischencommit", "privater Schlüssel", |o| {
+        o.ueber_merge(|o| {
+            o.datei("tests/daten/k.txt", zwischen.as_bytes());
+            o.commit("x", &[]);
+            o.datei("tests/daten/k.txt", b"leer\n");
+        });
+    });
+    let nachricht = format!("fix: x\n\n{strich}BEGIN OPENSSH PRIVATE KEY{strich}\n");
+    abgewiesen("privater Block in der Nachricht", "privater Schlüssel", |o| {
+        o.datei("src/b.rs", b"// x\n");
+        o.commit(&nachricht, &[]);
+    });
     abgewiesen("Projektname als Pfad", "Projektname als Pfad", |o| {
         o.datei("src/a.rs", b"// siehe projects\\beta-zwei\\Seite.svelte\n");
         o.commit("x", &[]);

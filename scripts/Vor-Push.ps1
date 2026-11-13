@@ -59,7 +59,8 @@
       Pfade      außerhalb der Positivliste der Ordner; projects\<slug> (außer
                  _vorlage), data\, docs\entscheidungen, docs\architektur-stand.md,
                  projekte.generated.ts, web\src\lib\vertrag\projekte\; jede
-                 *.md (seit Etappe 6d) außer CONTRIBUTING.md in der Wurzel; Geheimnis-Dateinamen (feste Liste, Code und Beispiele
+                 *.md (seit Etappe 6d) außer CONTRIBUTING.md in der Wurzel; ein privater
+                 Schlüssel (BEGIN … PRIVATE KEY, PuTTY) in jedem Text; Geheimnis-Dateinamen (feste Liste, Code und Beispiele
                  ausgenommen); Namen der Tabu-Ordner; Chat-Exporte
                  (conversations.json, chat-export*, *-chat-*.md); lokale
                  Dateien (*.local.*, *.local); sensible Namen;
@@ -639,6 +640,9 @@ $sperrdatei = Rx '^Cargo\.lock$'
 $allgemeinPfad = Rx ('projects(?:\\\\|\\|/)+(?:' + (Escape-Liste $listen.allgemein) + ')(?![a-z0-9_-])')
 $allgemeinKiste = Rx ('projekt[-_](?:' + ((($listen.allgemein | ForEach-Object { ([regex]::Escape($_)).Replace('-', '[-_]') })) -join '|') + ')(?![a-z0-9_-])')
 $modulPfad = Rx 'path\s*=\s*"[^"]*projects[\\/]+(?!_vorlage[\\/"])'
+# Ein privater Schlüssel (PEM, OpenSSH, PGP, PuTTY) ist in jedem Text ein Fund; ein öffentlicher Block (KONTAKT-PGP.asc) nicht.
+# Geschrieben als -{5} und File[-], damit diese Datei sich nicht selbst meldet.
+$privaterSchluessel = Rx '-{5}BEGIN [A-Z0-9 ]*PRIVATE KEY|PuTTY-User-Key-File[-]'
 $geheimName = Rx '(?:zugangsdaten|passw|kennwort|\.pfx$|\.p12$|\.kdbx?$|\.pem$|\.key$|(?:^|/)\.env|sicherheitsschl|recovery.?code|settings\.dat$)'
 # Ausnahme: genau der Abschnitt 7 der Anleitung handelt von Geheimnissen und ist keins.
 $geheimAusnahme = Rx '^docs/anleitung/contributing-07-7-geheimnisse-passwoerter-nie-im-terminal\.toml$'
@@ -670,7 +674,7 @@ $positiv = @(
     '^docs/anleitung/',
     '^projects/_vorlage/',
     '^\.cargo/config\.toml$',
-    '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
+    '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
     # LICENSE in der Wurzel bleibt allein für GitHub.
     '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
@@ -761,6 +765,11 @@ function TextPruefen([string]$wo, [string]$text, [bool]$istPfad, [string]$pfad) 
     }
     foreach ($k in $zahl.Keys) {
         if ($zahl[$k] -gt $GRENZE) { Fund $wo 0 "$k (und $($zahl[$k] - $GRENZE) weitere Zeilen)" }
+    }
+    # Auch in Commit-Nachrichten, Tag-Texten und jedem Blob der Geschichte, nicht nur im Baum der Spitze.
+    if (-not $istPfad) {
+        $pk = $privaterSchluessel.Match($text)
+        if ($pk.Success) { Fund $wo ($text.Substring(0, $pk.Index) -split "`n").Count 'privater Schlüssel (BEGIN … PRIVATE KEY oder PuTTY-Schlüsseldatei)' }
     }
     if ($pfad -and -not $istPfad) {
         # Chat-Exporte: JSON mit Rollen, Text mit mehreren Rollenwechseln.
