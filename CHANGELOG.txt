@@ -167,8 +167,12 @@ Geändert
   sofort, aber nur mit demselben Grundbau wie bin\web (Abdruck von web/src
   ohne die Bauliste, in _app/version.json); ein Bau aus einem neueren
   web/src wartet auf den nächsten -Neustart: Bis dahin bleibt der letzte
-  gültige Bau, der Vorgang bau endet rot mit diesem Satz, und /api/betrieb
-  nennt es unter den Störungen. -Neustart legt dieselbe Kopie auch neben die
+  gültige Bau. Der Vorgang bau endet rot mit dem Satz „Ein neuerer Bau der
+  Oberfläche passt nicht zum laufenden Dienst und gilt erst nach Dienst.ps1
+  -Neustart; bis dahin bleibt die zuletzt gültige Oberfläche, auch für
+  geänderte Projektseiten.“ (SATZ_BAU_WARTET in src/app.rs); derselbe Satz
+  steht als Meldung im Bau-Stand und in /api/betrieb unter den Störungen.
+  Das Aufräumen des Boten schont diesen letzten gültigen Bau. -Neustart legt dieselbe Kopie auch neben die
   Programme im Bauordner; Dienst-Einrichten.ps1 spielt sie von dort nach
   bin\web ein (ohne sie web\build), wenn der Grundbau in bin\web ein anderer
   ist, auch nach einem Abbruch im ersten Lauf, nie einen Bau ohne Kennung
