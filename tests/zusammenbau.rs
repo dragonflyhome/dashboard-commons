@@ -574,6 +574,41 @@ fn fassung_bauen_ohne_waechter_baut_nicht() {
     assert!(!aufrufe.contains("--config"), "{aufrufe}");
 }
 
+/// Ohne Kiste räumt Fassung-Bauen.ps1 ein altes release\zusammenbau weg:
+/// Dienst-Einrichten.ps1 nimmt es, sobald dort dashboard.exe liegt, und
+/// spielte sonst eine ältere Fassung ein als Dienst.ps1 -Neustart.
+#[test]
+fn fassung_bauen_ohne_kiste_raeumt_zusammenbau_weg() {
+    let Some(mut ps) = [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok()) else {
+        dashboard::ueberspringen("PowerShell fehlt");
+        return;
+    };
+    let n = ZAEHLER.fetch_add(1, Ordering::SeqCst);
+    let wurzel = std::env::temp_dir().join(format!("dashboard-fassung-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&wurzel);
+    let werkzeug = wurzel.join("werkzeug");
+    let alt = wurzel.join("bau").join("release").join("zusammenbau");
+    for d in [&werkzeug, &wurzel.join("repo"), &alt.join("web")] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::write(alt.join("dashboard.exe"), "alt").unwrap();
+    std::fs::write(werkzeug.join("cargo.cmd"), "@exit /b 0\r\n").unwrap();
+    let pfad = format!("{};{}", werkzeug.display(), std::env::var("PATH").unwrap_or_default());
+    let skript = code_repo().join("scripts").join("Fassung-Bauen.ps1");
+    let befehl = format!(
+        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); . '{}'; $r = Fassung-Bauen '{}' '' '{}'; [Console]::Out.WriteLine('CODE=' + $r.Code + ' QUELLE=' + $r.Quelle)",
+        skript.display(),
+        wurzel.join("repo").display(),
+        wurzel.join("bau").display()
+    );
+    let o = ps.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &befehl]).env("PATH", pfad).output().unwrap();
+    let aus = String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr);
+    let noch_da = alt.exists();
+    let _ = std::fs::remove_dir_all(&wurzel);
+    assert!(aus.contains(&format!("CODE=0 QUELLE={}", wurzel.join("bau").join("release").display())), "{aus}");
+    assert!(!noch_da, "release\\zusammenbau ist noch da: {aus}");
+}
+
 /// Nachbesserung 2, Punkt 1: Ein Filter, dessen Programm eine Markendatei
 /// schriebe, läuft nie: Der Wächter liest die Einstellungen aller Ebenen
 /// (auch worktree) und die Attribute, bricht sofort ab und ruft kein git
