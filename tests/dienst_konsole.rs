@@ -273,6 +273,29 @@ fn anfrage(url: &str, anmelden: bool, json: Option<&str>) -> (String, String) {
     (status.trim().to_string(), format!("{koerper}{}", String::from_utf8_lossy(&aus.stderr)))
 }
 
+/// Neutraler Name der Variable mit der Sitzungskennung, nur für diese Probe.
+#[cfg(windows)]
+const PROBE_VARIABLE: &str = "DASHBOARD_PROBE_SITZUNGSKENNUNG";
+
+/// Ein POST wie ein Chat: `scripts\Api.ps1` mit `-Json` (Windows PowerShell 5.1).
+/// Die Kennung `kennung` steht immer in [`PROBE_VARIABLE`]; nur mit `benannt`
+/// zeigt DASHBOARD_SITZUNG_VARIABLE darauf. Gibt Exit-Code und Ausgabe zurück.
+#[cfg(windows)]
+fn wie_ein_chat(port: u16, weg: &str, json: &str, kennung: &str, benannt: bool) -> (Option<i32>, String) {
+    let skript = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Api.ps1");
+    let mut cmd = eigener_befehl(POWERSHELL);
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&skript)
+        .args([weg, "-Json", json, "-Server", &format!("127.0.0.1:{port}"), "-Sekunden", "40"])
+        .env(PROBE_VARIABLE, kennung)
+        .env_remove("DASHBOARD_SITZUNG_VARIABLE");
+    if benannt {
+        cmd.env("DASHBOARD_SITZUNG_VARIABLE", PROBE_VARIABLE);
+    }
+    let aus = cmd.output().expect("powershell.exe startet");
+    (aus.status.code(), format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr)))
+}
+
 /// Windows-Anmeldung als Pflicht (7b), Ende zu Ende mit der echten
 /// Verbindungskennung: ohne Nachweis 401, mit 200; ein Warter mit Nachweis
 /// wird von einem neuen Vorgang (ebenfalls mit Nachweis) binnen 2 s nach dem
@@ -316,6 +339,39 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
     // Der Warter endet oft schon, bevor das PowerShell des Anlegens beendet ist (dann 0).
     let dauer = geweckt.saturating_duration_since(angelegt);
     assert!(dauer < Duration::from_secs(2), "geweckt {dauer:?} nach dem Anlegen");
+
+    // Herzschlag: Api.ps1 schickt die Kennung aus der Variable, die
+    // DASHBOARD_SITZUNG_VARIABLE nennt; ein POST damit ordnet die Sitzung dem Chat
+    // zu, und der Hook (dashboard-herzschlag.exe, ohne Fenster) hält ihren Stop dann auf (Exit 2).
+    let arbeit = r#"{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Probe Herzschlag", "stand": "laeuft"}"#;
+    let zugeordnet = || {
+        let (status, koerper) = anfrage(&format!("{basis}/api/sitzungen/s-konsole/offen"), true, None);
+        assert_eq!(status, "200", "{koerper}");
+        serde_json::from_str::<serde_json::Value>(&koerper).unwrap()["von"].clone()
+    };
+    // Gegenprobe: dieselbe Kennung in der Variable, aber DASHBOARD_SITZUNG_VARIABLE fehlt.
+    let (code, aus) = wie_ein_chat(port, "api/arbeiten", arbeit, "s-konsole", false);
+    assert_eq!(code, Some(0), "Arbeit ohne Kennung anlegen: {aus}");
+    assert_eq!(zugeordnet(), serde_json::Value::Null, "ohne DASHBOARD_SITZUNG_VARIABLE keine Kopfzeile");
+    let (code, aus) = wie_ein_chat(port, "api/arbeiten", arbeit, "s-konsole", true);
+    assert_eq!(code, Some(0), "Arbeit mit Kennung anlegen: {aus}");
+    assert_eq!(zugeordnet(), serde_json::json!("chat:dashboard"), "mit DASHBOARD_SITZUNG_VARIABLE geht die Kopfzeile mit");
+    let transkript = ort.ordner.join("transkript.jsonl");
+    std::fs::write(&transkript, "{\"type\":\"user\",\"message\":{\"content\":\"frage\"}}\n").unwrap();
+    let eingabe = serde_json::json!({"hook_event_name": "Stop", "session_id": "s-konsole", "transcript_path": transkript, "stop_hook_active": false});
+    let mut hook = eigener_befehl(env!("CARGO_BIN_EXE_dashboard-herzschlag"))
+        .args(["--server", &format!("127.0.0.1:{port}")])
+        .env("LOCALAPPDATA", &ort.ordner)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    hook.stdin.take().unwrap().write_all(&serde_json::to_vec(&eingabe).unwrap()).unwrap();
+    let aus = hook.wait_with_output().unwrap();
+    let grund = String::from_utf8_lossy(&aus.stderr);
+    assert_eq!(aus.status.code(), Some(2), "{grund}");
+    assert!(grund.contains("Probe Herzschlag"), "{grund}");
 
     drop(kind);
     let protokoll = ort.ordner.join("protokoll");

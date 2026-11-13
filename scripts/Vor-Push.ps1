@@ -671,8 +671,9 @@ $positiv = @(
     '^projects/_vorlage/',
     '^\.cargo/config\.toml$',
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
-    # Lizenz der Dokumentation (CC0), Ort nach REUSE; LICENSE in der Wurzel bleibt allein für GitHub.
-    '^LICENSES/CC0-1\.0\.txt$'
+    # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
+    # LICENSE in der Wurzel bleibt allein für GitHub.
+    '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
 ) | ForEach-Object { Rx $_ }
 $verboten = [ordered]@{
     'projects/<slug> gehört in den Inhalt (dashboard-inhalt)' = Rx '^projects/(?!_vorlage/)'

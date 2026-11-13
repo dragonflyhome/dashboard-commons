@@ -312,7 +312,7 @@ fn sauberes_repo_geht_durch() {
     assert!(text.contains("Nichts gefunden."), "{text}");
 }
 
-/// LICENSE (AGPL) und LICENSES/CC0-1.0.txt gehen mit ihrem
+/// LICENSE (AGPL), LICENSES/CC0-1.0.txt und LICENSES/GPL-3.0-or-later.txt gehen mit ihrem
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
 /// Ebenso die schon committeten Wurzeldateien rustfmt.toml und .git-blame-ignore-revs.
 #[test]
@@ -323,13 +323,13 @@ fn lizenzdateien_gehen_durch() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
     let o = Ort::neu();
     o.ueber_merge(|o| {
-        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "rustfmt.toml", ".git-blame-ignore-revs"] {
+        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs"] {
             o.datei(pfad, &std::fs::read(wurzel.join(pfad)).unwrap());
         }
     });
     let (code, text) = o.pruefen();
     assert_eq!(code, 0, "{text}");
-    for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "docs/LICENSE", "rustfmt.toml.alt"] {
+    for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "LICENSES/GPL-3.0-only.txt", "docs/LICENSE", "rustfmt.toml.alt"] {
         abgewiesen(pfad, "Positivliste", |o| {
             o.datei(pfad, b"x\n");
             o.commit("x", &[]);

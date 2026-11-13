@@ -44,5 +44,17 @@ Copyright (C) 2026 Ranke
 Der Code steht unter der GNU Affero General Public License, Fassung 3
 oder später (AGPL-3.0-or-later). Der Text steht in LICENSE.
 
+Ausnahme: Die Dateien mit dem Kopf „SPDX-License-Identifier:
+GPL-3.0-or-later“ in src\herzschlag und die Dateien in
+src\herzschlag\fixtures sind aus einem anderen Projekt
+übernommen und stehen weiter unter der GNU General Public License, Fassung 3
+oder später. Der Text steht in LICENSES\GPL-3.0-or-later.txt, die Herkunft in
+src\herzschlag\HERKUNFT.toml.
+
+Beide Lizenzen erlauben nach ihrem Abschnitt 13, solche Teile zu einem
+Programm zu verbinden: Die übernommenen Dateien bleiben unter der GPL, alles
+andere und die gebauten Programme als Ganzes (auch dashboard.exe und
+dashboard-herzschlag.exe) stehen unter der AGPL.
+
 Die Dokumentation in docs\anleitung und docs\zielbild ist gemeinfrei
 (CC0-1.0). Der Text steht in LICENSES\CC0-1.0.txt.

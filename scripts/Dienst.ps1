@@ -56,8 +56,8 @@
                von web, es ist nichts neu zu setzen); dann den Dienst
                anhalten, web\builds\aktuell löschen (der Zeiger auf den letzten
                Bau über den Boten; danach gilt sicher die frische Fassung aus
-               web\build), beide Programme (dashboard.exe und dashboard-bote.exe)
-               nach bin (die vorige Fassung bleibt als *.alt.exe), Dienst und
+               web\build), die Programme (dashboard.exe, dashboard-bote.exe und
+               dashboard-herzschlag.exe) nach bin (die vorige Fassung bleibt als *.alt.exe), Dienst und
                Boten starten und / und /api/daten (mit Windows-Anmeldung) binnen
                60 s prüfen. Antworten sie nicht, kommt die vorige Fassung
                zurück und startet wieder; auch dieser Rückweg startet Dienst
@@ -114,7 +114,7 @@ $scPfad = Join-Path $sys32 'sc.exe'
 $curlPfad = Join-Path $sys32 'curl.exe'
 $aufgabenOrdner = "\$Dienstname\"
 $aufgabenName = "$Dienstname-Bote"
-$programme = @('dashboard.exe', 'dashboard-bote.exe')
+$programme = @('dashboard.exe', 'dashboard-bote.exe', 'dashboard-herzschlag.exe')
 
 function Starte([string]$exe, [string]$argumente) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo

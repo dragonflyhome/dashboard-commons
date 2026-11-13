@@ -297,9 +297,8 @@ pub fn eigene_sid() -> Result<String, String> {
     sid
 }
 
-// ----- Client-Seite: nur für Tests (Aushandlung mit dem eigenen Konto) -----
+// ----- Client-Seite: Aushandlung mit dem eigenen Konto (Tests und `dashboard herzschlag`) -----
 
-#[cfg(test)]
 pub mod client {
     use super::*;
     use windows_sys::Win32::Security::Authentication::Identity::{
@@ -351,10 +350,12 @@ pub mod client {
                 )
             };
             if r < 0 {
+                // SAFETY: bei Fehler legt SSPI keinen Puffer an; falls doch, wird er freigegeben.
                 unsafe { ausgabe_nehmen(&aus) };
                 return Err(fehler("InitializeSecurityContextW", r));
             }
             self.kontext.handle = Some(neu);
+            // SAFETY: Puffer von SSPI (ISC_REQ_ALLOCATE_MEMORY).
             let ausgabe = unsafe { ausgabe_nehmen(&aus) };
             Ok((ausgabe, r == SEC_E_OK))
         }

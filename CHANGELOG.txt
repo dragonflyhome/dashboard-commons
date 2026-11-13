@@ -18,6 +18,30 @@ Hinzugefügt
 - Anleitung, Abschnitt 15: im Team an einem Projekt-Repo mitarbeiten
   (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
   und was der Prüfer ohne Namenslisten tut).
+- Herzschlag: dashboard-herzschlag.exe (ohne Fenster; dasselbe als
+  dashboard.exe herzschlag) ist ein Stop-Hook für Chats. Er
+  hält den Stop an, solange dem Chat der Sitzung ein laufender oder
+  angebotener Schritt gehört (höchstens dreimal je Nutzer-Zug), und lässt
+  bei jedem Fehler durch. Der Grund eines Blocks ist ohne Steuerzeichen,
+  Zeilentrenner, Bidi- und Nullbreitenzeichen und unter 2 KB, herzschlag.log höchstens etwa 64 KB (dann .alt).
+  Dienst.ps1 und Dienst-Einrichten.ps1 bringen das Programm nach bin.
+  Zustandsgraph und Hook-Seite sind aus einem
+  anderen Projekt übernommen (GPL-3.0-or-later, LICENSES/GPL-3.0-or-later.txt,
+  Herkunft in src/herzschlag/HERKUNFT.toml). Anleitung, Abschnitt 16.
+- scripts/Herzschlag-Einspielen.ps1 trägt den Stop-Hook in die
+  Einstellungsdatei eines Chat-Clients ein (JSON zusammengeführt, mit
+  Sicherung, wiederholbar) und setzt DASHBOARD_SITZUNG_VARIABLE; -Aus
+  nimmt nur den eigenen Eintrag und die Variable zurück. Es verlangt
+  PowerShell 7.6, lehnt doppelte Schlüssel, Verknüpfungen und ein anderes
+  Programm als dashboard-herzschlag.exe ab, trägt -Programm absolut ein
+  und behält Zeilenenden und BOM der Datei. Beides gilt nach einem
+  Neustart des Chat-Clients.
+- API: GET /api/sitzungen/<id>/offen nennt den Chat einer Sitzung und
+  seine offenen Schritte. scripts/Api.ps1 schickt die Sitzungskennung als
+  Kopfzeile X-Dashboard-Sitzung, gelesen aus der Umgebungsvariable, die
+  DASHBOARD_SITZUNG_VARIABLE nennt (ohne sie keine Kennung); der Dienst merkt sich die Zuordnung bei
+  jedem gelungenen, als Inhaber angemeldeten schreibenden Aufruf mit
+  "von": "chat:<name>".
 
 Geändert
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt

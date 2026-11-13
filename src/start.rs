@@ -35,6 +35,8 @@ pub fn starten(module: Vec<ModulEintrag>) -> i32 {
         },
         // Wächter der Zusammenbau-Kiste: liest nur Dateien und fragt git, baut nichts.
         Aufruf::PruefeZusammenbau(rest) => crate::projekte::zusammenbau::ausfuehren(&rest),
+        // Stop-Hook der Chats: ohne Server, jeder Fehler lässt den Stop durch.
+        Aufruf::Herzschlag(rest) => crate::herzschlag::ausfuehren(&rest),
         Aufruf::Hilfe => {
             print!("{}", dienst::HILFE);
             0

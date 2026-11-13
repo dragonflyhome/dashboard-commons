@@ -55,6 +55,8 @@ pub struct AppState {
     pub vorgang_events: api::events::VorgangSender,
     /// Wer gerade auf Vorgänge wartet (`/api/vorgaenge/warten`), je Slug.
     pub warteraum: Arc<api::vorgaenge::Warteraum>,
+    /// Sitzung → Chat für den Herzschlag (`api::sitzungen`), nur im Arbeitsspeicher.
+    pub sitzungen: Arc<api::sitzungen::Zuordnung>,
     /// Live-Kanal für den Bau der Oberfläche (SSE-Ereignis `bau`, Etappe 4v).
     pub bau_events: api::events::BauSender,
     /// Live-Kanal für neue Fassungen der Oberfläche (SSE-Ereignis `fassung`, Etappe 4b).
@@ -334,6 +336,7 @@ impl AppState {
             aenderungen,
             baumeister: Arc::new(baumeister::Baumeister::neu()),
             warteraum: Default::default(),
+            sitzungen: Default::default(),
             web,
             zeitlimit: Duration::from_secs(10),
             csp,
@@ -557,6 +560,7 @@ impl AppState {
             aenderungen: crate::aenderungen::Melder::neu(),
             baumeister: Arc::new(baumeister::Baumeister::neu()),
             warteraum: Default::default(),
+            sitzungen: Default::default(),
             csp: Arc::new(CspCache::neu(web.clone())),
             web,
             zeitlimit: Duration::from_secs(10),
@@ -941,6 +945,8 @@ pub fn router(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(dashboard_projekt::rahmen::KOERPER_HOECHSTENS)); // 6
     Router::new()
         .merge(api::routes())
+        // Herzschlag: Sitzung → Chat bei schreibenden Aufrufen mit Kopfzeile (nur die Wege der API).
+        .layer(middleware::from_fn_with_state(state.clone(), api::sitzungen::merken))
         // Lebenszeichen mit Angaben zum Lauf (Etappe 7a), neben /healthz.
         .route("/api/betrieb", get(dienst::betrieb::betrieb))
         // Kopfleiste, Fassung 2: Pfade und der Anmeldestand des Inhabers nur geschützt.

@@ -199,7 +199,7 @@ $curlPfad = Join-Path $sys32 'curl.exe'
 # (dort liegt, was zuletzt von Hand gebaut wurde, auch ein Zweig).
 $quelle = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\dienst\release'
 if (Test-Path -LiteralPath (Join-Path $quelle 'zusammenbau\dashboard.exe')) { $quelle = Join-Path $quelle 'zusammenbau' }
-$programme = @('dashboard.exe', 'dashboard-bote.exe')
+$programme = @('dashboard.exe', 'dashboard-bote.exe', 'dashboard-herzschlag.exe')
 $wurzel = Join-Path $programData $Dienstname
 $tomlPfad = Join-Path $wurzel 'dienst.toml'
 # Aus welcher dienst.toml InhaltOrdner liest (beim Testdienst dessen Datei).

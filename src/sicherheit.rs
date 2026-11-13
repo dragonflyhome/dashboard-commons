@@ -141,9 +141,11 @@ pub async fn herkunft_pflicht(State(state): State<AppState>, req: Request, next:
     // Seit A1 auch Arbeiten, Einstufung (curl bekommt dort vom Handler 422) und die Liste;
     // seit A2 die Antworten (lesen per curl, antworten nur aus dem Browser).
     // seit A3 die Meldungen (melden per curl, „gelesen“ nur aus dem Browser).
-    let chat_weg = ["/api/vorgaenge", "/api/aufgaben", "/api/arbeiten", "/api/einstufung", "/api/anstehend", "/api/antworten", "/api/meldungen"]
-        .iter()
-        .any(|w| pfad.strip_prefix(w).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')));
+    // Herzschlag: die offene Arbeit einer Sitzung (der Stop-Hook liest ohne Browser).
+    let chat_weg =
+        ["/api/vorgaenge", "/api/aufgaben", "/api/arbeiten", "/api/einstufung", "/api/anstehend", "/api/antworten", "/api/meldungen", "/api/sitzungen"]
+            .iter()
+            .any(|w| pfad.strip_prefix(w).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')));
     let lesend = matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
     if lesend && !chat_weg && !nur_von_hier(pfad) {
         return next.run(req).await;
@@ -316,7 +318,7 @@ pub fn pfad_dekodiert(roh: &str) -> Option<String> {
 /// persönlicher Inhalt); die anderen Dateien in `daten/` bleiben frei. Seit
 /// Etappe B3 auch `/api/projekte/<slug>/daten/fristen` und `/api/fristen`.
 pub fn geschuetzt(pfad: &str) -> bool {
-    const WURZELN: [&str; 23] = [
+    const WURZELN: [&str; 24] = [
         "/schluessel",
         "/api/schluessel",
         "/vorgaenge",
@@ -353,6 +355,8 @@ pub fn geschuetzt(pfad: &str) -> bool {
         "/api/oeffnen",
         // Etappe B3: die Fristenliste aller Projekte nennt Titel von Fristen und Aufgaben.
         "/api/fristen",
+        // Herzschlag: welcher Chat zu einer Sitzung gehört und was ihn aufhält.
+        "/api/sitzungen",
     ];
     let pfad = pfad.to_ascii_lowercase();
     // Kopfleiste, Fassung 2: der freie Kanal, genau dieser Pfad (nichts darunter, kein

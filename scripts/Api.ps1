@@ -13,6 +13,14 @@
 # Mit -Json oder -Post geht ein POST mit Content-Type application/json raus,
 # sonst ein GET. Ausgabe: der Körper der Antwort auf stdout. Exit-Code 0 bei
 # 2xx, 1 ohne Verbindung, sonst 2 mit dem HTTP-Code auf stderr.
+#
+# Die Kennung der Sitzung des aufrufenden Chats geht als Kopfzeile
+# X-Dashboard-Sitzung mit. DASHBOARD_SITZUNG_VARIABLE nennt die Umgebungsvariable
+# des Chat-Clients, die sie trägt (gesetzt beim Einspielen des Stop-Hooks); fehlt
+# sie, geht keine Kennung mit, und der Stop-Hook lässt durch. Der Dienst merkt
+# sich bei jedem gelungenen POST mit "von": "chat:<name>" diese Sitzung als
+# diesen Chat; der Stop-Hook (dashboard-herzschlag.exe) fragt danach.
+# Darum rufen Chats die API nur hierüber auf.
 
 param(
   [Parameter(Mandatory, Position = 0)] [ValidatePattern('^/?api/')] [string] $Weg,
@@ -25,8 +33,10 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 . (Join-Path $PSScriptRoot 'Anfrage.ps1')
 
+$name = $env:DASHBOARD_SITZUNG_VARIABLE
+$sitzung = if ($name) { [Environment]::GetEnvironmentVariable($name) }
 $methode = if ($Json -or $Post) { 'POST' } else { 'GET' }
-$antwort = WindowsAnfrage -Url "http://$Server/$($Weg.TrimStart('/'))" -Methode $methode -Json $Json -Sekunden $Sekunden
+$antwort = WindowsAnfrage -Url "http://$Server/$($Weg.TrimStart('/'))" -Methode $methode -Json $Json -Sekunden $Sekunden -Sitzung $sitzung
 
 if ($antwort.Code -eq '000') {
   [Console]::Error.WriteLine("Api.ps1: keine Verbindung zu $Server (oder keine Antwort in $Sekunden s).")

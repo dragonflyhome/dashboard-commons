@@ -16,8 +16,8 @@
 #      build --release --locked in dashboard-lokal (dlltool aus dem Code-Repo;
 #      im Inhalt gibt es keine .cargo-Einstellung), dann dashboard-lokal.exe
 #      als dashboard.exe nach <bauordner>\release\zusammenbau.
-# Rückgabe: Code (0 gut), Satz, Quelle (Ordner mit dashboard.exe und
-# dashboard-bote.exe) und Zusammenbau (ob die Fassung mit Rechenteilen ist).
+# Rückgabe: Code (0 gut), Satz, Quelle (Ordner mit dashboard.exe,
+# dashboard-bote.exe und dashboard-herzschlag.exe) und Zusammenbau (ob die Fassung mit Rechenteilen ist).
 
 function Fassung-Bauen([string]$repo, [string]$lokal, [string]$bauordner) {
     if (-not $bauordner) { $bauordner = Join-Path $repo 'target' }
@@ -54,6 +54,7 @@ function Fassung-Bauen([string]$repo, [string]$lokal, [string]$bauordner) {
         New-Item -ItemType Directory -Force -Path $zusammen | Out-Null
         Copy-Item -LiteralPath (Join-Path $release 'dashboard-lokal.exe') -Destination (Join-Path $zusammen 'dashboard.exe') -Force
         Copy-Item -LiteralPath (Join-Path $release 'dashboard-bote.exe') -Destination (Join-Path $zusammen 'dashboard-bote.exe') -Force
+        Copy-Item -LiteralPath (Join-Path $release 'dashboard-herzschlag.exe') -Destination (Join-Path $zusammen 'dashboard-herzschlag.exe') -Force
         return [pscustomobject]@{ Code = 0; Satz = "Fassung mit Rechenteilen (Zusammenbau dashboard-lokal) gebaut: $zusammen"; Quelle = $zusammen; Zusammenbau = $true }
     } finally {
         $env:CARGO_TARGET_DIR = $altZiel

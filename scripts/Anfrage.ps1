@@ -28,7 +28,9 @@ function WindowsAnfrage {
     # Nur bei POST: JSON-Körper; der Server verlangt Content-Type application/json auch bei leerem Körper.
     [string] $Json = '',
     # Ohne Nachweis fragen (für Tests: so sieht eine Anfrage ohne Anmeldung aus).
-    [switch] $OhneAnmeldung
+    [switch] $OhneAnmeldung,
+    # Kennung der Sitzung des Aufrufers als Kopfzeile X-Dashboard-Sitzung (Herzschlag); leer: ohne.
+    [string] $Sitzung = ''
   )
   $handler = New-Object System.Net.Http.HttpClientHandler
   $handler.UseDefaultCredentials = -not $OhneAnmeldung
@@ -38,6 +40,9 @@ function WindowsAnfrage {
   $client.Timeout = [TimeSpan]::FromSeconds($Sekunden)
   try {
     $anfrage = New-Object System.Net.Http.HttpRequestMessage((New-Object System.Net.Http.HttpMethod($Methode)), $Url)
+    if ($Sitzung -match '^[A-Za-z0-9_-]{1,128}$') {
+      [void]$anfrage.Headers.TryAddWithoutValidation('X-Dashboard-Sitzung', $Sitzung)
+    }
     if ($Methode -ne 'GET') {
       $anfrage.Content = New-Object System.Net.Http.StringContent($Json, (New-Object System.Text.UTF8Encoding($false)), 'application/json')
     }
