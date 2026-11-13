@@ -29,9 +29,9 @@ außerdem scripts\LIESMICH-Dienst.txt.
 
 Öffentlich als dashboard-commons
 --------------------------------
-Auf GitHub heißt dieses Repo dashboard-commons. Hinaus geht nur ein
-frischer Wurzel-Commit (scripts\Hochladen.ps1 -Wurzel), geprüft von
-scripts\Vor-Push.ps1. Commit-Meldungen ohne Anhänge (kein Co-Authored-By,
+Auf GitHub heißt dieses Repo dashboard-commons. Hinaus geht nur main nach
+main, als Fast-Forward mit Merge-Commits (scripts\Hochladen.ps1), geprüft
+von scripts\Vor-Push.ps1. Commit-Meldungen ohne Anhänge (kein Co-Authored-By,
 kein Generated with), Autor Ranke <ranke2@proton.me>.
 
 Der Beispielbenutzer in tests\beispiel heißt ranke, benannt nach dem

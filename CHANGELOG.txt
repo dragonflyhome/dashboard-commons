@@ -22,6 +22,18 @@ Hinzugefügt
 Geändert
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
+- Bruch: scripts/Hochladen.ps1 lädt refs/heads/main nach refs/heads/main
+  hoch (nur Fast-Forward), geprüft wie bisher: der ganze Baum, alle neuen
+  Commits, auf der First-Parent-Linie nur Merge-Commits. -Pruefen prüft,
+  was hinausginge, ohne Push. Vor-Push.ps1 -Pruefen prüft ohne -Ref
+  refs/heads/main; lokal geht nur noch main nach main hinaus. Ein Commit
+  ohne Eltern auf main ist ein Fund, außer der einen Wurzel beim ersten
+  Push (keine zweite Wurzel, auch nicht über einen Merge).
+
+Entfernt
+- Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig
+  refs/heads/oeffentlich; ein Aufruf mit -Wurzel bricht mit einem Satz ab.
+- scripts/Wurzel-Entwurf.ps1 (Entwurf eines frischen Wurzel-Commits).
 
 0.1.0 - 2026-11-06
 ------------------

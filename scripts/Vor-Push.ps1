@@ -10,10 +10,9 @@
     Abgewiesen wird:
       Refs       auf dem Remote alles außer refs/heads/main und Tags
                  refs/tags/v0.MINOR.PATCH (Ziffern ohne führende Null), lokal
-                 alles außer refs/heads/main und refs/heads/oeffentlich (der
-                 frische Wurzel-Commit, scripts\Hochladen.ps1 -Wurzel), Löschen;
-                 auf main nur Merge-Commits (kein Fast-Forward), außer dem
-                 Wurzel-Commit.
+                 alles außer refs/heads/main, Löschen; auf main nur
+                 Merge-Commits (kein Fast-Forward), außer dem Wurzel-Commit;
+                 ein Commit ohne Eltern außer der einen Wurzel beim ersten Push.
       Tags       (Teil 3) lokal ein anderer Name als fern; ein Tag-Objekt
                  (git tag -a/-s: Tagger, Text und Signatur gingen ungeprüft
                  hinaus), nur leichte Tags; ein Tag, den es fern schon gibt
@@ -22,7 +21,7 @@
                  sonst fern (Zeile nach refs/heads/main, ohne sie git
                  ls-remote <RemoteUrl>; nie die lokale Remote-Tracking-Ref);
                  ohne main ein Fund. Im Bundle
-                 die Linie seiner Ref main oder oeffentlich. (Teil 4) Ein Tag
+                 die Linie seiner Ref main. (Teil 4) Ein Tag
                  v0.MINOR.PATCH, wenn im getaggten Commit Cargo.toml unter
                  [package] nicht genau eine Zeile version = "0.MINOR.PATCH"
                  hat oder in CHANGELOG.txt die oberste Überschrift nach
@@ -134,8 +133,7 @@
     Verglichen wird genau, nur Schema und Rechnername ohne Groß/Klein und ohne
     / und .git am Ende. Was im Baum steht, ändert die Art nie (sonst schaltete
     ein Verstoß wie projects\<slug> die Prüfung selbst ab). Geschlossen
-    scheitern: ohne Adresse (Lauf von Hand, Hochladen.ps1,
-    Wurzel-Entwurf.ps1), mit einer Adresse, die nicht in der Liste steht, oder
+    scheitern: ohne Adresse (Lauf von Hand, Hochladen.ps1), mit einer Adresse, die nicht in der Liste steht, oder
     ohne repos.toml (dann mit HINWEIS) wird als Basis-Repo geprüft; eine
     kaputte repos.toml bricht ab (Exit 2).
 
@@ -176,13 +174,13 @@
 .PARAMETER Commits
     Prüft Autor, Committer und Nachricht dieser Commits (Bereich wie a..b oder ein Stand).
 .PARAMETER AufMain
-    Mit -Commits: die Regel „nur Merge-Commits auf main“ für diesen Bereich.
+    Mit -Commits: die Regeln „nur Merge-Commits auf main“ und „eine Wurzel“ für diesen Bereich.
 .PARAMETER Pruefen
     Probelauf ohne Push: prüft die lokale Ref -Ref so, als ginge sie mit
     einem ersten Push nach refs/heads/main (Name, alle erreichbaren Commits,
     Baum, ganze Geschichte).
 .PARAMETER Ref
-    Mit -Pruefen: die lokale Ref (Standard refs/heads/oeffentlich).
+    Mit -Pruefen: die lokale Ref (Standard refs/heads/main).
 .PARAMETER Bundle
     Prüft ein Git-Bundle ganz (alle Refs, alle Objekte), in einem
     Wegwerf-Repo im Temp-Ordner.
@@ -210,7 +208,7 @@ param(
     [string]$Commits,
     [switch]$AufMain,
     [switch]$Pruefen,
-    [string]$Ref = 'refs/heads/oeffentlich',
+    [string]$Ref = 'refs/heads/main',
     [string]$Bundle,
     [string]$Nachricht,
     [string]$RemoteName,
@@ -261,7 +259,7 @@ $RANKE_NAME = 'Ranke'
 $RANKE_MAIL = 'ranke2@proton.me'
 # Lokale Zweige, die nach refs/heads/main hinausgehen dürfen. Ein Tag geht nur
 # unter seinem eigenen Namen hinaus (TagPruefen).
-$LOKAL_ERLAUBT = @('refs/heads/main', 'refs/heads/oeffentlich')
+$LOKAL_ERLAUBT = @('refs/heads/main')
 # Teil 3: Tags nur v0.MINOR.PATCH (Versionsregel 0.x), ohne führende Null; [0-9], weil \d auch andere Ziffern nimmt.
 $TAG_NAME = '^refs/tags/v0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$'
 # Die Stände von main, auf deren First-Parent-Linie ein Tag liegen muss (füllt der Ablauf).
@@ -1063,9 +1061,15 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         }
     }
     if ($nurMain) {
-        foreach ($c in @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })) {
+        $linie = @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })
+        foreach ($c in $linie) {
             $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
             if ($eltern.Count -eq 1) { Fund "Commit $($c.Substring(0, 10))" 0 'auf main nur Merge-Commits (kein Fast-Forward)' }
+        }
+        # main hat genau eine Wurzel: Nur beim ersten Push (Bereich ohne „..“, wie in RefPruefen) darf der älteste Commit der Linie elternlos sein.
+        $eineWurzel = if ($bereich -notmatch '\.\.' -and $linie.Count) { $linie[-1] } else { '' }
+        foreach ($c in @((Git @('rev-list', '--max-parents=0', $bereich)) -split "`n" | Where-Object { $_ })) {
+            if ($c -ne $eineWurzel) { Fund "Commit $($c.Substring(0, 10))" 0 'Commit ohne Eltern: eine zweite Wurzel auf main ist nicht erlaubt; die Änderungen auf dem bestehenden main aufbauen (Zweig von main, dann Merge) statt eine fremde oder neue Geschichte einzumischen' }
         }
     }
     return $liste.Count
@@ -1125,7 +1129,7 @@ function TagPruefen([string]$lokal, [string]$lokalSha, [string]$fern, [string]$f
 function RefPruefen([string]$lokal, [string]$lokalSha, [string]$fern, [string]$fernSha) {
     if ($fern -cmatch $TAG_NAME) { TagPruefen $lokal $lokalSha $fern $fernSha; return }
     if ($fern -ne 'refs/heads/main') { Fund "Ref $fern" 0 'hinaus darf nur refs/heads/main oder ein Tag refs/tags/v0.MINOR.PATCH (keine anderen Zweige, Tags nur v0.x)'; return }
-    if ($lokal -cnotin $LOKAL_ERLAUBT) { Fund "Ref $lokal" 0 'nur der lokale Zweig main oder oeffentlich geht hinaus' }
+    if ($lokal -cnotin $LOKAL_ERLAUBT) { Fund "Ref $lokal" 0 'nur der lokale Zweig main geht hinaus' }
     if ($lokalSha -eq $NULL_SHA) { Fund "Ref $fern" 0 'Löschen von main ist nicht erlaubt'; return }
     # Auch keine Ref auf ein Tag-Objekt. Git liest dabei den Tag-Text streng als UTF-8.
     if ((Git @('cat-file', '-t', $lokalSha)).Trim() -ne 'commit') {
@@ -1257,7 +1261,7 @@ if ($Bundle) {
     [void](Git @('fetch', '-q', $datei, 'refs/*:refs/*'))
     $koepfe = @((Git @('bundle', 'list-heads', $datei)) -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { , ($_.Trim() -split ' ', 2) })
     if ($koepfe.Count -eq 0) { throw 'Das Bundle hat keine Ref.' }
-    # Tags des Bundles gegen seine Ref main oder oeffentlich (die als main hinausgeht).
+    # Tags des Bundles gegen seine Ref main.
     $script:mainStaende = @($koepfe | Where-Object { $_[1] -cin $LOKAL_ERLAUBT } | ForEach-Object { $_[0] })
     foreach ($k in $koepfe) {
         if ($k[1] -ceq 'HEAD') {
