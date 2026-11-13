@@ -282,6 +282,7 @@ mod tests {
             verlauf: Vec::new(),
             besitzer: None,
             schritte: Vec::new(),
+            etappe: None,
         }
     }
 

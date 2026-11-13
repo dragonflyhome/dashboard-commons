@@ -20,7 +20,9 @@ use std::collections::BTreeMap;
 
 use chrono::DateTime;
 
-use super::arbeiten::{OFFEN_JE_PROJEKT, SATZ_IM_ARCHIV, arbeit_aus, braucht_besitzer, grenze_satz, offene_im_projekt, verlauf_anhaengen, zeit_text};
+use super::arbeiten::{
+    OFFEN_JE_PROJEKT, SATZ_IM_ARCHIV, arbeit_aus, braucht_besitzer, grenze_satz, offene_im_projekt, stand_verlauf, verlauf_anhaengen, zeit_text,
+};
 use super::aufgaben::Zeit;
 use super::tabellen::{ARBEITEN, ARBEITEN_ARCHIV};
 use super::vorgaenge::{vorgang_anlegen_in, vorgang_weiter_in};
@@ -574,6 +576,11 @@ impl Speicher {
             return Err(grenze_satz(&a.projekt));
         }
         a.geaendert = zeit_text(jetzt);
+        if a.stand != vorher.stand {
+            // An der Grenze vorbei: Ein abgeleiteter Wechsel folgt immer einem Schritt-Eintrag,
+            // der schon über die Grenze ging oder (fertig, frei) sie auslassen darf.
+            a.verlauf.push(stand_verlauf(&a.geaendert, von, vorher.stand, a.stand));
+        }
         let ereignisse = wecken_in(&txn, &vorher, &mut a, von, &wecken)?;
         txn.open_table(ARBEITEN)?.insert(a.id.as_str(), serde_json::to_vec(&a)?.as_slice())?;
         let bereiche: &[Bereich] = if ereignisse.is_empty() { &[Bereich::Arbeiten] } else { &[Bereich::Arbeiten, Bereich::Vorgaenge] };
@@ -632,6 +639,7 @@ mod tests {
             prioritaet: Stufe::Bald,
             frist: None,
             notiz: None,
+            etappe: None,
         };
         s.arbeit_anlegen(neu, &zeit(5, 8)).unwrap()
     }
@@ -998,6 +1006,26 @@ mod tests {
         assert_eq!(roh(&s, &fertig.id), vorher);
     }
 
+    /// Etappe B8: Ein aus den Schritten abgeleiteter Wechsel des Arbeitsstands
+    /// steht im Verlauf (von, wer den Schritt geändert hat); ein Schritt ohne
+    /// Wechsel des Arbeitsstands schreibt keinen.
+    #[test]
+    fn abgeleiteter_stand_wechsel_im_verlauf() {
+        let s = Speicher::temporaer();
+        let t = zeit(5, 9);
+        let a = arbeit(&s, ArbeitsStand::AlsNaechstes);
+        s.schritt_anlegen(&a.id, DASH, "a", None, &t).unwrap();
+        s.schritt_anlegen(&a.id, DASH, "b", None, &t).unwrap();
+        s.schritt_uebernehmen(&a.id, 1, ARCH, None, &t).unwrap();
+        s.schritt_uebernehmen(&a.id, 2, DASH, None, &t).unwrap();
+        s.schritt_aendern(&a.id, 1, ARCH, &stand(ArbeitsStand::Fertig), &t).unwrap();
+        let r = s.schritt_aendern(&a.id, 2, DASH, &stand(ArbeitsStand::Fertig), &t).unwrap();
+        let staende: Vec<(&str, &str, &str)> =
+            r.arbeit.verlauf.iter().filter(|v| v.art == ArbeitVerlaufArt::Stand).map(|v| (v.von.as_str(), v.alt.as_str(), v.neu.as_str())).collect();
+        assert_eq!(staende, [(ARCH, "als-naechstes", "laeuft"), (DASH, "laeuft", "fertig")]);
+        assert!(r.arbeit.verlauf.iter().filter(|v| v.art == ArbeitVerlaufArt::Stand).all(|v| v.schritt.is_none()));
+    }
+
     /// Voller Verlauf (500): fertig weckt den Wartenden trotzdem, mit
     /// Weck-Vorgang (sonst hinge er); eine Notiz bleibt bei 429.
     #[test]
@@ -1127,7 +1155,8 @@ mod tests {
         let x = schritt(&r.arbeit, 1);
         assert_eq!((x.besitzer.as_deref(), x.angeboten_an.as_deref()), (None, Some("chat:bauplan")));
         assert_eq!(schritt(&r.arbeit, 2).stand, ArbeitsStand::Wartet);
-        assert_eq!(r.arbeit.verlauf.last().unwrap().alt, "laeuft, dran: chat:dashboard");
+        let zuletzt = r.arbeit.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::SchrittGeaendert).unwrap();
+        assert_eq!(zuletzt.alt, "laeuft, dran: chat:dashboard");
         // Der alte Besitzer ändert ihn nicht mehr; umlenken darf, wer in der Arbeit einen Schritt hat.
         assert!(s.schritt_aendern(&a.id, 1, DASH, &stand(ArbeitsStand::Laeuft), &t).is_err());
         assert!(s.schritt_aendern(&a.id, 1, ARCH, &anbieten(DASH), &t).unwrap().geaendert);
@@ -1150,6 +1179,7 @@ mod tests {
                 prioritaet: Stufe::Bald,
                 frist: None,
                 notiz: None,
+                etappe: None,
             };
             let a = s.arbeit_anlegen(neu, &t).unwrap();
             s.schritt_anlegen(&a.id, DASH, "neu", None, &t).unwrap();

@@ -16,6 +16,7 @@
 //! - `anstehend`: Aufgaben, Fragen und Arbeiten als eine Liste (Etappe A1)
 //! - `backlog`: Spalten nach Stand und Status, Wartende je Verantwortlichem (Etappe B2)
 //! - `fristen`: Ereignisse, feste und bewegliche Fristen, Fristenliste (Etappe B3)
+//! - `plan`: die Etappen eines Projekts aus `daten/plan.toml` (Etappe B8)
 //! - `schwerpunkte`: `data/schwerpunkte.toml`
 //! - `gruppen`: `data/gruppen.toml` (Projektgruppen)
 //! - `passkey`: Passkeys und ihre Wege (Etappe 7c)
@@ -35,6 +36,7 @@ pub mod fristen;
 pub mod gruppen;
 pub mod lesen;
 pub mod passkey;
+pub mod plan;
 pub mod projekt;
 pub mod schwerpunkte;
 pub mod system_seiten;

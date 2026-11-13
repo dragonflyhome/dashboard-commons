@@ -69,4 +69,11 @@ verlauf?: Array<ArbeitVerlauf>,
 /**
  * Teilschritte, nach `nr` (Schema 10). Fehlt, solange es keine gibt.
  */
-schritte?: Array<Schritt>, };
+schritte?: Array<Schritt>, 
+/**
+ * Etappe aus `daten/plan.toml` (Schema 11): `<projekt>/<kennung>`, auch
+ * eines anderen Projekts. Der Server prüft beim Schreiben, dass es sie
+ * gibt; setzen und ändern darf nur, wer die Arbeit verantwortet. Fehlt,
+ * solange keine gesetzt ist.
+ */
+etappe?: string, };

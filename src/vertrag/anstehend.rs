@@ -317,6 +317,13 @@ pub struct Arbeit {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Schritt>>", optional)]
     pub schritte: Vec<Schritt>,
+    /// Etappe aus `daten/plan.toml` (Schema 11): `<projekt>/<kennung>`, auch
+    /// eines anderen Projekts. Der Server prüft beim Schreiben, dass es sie
+    /// gibt; setzen und ändern darf nur, wer die Arbeit verantwortet. Fehlt,
+    /// solange keine gesetzt ist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub etappe: Option<String>,
 }
 
 /// Ein Teilschritt einer Arbeit (Zweig teilschritte). Jeder Schritt, an dem
@@ -366,6 +373,11 @@ pub enum ArbeitVerlaufArt {
     SchrittGeaendert,
     /// Der Server hat einen wartenden Schritt zurück auf `laeuft` gesetzt.
     SchrittGeweckt,
+    /// Der Stand der Arbeit hat gewechselt (`alt` → `neu` als Stand-Wort),
+    /// von Hand gesetzt oder aus den Schritten abgeleitet (Schema 11).
+    Stand,
+    /// Die Etappe der Arbeit wurde gesetzt oder geändert (`alt` → `neu`, leer: keine).
+    Etappe,
 }
 
 /// Ein Eintrag im Verlauf einer Arbeit. Er erzeugt keine Meldung.

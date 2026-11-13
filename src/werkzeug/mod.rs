@@ -44,6 +44,7 @@ const PRUEFER_QUELLEN: (&[&str], &[&[u8]]) = pruefer_quellen![
     "../vertrag/fristen.rs",
     "../vertrag/gruppen.rs",
     "../vertrag/lesen.rs",
+    "../vertrag/plan.rs",
     "../vertrag/projekt.rs",
     "../vertrag/schwerpunkte.rs",
     "../vertrag/verlauf.rs",

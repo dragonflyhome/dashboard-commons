@@ -18,8 +18,25 @@ Hinzugefügt
 - Anleitung, Abschnitt 15: im Team an einem Projekt-Repo mitarbeiten
   (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
   und was der Prüfer ohne Namenslisten tut).
+- daten/plan.toml: die Etappen eines Projekts (kennung, titel, ziel,
+  reihenfolge; freiwillig ab, arbeiten, abgeschlossen), nur Absicht ohne
+  Stand; pruefe meldet fehlende Felder, doppelte Kennungen und doppelte
+  Reihenfolgen.
+- Arbeiten haben ein freiwilliges Feld etappe (<projekt>/<kennung>). Der
+  Server prüft es beim Anlegen und Fortschreiben gegen daten/plan.toml jenes
+  Projekts (sonst 422); setzen und ändern darf nur, wer die Arbeit
+  verantwortet (sonst 409).
+- Jeder Wechsel des Stands einer Arbeit steht in ihrem Verlauf (art stand,
+  alt und neu als Stand-Wort), ob von Hand gesetzt oder aus den Schritten
+  abgeleitet; eine geänderte Etappe ebenso (art etappe).
 
 Geändert
+- Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
+  Schema 10 wird beim Start nach einer Sicherung umgestellt, ohne dass sich
+  eine Arbeit ändert; ältere Programme öffnen sie danach nicht mehr.
+- Ein Wechsel auf laeuft oder wartet zählt bei vollem Verlauf einer Arbeit
+  gegen die Grenze von 500 Einträgen; auf als-naechstes und fertig geht
+  weiterhin immer.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
 

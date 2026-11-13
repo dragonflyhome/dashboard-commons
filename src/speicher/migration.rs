@@ -34,7 +34,10 @@ use super::{Speicher, SpeicherFehler};
 /// 10: Arbeiten in Fassung 2 mit `besitzer` und `schritte` (Zweig teilschritte).
 ///    Ältere Programme öffnen die Datei nicht mehr: sie würden Schritte beim
 ///    Zurückschreiben still verlieren.
-pub const SCHEMA_AKTUELL: u32 = 10;
+/// 11: Arbeiten in Fassung 3 mit `etappe` und den Verlaufsarten `stand` und
+///    `etappe` (Etappe B8). Ältere Programme öffnen die Datei nicht mehr: sie
+///    würden die Etappe beim Zurückschreiben still verlieren.
+pub const SCHEMA_AKTUELL: u32 = 11;
 
 /// Ein Umbauschritt: hebt die Datei von `nach - 1` auf `nach`.
 pub struct Schritt {
@@ -53,6 +56,7 @@ pub const SCHRITTE: &[Schritt] = &[
     Schritt { nach: 8, lauf: migration_8 },
     Schritt { nach: 9, lauf: migration_9 },
     Schritt { nach: 10, lauf: migration_10 },
+    Schritt { nach: 11, lauf: migration_11 },
 ];
 
 /// Schema 1 → 2: die Tabellen der Vorgänge anlegen (leer) und ihre Fassungen eintragen.
@@ -133,6 +137,20 @@ fn migration_10(txn: &WriteTransaction) -> Result<(), SpeicherFehler> {
             // Fest 2: ein späterer Schritt hebt selbst weiter.
             ("arbeiten", tabellen::META_FASSUNG_ARBEITEN, 2),
             ("arbeiten_archiv", tabellen::META_FASSUNG_ARBEITEN_ARCHIV, 2),
+        ],
+    )
+}
+
+/// Schema 10 → 11: nur die Fassung 3 für `arbeiten` und `arbeiten_archiv`.
+/// Kein Eintrag wird umgeschrieben: `etappe` fehlt bei alten Arbeiten, und
+/// die Verlaufsart `stand` gibt es erst ab jetzt.
+fn migration_11(txn: &WriteTransaction) -> Result<(), SpeicherFehler> {
+    fassungen_eintragen(
+        txn,
+        &[
+            // Fest 3: ein späterer Schritt hebt selbst weiter.
+            ("arbeiten", tabellen::META_FASSUNG_ARBEITEN, 3),
+            ("arbeiten_archiv", tabellen::META_FASSUNG_ARBEITEN_ARCHIV, 3),
         ],
     )
 }
@@ -445,18 +463,18 @@ mod tests {
         let s = Speicher::temporaer();
         assert_eq!(s.schema().unwrap(), SCHEMA_AKTUELL);
         assert!(s.letzte_sicherung().is_none());
-        migrieren_mit(&s, &[Schritt { nach: 11, lauf: test_schritt }]).unwrap();
-        assert_eq!(s.schema().unwrap(), 11);
+        migrieren_mit(&s, &[Schritt { nach: 12, lauf: test_schritt }]).unwrap();
+        assert_eq!(s.schema().unwrap(), 12);
         assert_eq!(s.meta_lesen("test.migriert").unwrap().as_deref(), Some("ja"));
         let datum = s.letzte_sicherung().expect("Sicherung vor dem Umbau");
-        let kopie = s.sicherungs_ordner().join(format!("dashboard-{datum}-vor-schema-10.redb"));
+        let kopie = s.sicherungs_ordner().join(format!("dashboard-{datum}-vor-schema-11.redb"));
         assert!(kopie.is_file());
         // Die Sicherung zeigt den Stand vor dem Umbau.
         let db = ReadOnlyDatabase::open(&kopie).unwrap();
-        assert_eq!(schema_lesen(&db).unwrap(), Some(10));
+        assert_eq!(schema_lesen(&db).unwrap(), Some(11));
         // Ein zweiter Lauf hat nichts mehr zu tun.
-        migrieren_mit(&s, &[Schritt { nach: 11, lauf: test_schritt }]).unwrap();
-        assert_eq!(s.schema().unwrap(), 11);
+        migrieren_mit(&s, &[Schritt { nach: 12, lauf: test_schritt }]).unwrap();
+        assert_eq!(s.schema().unwrap(), 12);
     }
 
     /// Abnahme 2a und 2b: der ganze Öffnungsweg (vorab prüfen, öffnen,
@@ -636,6 +654,7 @@ mod tests {
             prioritaet: Stufe::Bald,
             frist: None,
             notiz: None,
+            etappe: None,
         };
         let arbeit = s.arbeit_anlegen(neu, &jetzt).unwrap();
         let e = Einstufung {
@@ -1036,8 +1055,8 @@ mod tests {
         std::fs::remove_dir_all(&ordner).unwrap();
     }
 
-    /// Zweig teilschritte (T1): eine Datei mit Schema 9 wird auf Schema 10
-    /// gebracht, vorher die Sicherung `vor-schema-9`. Laufende und wartende
+    /// Zweig teilschritte (T1): eine Datei mit Schema 9 wird auf das
+    /// aktuelle Schema gebracht, vorher die Sicherung `vor-schema-9`. Laufende und wartende
     /// Arbeiten bekommen `besitzer = von`, alles andere bleibt Byte für Byte;
     /// ein alter Satz liest sich und schreibt sich gleich zurück. Ein
     /// Programm, das nur Schema 9 kennt, lehnt die Datei danach ab, ohne sie
@@ -1077,11 +1096,11 @@ mod tests {
             txn.commit().unwrap();
         }
         let s = Speicher::oeffnen_mit(&pfad, ordner.clone(), None, SCHRITTE).unwrap();
-        assert_eq!(s.schema().unwrap(), 10);
+        assert_eq!(s.schema().unwrap(), SCHEMA_AKTUELL);
         for (_, schluessel, fassung) in tabellen::FASSUNGEN {
             assert_eq!(s.meta_lesen(schluessel).unwrap(), Some(fassung.to_string()), "{schluessel}");
         }
-        assert_eq!(s.meta_lesen(tabellen::META_FASSUNG_ARBEITEN).unwrap().as_deref(), Some("2"));
+        assert_eq!(s.meta_lesen(tabellen::META_FASSUNG_ARBEITEN).unwrap().as_deref(), Some("3"));
         assert_eq!(s.pc_verlauf_lesen(chrono::DateTime::UNIX_EPOCH).unwrap(), vec![m]);
         let roh = |tabelle: redb::TableDefinition<&str, &[u8]>, id: &str| {
             let txn = s.db.begin_read().unwrap();
@@ -1128,7 +1147,7 @@ mod tests {
         // Ein Programm, das nur Schema 9 kennt, lehnt die Datei ab; sie bleibt, wie sie ist.
         let vorher = std::fs::read(&pfad).unwrap();
         let e = vorab_pruefen(&pfad, 9).unwrap_err();
-        assert!(matches!(e, SpeicherFehler::ZuNeu { schema: 10, .. }), "{e:?}");
+        assert!(matches!(e, SpeicherFehler::ZuNeu { schema: SCHEMA_AKTUELL, .. }), "{e:?}");
         assert_eq!(Sha256::digest(&vorher), Sha256::digest(std::fs::read(&pfad).unwrap()));
         // Ein zweites Öffnen hat nichts zu tun.
         let sicherungen = std::fs::read_dir(&ordner).unwrap().count();
@@ -1140,7 +1159,65 @@ mod tests {
         std::fs::remove_dir_all(&ordner).unwrap();
     }
 
-    /// Mehrere Schritte nacheinander, mit einem eingeschobenen Schritt nach 11;
+    /// Etappe B8: eine Datei mit Schema 10 wird auf Schema 11 gebracht (vorher
+    /// die Sicherung `vor-schema-10`); nur die Fassungen der Arbeiten steigen
+    /// auf 3, jede Arbeit bleibt Byte für Byte, und ein Satz aus 10 liest sich
+    /// und schreibt sich gleich zurück. Ein Programm, das nur Schema 10 kennt,
+    /// lehnt die Datei danach ab, ohne sie zu ändern.
+    #[test]
+    fn oeffnen_baut_schema_10_ohne_datenverlust_um() {
+        use crate::api::vertrag::Arbeit;
+        let pfad = crate::speicher::test_pfad();
+        let ordner = pfad.with_extension("sicherung");
+        schema_1_datei(&pfad);
+        let mit_schritt = r#"{"id":"ar-20261110-0001","projekt":"dashboard","von":"chat:dashboard","besitzer":"chat:dashboard","titel":"Vor B8","stand":"laeuft","wartet_auf":null,"verweis":null,"prioritaet":"bald","frist":null,"notiz":null,"erstellt":"2026-11-10T10:00:00+01:00","geaendert":"2026-11-10T11:00:00+01:00","verlauf":[{"zeit":"2026-11-10T11:00:00+01:00","von":"chat:dashboard","art":"schritt-angelegt","schritt":1,"alt":"","neu":"a","text":"Schritt 1 angelegt"}],"schritte":[{"nr":1,"titel":"a","stand":"laeuft","besitzer":"chat:dashboard","wartet_auf":null,"verweis":null,"angeboten_an":null,"fuer":null,"seit":"2026-11-10T11:00:00+01:00","notiz":null,"vorgang":null}]}"#;
+        let fertig = r#"{"id":"ar-20261110-0002","projekt":"dashboard","von":"chat:dashboard","titel":"Alt","stand":"fertig","wartet_auf":null,"verweis":null,"prioritaet":"bald","frist":null,"notiz":null,"erstellt":"2026-11-10T10:00:00+01:00","geaendert":"2026-11-10T10:00:00+01:00"}"#;
+        {
+            let db = Database::create(&pfad).unwrap();
+            let txn = db.begin_write().unwrap();
+            for schritt in [migration_2, migration_3, migration_4, migration_5, migration_6, migration_7, migration_8, migration_9, migration_10] {
+                schritt(&txn).unwrap();
+            }
+            {
+                let mut meta = txn.open_table(META).unwrap();
+                meta.insert(tabellen::META_SCHEMA, "10").unwrap();
+                txn.open_table(ARBEITEN).unwrap().insert("ar-20261110-0001", mit_schritt.as_bytes()).unwrap();
+                txn.open_table(ARBEITEN_ARCHIV).unwrap().insert("ar-20261110-0002", fertig.as_bytes()).unwrap();
+            }
+            txn.commit().unwrap();
+        }
+        let s = Speicher::oeffnen_mit(&pfad, ordner.clone(), None, SCHRITTE).unwrap();
+        assert_eq!(s.schema().unwrap(), 11);
+        for (_, schluessel, fassung) in tabellen::FASSUNGEN {
+            assert_eq!(s.meta_lesen(schluessel).unwrap(), Some(fassung.to_string()), "{schluessel}");
+        }
+        assert_eq!(s.meta_lesen(tabellen::META_FASSUNG_ARBEITEN_ARCHIV).unwrap().as_deref(), Some("3"));
+        let roh = |tabelle: redb::TableDefinition<&str, &[u8]>, id: &str| {
+            let txn = s.db.begin_read().unwrap();
+            let w = txn.open_table(tabelle).unwrap().get(id).unwrap().unwrap().value().to_vec();
+            String::from_utf8(w).unwrap()
+        };
+        assert_eq!(roh(ARBEITEN, "ar-20261110-0001"), mit_schritt);
+        assert_eq!(roh(ARBEITEN_ARCHIV, "ar-20261110-0002"), fertig);
+        for json in [mit_schritt, fertig] {
+            let a: Arbeit = serde_json::from_str(json).unwrap();
+            assert_eq!(a.etappe, None);
+            assert_eq!(serde_json::to_string(&a).unwrap(), json);
+        }
+        let datum = s.letzte_sicherung().expect("Sicherung vor dem Umbau");
+        let kopie = ReadOnlyDatabase::open(ordner.join(format!("dashboard-{datum}-vor-schema-10.redb"))).unwrap();
+        assert_eq!(schema_lesen(&kopie).unwrap(), Some(10));
+        drop(kopie);
+        drop(s);
+        let vorher = std::fs::read(&pfad).unwrap();
+        let e = vorab_pruefen(&pfad, 10).unwrap_err();
+        assert!(matches!(e, SpeicherFehler::ZuNeu { schema: 11, .. }), "{e:?}");
+        assert_eq!(Sha256::digest(&vorher), Sha256::digest(std::fs::read(&pfad).unwrap()));
+        std::fs::remove_file(&pfad).unwrap();
+        std::fs::remove_dir_all(&ordner).unwrap();
+    }
+
+    /// Mehrere Schritte nacheinander, mit einem eingeschobenen Schritt nach 12;
     /// danach ist die Datei für dieses Programm zu neu.
     #[test]
     fn oeffnen_baut_ueber_mehrere_schritte_um() {
@@ -1157,10 +1234,11 @@ mod tests {
             Schritt { nach: 8, lauf: migration_8 },
             Schritt { nach: 9, lauf: migration_9 },
             Schritt { nach: 10, lauf: migration_10 },
-            Schritt { nach: 11, lauf: test_schritt },
+            Schritt { nach: 11, lauf: migration_11 },
+            Schritt { nach: 12, lauf: test_schritt },
         ];
         let s = Speicher::oeffnen_mit(&pfad, ordner.clone(), None, &schritte).unwrap();
-        assert_eq!(s.schema().unwrap(), 11);
+        assert_eq!(s.schema().unwrap(), 12);
         assert_eq!(s.meta_lesen("test.migriert").unwrap().as_deref(), Some("ja"));
         assert!(tabellen_in(&s).contains(&"meldungen".to_string()));
         assert!(tabellen_in(&s).contains(&"ereignisse".to_string()));
@@ -1169,8 +1247,8 @@ mod tests {
         assert!(tabellen_in(&s).contains(&"projekt_tabellen".to_string()));
         assert!(tabellen_in(&s).contains(&"pc_ereignisse_archiv".to_string()));
         drop(s);
-        let e = Speicher::oeffnen(&pfad).err().expect("Schema 11 ist für dieses Programm zu neu");
-        assert!(matches!(e, SpeicherFehler::ZuNeu { schema: 11, .. }), "{e:?}");
+        let e = Speicher::oeffnen(&pfad).err().expect("Schema 12 ist für dieses Programm zu neu");
+        assert!(matches!(e, SpeicherFehler::ZuNeu { schema: 12, .. }), "{e:?}");
         std::fs::remove_file(&pfad).unwrap();
         std::fs::remove_dir_all(&ordner).unwrap();
     }
@@ -1181,8 +1259,8 @@ mod tests {
         let pfad = crate::speicher::test_pfad();
         let ordner = pfad.with_extension("sicherung");
         drop(Speicher::oeffnen(&pfad).unwrap());
-        let e = Speicher::oeffnen_mit(&pfad, ordner.clone(), None, &[Schritt { nach: 12, lauf: test_schritt }]).err().expect("Lücke");
-        assert!(matches!(e, SpeicherFehler::Luecke { von: 10 }), "{e:?}");
+        let e = Speicher::oeffnen_mit(&pfad, ordner.clone(), None, &[Schritt { nach: 13, lauf: test_schritt }]).err().expect("Lücke");
+        assert!(matches!(e, SpeicherFehler::Luecke { von: 11 }), "{e:?}");
         assert_eq!(Speicher::oeffnen(&pfad).unwrap().schema().unwrap(), SCHEMA_AKTUELL);
         std::fs::remove_file(&pfad).unwrap();
         let _ = std::fs::remove_dir_all(&ordner);
@@ -1232,8 +1310,8 @@ mod tests {
     #[test]
     fn luecke_in_den_schritten_bricht_ab() {
         let s = Speicher::temporaer();
-        let e = migrieren_mit(&s, &[Schritt { nach: 12, lauf: test_schritt }]).unwrap_err();
-        assert!(matches!(e, SpeicherFehler::Luecke { von: 10 }), "{e:?}");
+        let e = migrieren_mit(&s, &[Schritt { nach: 13, lauf: test_schritt }]).unwrap_err();
+        assert!(matches!(e, SpeicherFehler::Luecke { von: 11 }), "{e:?}");
         assert_eq!(s.schema().unwrap(), SCHEMA_AKTUELL);
     }
 
@@ -1249,7 +1327,7 @@ mod tests {
         let vorher = std::fs::read(&pfad).unwrap();
         let e = Speicher::oeffnen(&pfad).err().expect("muss abgelehnt werden");
         assert!(matches!(e, SpeicherFehler::ZuNeu { schema: 99, .. }), "{e:?}");
-        assert!(e.to_string().contains("Schema 99, dieses Programm kennt 10"), "{e}");
+        assert!(e.to_string().contains(&format!("Schema 99, dieses Programm kennt {SCHEMA_AKTUELL}")), "{e}");
         let nachher = std::fs::read(&pfad).unwrap();
         assert_eq!(vorher.len(), nachher.len());
         assert_eq!(Sha256::digest(&vorher), Sha256::digest(&nachher));

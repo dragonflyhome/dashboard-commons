@@ -1124,6 +1124,8 @@ pub struct ProjektDaten {
     /// `daten/fristen.toml` (Etappe B3): Ereignisse und Fristen. Nur mit
     /// Windows-Anmeldung (`/api/projects/<slug>` lässt sie sonst weg).
     pub fristen: Option<Datei<super::fristen::Fristen>>,
+    /// `daten/plan.toml` (Etappe B8): die Etappen, nur Absicht.
+    pub plan: Option<Datei<super::plan::Plan>>,
     /// `daten/eigen-<name>.toml` unter dem Schlüssel `<name>`, als JSON durchgereicht.
     #[ts(type = "Record<string, unknown>")]
     pub eigen: BTreeMap<String, serde_json::Value>,
@@ -1145,6 +1147,7 @@ pub enum DatenInhalt {
     Fragen(Datei<Fragen>),
     Orte(Datei<Orte>),
     Fristen(Datei<super::fristen::Fristen>),
+    Plan(Datei<super::plan::Plan>),
     /// `eigen-<name>.toml`, als JSON durchgereicht.
     Eigen(#[ts(type = "Record<string, unknown>")] serde_json::Value),
 }
@@ -1170,6 +1173,7 @@ impl ProjektDaten {
             "fragen" => DatenInhalt::Fragen(self.fragen.take()?),
             "orte" => DatenInhalt::Orte(self.orte.take()?),
             "fristen" => DatenInhalt::Fristen(self.fristen.take()?),
+            "plan" => DatenInhalt::Plan(self.plan.take()?),
             _ => DatenInhalt::Eigen(self.eigen.remove(name.strip_prefix("eigen-")?)?),
         })
     }
@@ -1189,7 +1193,7 @@ impl ProjektDaten {
 }
 
 /// Die Dateinamen, die in `daten/` stehen dürfen (ohne `eigen-<name>.toml`).
-pub const DATEIEN: [&str; 10] = [
+pub const DATEIEN: [&str; 11] = [
     Kennzahlen::DATEI,
     Ampel::DATEI,
     Fortschritt::DATEI,
@@ -1200,6 +1204,7 @@ pub const DATEIEN: [&str; 10] = [
     Fragen::DATEI,
     Orte::DATEI,
     super::fristen::Fristen::DATEI,
+    super::plan::Plan::DATEI,
 ];
 
 fn einsetzen<T: Baustein>(feld: &mut Option<Datei<T>>, datei: &str, text: &str) -> Result<(), LeseFehler> {
@@ -1264,6 +1269,13 @@ impl ProjektDaten {
                 einsetzen(&mut self.fristen, datei, text)?;
                 match &self.fristen {
                     Some(f) => super::fristen::fristen_ueber_die_datei(f, datei, text),
+                    None => Ok(()),
+                }
+            }
+            "plan" => {
+                einsetzen(&mut self.plan, datei, text)?;
+                match &self.plan {
+                    Some(p) => super::plan::plan_ueber_die_datei(p, datei, text),
                     None => Ok(()),
                 }
             }
