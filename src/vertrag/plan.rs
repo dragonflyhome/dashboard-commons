@@ -185,7 +185,9 @@ pub struct PlanEtappe {
     /// Ortszeit, RFC 3339: als die letzte Arbeit fertig wurde (nur bei `fertig`).
     pub fertig: Option<String>,
     /// `fertig` ist ungefähr: mindestens eine Arbeit hat keinen Eintrag dazu
-    /// im Verlauf, für sie gilt ihre letzte Änderung.
+    /// im Verlauf, für sie gilt ihr letzter Wechsel im Verlauf (`stand` oder
+    /// an einem Schritt), ohne ihn ihre letzte Änderung (Pflege wie `besitzer`
+    /// oder eine Notiz am Schritt zählt nicht).
     pub ungefaehr: bool,
     /// Ortszeit, RFC 3339: die früheste Zuordnung einer dazugekommenen Arbeit,
     /// sonst leer. Wie bei `dazugekommen` zählt eine Arbeit, die vor
@@ -218,7 +220,8 @@ pub struct PlanArbeit {
     pub etappe: Option<String>,
     /// Ortszeit, RFC 3339: wann sie fertig wurde (nur bei `fertig`).
     pub fertig: Option<String>,
-    /// `fertig` ist die letzte Änderung, kein Eintrag im Verlauf.
+    /// `fertig` ist geschätzt, kein Eintrag dazu im Verlauf: der letzte
+    /// Wechsel (`stand` oder an einem Schritt), ohne ihn die letzte Änderung.
     pub ungefaehr: bool,
 }
 

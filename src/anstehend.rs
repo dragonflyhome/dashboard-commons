@@ -840,7 +840,8 @@ pub fn fertig_7_tage(inhalt: &Inhalt, slug: &str) -> u64 {
 /// `erstellt`, Fragen seit `gestellt`; Arbeiten mit Schritten seit dem
 /// frühesten `seit` der Schritte, die auf den Inhaber warten; ohne Schritte
 /// seit dem letzten Verlaufseintrag `stand` auf wartet (auch beim Wechsel von
-/// `wartet_auf` geschrieben), ohne ihn seit `geaendert`.
+/// `wartet_auf` geschrieben), ohne ihn seit der letzten Bewegung
+/// ([`crate::plan::letzte_bewegung`], nicht `geaendert`: Pflege kürzt das Warten nicht).
 /// shortcut: `seit` eines Schritts rückt auch bei einer Notiz vor, das Warten wirkt dann kürzer; eigener Zeitpunkt am Schritt, sobald das eine Ampel verschluckt.
 fn wartet_seit(inhalt: &Inhalt, e: &AnstehendEintrag) -> Option<NaiveDate> {
     if e.art != EintragsArt::Arbeit {
@@ -853,7 +854,7 @@ fn wartet_seit(inhalt: &Inhalt, e: &AnstehendEintrag) -> Option<NaiveDate> {
     }
     let wartet = ArbeitsStand::Wartet.wort();
     let seit = a.verlauf.iter().rev().find(|v| v.art == crate::vertrag::anstehend::ArbeitVerlaufArt::Stand && v.neu == wartet);
-    tag_von(seit.map_or(&a.geaendert, |v| &v.zeit))
+    tag_von(seit.map_or_else(|| crate::plan::letzte_bewegung(a), |v| &v.zeit))
 }
 
 /// Etappe B8: Tage seit der letzten Änderung an einer Arbeit des Projekts,
@@ -1560,6 +1561,15 @@ mod tests {
             neu: neu.into(),
             text: String::new(),
         };
+        // Ohne Eintrag „wartet“ zählt die letzte Bewegung; eine spätere Notiz am Schritt
+        // (laeuft → laeuft) und ein Besitzer-Eintrag (Pflege) nicht.
+        let art = |art, zeit: &str, neu: &str| crate::vertrag::anstehend::ArbeitVerlauf { art, ..eintrag(zeit, neu) };
+        i.speicher.arbeiten[0].verlauf = vec![
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::SchrittGeaendert, "2026-10-20T08:00:00+01:00", "wartet"),
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::SchrittGeaendert, "2026-10-25T08:00:00+01:00", "laeuft"),
+            art(crate::vertrag::anstehend::ArbeitVerlaufArt::Besitzer, "2026-10-29T08:00:00+01:00", "laeuft"),
+        ];
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Rot, AmpelGrund::WartetLange, Some(9)), "Pflege kürzt das Warten nicht");
         i.speicher.arbeiten[0].verlauf = vec![
             eintrag("2026-10-10T08:00:00+01:00", "wartet"),
             eintrag("2026-10-12T08:00:00+01:00", "laeuft"),
