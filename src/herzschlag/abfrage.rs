@@ -1,8 +1,9 @@
 //! Die Frage an das Dashboard: `GET /api/sitzungen/<id>/offen` über
 //! 127.0.0.1 mit der Windows-Anmeldung des aufrufenden Kontos (Negotiate,
 //! derselbe SSPI-Client wie in den Tests der Anmeldung), alle Runden auf einer
-//! Verbindung. Eine harte Frist gilt für alles zusammen (Verbinden, Senden,
-//! Lesen); jeder Fehler ist ein Satz, den der Herzschlag als „durchlassen“ nimmt.
+//! Verbindung. Eine harte Frist gilt für das Netz zusammen (Verbinden, Senden,
+//! Lesen), nicht für die Schritte der Anmeldung (SSPI, lokal); jeder Fehler ist
+//! ein Satz, den der Herzschlag als „durchlassen“ nimmt.
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -65,15 +66,36 @@ pub fn arbeit_aus(koerper: &[u8]) -> Result<Arbeit, String> {
     if offen.is_empty() {
         return Ok(Arbeit::Frei);
     }
+    // Die Antwort kann von einem fremden Programm auf dem Port kommen: jedes Feld
+    // ohne Steuerzeichen und gekürzt, die ganze Liste höchstens OFFEN_HOECHSTENS.
     let teile: Vec<String> = offen
         .iter()
         .map(|s| {
-            let text = |k: &str| s.get(k).and_then(Value::as_str).unwrap_or_default();
+            let text = |k: &str, max: usize| kuerzen(s.get(k).and_then(Value::as_str).unwrap_or_default(), max);
             let nr = s.get("nr").and_then(Value::as_u64).map(|n| format!(" Schritt {n}")).unwrap_or_default();
-            format!("{}{nr} „{}“ ({})", text("arbeit"), text("titel"), text("grund"))
+            format!("{}{nr} „{}“ ({})", text("arbeit", 64), text("titel", 160), text("grund", 64))
         })
         .collect();
-    Ok(Arbeit::Offen(teile.join("; ")))
+    Ok(Arbeit::Offen(kuerzen(&teile.join("; "), OFFEN_HOECHSTENS)))
+}
+
+/// Höchstens so viele Bytes für die offenen Schritte im Grund eines Blocks
+/// (der Grund bleibt so unter etwa 2 KB).
+pub const OFFEN_HOECHSTENS: usize = 1536;
+
+/// `s` ohne Steuerzeichen, höchstens `max` Bytes, an einer Zeichengrenze
+/// gekürzt; gekürzt endet es mit „…“ (zählt mit).
+#[must_use]
+pub fn kuerzen(s: &str, max: usize) -> String {
+    let rein: String = s.chars().filter(|c| !c.is_control()).collect();
+    if rein.len() <= max {
+        return rein;
+    }
+    let mut ende = max.saturating_sub('…'.len_utf8());
+    while !rein.is_char_boundary(ende) {
+        ende -= 1;
+    }
+    format!("{}…", &rein[..ende])
 }
 
 fn rest(ende: Instant) -> Result<Duration, String> {

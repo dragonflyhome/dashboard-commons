@@ -717,6 +717,48 @@ fn only_the_own_machine_and_well_formed_sessions_are_asked() {
     assert!(abfrage::sitzung_gueltig("0b2c-4f_A"));
 }
 
+/// Eine fremde Antwort auf dem Port (langer Titel mit Steuerzeichen, viele
+/// Schritte) ergibt einen Grund von höchstens 2 KB ohne Steuerzeichen.
+#[test]
+fn a_foreign_answer_gives_a_short_reason_without_control_characters() {
+    let titel = format!("\u{1b}[31mrot\r\nzeile\u{7}{}", "ä".repeat(10_000));
+    let schritt = json!({"arbeit": "ar-1\u{0}", "nr": 1, "titel": titel, "grund": "laeuft\t"});
+    let koerper = serde_json::to_vec(&json!({"sitzung": "s", "von": "chat:a", "offen": vec![schritt; 200]})).unwrap();
+    let arbeit = abfrage::arbeit_aus(&koerper).unwrap();
+    let dir = TestDir::new("foreign-answer");
+    let result = dir.run(&base(), with(vec![Ok(arbeit)]));
+    assert_block(&result);
+    let grund = String::from_utf8(result.stderr.clone()).unwrap();
+    assert!(grund.len() <= 2048, "{} Bytes", grund.len());
+    assert!(!grund.chars().any(char::is_control), "{grund:?}");
+    assert!(grund.contains("ar-1 Schritt 1 „[31mrotzeileää") && grund.contains('…'), "{grund}");
+    // Gegenprobe: Kurzes bleibt, wie es ist; gekürzt wird an einer Zeichengrenze.
+    assert_eq!(abfrage::kuerzen("Bauen", 160), "Bauen");
+    assert_eq!(abfrage::kuerzen("abcd", 4), "abcd");
+    assert_eq!(abfrage::kuerzen("abcde", 4), "a…");
+    assert_eq!(abfrage::kuerzen("ääää", 6), "ä…");
+    assert_eq!(abfrage::arbeit_aus(br#"{"von":"chat:a","offen":[{"arbeit":"ar-1","nr":2,"titel":"Bauen","grund":"laeuft"}]}"#), Ok(offen()));
+}
+
+/// Über `LOG_HOECHSTENS` wird herzschlag.log zu herzschlag.log.alt (eine
+/// vorige .alt fällt weg); darunter wird nur angehängt.
+#[test]
+fn the_log_is_bounded() {
+    let dir = TestDir::new("log-bounded");
+    let ordner = dir.state_dir();
+    fs::create_dir_all(&ordner).unwrap();
+    let log = ordner.join("herzschlag.log");
+    let alt = ordner.join("herzschlag.log.alt");
+    fs::write(&alt, "uralt").unwrap();
+    fs::write(&log, vec![b'x'; usize::try_from(super::graph::LOG_HOECHSTENS).unwrap()]).unwrap();
+    super::graph::record_payload_failure(&ordner);
+    assert!(fs::metadata(&log).unwrap().len() > super::graph::LOG_HOECHSTENS, "an der Grenze wird noch angehängt");
+    assert_eq!(fs::read_to_string(&alt).unwrap(), "uralt");
+    super::graph::record_payload_failure(&ordner);
+    assert_eq!(fs::read_to_string(&log).unwrap(), "{\"action\":\"internal_error\",\"error\":\"Payload\"}\n");
+    assert!(fs::metadata(&alt).unwrap().len() > super::graph::LOG_HOECHSTENS, "die volle Datei ist jetzt .alt");
+}
+
 #[test]
 fn the_state_folder_lies_under_local_app_data() {
     if let Some(o) = super::zustand_ordner() {

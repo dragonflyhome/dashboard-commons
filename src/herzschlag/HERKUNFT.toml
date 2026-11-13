@@ -26,6 +26,7 @@ geaendert = [
   "Zustandsdateien unter %LOCALAPPDATA%/Dashboard/herzschlag statt HOME/.local/state; Warn- und Prompt-Marker entfallen, der Zähler je Zug bleibt.",
   "Ein Stop mit stop_hook_active setzt den Zähler bei einem neuen Marker nicht zurück; die Grenze je Zug hängt so nicht davon ab, wie das Transkript die Rückmeldung eines Blocks schreibt.",
   "Protokoll herzschlag.log statt orchestrator.log; Fehlerklassen Clock und LettersListingFailed entfallen; Temp-Dateien mit eigenem Präfix, bei einem Fehler entfernt.",
+  "herzschlag.log ist begrenzt: über LOG_HOECHSTENS wird es vor dem nächsten Eintrag zu herzschlag.log.alt.",
 ]
 
 [[datei]]
@@ -68,6 +69,6 @@ geaendert = ["Unverändert; spec-nonnumeric-delay.json (Wecker) entfällt."]
 # heartbeat/entry_listing.rs, heartbeat/letters*.rs, heartbeat/pre_tool.rs,
 # die Python-Referenz und das Meson-Gate.
 # Eigene Teile dieses Repos (AGPL-3.0-or-later): src/herzschlag/mod.rs,
-# src/herzschlag/abfrage.rs, src/api/sitzungen.rs. mod.rs folgt in wenigen Zeilen
+# src/herzschlag/abfrage.rs, src/api/sitzungen.rs, src/bin/dashboard-herzschlag.rs. mod.rs folgt in wenigen Zeilen
 # <Hook-Paket>/src/main.rs und lib.rs (stiller Panik-Hook, Eingabegrenze, Ausgabe
 # von stdout und stderr); diese Zeilen sind nachgebildet, nicht übernommen.
