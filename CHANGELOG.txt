@@ -15,6 +15,10 @@ Unreleased
 ----------
 
 Hinzugefügt
+- Leitfaden für Mitwirkende (CONTRIBUTING.md): Beiträge kommen als
+  Merge-Angebot in einem Issue aus dem eigenen Fork, ohne Pull Requests;
+  LIESMICH.txt verweist darauf. Der Prüfer lässt genau diese eine
+  Markdown-Datei in der Wurzel zu.
 - GET /api/fassungen (frei): die laufende Version, Unreleased und alle
   Fassungen dieses Changelogs mit Tag, Datum, Hinzugefügt, Geändert,
   Entfernt, Behoben und den Brüchen, neueste zuerst; ?seit=<x.y.z> nur die
