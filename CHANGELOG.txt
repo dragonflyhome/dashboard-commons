@@ -153,6 +153,10 @@ Geändert
   plan.toml nicht mehr als eigene Abschnitte: Fristen stehen in der
   Zeitleiste, die Etappen im Plan.
 - Der Hinweis von pruefe zu kanban.toml nennt die Aufgabenliste.
+- Bruch: Der Katalog-Baustein Backlog (weiter exportiert) zeigt Gruppen
+  untereinander statt Spalten: Wartet auf dich, Läuft, Als Nächstes,
+  Wartet auf andere; je Arbeit eine Zeile mit Anker arbeit-<id>, aufklappbar
+  zu den Schritten. AufgabenKasten nimmt eine Ebene für seine Überschrift.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

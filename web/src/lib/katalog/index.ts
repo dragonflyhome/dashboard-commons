@@ -25,7 +25,7 @@ export { default as Gantt } from './Gantt.svelte';
 export { default as Kanban } from './Kanban.svelte';
 export { default as Fluss } from './Fluss.svelte';
 export { default as Fragen } from './Fragen.svelte';
-// Etappe B2: Backlog (Spalten nach Stand und Status aus dem Datenspeicher, Wer ist dran)
+// Etappe B2, ab B8 Aufgabenliste: Backlog (Gruppen untereinander nach Stand und Status aus dem Datenspeicher, Wer ist dran)
 export { default as Backlog } from './Backlog.svelte';
 // Etappe B8: Plan der Projektseite (Etappen mit Stand und Zählung vom Server, Zeitstreifen nur aus Ist-Daten)
 export { default as Plan } from './Plan.svelte';
