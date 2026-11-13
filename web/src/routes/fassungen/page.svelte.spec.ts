@@ -36,7 +36,7 @@ function zeige(data: { fassungen: FassungenAntwort | null; fehler: string | null
 }
 
 describe('Seite /fassungen', () => {
-	it('zeigt laufende Fassung, Unveröffentlichtes und jede Fassung mit Datum und Tag', () => {
+	it('zeigt laufende Fassung, Unveröffentlichtes und jede Fassung mit Datum', () => {
 		zeige({ fassungen: ANTWORT, fehler: null });
 		expect(screen.getByRole('heading', { level: 1, name: 'Fassungen' })).toBeInTheDocument();
 		expect(
@@ -44,7 +44,11 @@ describe('Seite /fassungen', () => {
 		).toBeInTheDocument();
 		const titel = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
 		expect(titel).toEqual(['Unveröffentlicht', '0.2.0 vom 13.11.2026', '0.1.0 vom 06.11.2026']);
-		expect(screen.getByText('Tag v0.2.0')).toBeInTheDocument();
+		// „Tag“ hieße für Leser ein Kalendertag: keine Unterzeile mit dem Git-Tag.
+		expect(screen.queryByText(/Tag v0/)).toBeNull();
+		expect(
+			screen.getByText('Seit der letzten Fassung dazugekommen, noch nicht herausgegeben.')
+		).toBeInTheDocument();
 		expect(screen.getByText('Seite /fassungen.')).toBeInTheDocument();
 		// Der Bruch trägt das Wort hervorgehoben, die übrige Zeile bleibt Text.
 		const bruch = screen.getByText('Bruch:');

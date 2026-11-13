@@ -3,7 +3,7 @@
 	 * Seite /fassungen (Entscheidung „Freigabe in einem Schritt“): der
 	 * Änderungsverlauf aus dem Changelog, das der Dienst beim Bau einbettet.
 	 * Oben die laufende Fassung, dann was seitdem unveröffentlicht dazukam,
-	 * danach jede Fassung mit Datum, Tag und Zeilen, neueste zuerst. Brüche
+	 * danach jede Fassung mit Datum und Zeilen, neueste zuerst. Brüche
 	 * tragen das Wort hervorgehoben (`FassungZeilen`). Frei lesbar.
 	 */
 	import { resolve } from '$app/paths';
@@ -40,12 +40,15 @@
 		<Hinweis bedeutung="problem">{h}</Hinweis>
 	{/each}
 	{#if hatZeilen(f.unveroeffentlicht)}
-		<Abschnitt titel="Unveröffentlicht" unterzeile="Seit der letzten Fassung, noch ohne Tag.">
+		<Abschnitt
+			titel="Unveröffentlicht"
+			unterzeile="Seit der letzten Fassung dazugekommen, noch nicht herausgegeben."
+		>
 			<FassungZeilen zeilen={f.unveroeffentlicht} />
 		</Abschnitt>
 	{/if}
 	{#each f.fassungen as v (v.version)}
-		<Abschnitt titel="{v.version} vom {fmtDate(v.datum)}" unterzeile="Tag {v.tag}">
+		<Abschnitt titel="{v.version} vom {fmtDate(v.datum)}">
 			<FassungZeilen zeilen={v} />
 		</Abschnitt>
 	{/each}

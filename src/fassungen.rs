@@ -166,9 +166,11 @@ pub fn lesen(text: &str, laufend: &str) -> FassungenAntwort {
             "Hinzugefügt" | "Geändert" | "Entfernt" | "Behoben" => unter = Some(z),
             _ => {
                 a.hinweise.push(format!(
-                    "Zeile {nr}: „{z}“ ist kein Unterabschnitt (Hinzugefügt, Geändert, Entfernt, Behoben) und kein Eintrag; was darunter steht, fehlt hier."
+                    "Zeile {nr}: „{z}“ ist kein Unterabschnitt (Hinzugefügt, Geändert, Entfernt, Behoben) und kein Eintrag; was bis zur nächsten Überschrift folgt, fehlt hier."
                 ));
+                // Bis zur nächsten Überschrift nichts mehr annehmen, sonst landet es in der vorigen Fassung.
                 unter = None;
+                ziel = Ziel::Nichts;
             }
         }
     }
@@ -282,6 +284,12 @@ mod tests {
         for teil in ["„0.1.0 - 2026-02-30“", "Unreleased fehlt", "ohne Unterabschnitt", "„Sicherheit“ ist kein Unterabschnitt"] {
             assert!(a.hinweise.iter().any(|h| h.contains(teil)), "{teil}: {:?}", a.hinweise);
         }
+        // Überschrift ohne gültige Strichzeile: ihre Einträge landen nirgends, auch nicht in Unreleased.
+        let a = lesen("Unreleased\n----------\n\n0.3.0 - 2026-11-20\n--\nHinzugefügt\n- Neu.\n\n0.2.0 - 2026-11-13\n---\nBehoben\n- Alt.\n", "0.2.0");
+        assert!(a.unveroeffentlicht.leer(), "{a:?}");
+        assert_eq!(a.fassungen.iter().map(|f| f.version.as_str()).collect::<Vec<_>>(), ["0.2.0"]);
+        assert_eq!(a.fassungen[0].zeilen.behoben, ["Alt."]);
+        assert!(a.hinweise.iter().any(|h| h.contains("„0.3.0 - 2026-11-20“ ist kein Unterabschnitt")), "{:?}", a.hinweise);
         // Leer oder nur Müll: kein Absturz.
         for t in ["", "\u{feff}", "---\n---\n", "- x\n  y\n"] {
             let a = lesen(t, "0.1.0");
