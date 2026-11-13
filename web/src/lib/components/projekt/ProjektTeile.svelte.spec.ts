@@ -440,10 +440,14 @@ describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () 
 		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
 	});
 
-	it('wirft ein Teil beim Zeichnen, steht nur an seiner Stelle der Satz; „neu versuchen“ zeichnet ihn neu', async () => {
+	it('wirft ein Teil beim Zeichnen, steht nur an seiner Stelle der Satz; „neu versuchen“ lädt, zeichnet ihn neu und setzt den Fokus auf seine Überschrift', async () => {
 		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 		planWirft.an = true;
-		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		const f = netz();
+		const planAbrufe = (): number =>
+			f.mock.calls.filter(([e]) => String(e instanceof Request ? e.url : e).endsWith('/plan'))
+				.length;
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
 		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
 		expect(teile()).toEqual(['Stand', 'Aufgabenliste', 'Plan', 'Zeitleiste']);
 		expect(screen.getAllByText(SATZ_TEIL_FEHLT)).toHaveLength(1);
@@ -452,11 +456,16 @@ describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () 
 		expect(document.getElementById('etappe-einladung')).toBeNull();
 		expect(fehler).toHaveBeenCalled();
 		planWirft.an = false;
+		const vorher = planAbrufe();
 		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
 		await waitFor(() => {
 			expect(document.getElementById('etappe-einladung')).not.toBeNull();
 		});
 		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+		expect(planAbrufe()).toBeGreaterThan(vorher);
+		await waitFor(() => {
+			expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Plan' }));
+		});
 	});
 
 	it('Gegenprobe: mit allen Wegen kein Satz über den Dienst', async () => {

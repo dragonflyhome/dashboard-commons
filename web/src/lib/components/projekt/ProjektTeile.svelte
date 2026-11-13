@@ -269,6 +269,20 @@
 	function teilFehler(e: unknown): void {
 		console.error('Fehler in einem Teil der Projektseite:', e);
 	}
+	/**
+	 * „neu versuchen“: die Daten neu laden und den Teil neu zeichnen. Der Knopf
+	 * verschwindet dabei; der Fokus geht auf die Überschrift des Abschnitts.
+	 */
+	async function neuVersuchen(knopf: HTMLElement, neu: () => void): Promise<void> {
+		const titel = knopf.closest('section')?.querySelector('h2');
+		allesLaden(slug);
+		neu();
+		await tick();
+		if (titel) {
+			titel.tabIndex = -1;
+			titel.focus();
+		}
+	}
 	function beiKlick(ev: MouseEvent): void {
 		const id = gleicherAnkerKlick(ev);
 		if (id !== null) ansteuern(id);
@@ -311,7 +325,9 @@
 <!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -- der Fehler steht schon im Protokoll (onerror) -->
 {#snippet teilKaputt(_fehler: unknown, neu: () => void)}
 	<p class="muted">{SATZ_TEIL_FEHLT}</p>
-	<button type="button" class="pill" onclick={neu}>neu versuchen</button>
+	<button type="button" class="pill" onclick={(ev) => void neuVersuchen(ev.currentTarget, neu)}
+		>neu versuchen</button
+	>
 {/snippet}
 
 {#if ankerSatz}
