@@ -516,6 +516,15 @@ fn commits_und_refs() {
         o.datei("src/b.rs", b"// b\n");
         o.commit("ohne Merge", &[]);
     });
+    // Auch beim ersten Push (ganze Geschichte) nur eine Wurzel.
+    abgewiesen("zweite Wurzel beim ersten Push", "Commit ohne Eltern", |o| {
+        o.git(&["checkout", "-q", "--orphan", "fremd"]);
+        o.datei("src/x.rs", b"// x\n");
+        o.commit("fremde Wurzel", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+        o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "fremd", "-m", "chore(merge): fremd"]].concat());
+    });
     // Ein Merge-Commit auf main geht durch.
     let o = Ort::neu();
     o.git(&["checkout", "-q", "-b", "zweig"]);
@@ -2701,6 +2710,34 @@ fn hochladen_main_nach_main() {
     assert_eq!(fern_ref("refs/heads/main"), stand, "nichts ging hinaus");
     o.git(&["reset", "-q", "--hard", &stand]);
 
+    // Gegenprobe: eine zweite Wurzel auf main wird abgewiesen, geprüft und mit Push (beides Fast-Forward).
+    let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+    let zweite_wurzel = |weg: &str| {
+        for args in [&["-Pruefen"][..], &[][..]] {
+            let (c, text) = hochladen(args);
+            assert_eq!(c, 1, "{weg} {args:?}: {text}");
+            assert!(text.contains("Commit ohne Eltern: eine zweite Wurzel auf main"), "{weg} {args:?}: {text}");
+        }
+        assert_eq!(fern_ref("refs/heads/main"), stand, "{weg}: nichts ging hinaus");
+    };
+    // (a) Neuer Wurzel-Commit als erster Elternteil eines Merges mit dem fernen Stand.
+    o.git(&["checkout", "-q", "--orphan", "neu"]);
+    o.datei("src/w.rs", b"// w\n");
+    o.commit("neue Wurzel", &[]);
+    o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "main", "-m", "chore(merge): main"]].concat());
+    o.git(&["checkout", "-q", "main"]);
+    o.git(&["reset", "-q", "--hard", "neu"]);
+    zweite_wurzel("(a)");
+    o.git(&["reset", "-q", "--hard", &stand]);
+    // (b) Merge mit einer fremden Geschichte (eigene Wurzel) als zweitem Elternteil.
+    o.git(&["checkout", "-q", "--orphan", "fremd"]);
+    o.datei("src/x.rs", b"// x\n");
+    o.commit("fremde Wurzel", &[]);
+    o.git(&["checkout", "-q", "main"]);
+    o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "fremd", "-m", "chore(merge): fremd"]].concat());
+    zweite_wurzel("(b)");
+    o.git(&["reset", "-q", "--hard", &stand]);
+
     // Gegenprobe: fremder Autor auf der Seitenlinie eines Merge-Commits wird abgewiesen;
     // auch mit verstellter Remote-Tracking-Ref (Vorprüfung sieht keine neuen Commits) prüft der Hook den echten Bereich.
     o.git(&["checkout", "-q", "-B", "zweig"]);
@@ -2844,6 +2881,15 @@ fn overlay_hooks_und_hochladen() {
         let (c, text) = hochladen(args);
         assert_eq!(c, 1, "{args:?}: {text}");
         assert!(text.contains(fund), "{args:?}: {text}");
+    }
+    assert_eq!(fern_main(), sauber, "nichts ging hinaus");
+    // Gegenprobe: main ohne den fernen Stand (kein Fast-Forward) bricht vor der Prüfung ab.
+    o.git(&["reset", "-q", "--hard", &format!("{sauber}~1")]);
+    o.ueber_merge(|o| o.datei("projects/alpha/anders.toml", b"y = 1\n"));
+    for args in [&["-Pruefen"][..], &[][..]] {
+        let (c, text) = hochladen(args);
+        assert_eq!(c, 1, "{args:?}: {text}");
+        assert!(text.contains("kein Fast-Forward") && !text.contains("Geprüft als"), "{args:?}: {text}");
     }
     assert_eq!(fern_main(), sauber, "nichts ging hinaus");
 

@@ -24,7 +24,9 @@ Geändert
   hoch (nur Fast-Forward), geprüft wie bisher: der ganze Baum, alle neuen
   Commits, auf der First-Parent-Linie nur Merge-Commits. -Pruefen prüft,
   was hinausginge, ohne Push. Vor-Push.ps1 -Pruefen prüft ohne -Ref
-  refs/heads/main; lokal geht nur noch main nach main hinaus.
+  refs/heads/main; lokal geht nur noch main nach main hinaus. Ein Commit
+  ohne Eltern auf main ist ein Fund, außer der einen Wurzel beim ersten
+  Push (keine zweite Wurzel, auch nicht über einen Merge).
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

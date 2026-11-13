@@ -11,7 +11,8 @@
       Refs       auf dem Remote alles außer refs/heads/main und Tags
                  refs/tags/v0.MINOR.PATCH (Ziffern ohne führende Null), lokal
                  alles außer refs/heads/main, Löschen; auf main nur
-                 Merge-Commits (kein Fast-Forward), außer dem Wurzel-Commit.
+                 Merge-Commits (kein Fast-Forward), außer dem Wurzel-Commit;
+                 ein Commit ohne Eltern außer der einen Wurzel beim ersten Push.
       Tags       (Teil 3) lokal ein anderer Name als fern; ein Tag-Objekt
                  (git tag -a/-s: Tagger, Text und Signatur gingen ungeprüft
                  hinaus), nur leichte Tags; ein Tag, den es fern schon gibt
@@ -173,7 +174,7 @@
 .PARAMETER Commits
     Prüft Autor, Committer und Nachricht dieser Commits (Bereich wie a..b oder ein Stand).
 .PARAMETER AufMain
-    Mit -Commits: die Regel „nur Merge-Commits auf main“ für diesen Bereich.
+    Mit -Commits: die Regeln „nur Merge-Commits auf main“ und „eine Wurzel“ für diesen Bereich.
 .PARAMETER Pruefen
     Probelauf ohne Push: prüft die lokale Ref -Ref so, als ginge sie mit
     einem ersten Push nach refs/heads/main (Name, alle erreichbaren Commits,
@@ -1060,9 +1061,15 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         }
     }
     if ($nurMain) {
-        foreach ($c in @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })) {
+        $linie = @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })
+        foreach ($c in $linie) {
             $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
             if ($eltern.Count -eq 1) { Fund "Commit $($c.Substring(0, 10))" 0 'auf main nur Merge-Commits (kein Fast-Forward)' }
+        }
+        # main hat genau eine Wurzel: Nur beim ersten Push (Bereich ohne „..“, wie in RefPruefen) darf der älteste Commit der Linie elternlos sein.
+        $eineWurzel = if ($bereich -notmatch '\.\.' -and $linie.Count) { $linie[-1] } else { '' }
+        foreach ($c in @((Git @('rev-list', '--max-parents=0', $bereich)) -split "`n" | Where-Object { $_ })) {
+            if ($c -ne $eineWurzel) { Fund "Commit $($c.Substring(0, 10))" 0 'Commit ohne Eltern: eine zweite Wurzel auf main ist nicht erlaubt; die Änderungen auf dem bestehenden main aufbauen (Zweig von main, dann Merge) statt eine fremde oder neue Geschichte einzumischen' }
         }
     }
     return $liste.Count
