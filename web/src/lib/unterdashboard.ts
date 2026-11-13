@@ -56,10 +56,35 @@ export async function ladeStand(
 				res = await holen(weg);
 			}
 		}
-		return res.ok ? ((await res.json()) as ProjektStand) : null;
+		if (!res.ok) return null;
+		const roh: unknown = await res.json();
+		return istProjektStand(roh) ? roh : null;
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Hat die Antwort von `/stand` die Felder, die das Unter-Dashboard ohne
+ * Rückfrage liest? Eine andere Fassung des Dienstes kann andere schicken; dann
+ * gilt der Stand als nicht geladen statt halb.
+ */
+export function istProjektStand(x: unknown): x is ProjektStand {
+	const obj = (o: unknown): o is Record<string, unknown> =>
+		typeof o === 'object' && o !== null && !Array.isArray(o);
+	if (!obj(x) || !obj(x.gesamt)) return false;
+	const g = x.gesamt;
+	return (
+		[x.slug, x.schwerpunkt, g.titel, g.status, g.bedeutung, g.ampel, g.grund, g.zuletzt].every(
+			(t) => typeof t === 'string'
+		) &&
+		typeof x.frist_bald_tage === 'number' &&
+		typeof x.sichtbar === 'boolean' &&
+		typeof x.speicher_fehlt === 'boolean' &&
+		[x.eintraege, x.aktualisierungen, x.notizen].every(Array.isArray) &&
+		(x.zahlen === null || obj(x.zahlen)) &&
+		(x.fristen === undefined || Array.isArray(x.fristen))
+	);
 }
 
 /** Beides zugleich, ausgewertet in anstehend.ts. */
@@ -84,7 +109,12 @@ export async function ladeUnterDaten(
 			: stand?.sichtbar === true
 				? stand.aktualisierungen
 				: null;
-	return unterDashboardAnsicht(stand, roh, akt);
+	// Was die Auswertung trotz Prüfung nicht lesen kann, gilt als nicht geladen (wirft nie).
+	try {
+		return unterDashboardAnsicht(stand, roh, akt);
+	} catch {
+		return unterDashboardAnsicht(null);
+	}
 }
 
 /** `2026-10-30T14:03:00+01:00` → `30.10. 14:03` (die Ortszeit, wie der Server sie schreibt). */

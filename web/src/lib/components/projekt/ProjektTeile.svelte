@@ -266,6 +266,9 @@
 	});
 
 	/** Derselbe Anker noch einmal (Etappe 3b-2): direkt ansteuern, auch wenn zugeklappt. */
+	function teilFehler(e: unknown): void {
+		console.error('Fehler in einem Teil der Projektseite:', e);
+	}
 	function beiKlick(ev: MouseEvent): void {
 		const id = gleicherAnkerKlick(ev);
 		if (id !== null) ansteuern(id);
@@ -304,6 +307,13 @@
 	/>
 {/snippet}
 
+<!-- Wirft ein Teil trotz der Prüfung an der Grenze beim Zeichnen, steht nur an seiner Stelle der Satz. -->
+<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -- der Fehler steht schon im Protokoll (onerror) -->
+{#snippet teilKaputt(_fehler: unknown, neu: () => void)}
+	<p class="muted">{SATZ_TEIL_FEHLT}</p>
+	<button type="button" class="pill" onclick={neu}>neu versuchen</button>
+{/snippet}
+
 {#if ankerSatz}
 	<p class="anker-satz" role="status">{ankerSatz}</p>
 {/if}
@@ -312,119 +322,127 @@
 
 <div class="teile" data-teile>
 	<Abschnitt titel="Stand">
-		{#if stand !== null}
-			<Stand
-				gesamt={stand.gesamt}
-				schwerpunkt={stand.schwerpunkt}
-				kurz={stand.kurz}
-				speicherFehlt={stand.speicher_fehlt}
-				teil={{ slug, fertig7: stand.fertig_7_tage, springen: backlog !== null }}
-			>
-				<BauKopf {slug} nurAuffaellig />
-				{#if notizenZahl > 0}
-					<details class="notizen small">
-						<summary>Notizen ({notizenZahl})</summary>
-						{#if stand.notizen.length === 0}
-							<p class="muted">{SATZ_NOTIZEN_OHNE_ANMELDUNG}</p>
-						{:else}
-							<ul>
-								{#each stand.notizen as n, i (i)}
-									<li>{n}</li>
-								{/each}
-							</ul>
-						{/if}
-					</details>
-				{/if}
-			</Stand>
-		{:else if geladenFuer === slug}
-			<p class="muted">Der Stand lässt sich gerade nicht laden.</p>
-		{:else}
-			<p class="muted">Stand wird geladen …</p>
-		{/if}
+		<svelte:boundary failed={teilKaputt} onerror={teilFehler}>
+			{#if stand !== null}
+				<Stand
+					gesamt={stand.gesamt}
+					schwerpunkt={stand.schwerpunkt}
+					kurz={stand.kurz}
+					speicherFehlt={stand.speicher_fehlt}
+					teil={{ slug, fertig7: stand.fertig_7_tage, springen: backlog !== null }}
+				>
+					<BauKopf {slug} nurAuffaellig />
+					{#if notizenZahl > 0}
+						<details class="notizen small">
+							<summary>Notizen ({notizenZahl})</summary>
+							{#if stand.notizen.length === 0}
+								<p class="muted">{SATZ_NOTIZEN_OHNE_ANMELDUNG}</p>
+							{:else}
+								<ul>
+									{#each stand.notizen as n, i (i)}
+										<li>{n}</li>
+									{/each}
+								</ul>
+							{/if}
+						</details>
+					{/if}
+				</Stand>
+			{:else if geladenFuer === slug}
+				<p class="muted">Der Stand lässt sich gerade nicht laden.</p>
+			{:else}
+				<p class="muted">Stand wird geladen …</p>
+			{/if}
+		</svelte:boundary>
 	</Abschnitt>
 
 	<Abschnitt titel="Aufgabenliste">
-		<div id={listenAnker(slug)}>
-			{#if backlog !== null}
-				<Backlog {backlog} {etappen} {fuerDich} fuerDichZahl={wartet?.zahl ?? 0} />
-			{:else if liste?.anmelden}
-				<p class="muted">{SATZ_OHNE_ANMELDUNG}</p>
-			{:else if liste !== null}
-				<!-- Fragen und Aufgaben kommen nicht aus /backlog: Sie bleiben beantwortbar. -->
-				<p class="muted">{liste.fehlt ? SATZ_TEIL_FEHLT : SATZ_LISTE_FEHLT}</p>
-				<section aria-labelledby={gruppenAnker(slug, 'dich')}>
-					<h3 id={gruppenAnker(slug, 'dich')} tabindex="-1">
-						Wartet auf dich <span class="muted">({wartet?.zahl ?? 0})</span>
-					</h3>
-					{@render fuerDich()}
-				</section>
-			{:else}
-				<p class="muted">Aufgabenliste wird geladen …</p>
-			{/if}
-		</div>
+		<svelte:boundary failed={teilKaputt} onerror={teilFehler}>
+			<div id={listenAnker(slug)}>
+				{#if backlog !== null}
+					<Backlog {backlog} {etappen} {fuerDich} fuerDichZahl={wartet?.zahl ?? 0} />
+				{:else if liste?.anmelden}
+					<p class="muted">{SATZ_OHNE_ANMELDUNG}</p>
+				{:else if liste !== null}
+					<!-- Fragen und Aufgaben kommen nicht aus /backlog: Sie bleiben beantwortbar. -->
+					<p class="muted">{liste.fehlt ? SATZ_TEIL_FEHLT : SATZ_LISTE_FEHLT}</p>
+					<section aria-labelledby={gruppenAnker(slug, 'dich')}>
+						<h3 id={gruppenAnker(slug, 'dich')} tabindex="-1">
+							Wartet auf dich <span class="muted">({wartet?.zahl ?? 0})</span>
+						</h3>
+						{@render fuerDich()}
+					</section>
+				{:else}
+					<p class="muted">Aufgabenliste wird geladen …</p>
+				{/if}
+			</div>
+		</svelte:boundary>
 	</Abschnitt>
 
 	<Abschnitt titel="Plan">
-		{#if plan?.wert}
-			<Plan plan={plan.wert} />
-		{:else if plan !== null}
-			<p class="muted">
-				{plan.anmelden
-					? SATZ_OHNE_ANMELDUNG
-					: plan.fehlt
-						? SATZ_TEIL_FEHLT
-						: 'Der Plan lässt sich gerade nicht laden.'}
-			</p>
-		{:else}
-			<p class="muted">Plan wird geladen …</p>
-		{/if}
+		<svelte:boundary failed={teilKaputt} onerror={teilFehler}>
+			{#if plan?.wert}
+				<Plan plan={plan.wert} />
+			{:else if plan !== null}
+				<p class="muted">
+					{plan.anmelden
+						? SATZ_OHNE_ANMELDUNG
+						: plan.fehlt
+							? SATZ_TEIL_FEHLT
+							: 'Der Plan lässt sich gerade nicht laden.'}
+				</p>
+			{:else}
+				<p class="muted">Plan wird geladen …</p>
+			{/if}
+		</svelte:boundary>
 	</Abschnitt>
 
 	<Abschnitt titel="Zeitleiste">
-		<div id={zeitleisteAnker(slug)}>
-			<p class="nur-vorlesen" tabindex="-1" bind:this={zeitFokus}>Zeitleiste</p>
-			{#if meldungen.length > 0}
-				<h3>Neue Meldungen ({meldungen.length})</h3>
-				<ul class="plain widget-liste">
-					{#each meldungen as m (m.id)}
-						<li>
-							<Meldung
-								meldung={m}
-								knopf={angemeldet}
-								gesperrt={gelesenLaeuft !== null}
-								ongelesen={(id: string, knopf: HTMLButtonElement) => {
-									void gelesen(id, knopf);
-								}}
-							/>
-						</li>
-					{/each}
-				</ul>
+		<svelte:boundary failed={teilKaputt} onerror={teilFehler}>
+			<div id={zeitleisteAnker(slug)}>
+				<p class="nur-vorlesen" tabindex="-1" bind:this={zeitFokus}>Zeitleiste</p>
+				{#if meldungen.length > 0}
+					<h3>Neue Meldungen ({meldungen.length})</h3>
+					<ul class="plain widget-liste">
+						{#each meldungen as m (m.id)}
+							<li>
+								<Meldung
+									meldung={m}
+									knopf={angemeldet}
+									gesperrt={gelesenLaeuft !== null}
+									ongelesen={(id: string, knopf: HTMLButtonElement) => {
+										void gelesen(id, knopf);
+									}}
+								/>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				{#if gelesenFehler}
+					<p class="block-error small" role="alert">{gelesenFehler}</p>
+				{/if}
+			</div>
+			{#if verlauf?.wert}
+				<Verlauf
+					{ereignisse}
+					hinweise={hinweiseFuerKasten(verlauf.wert.hinweise, false)}
+					ebene={3}
+					leer="In diesen Tagen ist nichts geschehen, und nichts steht an."
+				/>
+				{#if tage < ZEITLEISTE_AELTER}
+					<button type="button" class="pill" onclick={aelterAnzeigen}>Ältere anzeigen</button>
+				{/if}
+			{:else if verlauf !== null}
+				<p class="muted">
+					{verlauf.anmelden
+						? SATZ_OHNE_ANMELDUNG
+						: verlauf.fehlt
+							? SATZ_TEIL_FEHLT
+							: 'Die Zeitleiste lässt sich gerade nicht laden.'}
+				</p>
+			{:else}
+				<p class="muted">Zeitleiste wird geladen …</p>
 			{/if}
-			{#if gelesenFehler}
-				<p class="block-error small" role="alert">{gelesenFehler}</p>
-			{/if}
-		</div>
-		{#if verlauf?.wert}
-			<Verlauf
-				{ereignisse}
-				hinweise={hinweiseFuerKasten(verlauf.wert.hinweise, false)}
-				ebene={3}
-				leer="In diesen Tagen ist nichts geschehen, und nichts steht an."
-			/>
-			{#if tage < ZEITLEISTE_AELTER}
-				<button type="button" class="pill" onclick={aelterAnzeigen}>Ältere anzeigen</button>
-			{/if}
-		{:else if verlauf !== null}
-			<p class="muted">
-				{verlauf.anmelden
-					? SATZ_OHNE_ANMELDUNG
-					: verlauf.fehlt
-						? SATZ_TEIL_FEHLT
-						: 'Die Zeitleiste lässt sich gerade nicht laden.'}
-			</p>
-		{:else}
-			<p class="muted">Zeitleiste wird geladen …</p>
-		{/if}
+		</svelte:boundary>
 	</Abschnitt>
 </div>
 

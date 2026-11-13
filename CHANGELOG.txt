@@ -173,8 +173,12 @@ Geändert
 - Projektseite: Kennt der laufende Dienst /backlog, /plan oder /verlauf
   nicht (404, 405) oder fehlen in der Antwort Felder, zeigt nur dieser Teil
   „Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.“; die
-  übrigen Teile und Seite.svelte bleiben stehen. Wirft ein Teil beim
-  Zeichnen, bleibt der Inhalt der Seite darunter sichtbar.
+  übrigen Teile und Seite.svelte bleiben stehen. Geprüft wird jedes
+  Pflichtfeld der Vertragstypen, auch in Schritten, Etappen und Ereignissen.
+  Fehlen dem Stand Felder, sagt der Stand „Der Stand lässt sich gerade nicht
+  laden.“, ohne dass etwas wirft. Wirft ein Teil beim Zeichnen, steht nur an
+  seiner Stelle der Satz mit „neu versuchen“; der Inhalt der Seite bleibt,
+  und ein Fehler gilt nicht für das nächste Projekt.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

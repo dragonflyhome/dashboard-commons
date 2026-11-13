@@ -39,10 +39,24 @@ vi.mock('#lib/aufgaben.svelte.ts', () => ({
 	}
 }));
 
+// Der Plan wirft auf Wunsch beim Zeichnen (Grenze je Teil); sonst der echte.
+const { planWirft } = vi.hoisted(() => ({ planWirft: { an: false } }));
+vi.mock('$katalog/Plan.svelte', async (echt) => {
+	const { default: Plan } = await echt<{ default: (...a: unknown[]) => unknown }>();
+	return {
+		default: (...a: unknown[]) => {
+			if (planWirft.an)
+				throw new TypeError("Cannot read properties of undefined (reading 'length')");
+			return Plan(...a);
+		}
+	};
+});
+
 const { default: ProjektTeile } = await import('./ProjektTeile.svelte');
 
 afterEach(() => {
 	cleanup();
+	planWirft.an = false;
 	vi.restoreAllMocks();
 	ort.url = new URL('http://localhost:8787/projects/beispiel');
 });
@@ -406,6 +420,43 @@ describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () 
 			expect(document.getElementById('etappe-einladung')).not.toBeNull();
 		});
 		expect(screen.queryByText(SATZ_LISTE_FEHLT)).toBeNull();
+	});
+
+	it('/stand/voll ohne die Felder des Stands: der Stand sagt es, nichts wirft, die anderen Teile bleiben', async () => {
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({
+				'/stand/voll': () => Promise.resolve(json({ slug: 'beispiel', sichtbar: false })),
+				'/stand': () => Promise.resolve(json({ slug: 'beispiel' }))
+			})
+		});
+		expect(await screen.findByText('Der Stand lässt sich gerade nicht laden.')).toBeInTheDocument();
+		expect(screen.queryByText('Stand wird geladen …')).toBeNull();
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+	});
+
+	it('wirft ein Teil beim Zeichnen, steht nur an seiner Stelle der Satz; „neu versuchen“ zeichnet ihn neu', async () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		planWirft.an = true;
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		expect(teile()).toEqual(['Stand', 'Aufgabenliste', 'Plan', 'Zeitleiste']);
+		expect(screen.getAllByText(SATZ_TEIL_FEHLT)).toHaveLength(1);
+		await screen.findByText(/In den letzten 7 Tagen sind 6 fertig geworden/);
+		await screen.findByText('Gästeliste abgeschlossen');
+		expect(document.getElementById('etappe-einladung')).toBeNull();
+		expect(fehler).toHaveBeenCalled();
+		planWirft.an = false;
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
 	});
 
 	it('Gegenprobe: mit allen Wegen kein Satz über den Dienst', async () => {

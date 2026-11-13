@@ -148,17 +148,22 @@
 
 <div class="seite" bind:this={seiteEl}>
 	{#if aktiv === null}
-		<!-- Wirft ein Teil trotz der Prüfung an der Grenze (projektteile.ts), bleibt der Inhalt darunter sichtbar. -->
-		<svelte:boundary onerror={teileFehler}>
-			<ProjektTeile {slug} {archiviert} />
+		<!-- Wirft ein Teil trotz der Prüfung an der Grenze (projektteile.ts), bleibt der Inhalt darunter sichtbar.
+		     Je Projekt neu: Ein Fehler bei einem Projekt gilt nicht für das nächste. -->
+		{#key slug}
+			<svelte:boundary onerror={teileFehler}>
+				<ProjektTeile {slug} {archiviert} />
 
-			{#snippet failed()}
-				<p class="muted" role="status">
-					Stand, Aufgabenliste, Plan und Zeitleiste lassen sich mit dem laufenden Dienst gerade
-					nicht zeigen.
-				</p>
-			{/snippet}
-		</svelte:boundary>
+				<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -- der Fehler steht schon im Protokoll (onerror) -->
+				{#snippet failed(_fehler: unknown, neu: () => void)}
+					<p class="muted" role="status">
+						Stand, Aufgabenliste, Plan und Zeitleiste lassen sich mit dem laufenden Dienst gerade
+						nicht zeigen.
+					</p>
+					<button type="button" class="pill" onclick={neu}>neu versuchen</button>
+				{/snippet}
+			</svelte:boundary>
+		{/key}
 	{:else}
 		<!-- Auf Unterseiten steht der Stand-Kopf nicht; ein roter oder laufender Bau bleibt sichtbar. -->
 		<BauKopf {slug} nurAuffaellig />

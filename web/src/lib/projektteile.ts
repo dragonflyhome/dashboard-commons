@@ -71,30 +71,39 @@ async function holen<T>(
 	}
 }
 
-// ----- Prüfen an der Grenze: nur die Felder, die die Teile lesen -----
+// ----- Prüfen an der Grenze: jedes Pflichtfeld der Vertragstypen ($vertrag) -----
 
 type Roh = Record<string, unknown>;
 const istObjekt = (x: unknown): x is Roh =>
 	typeof x === 'object' && x !== null && !Array.isArray(x);
 const istText = (x: unknown): x is string => typeof x === 'string';
 const istZahl = (x: unknown): x is number => typeof x === 'number';
+const istJaNein = (x: unknown): x is boolean => typeof x === 'boolean';
 const textOderNull = (x: unknown): boolean => x === null || typeof x === 'string';
 const listeAus = (x: unknown, je: (e: unknown) => boolean): boolean =>
 	Array.isArray(x) && x.every(je);
 
+/** `Schritt` */
+function istSchritt(s: unknown): boolean {
+	return (
+		istObjekt(s) &&
+		istZahl(s.nr) &&
+		istText(s.titel) &&
+		istText(s.stand) &&
+		istText(s.seit) &&
+		[s.besitzer, s.wartet_auf, s.verweis, s.angeboten_an, s.fuer, s.notiz, s.vorgang].every(
+			textOderNull
+		)
+	);
+}
+
+/** `BacklogKarte` */
 function istKarte(k: unknown): boolean {
 	return (
 		istObjekt(k) &&
-		istText(k.id) &&
-		istText(k.art) &&
-		istText(k.titel) &&
-		istText(k.ziel) &&
-		textOderNull(k.etappe) &&
-		textOderNull(k.besitzer) &&
-		textOderNull(k.wartet_auf) &&
-		textOderNull(k.hinweis) &&
-		textOderNull(k.frist) &&
-		Array.isArray(k.schritte)
+		[k.id, k.art, k.titel, k.zustand, k.ziel, k.geaendert].every(istText) &&
+		[k.etappe, k.besitzer, k.wartet_auf, k.hinweis, k.frist, k.frist_stufe].every(textOderNull) &&
+		listeAus(k.schritte, istSchritt)
 	);
 }
 
@@ -103,18 +112,43 @@ export function istBacklog(x: unknown): x is Backlog {
 	return (
 		istObjekt(x) &&
 		istText(x.slug) &&
-		listeAus(x.spalten, (s) => istObjekt(s) && istText(s.art) && listeAus(s.karten, istKarte))
+		istText(x.heute) &&
+		istZahl(x.fragen_weitere) &&
+		istJaNein(x.kanban_datei) &&
+		istJaNein(x.speicher_fehlt) &&
+		listeAus(
+			x.spalten,
+			(s) =>
+				istObjekt(s) && [s.art, s.titel, s.bedeutung].every(istText) && listeAus(s.karten, istKarte)
+		) &&
+		listeAus(
+			x.wartend,
+			(g) =>
+				istObjekt(g) && [g.rolle, g.wer, g.titel].every(istText) && listeAus(g.karten, istKarte)
+		)
 	);
 }
 
+/** `PlanArbeit` */
 function istPlanArbeit(a: unknown): boolean {
 	return (
 		istObjekt(a) &&
-		istText(a.id) &&
-		istText(a.titel) &&
-		istText(a.stand) &&
-		textOderNull(a.aus) &&
-		textOderNull(a.fertig)
+		[a.id, a.titel, a.stand].every(istText) &&
+		[a.aus, a.etappe, a.fertig].every(textOderNull) &&
+		istJaNein(a.archiviert) &&
+		istJaNein(a.ungefaehr)
+	);
+}
+
+/** `PlanEtappe` */
+function istEtappe(e: unknown): boolean {
+	return (
+		istObjekt(e) &&
+		[e.kennung, e.titel, e.ziel, e.stand].every(istText) &&
+		[e.reihenfolge, e.arbeiten_fertig, e.arbeiten_gesamt, e.dazugekommen].every(istZahl) &&
+		[e.ab, e.begonnen, e.fertig, e.gewachsen_seit].every(textOderNull) &&
+		istJaNein(e.ungefaehr) &&
+		listeAus(e.arbeiten, istPlanArbeit)
 	);
 }
 
@@ -123,17 +157,7 @@ export function istPlan(x: unknown): x is ProjektPlan {
 	return (
 		istObjekt(x) &&
 		istText(x.projekt) &&
-		listeAus(
-			x.etappen,
-			(e) =>
-				istObjekt(e) &&
-				istText(e.kennung) &&
-				istText(e.titel) &&
-				istText(e.stand) &&
-				istZahl(e.arbeiten_fertig) &&
-				istZahl(e.arbeiten_gesamt) &&
-				listeAus(e.arbeiten, istPlanArbeit)
-		) &&
+		listeAus(x.etappen, istEtappe) &&
 		listeAus(x.ohne_etappe, istPlanArbeit) &&
 		listeAus(x.hinweise, istText)
 	);
@@ -147,13 +171,12 @@ export function istVerlauf(x: unknown): x is Verlauf {
 			x.ereignisse,
 			(e) =>
 				istObjekt(e) &&
-				istText(e.kennung) &&
-				istText(e.zeit) &&
-				istText(e.titel) &&
-				istText(e.quelle) &&
-				istText(e.art)
+				[e.kennung, e.zeit, e.genauigkeit, e.titel, e.quelle, e.art].every(istText) &&
+				[e.bis, e.text, e.verweis].every(textOderNull)
 		) &&
-		listeAus(x.hinweise, (h) => istObjekt(h) && istText(h.text))
+		istText(x.seit) &&
+		istText(x.bis) &&
+		listeAus(x.hinweise, (h) => istObjekt(h) && istText(h.art) && istText(h.text))
 	);
 }
 

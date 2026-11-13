@@ -361,4 +361,56 @@ describe('Laden der geschützten Wege', () => {
 		const verlauf = { ereignisse: [], seit: '2026-11-01', bis: '2026-11-13', hinweise: [] };
 		expect((await ladeProjektVerlauf('x', 14, antwort(verlauf))).wert).toEqual(verlauf);
 	});
+
+	it('auch ein fehlendes Feld tief in Schritt, Etappe, Arbeit oder Ereignis heißt fehlt', async () => {
+		const antwort = (wert: unknown) => vi.fn(() => Promise.resolve(json(wert)));
+		// Backlog: eine Karte mit Schritten, dann je Schritt ein Feld weg.
+		const b = backlog();
+		const mitSchritten = b.spalten.flatMap((s) => s.karten).find((k) => k.schritte.length > 0);
+		expect(mitSchritten).toBeDefined();
+		for (const feld of ['besitzer', 'stand', 'angeboten_an']) {
+			const kaputt = {
+				...b,
+				spalten: b.spalten.map((s) => ({
+					...s,
+					karten: s.karten.map((k) => ({
+						...k,
+						schritte: k.schritte.map((sch) => ohneFelder(sch, feld))
+					}))
+				}))
+			};
+			expect((await ladeBacklog('x', antwort(kaputt))).fehlt, feld).toBe(true);
+		}
+		// Plan: je Etappe ein Feld weg, dann je Arbeit eines.
+		const p = projektPlan();
+		for (const feld of ['begonnen', 'fertig', 'ab', 'gewachsen_seit', 'dazugekommen', 'ziel']) {
+			const kaputt = { ...p, etappen: p.etappen.map((e) => ohneFelder(e, feld)) };
+			expect((await ladePlan('x', antwort(kaputt))).fehlt, feld).toBe(true);
+		}
+		const arbeitOhne = {
+			...p,
+			etappen: p.etappen.map((e) => ({
+				...e,
+				arbeiten: e.arbeiten.map((a) => ohneFelder(a, 'archiviert'))
+			}))
+		};
+		expect(p.etappen.some((e) => e.arbeiten.length > 0)).toBe(true);
+		expect((await ladePlan('x', antwort(arbeitOhne))).fehlt).toBe(true);
+		// Verlauf: ein Ereignis ohne genauigkeit.
+		const ereignis = {
+			kennung: 'e1',
+			zeit: '2026-11-12T10:00:00+01:00',
+			genauigkeit: 'minute',
+			bis: null,
+			titel: 'T',
+			text: null,
+			quelle: 'vorgang',
+			art: 'erledigt',
+			verweis: null
+		};
+		const v = { ereignisse: [ereignis], seit: '2026-11-01', bis: '2026-11-13', hinweise: [] };
+		expect((await ladeProjektVerlauf('x', 14, antwort(v))).fehlt).toBe(false);
+		const vOhne = { ...v, ereignisse: [ohneFelder(ereignis, 'genauigkeit')] };
+		expect((await ladeProjektVerlauf('x', 14, antwort(vOhne))).fehlt).toBe(true);
+	});
 });

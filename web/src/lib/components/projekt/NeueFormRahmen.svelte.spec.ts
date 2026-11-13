@@ -88,6 +88,29 @@ describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 	});
 
+	it('der Fehler der Teile gilt nicht für das nächste Projekt, „neu versuchen“ zeichnet neu', async () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const werfen = (): never => {
+			throw new TypeError("Cannot read properties of undefined (reading 'length')");
+		};
+		teile.mockReset();
+		teile.mockImplementationOnce(werfen);
+		const { rerender } = render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByRole('status')).toBeInTheDocument();
+		// Ein anderes Projekt auf derselben Route: die Teile zeichnen neu, kein Satz.
+		await rerender({ kopf: { ...kopf(), slug: 'beta' }, aktiv: null, children: inhalt });
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(teile).toHaveBeenCalledTimes(2);
+		// Wieder ein Fehler, dann „neu versuchen“: die Teile zeichnen noch einmal.
+		teile.mockImplementationOnce(werfen);
+		await rerender({ kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByRole('status')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(teile).toHaveBeenCalledTimes(4);
+		fehler.mockRestore();
+	});
+
 	it('rot auf einer Unterseite: der Bau-Hinweis bleibt, ohne die vier Teile', () => {
 		render(NeueFormRahmen, { kopf: kopf(), aktiv: 'zeitachse', children: inhalt });
 		expect(document.querySelector('[data-bau="rot"]')).toHaveTextContent('Bau rot');
