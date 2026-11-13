@@ -89,6 +89,19 @@ Hinzugefügt
   DASHBOARD_SITZUNG_VARIABLE nennt (ohne sie keine Kennung); der Dienst merkt sich die Zuordnung bei
   jedem gelungenen, als Inhaber angemeldeten schreibenden Aufruf mit
   "von": "chat:<name>".
+- Projektseite in vier Teilen über dem Inhalt, je ein Abschnitt mit
+  Überschrift im Inhaltsverzeichnis: Stand (ein Satz, vier Zahlen als
+  Sprung zu ihrer Gruppe, die Ampel als Wort mit Grund-Satz und Link, der
+  Bau nur wenn rot oder während er läuft, Notizen klein), Aufgabenliste
+  (das Backlog in Gruppen untereinander: Wartet auf dich mit Frage samt
+  Antwort und Kasten der Aufgaben, Läuft, Als Nächstes, Wartet auf andere;
+  je Arbeit eine Zeile mit Etappe, wer dran ist und Frist, aufklappbar zu
+  den Schritten), Plan (Etappen aus /plan mit Stand-Wort, x von y Arbeiten
+  fertig und den Arbeiten, darüber ein Zeitstreifen nur aus Ist-Daten) und
+  Zeitleiste (/verlauf: Kommendes oben, die letzten 14 Tage, „Ältere
+  anzeigen“ bis 400 Tage, ungelesene Meldungen mit „gelesen“). Die Teile
+  laden neu bei Änderungen am Projekt, nach dem Nachholen, bei Vorgängen
+  und um Mitternacht, der Plan auch bei geändertem Inhalt.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
@@ -106,6 +119,13 @@ Geändert
   refs/heads/main; lokal geht nur noch main nach main hinaus. Ein Commit
   ohne Eltern auf main ist ein Fund, außer der einen Wurzel beim ersten
   Push (keine zweite Wurzel, auch nicht über einen Merge).
+- Projektseite: Das Status-Wort steht einmal in der Überschrift, die
+  Zeile „Status: …“ entfällt; der Chat steht klein darunter. Die vier Teile
+  stehen auf der Übersicht, Unterseiten zeigen nur ihren Inhalt.
+- Zeitleiste und Verlauf: Schritte werden je Arbeit und Tag zu einer Zeile
+  verdichtet („3 Schritte bei „…““), grüne Bauten zu „Bau 3-mal grün“;
+  Einträge von Hand heißen rechts „von Hand“.
+- Der Hinweis von pruefe zu kanban.toml nennt die Aufgabenliste.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig
@@ -116,6 +136,10 @@ Entfernt
 - Bruch: Das Backlog hat keine Spalte fertig mehr; fertige Arbeiten zeigt
   der Plan, ihre Zahl der Stand. Abgeschlossene Aufgaben erscheinen dort
   nicht mehr.
+- Auf Projektseiten das Unter-Dashboard (Kästen Stand, Wartet auf dich,
+  Arbeiten, Fristen, Zuletzt, Notizen) und der eigene Kasten des Backlogs;
+  der Kasten „Aufgaben für dich“ und der Bau-Stand haben keinen eigenen
+  Platz mehr.
 
 0.1.0 - 2026-11-06
 ------------------

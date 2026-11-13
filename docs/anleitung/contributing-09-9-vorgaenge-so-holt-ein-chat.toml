@@ -155,13 +155,13 @@ punkte = [
 
 [[block]]
 titel = 'Arbeiten melden (ab A1)'
-text = 'Eine Arbeit ist das, was dein Chat gerade tut oder als Nächstes vorhat. Der Inhaber sieht sie in der Übersicht „Anstehend“ und oben auf deiner Projektseite (Unter-Dashboard). Er liest nur; ändern tust nur du.'
+text = 'Eine Arbeit ist das, was dein Chat gerade tut oder als Nächstes vorhat. Der Inhaber sieht sie in der Übersicht „Anstehend“ und oben auf deiner Projektseite (Aufgabenliste). Er liest nur; ändern tust nur du.'
 
 [[block]]
 punkte = [
   'Wann eine Arbeit: Du arbeitest an etwas, das länger als eine Sitzung dauert, oder du wartest auf jemanden (den Inhaber, einen anderen Chat, jemanden draußen), oder etwas steht als Nächstes an. Kleinigkeiten, die in einer Sitzung fertig werden, brauchen keine Arbeit.',
   'Arbeit, Aufgabe oder Frage? Muss der Inhaber etwas tun (klicken, unterschreiben), ist es eine Aufgabe. Muss er entscheiden, ist es eine Frage (in daten/fragen.toml). Was du selbst tust, ist eine Arbeit. Wartet deine Arbeit auf seine Antwort, setz "stand": "wartet", "wartet_auf": "inhaber" und als verweis die Kennung der Aufgabe oder Frage; dann zählt nur die Aufgabe oder Frage, die Arbeit bekommt den Vermerk „wartet auf deine Antwort“.',
-  'Statt open = [...]: Offene Punkte gehören in Arbeiten, Fragen oder Aufgaben. open zeigt das Unter-Dashboard nur als Notizen.',
+  'Statt open = [...]: Offene Punkte gehören in Arbeiten, Fragen oder Aufgaben. open zeigt der Teil „Stand“ nur als Notizen.',
 ]
 
 [[block]]
@@ -473,7 +473,7 @@ punkte = [
   'Sparsam melden. Höchstens 20 ungelesene Meldungen je Projekt; darüber legt der Server die ältesten als gelesen ab und zählt sie in einer Sammelmeldung („Ältere Meldungen sind als gelesen abgelegt …“). Melde nur, was der Inhaber wirklich wissen sollte; Zwischenstände gehören in deine Arbeit.',
   'Nur per Api.ps1. Aus dem Browser nimmt der Server keine Meldung an (422). „gelesen“ (POST /api/meldungen/<id>/gelesen) nimmt er umgekehrt nur aus dem Browser an: Er prüft die Kopfzeilen Origin und Sec-Fetch-Site. Das schützt vor Versehen, ist aber keine Sicherheitsgrenze; klick nie an Stelle des Inhabers „gelesen“.',
   'Nachsehen: GET /api/meldungen?projekt=<slug> (alle außerhalb des Archivs, neueste zuerst, mit gelesen, behoben, anzahl). In GET /api/anstehend stehen die ungelesenen als art: "meldung"; mit ?projekt=<slug> steht dort auch aktualisierungen (alle Meldungen und Vorgänge des Projekts; die neuesten fünf wählt die Oberfläche). GET /api/projekte/<slug>/stand hat ohne Anmeldung nur zahlen.meldungen (neu, gesamt), keine Titel und Texte.',
-  'Ziel: Jede Meldung führt auf /projects/<slug>#meldung-<id>; dort steht sie im Unter-Dashboard unter „Aktualisierungen“ zum Aufklappen. Systemmeldungen führen auf /pc#meldung-<id>.',
+  'Ziel: Jede Meldung führt auf /projects/<slug>#meldung-<id>; dort steht sie, solange sie ungelesen ist, in der Zeitleiste unter „Neue Meldungen“ zum Aufklappen, danach in der Zeitleiste selbst. Systemmeldungen führen auf /pc#meldung-<id>.',
   'von ist eine Angabe, kein Nachweis; trotzdem ehrlich setzen.',
 ]
 

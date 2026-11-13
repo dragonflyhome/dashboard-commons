@@ -137,13 +137,24 @@ art = "geplant"'''
 text = 'farbe und Einträge ohne kennung gehen bis Schritt 6 noch (pruefe gibt je einen Hinweis); aus farbe wird problem zu problem, wartet und aktiv zu begonnen, plan (geplant, grau) zu geplant, wenn das Datum noch kommt, sonst erledigt. Der Server liefert die Einträge zusätzlich als Ereignisse in abgeleitet.ereignisse (/api/projekte/<slug>/daten/zeitstrahl).'
 
 [[block]]
+titel = 'Projektseite in vier Teilen (Etappe B8)'
+text = '''
+Kurz für dich (Inhaber): Oben auf jeder Projektseite stehen vier Teile, jeder mit einer Frage und im Inhaltsverzeichnis. Stand: Wie geht es dem Projekt? Ein Satz, vier Zahlen (laufen, warten auf dich, als Nächstes, fertig in 7 Tagen; jede springt zu ihrer Gruppe) und die Ampel als Wort mit Grund („Wartet: … wartet seit 9 Tagen auf dich.“). Aufgabenliste: Was ist jetzt zu tun, und von wem? Dort beantwortest du Fragen und Aufgaben. Plan: Wo stehen wir im Ganzen? Die Etappen mit Stand-Wort und „x von y Arbeiten fertig“, darüber ein Zeitstreifen nur aus echten Daten. Zeitleiste: Was ist geschehen, was kommt? Oben das Kommende, darunter die letzten 14 Tage nach Tagen, neue Meldungen mit „gelesen“; „Ältere anzeigen“ holt mehr.
+
+Stand wird nie von Hand gepflegt. Alles in den vier Teilen rechnet der Server aus dem Tracker (/api/projekte/<slug>/stand, /backlog, /plan, /verlauf); die Seite lädt sie neu, sobald sich etwas am Projekt ändert. Von Hand steht nur Absicht: summary sagt, worum es geht, daten/plan.toml nennt die Etappen in ihrer Reihenfolge. Eine Arbeit nennt ihre Etappe im Feld etappe.
+
+Was entfällt: das Unter-Dashboard mit den Kästen Arbeiten, Fristen und Zuletzt, der eigene Kasten „Aufgaben für dich“ (er steht jetzt in „Wartet auf dich“), der Bau-Stand als eigene Zeile (er steht im Stand, nur wenn der Bau rot ist oder gerade läuft) und die Status-Zeile unter der Überschrift (das Status-Wort steht in der Überschrift). Fristen stehen in der Zeitleiste oben und als Angabe der Zeilen in der Aufgabenliste; die Fristenliste über alle Projekte bleibt auf der Startseite.
+
+Für Seite.svelte heißt das: nur Inhalt (Fluss, Tabellen, Texte, inhaltliche Zeiträume), kein Stand. Fortschritt in Prozent, Kanban, Kennzahlen „heute“ und Gantt-Balken mit Stand fallen weg, sobald die Seite umgestellt ist; die vier Teile zeigen dasselbe aus dem Tracker. Die Unterseiten zeigen nur ihren Inhalt, die vier Teile stehen auf der Übersicht.'''
+
+[[block]]
 titel = 'Gemeinsame Bausteine, Etappe B2: Modul Backlog'
 text = '''
 Alle Beispiele sind erfunden. Der Server liest und rechnet; er schreibt nichts in den Inhalt. Was in TOML steht, schreibst du und committest es.
 
-Kurz für dich (Inhaber): Auf jeder Projektseite steht unter „Aufgaben für dich“ das Backlog: vier Spalten „Für dich“, „Läuft“, „Wartet“ und „Als Nächstes“ (fertige Arbeiten zeigt der Plan), darunter „Wer ist dran“: was auf dich wartet, was auf einen Chat und was auf jemanden draußen. Jede Karte führt zu ihrem Eintrag oben auf der Seite; dort antwortest du wie bisher (mit „Etwas anderes …“). Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
+Kurz für dich (Inhaber): Auf jeder Projektseite ist das Backlog die Aufgabenliste: vier Gruppen untereinander, „Wartet auf dich“, „Läuft“, „Als Nächstes“ und „Wartet auf andere“ (fertige Arbeiten zeigt der Plan). In „Wartet auf dich“ antwortest du direkt (Frage mit „Etwas anderes …“, Aufgaben mit ihren Knöpfen); jede Arbeit ist eine Zeile mit Etappe, wer dran ist und Frist und klappt zu ihren Schritten auf. Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
 
-Backlog auf jeder Projektseite. Das Dashboard setzt es selbst in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
+Backlog auf jeder Projektseite. Das Dashboard setzt es selbst als Aufgabenliste in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
 
 [[block]]
 [block.tabelle]
@@ -438,7 +449,7 @@ beispiel = '''
 text = '''
 beschriftung ist der Name der Tabelle für Vorlese-Programme (sichtbar mit beschriftungZeigen); mindestbreite (in rem) sagt, ab wann sie rollt, statt die Spalten zu quetschen. Ohne eigene Zellen geht es auch mit Daten: spalten={[{ schluessel: 'thema', titel: 'Thema' }]} zeilen={ablage.eintrag}.
 
-Die Widgets oben auf jeder Projektseite (Stand, Frage, Arbeiten, Fristen, Zuletzt) setzt das Dashboard selbst ins Unter-Dashboard, darunter seit Etappe B2 das Backlog; der Katalog zeigt ihre Entwürfe und warum das Designteam welchen gewählt hat. In Seite.svelte nicht noch einmal einbauen.'''
+Die vier Teile oben auf jeder Projektseite (Stand, Aufgabenliste, Plan, Zeitleiste) setzt das Dashboard selbst in den Rahmen; in Seite.svelte nicht noch einmal einbauen. Der Katalog zeigt dazu die früheren Widgets (Stand, Frage, Arbeiten, Fristen, Zuletzt) mit ihren Entwürfen.'''
 
 [[block]]
 titel = 'Orte: Dateien und Ordner öffnen'
