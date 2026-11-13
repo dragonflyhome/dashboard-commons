@@ -280,10 +280,6 @@ pub struct AusDemSpeicher {
     pub meldungen: Vec<Meldung>,
     /// Vorgänge der letzten sieben Tage, neueste zuerst (für „Zuletzt passiert“).
     pub vorgaenge: Vec<Vorgang>,
-    /// Etappe B2 (Spalte „Fertig“ im Backlog): nicht mehr offene Aufgaben
-    /// außerhalb des Archivs (erledigt, zurückgezogen, abgelaufen; eine offene
-    /// mit erreichtem Ablauf zählt hier als abgelaufen), ohne Links.
-    pub aufgaben_abgeschlossen: Vec<Aufgabe>,
 }
 
 impl Speicher {
@@ -514,19 +510,12 @@ impl Speicher {
     pub fn anstehend_lesen(&self, jetzt: &Zeit) -> Result<AusDemSpeicher, SpeicherFehler> {
         let txn = self.db.begin_read()?;
         let mut aufgaben = Vec::new();
-        let mut aufgaben_abgeschlossen = Vec::new();
         if let Some(t) = tabellen::lesen(AUFGABEN, &txn)? {
             for eintrag in t.iter()? {
                 let (k, w) = eintrag?;
                 match json_lesen::<Aufgabe>(w.value(), &format!("aufgaben/{}", k.value())) {
                     Ok(a) if a.zustand == AufgabenZustand::Offen && !abgelaufen(&a, jetzt) => aufgaben.push(a),
-                    Ok(mut a) => {
-                        // Offen, aber der Ablauf ist erreicht: wie die API sie zeigt.
-                        if a.zustand == AufgabenZustand::Offen {
-                            a.zustand = AufgabenZustand::Abgelaufen;
-                        }
-                        aufgaben_abgeschlossen.push(a);
-                    }
+                    Ok(_) => {}
                     Err(e) => warn!("aufgaben: {} ({})", e, e.einzelheiten()),
                 }
             }
@@ -542,7 +531,6 @@ impl Speicher {
             beantwortet: super::antworten::beantwortet_aus(&txn)?,
             meldungen: super::meldungen::meldungen_aus(&txn)?,
             vorgaenge: super::meldungen::zuletzt_vorgaenge_aus(&txn, jetzt)?,
-            aufgaben_abgeschlossen,
         })
     }
 

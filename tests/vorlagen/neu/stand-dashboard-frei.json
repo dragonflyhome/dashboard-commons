@@ -22,6 +22,7 @@
     "laeuft": 3,
     "wartet": 2,
     "als_naechstes": 1,
+    "fertig_7_tage": 2,
     "meldungen": {
       "neu": 3,
       "gesamt": 3
@@ -32,5 +33,6 @@
   },
   "notizen": [],
   "notizen_zahl": 1,
+  "fertig_7_tage": 2,
   "speicher_fehlt": false
 }

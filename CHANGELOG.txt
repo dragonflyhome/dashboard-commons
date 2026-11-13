@@ -49,6 +49,14 @@ Hinzugefügt
 - Entscheidungsdateien können projekte = ["slug"] nennen; nur dann
   erscheinen sie in der Zeitleiste dieser Projekte. pruefe --alle meldet
   unbekannte Slugs und eine andere Form als eine Liste als Fehler.
+- GET /api/projekte/<slug>/stand: fertig_7_tage (Arbeiten, die heute oder in
+  den sechs Tagen davor fertig wurden) in zahlen und, nur als Zahl, auch mit
+  Anmeldung; zwei neue Ampel-Gründe mit tage: wartet-lange (ein Eintrag
+  wartet seit über drei Tagen auf den Inhaber, rot) und ohne-bewegung (eine
+  Arbeit ist offen, aber seit sieben Tagen hat sich an keiner Arbeit des
+  Projekts etwas geändert, gelb).
+- GET /api/projekte/<slug>/backlog: Karten von Arbeiten tragen etappe,
+  besitzer und schritte.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
@@ -59,6 +67,11 @@ Geändert
   weiterhin immer.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
+
+Entfernt
+- Bruch: Das Backlog hat keine Spalte fertig mehr; fertige Arbeiten zeigt
+  der Plan, ihre Zahl der Stand. Abgeschlossene Aufgaben erscheinen dort
+  nicht mehr.
 
 0.1.0 - 2026-11-06
 ------------------

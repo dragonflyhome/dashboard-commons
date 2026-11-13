@@ -25,7 +25,7 @@ function antwort(status: number, koerper: unknown): Response {
 }
 
 describe('Baustein Backlog', () => {
-	it('zeigt fünf Spalten mit Zahl, Karten als Links zum Eintrag und Wer ist dran', () => {
+	it('zeigt vier Spalten mit Zahl (Etappe B8: ohne Fertig), Karten als Links zum Eintrag und Wer ist dran', () => {
 		render(Backlog, { backlog: backlog() });
 		const spalten = screen
 			.getAllByRole('heading', { level: 3 })
@@ -35,7 +35,6 @@ describe('Baustein Backlog', () => {
 			'Läuft 1',
 			'Wartet 2',
 			'Als Nächstes 1',
-			'Fertig 1',
 			'Wer ist dran'
 		]);
 		const fuerDich = screen.getByRole('region', { name: /Für dich/ });

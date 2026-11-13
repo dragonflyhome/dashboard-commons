@@ -23,6 +23,12 @@ bezug_art: EintragsArt | null,
  */
 bezug: string | null, 
 /**
+ * Etappe B8: bei `wartet-lange` seit wie vielen Tagen der Eintrag wartet,
+ * bei `ohne-bewegung` seit wie vielen Tagen sich nichts bewegt hat;
+ * sonst fehlt das Feld.
+ */
+tage?: number, 
+/**
  * Letzte Änderung der Seite.
  */
 zuletzt: string, };

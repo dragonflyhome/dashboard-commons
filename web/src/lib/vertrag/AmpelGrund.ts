@@ -4,4 +4,4 @@
  * Warum die Ampel so steht (Etappe 3a+: eine Kennung statt eines Satzes;
  * den Satz macht die Oberfläche).
  */
-export type AmpelGrund = "fehler-offen" | "frist-vorbei" | "wartet" | "nichts-wartet" | "speicher-fehlt";
+export type AmpelGrund = "fehler-offen" | "frist-vorbei" | "wartet" | "nichts-wartet" | "speicher-fehlt" | "wartet-lange" | "ohne-bewegung";

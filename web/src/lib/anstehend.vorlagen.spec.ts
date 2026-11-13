@@ -398,7 +398,16 @@ describe('Freier Weg: die Zahlen des Servers gleich der Zählung im Web', () => 
 		const frei = lies(`neu/stand-${slug}-frei.json`) as ProjektStand;
 		const voll = lies(`neu/stand-${slug}-voll.json`) as ProjektStand;
 		expect(frei.zahlen).not.toBeNull();
-		expect(standZahlen(voll.eintraege, voll.aktualisierungen)).toEqual(frei.zahlen);
+		expect(standZahlen(voll.eintraege, voll.aktualisierungen, [], voll.fertig_7_tage ?? 0)).toEqual(
+			frei.zahlen
+		);
+		// Etappe B8: die fertigen Arbeiten als Fakt auf beiden Wegen gleich.
+		expect(voll.fertig_7_tage).toBe(frei.zahlen?.fertig_7_tage);
+		expect(frei.fertig_7_tage).toBe(frei.zahlen?.fertig_7_tage);
+	});
+
+	it('Etappe B8: dashboard hat zwei fertige Arbeiten in sieben Tagen, eine ältere zählt nicht', () => {
+		expect((lies('neu/stand-dashboard-frei.json') as ProjektStand).zahlen?.fertig_7_tage).toBe(2);
 	});
 });
 

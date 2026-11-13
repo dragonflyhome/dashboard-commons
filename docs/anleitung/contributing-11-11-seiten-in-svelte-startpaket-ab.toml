@@ -141,7 +141,7 @@ titel = 'Gemeinsame Bausteine, Etappe B2: Modul Backlog'
 text = '''
 Alle Beispiele sind erfunden. Der Server liest und rechnet; er schreibt nichts in den Inhalt. Was in TOML steht, schreibst du und committest es.
 
-Kurz für dich (Inhaber): Auf jeder Projektseite steht unter „Aufgaben für dich“ das Backlog: fünf Spalten „Für dich“, „Läuft“, „Wartet“, „Als Nächstes“ und „Fertig“ (die letzten sieben Tage), darunter „Wer ist dran“: was auf dich wartet, was auf einen Chat und was auf jemanden draußen. Jede Karte führt zu ihrem Eintrag oben auf der Seite; dort antwortest du wie bisher (mit „Etwas anderes …“). Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
+Kurz für dich (Inhaber): Auf jeder Projektseite steht unter „Aufgaben für dich“ das Backlog: vier Spalten „Für dich“, „Läuft“, „Wartet“ und „Als Nächstes“ (fertige Arbeiten zeigt der Plan), darunter „Wer ist dran“: was auf dich wartet, was auf einen Chat und was auf jemanden draußen. Jede Karte führt zu ihrem Eintrag oben auf der Seite; dort antwortest du wie bisher (mit „Etwas anderes …“). Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
 
 Backlog auf jeder Projektseite. Das Dashboard setzt es selbst in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
 
@@ -153,7 +153,6 @@ zeilen = [
   ['Läuft', 'Arbeiten mit "stand": "laeuft"'],
   ['Wartet', 'Arbeiten mit "stand": "wartet" (auf einen Chat, extern oder auf den Inhaber mit verweis), Aufgaben beim Chat (eigene Worte des Inhabers)'],
   ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes"'],
-  ['Fertig', 'fertige Arbeiten, erledigte, abgelaufene und zurückgezogene Aufgaben, bis sie ins Archiv ziehen (sieben Tage)'],
 ]
 
 [[block]]

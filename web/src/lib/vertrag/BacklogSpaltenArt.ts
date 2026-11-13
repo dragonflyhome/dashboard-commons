@@ -4,4 +4,4 @@
  * Die feste Folge der Spalten. Die Spalte ergibt sich allein aus Stand und
  * Status im Datenspeicher (und für Fragen aus der Warteschlange).
  */
-export type BacklogSpaltenArt = "fuer-dich" | "laeuft" | "wartet" | "als-naechstes" | "fertig";
+export type BacklogSpaltenArt = "fuer-dich" | "laeuft" | "wartet" | "als-naechstes";

@@ -7,7 +7,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::anstehend::{EintragsArt, FristStufe};
+use super::anstehend::{EintragsArt, FristStufe, Schritt};
 use super::bedeutung::Bedeutung;
 
 /// Die feste Folge der Spalten. Die Spalte ergibt sich allein aus Stand und
@@ -26,13 +26,11 @@ pub enum BacklogSpaltenArt {
     Wartet,
     /// Arbeiten mit Stand `als-naechstes`.
     AlsNaechstes,
-    /// Abgeschlossen und noch nicht im Archiv (höchstens sieben Tage):
-    /// fertige Arbeiten, erledigte, abgelaufene und zurückgezogene Aufgaben.
-    Fertig,
 }
 
 impl BacklogSpaltenArt {
-    pub const ALLE: [BacklogSpaltenArt; 5] = [Self::FuerDich, Self::Laeuft, Self::Wartet, Self::AlsNaechstes, Self::Fertig];
+    /// Etappe B8: ohne „Fertig“; fertige Arbeiten zeigt der Plan.
+    pub const ALLE: [BacklogSpaltenArt; 4] = [Self::FuerDich, Self::Laeuft, Self::Wartet, Self::AlsNaechstes];
 
     /// Die Überschrift der Spalte.
     pub fn titel(self) -> &'static str {
@@ -41,7 +39,6 @@ impl BacklogSpaltenArt {
             Self::Laeuft => "Läuft",
             Self::Wartet => "Wartet",
             Self::AlsNaechstes => "Als Nächstes",
-            Self::Fertig => "Fertig",
         }
     }
 
@@ -52,7 +49,6 @@ impl BacklogSpaltenArt {
             Self::Laeuft => Bedeutung::Laeuft,
             Self::Wartet => Bedeutung::Info,
             Self::AlsNaechstes => Bedeutung::Neutral,
-            Self::Fertig => Bedeutung::Ok,
         }
     }
 }
@@ -75,8 +71,8 @@ pub struct BacklogKarte {
     pub id: String,
     /// Titel der Aufgabe oder Arbeit, Text der Frage.
     pub titel: String,
-    /// Der Zustand als Wort: Aufgabe `offen`, `beim-chat`, `erledigt`,
-    /// `abgelaufen`, `zurueckgezogen`; Arbeit ihr Stand; Frage `offen`.
+    /// Der Zustand als Wort: Aufgabe `offen` oder `beim-chat`; Arbeit ihr
+    /// Stand; Frage `offen`.
     pub zustand: String,
     /// Nur bei wartenden Einträgen: auf wen (`inhaber`, `chat:<name>`, `extern`).
     pub wartet_auf: Option<String>,
@@ -84,13 +80,18 @@ pub struct BacklogKarte {
     pub frist: Option<String>,
     /// Wie nah die Frist ist (dieselbe Regel wie in Anstehend); `null` ohne Frist.
     pub frist_stufe: Option<FristStufe>,
-    /// Ein kurzer Zusatz, etwa „noch 2 Fragen warten“ an der sichtbaren
-    /// Frage oder „zurückgezogen“ in der Spalte „Fertig“.
+    /// Ein kurzer Zusatz, etwa „noch 2 Fragen warten“ an der sichtbaren Frage.
     pub hinweis: Option<String>,
     /// Detailansicht im Dashboard: `/projects/<slug>#<art>-<id>`.
     pub ziel: String,
     /// Ortszeit RFC 3339 der letzten Änderung (bei Fragen das Datum `gestellt`).
     pub geaendert: String,
+    /// Etappe B8: nur bei Arbeiten ihre Etappe (`<projekt>/<kennung>`), sonst `null`.
+    pub etappe: Option<String>,
+    /// Etappe B8: nur bei Arbeiten der Chat, der sie verantwortet (`chat:<name>`), sonst `null`.
+    pub besitzer: Option<String>,
+    /// Etappe B8: nur bei Arbeiten ihre Schritte; sonst leer.
+    pub schritte: Vec<Schritt>,
 }
 
 /// Eine Spalte mit ihren Karten (feste Ordnung je Spalte, siehe `crate::backlog`).
@@ -121,7 +122,7 @@ pub struct Backlog {
     pub slug: String,
     /// Das lokale Datum, mit dem gerechnet wurde (JJJJ-MM-TT).
     pub heute: String,
-    /// Alle fünf Spalten in fester Folge, auch leere.
+    /// Alle vier Spalten in fester Folge, auch leere.
     pub spalten: Vec<BacklogSpalte>,
     /// Was wartet, je Verantwortlichem: Inhaber, dann Chats (nach Name), dann extern.
     /// Nur Gruppen mit Karten.

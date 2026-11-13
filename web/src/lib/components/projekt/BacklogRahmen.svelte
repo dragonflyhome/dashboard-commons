@@ -9,7 +9,7 @@
 	 * Lädt neu wie das Unter-Dashboard: bei `change` für Anstehend oder die
 	 * Aufgaben des Projekts, nach dem Nachholen, bei Vorgängen des Projekts
 	 * und um Mitternacht. Ohne Anmeldung, ohne Daten oder wenn nichts offen
-	 * und nichts fertig ist, fehlt der Abschnitt ganz.
+	 * ist, fehlt der Abschnitt ganz.
 	 */
 	import type { Backlog as BacklogDaten } from '$vertrag';
 	import { Backlog } from '$katalog';
@@ -70,9 +70,7 @@
 {#if zeigen && daten !== null}
 	<section class="card backlog-rahmen" aria-labelledby="backlog-titel-{slug}">
 		<h2 id="backlog-titel-{slug}">Backlog</h2>
-		<p class="muted small satz">
-			Aufgaben, Arbeiten und die offene Frage nach Stand; fertig heißt: in den letzten sieben Tagen.
-		</p>
+		<p class="muted small satz">Aufgaben, Arbeiten und die offene Frage nach Stand.</p>
 		<Backlog backlog={daten} />
 	</section>
 {/if}

@@ -68,7 +68,7 @@
 		</p>
 	{/if}
 	{#if leer}
-		<p class="muted" data-leer>Nichts offen und nichts in den letzten sieben Tagen fertig.</p>
+		<p class="muted" data-leer>Nichts offen.</p>
 	{:else}
 		<div class="spalten">
 			{#each spalten as s (s.art)}

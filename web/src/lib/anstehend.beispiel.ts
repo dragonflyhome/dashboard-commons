@@ -188,6 +188,7 @@ export function beispielZahlen(
 		laeuft: 0,
 		wartet: 0,
 		als_naechstes: 0,
+		fertig_7_tage: 0,
 		meldungen: { neu: 0, gesamt: 0 },
 		naechste_frist: null,
 		tage_bis: null,

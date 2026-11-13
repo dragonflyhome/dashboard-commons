@@ -749,6 +749,13 @@ pub enum AmpelGrund {
     NichtsWartet,
     /// Der Datenspeicher fehlt; Aufgaben, Fristen und Meldungen sind unbekannt.
     SpeicherFehlt,
+    /// Etappe B8: Ein Eintrag wartet seit über [`crate::anstehend::WARTET_LANGE_TAGE`]
+    /// Tagen auf den Inhaber (rot, Problem).
+    WartetLange,
+    /// Etappe B8: Eine Arbeit ist offen, aber seit
+    /// [`crate::anstehend::OHNE_BEWEGUNG_TAGE`] Tagen hat sich an keiner
+    /// Arbeit des Projekts etwas geändert (gelb).
+    OhneBewegung,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -765,6 +772,12 @@ pub struct GesamtStand {
     pub bezug_art: Option<EintragsArt>,
     /// Sein Titel, nur mit Windows-Anmeldung; sonst `null`.
     pub bezug: Option<String>,
+    /// Etappe B8: bei `wartet-lange` seit wie vielen Tagen der Eintrag wartet,
+    /// bei `ohne-bewegung` seit wie vielen Tagen sich nichts bewegt hat;
+    /// sonst fehlt das Feld.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tage: Option<i64>,
     /// Letzte Änderung der Seite.
     pub zuletzt: String,
 }
@@ -785,6 +798,9 @@ pub struct StandZahlen {
     pub laeuft: u64,
     pub wartet: u64,
     pub als_naechstes: u64,
+    /// Etappe B8: Arbeiten des Projekts, die in den letzten sieben Tagen
+    /// (heute und die sechs Tage davor) fertig wurden.
+    pub fertig_7_tage: u64,
     pub meldungen: MeldungsZahlen,
     /// Die nächste Frist (JJJJ-MM-TT) eines offenen Eintrags (bei Fragen nur
     /// die der sichtbaren Frage; Aufgaben mit beweglicher Frist aufgelöst)
@@ -862,6 +878,12 @@ pub struct ProjektStand {
     /// TypeScript optional (ältere Beispiele).
     #[ts(as = "Option<u64>", optional)]
     pub notizen_zahl: u64,
+    /// Etappe B8: wie `zahlen.fertig_7_tage`, auf beiden Wegen (nur eine
+    /// Zahl): Mit Anmeldung stehen fertige Arbeiten nicht in `eintraege`,
+    /// die Oberfläche kann sie also nicht selbst zählen. In TypeScript
+    /// optional (ältere Beispiele).
+    #[ts(as = "Option<u64>", optional)]
+    pub fertig_7_tage: u64,
     /// Der Datenspeicher fehlt gerade: Aufgaben und Arbeiten sind leer, die
     /// Notizen und Fragen aus den Dateien stehen trotzdem da.
     pub speicher_fehlt: bool,

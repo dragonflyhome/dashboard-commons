@@ -21,7 +21,12 @@ fragen: number,
 /**
  * Arbeiten je Zustand.
  */
-laeuft: number, wartet: number, als_naechstes: number, meldungen: MeldungsZahlen, 
+laeuft: number, wartet: number, als_naechstes: number, 
+/**
+ * Etappe B8: Arbeiten des Projekts, die in den letzten sieben Tagen
+ * (heute und die sechs Tage davor) fertig wurden.
+ */
+fertig_7_tage: number, meldungen: MeldungsZahlen, 
 /**
  * Die nächste Frist (JJJJ-MM-TT) eines offenen Eintrags (bei Fragen nur
  * die der sichtbaren Frage; Aufgaben mit beweglicher Frist aufgelöst)

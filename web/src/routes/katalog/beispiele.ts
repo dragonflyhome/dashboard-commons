@@ -272,6 +272,9 @@ function karte(
 		hinweis: null,
 		ziel: `/projects/beispiel#${art}-${id}`,
 		geaendert: `${tagIso(-1)}T09:00:00+01:00`,
+		etappe: null,
+		besitzer: null,
+		schritte: [],
 		...mehr
 	};
 }
@@ -364,17 +367,6 @@ export function backlog(): Backlog {
 				titel: 'Als Nächstes',
 				bedeutung: 'neutral',
 				karten: [karte('arbeit', 'ar-20261102-0004', 'Fotos sichten', { zustand: 'als-naechstes' })]
-			},
-			{
-				art: 'fertig',
-				titel: 'Fertig',
-				bedeutung: 'ok',
-				karten: [
-					karte('aufgabe', 'a-20261101-0001', 'Entwurf freigeben', {
-						zustand: 'erledigt',
-						hinweis: 'Antwort: „ja“'
-					})
-				]
 			}
 		],
 		wartend: [

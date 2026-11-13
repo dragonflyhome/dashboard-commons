@@ -12,7 +12,7 @@ export type Backlog = { slug: string,
  */
 heute: string, 
 /**
- * Alle fünf Spalten in fester Folge, auch leere.
+ * Alle vier Spalten in fester Folge, auch leere.
  */
 spalten: Array<BacklogSpalte>, 
 /**

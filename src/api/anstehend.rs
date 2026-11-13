@@ -682,8 +682,12 @@ mod tests {
         let (status, _) = roh_mit(router(state.clone()), get("/api/projekte/gibt-es-nicht/stand/voll")).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         // Neue Form: eine Frage wartet auf den Inhaber (eine auf einmal), die Frage selbst kommt mit A2.
+        // Etappe B8: Sie ist von 2026-10-25, wartet also seit über drei Tagen: rot.
         let (_, v) = schicke(&state, get("/api/projekte/neu-form/stand")).await;
-        assert_eq!((v["gesamt"]["ampel"].as_str(), v["eintraege"].as_array().unwrap().len()), (Some("gelb"), 2));
+        assert_eq!(
+            (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["eintraege"].as_array().unwrap().len()),
+            (Some("rot"), Some("wartet-lange"), 2)
+        );
         let (_, frei) = roh_mit(crate::app::router(state.clone()), get("/api/projekte/neu-form/stand")).await;
         let frei: Value = serde_json::from_str(&frei).unwrap();
         assert_eq!((frei["zahlen"]["fragen"].as_u64(), frei["zahlen"]["wartet_auf_dich"].as_u64()), (Some(2), Some(1)), "je Projekt zählt eine Frage");
@@ -730,7 +734,8 @@ mod tests {
         // Neue Form: die Frage aus fragen.toml zählt weiter.
         let (status, v) = schicke(&ohne, get("/api/projekte/neu-form/stand")).await;
         assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!((v["speicher_fehlt"].as_bool(), v["eintraege"].as_array().unwrap().len(), v["gesamt"]["ampel"].as_str()), (Some(true), 2, Some("gelb")));
+        // Etappe B8: Die Frage wartet seit über drei Tagen (rot), auch ohne Datenspeicher.
+        assert_eq!((v["speicher_fehlt"].as_bool(), v["eintraege"].as_array().unwrap().len(), v["gesamt"]["ampel"].as_str()), (Some(true), 2, Some("rot")));
         assert_eq!(v["notizen"], serde_json::json!(["Erster offener Punkt"]));
         // Die Liste: nur die Fragen, mit Hinweis vorn.
         let (status, l) = schicke(&ohne, get("/api/anstehend")).await;
