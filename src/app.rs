@@ -651,7 +651,8 @@ struct Quellen {
 /// Mit Kopie gilt ein Zeiger nur, wenn sein Bau denselben Grundbau hat wie
 /// die Kopie ([`grundbau`]): Der Bote baut aus dem aktuellen `web/src` des
 /// Repos, und ein neuerer Grundbau kann Wege brauchen, die der laufende Dienst
-/// noch nicht kennt. Er wartet dann auf Dienst.ps1 -Neustart ([`WebOrt::wartender_bau`]).
+/// noch nicht kennt. Er wartet dann auf Dienst.ps1 -Neustart ([`WebOrt::wartender_bau`]);
+/// bis dahin bleibt der letzte gültige Bau des Boten, ohne ihn die Kopie.
 pub struct WebOrt {
     /// `web/build`: Rückfall ohne Kopie; daneben liegen `builds` und die grünen Kopien.
     build: PathBuf,
@@ -724,6 +725,16 @@ impl WebOrt {
         }
     }
 
+    /// Der zuletzt ausgelieferte Bau des Boten, solange er noch index.html hat
+    /// und zur Kopie passt; sonst None. Nach einem Start des Dienstes ist
+    /// keiner gemerkt (dann die Kopie).
+    fn letzter_bau(&self) -> Option<PathBuf> {
+        let s = self.stand.read().ok()?;
+        let o = &s.as_ref()?.ordner;
+        let gilt = o.parent() == Some(self.builds.as_path()) && o.join("index.html").is_file() && self.passt_zur_kopie(o).is_ok();
+        gilt.then(|| o.clone())
+    }
+
     /// Satz für die Störungen in `/api/betrieb`: Ein gültiger Bau des Boten
     /// gilt nicht, weil sein Grundbau nicht zur eingespielten Oberfläche passt.
     pub fn wartender_bau(&self) -> Option<String> {
@@ -770,11 +781,19 @@ impl WebOrt {
             return s.ordner.clone();
         }
         let ordner = match stempel {
-            Some(_) => zeiger_ordner(&self.builds).and_then(|o| self.passt_zur_kopie(&o).map(|()| o)).unwrap_or_else(|grund| {
-                let ort = self.ruheort();
-                warn!("web\\builds\\aktuell gilt nicht ({grund}); die Oberfläche kommt aus {}", ort.display());
-                ort
-            }),
+            Some(_) => match zeiger_ordner(&self.builds) {
+                Ok(o) => self.passt_zur_kopie(&o).map(|()| o).unwrap_or_else(|grund| {
+                    // Wartet ein neuerer Bau auf den Neustart, bleibt der letzte gültige des Boten.
+                    let ort = self.letzter_bau().unwrap_or_else(|| self.ruheort());
+                    warn!("web\\builds\\aktuell gilt noch nicht ({grund}); die Oberfläche kommt aus {}", ort.display());
+                    ort
+                }),
+                Err(grund) => {
+                    let ort = self.ruheort();
+                    warn!("web\\builds\\aktuell gilt nicht ({grund}); die Oberfläche kommt aus {}", ort.display());
+                    ort
+                }
+            },
             None => self.ruheort(),
         };
         if let Ok(mut s) = self.stand.write() {
@@ -788,7 +807,7 @@ impl WebOrt {
 }
 
 /// Störung, solange ein Bau des Boten auf den Neustart wartet.
-pub const SATZ_BAU_WARTET: &str = "Ein neuerer Bau der Oberfläche passt nicht zum laufenden Dienst und gilt erst nach Dienst.ps1 -Neustart; bis dahin bleibt die eingespielte Oberfläche, auch für geänderte Projektseiten.";
+pub const SATZ_BAU_WARTET: &str = "Ein neuerer Bau der Oberfläche passt nicht zum laufenden Dienst und gilt erst nach Dienst.ps1 -Neustart; bis dahin bleibt die zuletzt gültige Oberfläche, auch für geänderte Projektseiten.";
 
 /// Die Kennung des Grundbaus eines Bau-Ordners: in `_app/version.json` der
 /// Teil vor dem ersten `-`. web/vite.config.ts setzt die Fassung auf
@@ -1807,6 +1826,38 @@ mod tests {
         assert!(ohne.web.umstellen("20261027-110000").is_ok());
         assert_eq!(ohne.web.wartender_bau(), None);
         assert_eq!(grundbau(&kopie).as_deref(), Some("abc"));
+    }
+
+    /// Wartet ein Bau des Boten auf den Neustart, bleibt der letzte gültige
+    /// Bau des Boten, nicht die ältere Kopie. Gegenprobe: Ist keiner gemerkt
+    /// (frischer Start) oder fehlt seine index.html, kommt die Kopie.
+    #[tokio::test]
+    async fn wartender_bau_laesst_den_letzten_gueltigen_bau() {
+        let w = WebProbe::neu("letzter");
+        let kopie = w.0.join("bin-web");
+        std::fs::create_dir_all(kopie.join("_app")).unwrap();
+        std::fs::write(kopie.join("index.html"), "<!doctype html><title>kopie</title><script>start('kopie')</script>").unwrap();
+        std::fs::write(kopie.join("_app").join("teil.js"), "// kopie").unwrap();
+        for (ordner, fassung) in [("bin-web", "abc-1"), ("builds/20261027-100000", "abc-2"), ("builds/20261027-110000", "def-3")] {
+            std::fs::write(w.0.join(ordner).join("_app").join("version.json"), format!("{{\"version\":\"{fassung}\"}}")).unwrap();
+        }
+        let state = w.state_mit_kopie(Some(kopie.clone()));
+        let app = router_angemeldet(state.clone());
+        w.zeiger("20261027-100000");
+        assert!(ausgeliefert(&app).await.0.contains("bau-1"));
+        w.zeiger("20261027-110000");
+        let (seite, teil, csp) = ausgeliefert(&app).await;
+        assert!(seite.contains("bau-1") && teil.contains("bau-1"), "der letzte gültige Bau bleibt: {seite}");
+        assert_eq!(csp, csp_von("bau-1"));
+        assert_eq!(state.web.wartender_bau().as_deref(), Some(SATZ_BAU_WARTET));
+        // Gegenprobe: frisch gestartet ist keiner gemerkt.
+        let frisch = router_angemeldet(w.state_mit_kopie(Some(kopie.clone())));
+        assert!(ausgeliefert(&frisch).await.0.contains("kopie"));
+        // Gegenprobe: Der gemerkte Bau ist weg (index.html fehlt), dann die Kopie.
+        std::fs::remove_file(w.0.join("builds").join("20261027-100000").join("index.html")).unwrap();
+        // Ein anderer Inhalt des Zeigers (derselbe Ordner), damit neu gewählt wird.
+        std::fs::write(w.0.join("builds").join(crate::bote::bau::ZEIGER), "20261027-110000\r\n").unwrap();
+        assert!(ausgeliefert(&app).await.0.contains("kopie"));
     }
 
     /// Im Dienst (aus dienst.toml) liegt die Kopie neben dem Programm
