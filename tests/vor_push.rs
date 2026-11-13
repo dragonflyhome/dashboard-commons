@@ -312,7 +312,7 @@ fn sauberes_repo_geht_durch() {
     assert!(text.contains("Nichts gefunden."), "{text}");
 }
 
-/// LICENSE (AGPL) und LICENSES/CC0-1.0.txt gehen mit ihrem
+/// LICENSE (AGPL), LICENSES/CC0-1.0.txt und LICENSES/GPL-3.0-or-later.txt gehen mit ihrem
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
 /// Ebenso die schon committeten Wurzeldateien rustfmt.toml und .git-blame-ignore-revs.
 #[test]
@@ -323,13 +323,13 @@ fn lizenzdateien_gehen_durch() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
     let o = Ort::neu();
     o.ueber_merge(|o| {
-        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "rustfmt.toml", ".git-blame-ignore-revs"] {
+        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs"] {
             o.datei(pfad, &std::fs::read(wurzel.join(pfad)).unwrap());
         }
     });
     let (code, text) = o.pruefen();
     assert_eq!(code, 0, "{text}");
-    for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "docs/LICENSE", "rustfmt.toml.alt"] {
+    for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "LICENSES/GPL-3.0-only.txt", "docs/LICENSE", "rustfmt.toml.alt"] {
         abgewiesen(pfad, "Positivliste", |o| {
             o.datei(pfad, b"x\n");
             o.commit("x", &[]);
@@ -515,6 +515,15 @@ fn commits_und_refs() {
     abgewiesen("Fast-Forward auf main", "nur Merge-Commits", |o| {
         o.datei("src/b.rs", b"// b\n");
         o.commit("ohne Merge", &[]);
+    });
+    // Auch beim ersten Push (ganze Geschichte) nur eine Wurzel.
+    abgewiesen("zweite Wurzel beim ersten Push", "Commit ohne Eltern", |o| {
+        o.git(&["checkout", "-q", "--orphan", "fremd"]);
+        o.datei("src/x.rs", b"// x\n");
+        o.commit("fremde Wurzel", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+        o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "fremd", "-m", "chore(merge): fremd"]].concat());
     });
     // Ein Merge-Commit auf main geht durch.
     let o = Ort::neu();
@@ -1619,23 +1628,6 @@ fn pfade_und_modi_der_zwischenstaende() {
     assert!(text.contains("src/modul") && text.contains("kein normaler Dateieintrag"), "Gitlink: {text}");
 }
 
-/// Der frische Wurzel-Commit wie `Hochladen.ps1 -Wurzel`: der Baum von main,
-/// ohne Eltern, auf refs/heads/oeffentlich, mit Name und Adresse für Autor
-/// und Committer.
-fn wurzel(o: &Ort, nachricht: &str, name: &str, mail: &str) -> String {
-    let baum = o.git(&["rev-parse", "main^{tree}"]);
-    let mut c = git();
-    c.arg("-C").arg(o.repo()).args(["commit-tree", &baum, "-m", nachricht]);
-    for (k, v) in [("GIT_AUTHOR_NAME", name), ("GIT_AUTHOR_EMAIL", mail), ("GIT_COMMITTER_NAME", name), ("GIT_COMMITTER_EMAIL", mail)] {
-        c.env(k, v);
-    }
-    let aus = c.output().unwrap();
-    assert!(aus.status.success(), "{}", String::from_utf8_lossy(&aus.stderr));
-    let sha = String::from_utf8_lossy(&aus.stdout).trim().to_string();
-    o.git(&["update-ref", "refs/heads/oeffentlich", &sha]);
-    sha
-}
-
 /// Autor und Committer genau Ranke <ranke2@proton.me>,
 /// Zeichen für Zeichen. Ein breites ＠ (U+FF20, wie in alten Commits), ein
 /// breiter Buchstabe im Namen und die alte Adresse werden abgewiesen.
@@ -1849,69 +1841,70 @@ fn tokens_vereint_und_geschlossen() {
     assert_eq!(code, 2, "nur LIESMICH.txt: {text}");
 }
 
-/// Der frische Wurzel-Commit auf refs/heads/oeffentlich
-/// geht durch (-Pruefen, Hook, -Bundle); die alte Geschichte von main mit
-/// breitem ＠ und einem Zwischenstand nicht. Im Bundle zählt jede Ref.
+/// `-Pruefen` prüft ohne -Ref refs/heads/main wie einen ersten Push nach main;
+/// main mit Merge-Commits geht durch (-Pruefen, Hook, -Bundle), eine
+/// Geschichte mit breitem ＠ und einem Zwischenstand nicht. Nur der lokale
+/// Zweig main geht hinaus; im Bundle zählt jede Ref.
 #[test]
-fn frischer_wurzel_commit_pruefen_und_bundle() {
+fn pruefen_und_bundle_nur_main() {
     if !bereit() {
         return;
     }
     let o = Ort::neu();
-    o.git(&["checkout", "-q", "-b", "zweig"]);
-    o.datei("src/kurz.rs", b"// geheim\xc2\xa7projekt\n");
-    o.commit("kurz da", &[("GIT_AUTHOR_EMAIL", "ranke2\u{FF20}proton.me")]);
-    std::fs::remove_file(o.repo().join("src/kurz.rs")).unwrap();
-    o.commit("wieder weg", &[]);
-    zusammenfuehren(&o);
-    let sha = wurzel(&o, "chore: erste öffentliche Fassung", "Ranke", MAIL);
-    assert_eq!(o.git(&["rev-list", "--count", "oeffentlich"]), "1");
+    o.ueber_merge(|o| o.datei("src/b.rs", b"// b\n"));
+    let sha = o.git(&["rev-parse", "main"]);
     let (code, text) = o.lauf(&["-Pruefen"], None);
     assert_eq!(code, 0, "{text}");
-    assert!(text.contains("Probelauf"), "{text}");
-    let (code, text) = o.lauf(&["-Hook"], Some(&format!("refs/heads/oeffentlich {sha} refs/heads/main {NULL}\n")));
+    assert!(text.contains("Probelauf") && text.contains("refs/heads/main"), "{text}");
+    let (code, text) = o.lauf(&["-Hook"], Some(&format!("refs/heads/main {sha} refs/heads/main {NULL}\n")));
     assert_eq!(code, 0, "Hook: {text}");
-    // Die alte Geschichte: in jedem geprüften Bereich gefunden.
-    let (code, text) = o.lauf(&["-Pruefen", "-Ref", "main"], None);
+    // Gegenprobe: ein anderer lokaler Zweig auf demselben Stand geht nicht als main hinaus.
+    o.git(&["branch", "oeffentlich", "main"]);
+    let (code, text) = o.lauf(&["-Hook"], Some(&format!("refs/heads/oeffentlich {sha} refs/heads/main {NULL}\n")));
+    assert!(code == 1 && text.contains("nur der lokale Zweig main geht hinaus"), "Hook: {text}");
+    let (code, text) = o.lauf(&["-Pruefen", "-Ref", "oeffentlich"], None);
+    assert!(code == 1 && text.contains("nur der lokale Zweig main geht hinaus"), "-Pruefen: {text}");
+    let (code, _) = o.lauf(&["-Pruefen", "-Ref", "gibt-es-nicht"], None);
+    assert_eq!(code, 2);
+
+    // Eine Geschichte mit breitem ＠ und einem Zwischenstand: in jedem geprüften Bereich gefunden.
+    let alt = Ort::neu();
+    alt.git(&["checkout", "-q", "-b", "zweig"]);
+    alt.datei("src/kurz.rs", b"// geheim\xc2\xa7projekt\n");
+    alt.commit("kurz da", &[("GIT_AUTHOR_EMAIL", "ranke2\u{FF20}proton.me")]);
+    std::fs::remove_file(alt.repo().join("src/kurz.rs")).unwrap();
+    alt.commit("wieder weg", &[]);
+    zusammenfuehren(&alt);
+    let (code, text) = alt.lauf(&["-Pruefen"], None);
     assert_eq!(code, 1, "{text}");
     assert!(text.contains("Autor ist nicht Ranke <ranke2@proton.me>") && text.contains("src/kurz.rs"), "{text}");
     assert!(!text.to_lowercase().contains("geheimprojekt"), "{text}");
-    let (code, _) = o.lauf(&["-Pruefen", "-Ref", "gibt-es-nicht"], None);
-    assert_eq!(code, 2);
-    // Der Wurzel-Commit selbst mit Anhang oder breitem ＠.
-    wurzel(&o, "chore: x\n\nCo-Authored-By: Jemand <jemand@example.org>", "Ranke", MAIL);
-    let (code, text) = o.lauf(&["-Pruefen"], None);
-    assert!(code == 1 && text.contains("Anhang (Trailer)"), "{text}");
-    wurzel(&o, "chore: x", "Ranke", "ranke2\u{FF20}proton.me");
-    let (code, text) = o.lauf(&["-Pruefen"], None);
-    assert!(code == 1 && text.contains("Committer ist nicht"), "{text}");
 
-    // Bundle: nur der saubere Wurzel-Commit geht durch.
-    wurzel(&o, "chore: erste öffentliche Fassung", "Ranke", MAIL);
-    o.git(&["tag", "v1", "oeffentlich"]);
-    let bundle = |name: &str, refs: &[&str]| -> String {
+    o.git(&["tag", "v1", "main"]);
+    let bundle = |ort: &Ort, name: &str, refs: &[&str]| -> String {
         let p = o.wurzel.join(name).to_string_lossy().to_string();
         let mut a = vec!["bundle", "create", "-q", p.as_str()];
         a.extend_from_slice(refs);
-        o.git(&a);
+        ort.git(&a);
         p
     };
-    for (name, refs, code_soll, satz) in [
-        ("gut", vec!["refs/heads/oeffentlich"], 0, "Nichts gefunden."),
-        ("alt", vec!["refs/heads/main"], 1, "Autor ist nicht Ranke"),
-        ("mit Tag", vec!["refs/heads/oeffentlich", "refs/tags/v1"], 1, "nur refs/heads/main oder ein Tag refs/tags/v0.MINOR.PATCH"),
-        ("anderer Zweig", vec!["refs/heads/zweig"], 1, "nur der lokale Zweig main oder oeffentlich"),
+    for (ort, name, refs, code_soll, satz) in [
+        (&o, "gut", vec!["refs/heads/main"], 0, "Nichts gefunden."),
+        (&alt, "alt", vec!["refs/heads/main"], 1, "Autor ist nicht Ranke"),
+        (&o, "mit Tag", vec!["refs/heads/main", "refs/tags/v1"], 1, "nur refs/heads/main oder ein Tag refs/tags/v0.MINOR.PATCH"),
+        (&o, "anderer Zweig", vec!["refs/heads/zweig"], 1, "nur der lokale Zweig main geht hinaus"),
+        (&o, "oeffentlich", vec!["refs/heads/oeffentlich"], 1, "nur der lokale Zweig main geht hinaus"),
     ] {
-        let p = bundle(&format!("{name}.bundle"), &refs);
+        let p = bundle(ort, &format!("{name}.bundle"), &refs);
         let (code, text) = o.lauf(&["-Bundle", &p], None);
         assert_eq!(code, code_soll, "{name}: {text}");
         assert!(text.contains(satz), "{name}: {text}");
     }
-    let alt = bundle("alt2.bundle", &["refs/heads/main"]);
-    let (_, text) = o.lauf(&["-Bundle", &alt], None);
+    let p = bundle(&alt, "alt2.bundle", &["refs/heads/main"]);
+    let (_, text) = o.lauf(&["-Bundle", &p], None);
     assert!(text.contains("src/kurz.rs") && !text.to_lowercase().contains("geheimprojekt"), "{text}");
     // Ein Bundle mit Voraussetzungen (nicht ab der Wurzel) scheitert geschlossen.
-    let teil = bundle("teil.bundle", &["main^..main"]);
+    let teil = bundle(&o, "teil.bundle", &["main^..main"]);
     let (code, text) = o.lauf(&["-Bundle", &teil], None);
     assert_eq!(code, 2, "{text}");
 }
@@ -2252,46 +2245,6 @@ fn fundzeilen_maskieren_auch_adressen() {
     assert!(code == 1 && text.contains("E-Mail-Adresse") && !text.contains("firma-erfunden"), "Ref: {text}");
 }
 
-/// Mit Funden nennt der Bericht von Wurzel-Entwurf.ps1
-/// keine Ordner und Dateien; ohne Funde die ganze Liste.
-#[test]
-fn wurzel_entwurf_ohne_dateien_bei_funden() {
-    if !bereit() {
-        return;
-    }
-    let entwurf = |o: &Ort| -> (i32, String) {
-        let ziel = o.wurzel.join("klon");
-        let bericht = o.wurzel.join("bericht.md");
-        let aus = pwsh()
-            .unwrap()
-            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Wurzel-Entwurf.ps1"))
-            .arg("-Repo")
-            .arg(o.repo())
-            .arg("-Ziel")
-            .arg(&ziel)
-            .arg("-Inhalt")
-            .arg(o.wurzel.join("inhalt"))
-            .arg("-Bericht")
-            .arg(&bericht)
-            .stdin(Stdio::null())
-            .output()
-            .unwrap();
-        (aus.status.code().unwrap_or(-1), std::fs::read_to_string(&bericht).unwrap_or_default())
-    };
-    let o = Ort::neu();
-    let (code, bericht) = entwurf(&o);
-    assert_eq!(code, 0, "{bericht}");
-    assert!(bericht.contains("src/main.rs"), "{bericht}");
-    let o = Ort::neu();
-    o.datei("src/tokenwort/a.rs", b"// x\n");
-    o.commit("x", &[]);
-    let (code, bericht) = entwurf(&o);
-    assert_eq!(code, 1, "{bericht}");
-    assert!(bericht.contains("stehen hier nicht"), "{bericht}");
-    assert!(!bericht.contains("src/main.rs") && !bericht.to_lowercase().contains("tokenwort"), "{bericht}");
-}
-
 /// Trenner . + / und jeder
 /// Strich wie U+2010 und U+2013; UTF-32 mit BOM ist kein UTF-8.
 #[test]
@@ -2392,35 +2345,6 @@ fn fundzeilen_maskieren_kodierte_benutzerpfade() {
     assert!(text.contains("Benutzerpfad") && text.contains("SID eines Kontos"), "{text}");
     for w in ["mustermann", "erfunden", "1234567890", "2345678901", "3456789012"] {
         assert!(!text.contains(w), "„{w}“ steht in der Ausgabe:\n{text}");
-    }
-}
-
-/// Auch die FEHLER-Zeile von Wurzel-Entwurf.ps1 nennt das
-/// Benutzerprofil nicht.
-#[test]
-fn wurzel_entwurf_fehlerzeile_ohne_profil() {
-    if !bereit() {
-        return;
-    }
-    let o = Ort::neu();
-    let aus = pwsh()
-        .unwrap()
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Wurzel-Entwurf.ps1"))
-        .arg("-Repo")
-        .arg(o.wurzel.join("fehlt"))
-        .arg("-Ziel")
-        .arg(o.wurzel.join("klon"))
-        .arg("-Bericht")
-        .arg(o.wurzel.join("bericht.md"))
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    let text = String::from_utf8_lossy(&aus.stdout);
-    assert_eq!(aus.status.code(), Some(2), "{text}");
-    assert!(text.contains("FEHLER"), "{text}");
-    if let Ok(profil) = std::env::var("USERPROFILE") {
-        assert!(!text.to_lowercase().contains(&profil.to_lowercase()), "{text}");
     }
 }
 
@@ -2554,7 +2478,8 @@ fn tags_nur_v0_leicht_neu_auf_main() {
     o.git(&["branch", "oeffentlich", &main]);
     for (name, refs, code_soll, satz) in [
         ("gut", vec!["refs/heads/main", "refs/tags/v0.1.0"], 0, "Nichts gefunden."),
-        ("oeffentlich", vec!["refs/heads/oeffentlich", "refs/tags/v0.1.0"], 0, "Nichts gefunden."),
+        // Nur main zählt als Linie für Tags; ein anderer Zweig ist selbst ein Fund und trägt keinen Tag.
+        ("oeffentlich", vec!["refs/heads/oeffentlich", "refs/tags/v0.1.0"], 1, "Tag ohne main"),
         ("seitlich", vec!["refs/heads/main", "refs/tags/v0.4.0"], 1, "nicht auf der First-Parent-Linie"),
         ("Tag-Objekt", vec!["refs/heads/main", "refs/tags/v0.3.0"], 1, "Tag-Objekt"),
         ("nur Tag", vec!["refs/tags/v0.1.0"], 1, "Tag ohne main"),
@@ -2691,43 +2616,159 @@ fn push_prueft_erste_zeile() {
     });
 }
 
-/// `Hochladen.ps1 -Wurzel` prüft die Nachricht vor `update-ref`: Eine falsche
-/// Form lässt den zuletzt gebauten Wurzel-Commit auf `oeffentlich` stehen.
+/// `Hochladen.ps1` im Code-Repo lädt refs/heads/main nach refs/heads/main,
+/// nur als Fast-Forward und nur mit Merge-Commits auf der First-Parent-Linie;
+/// -Pruefen lädt nicht hoch, -Wurzel bricht ab, -Tag nur auf dieser Linie.
+/// Das Remote ist ein Bare-Repo im Temp-Ordner.
 #[test]
-fn hochladen_wurzel_prueft_nachricht_vorher() {
+fn hochladen_main_nach_main() {
     if !bereit() {
         return;
     }
     let o = Ort::neu();
-    // Die Skripte liegen unversioniert im Repo (Hochladen nimmt den Elternordner als Repo); main bleibt sauber.
+    let inhalt = o.wurzel.join("inhalt");
+    // Skripte und Hooks liegen unversioniert im Repo (Hochladen nimmt den Elternordner als Repo); ausgeschlossen, damit main sauber bleibt.
     let skripte = o.repo().join("scripts");
-    std::fs::create_dir_all(&skripte).unwrap();
+    std::fs::create_dir_all(skripte.join("hooks")).unwrap();
     for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
         std::fs::copy(skript().with_file_name(name), skripte.join(name)).unwrap();
     }
+    for name in ["pre-push", "commit-msg"] {
+        std::fs::copy(skript().with_file_name("hooks").join(name), skripte.join("hooks").join(name)).unwrap();
+    }
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n").unwrap();
     o.git(&["config", "core.hooksPath", "scripts/hooks"]);
-    let inhalt = o.wurzel.join("inhalt").to_string_lossy().to_string();
-    let wurzel = |nachricht: &str| {
-        let aus = pwsh()
+    let fern = o.wurzel.join("fern.git");
+    assert!(git().args(["init", "-q", "--bare"]).arg(&fern).output().unwrap().status.success());
+    let fern_ref = |r: &str| {
+        let a = git().arg("-C").arg(&fern).args(["rev-parse", "--verify", "--quiet", r]).output().unwrap();
+        String::from_utf8_lossy(&a.stdout).trim().to_string()
+    };
+    let hochladen = |args: &[&str]| {
+        let a = pwsh()
             .unwrap()
             .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
             .arg(skripte.join("Hochladen.ps1"))
-            .args(["-Wurzel", "-Inhalt", &inhalt, "-Datum", "2026-11-05T12:00:00+01:00", "-Nachricht", nachricht])
+            .arg("-Inhalt")
+            .arg(&inhalt)
+            .args(args)
+            .env("DASHBOARD_INHALT", &inhalt)
             .output()
             .unwrap();
-        (aus.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr)))
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     };
-    let (code, text) = wurzel("feat: gut");
-    assert_eq!(code, 0, "{text}");
-    let gut = o.git(&["rev-parse", "refs/heads/oeffentlich"]);
-    assert_eq!(o.git(&["log", "-1", "--format=%B", &gut]), "feat: gut");
-    // Leerraum davor räumt -Nachricht wie der Hook weg (" feat: x" geht darum durch).
-    for schlecht in ["falsche Form", "Merge branch 'x'", "# feat: nur Kommentar", "feat: \u{200b}"] {
-        let (code, text) = wurzel(schlecht);
-        assert_eq!(code, 1, "{schlecht:?}: {text}");
-        assert!(text.contains("Conventional Commits"), "{schlecht:?}: {text}");
-        assert_eq!(o.git(&["rev-parse", "refs/heads/oeffentlich"]), gut, "{schlecht:?}: oeffentlich verschoben");
+
+    // -Wurzel gibt es nicht mehr: Abbruch mit Satz, auch zusammen mit -Pruefen, ohne Prüfung.
+    for args in [&["-Wurzel"][..], &["-Wurzel", "-Pruefen"][..]] {
+        let (c, text) = hochladen(args);
+        assert_eq!(c, 1, "{args:?}: {text}");
+        assert!(text.contains("-Wurzel gibt es nicht mehr") && !text.contains("Geprüft als"), "{args:?}: {text}");
     }
+    // Ohne Remote: -Pruefen prüft (als Basis), Hochladen bricht ab.
+    let (c, text) = hochladen(&["-Pruefen"]);
+    assert!(c == 0 && text.contains("main ginge so nach main"), "{text}");
+    let (c, text) = hochladen(&[]);
+    assert!(c == 1 && text.contains("Es gibt kein Remote origin"), "{text}");
+    o.git(&["remote", "add", "origin", &fern.to_string_lossy().replace('\\', "/")]);
+
+    // Erster Push: -Pruefen lädt nicht hoch, dann main nach main (der Hook prüft dabei noch einmal).
+    o.ueber_merge(|o| o.datei("src/b.rs", b"// b\n"));
+    o.git(&["branch", "oeffentlich", "main"]);
+    let (c, text) = hochladen(&["-Pruefen"]);
+    assert!(c == 0 && text.contains("Geprüft als Basis-Repo") && text.contains("main ginge so nach main"), "{text}");
+    assert!(fern_ref("refs/heads/main").is_empty(), "-Pruefen lädt nicht hoch");
+    let (c, text) = hochladen(&[]);
+    assert_eq!(c, 0, "{text}");
+    assert_eq!(fern_ref("refs/heads/main"), o.git(&["rev-parse", "main"]), "{text}");
+    // Fast-Forward mit einem weiteren Merge-Commit.
+    o.ueber_merge(|o| o.datei("src/c.rs", b"// c\n"));
+    let (c, text) = hochladen(&[]);
+    assert_eq!(c, 0, "{text}");
+    let stand = o.git(&["rev-parse", "main"]);
+    assert_eq!(fern_ref("refs/heads/main"), stand, "{text}");
+    // Nur main ging hinaus, kein anderer Zweig.
+    let a = git().arg("-C").arg(&fern).args(["for-each-ref", "--format=%(refname)"]).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&a.stdout).trim(), "refs/heads/main");
+
+    // Gegenprobe: ein Commit ohne Merge auf der First-Parent-Linie wird abgewiesen, geprüft und mit Push.
+    o.datei("src/d.rs", b"// d\n");
+    o.commit("ohne Merge", &[]);
+    for args in [&["-Pruefen"][..], &[][..]] {
+        let (c, text) = hochladen(args);
+        assert_eq!(c, 1, "{args:?}: {text}");
+        assert!(text.contains("nur Merge-Commits"), "{args:?}: {text}");
+    }
+    assert_eq!(fern_ref("refs/heads/main"), stand, "nichts ging hinaus");
+    // Gegenprobe: main ohne den fernen Stand (kein Fast-Forward) bricht vor der Prüfung ab.
+    o.git(&["reset", "-q", "--hard", "main~2"]);
+    o.ueber_merge(|o| o.datei("src/e.rs", b"// e\n"));
+    for args in [&["-Pruefen"][..], &[][..]] {
+        let (c, text) = hochladen(args);
+        assert_eq!(c, 1, "{args:?}: {text}");
+        assert!(text.contains("kein Fast-Forward") && !text.contains("Geprüft als"), "{args:?}: {text}");
+    }
+    assert_eq!(fern_ref("refs/heads/main"), stand, "nichts ging hinaus");
+    o.git(&["reset", "-q", "--hard", &stand]);
+
+    // Gegenprobe: eine zweite Wurzel auf main wird abgewiesen, geprüft und mit Push (beides Fast-Forward).
+    let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+    let zweite_wurzel = |weg: &str| {
+        for args in [&["-Pruefen"][..], &[][..]] {
+            let (c, text) = hochladen(args);
+            assert_eq!(c, 1, "{weg} {args:?}: {text}");
+            assert!(text.contains("Commit ohne Eltern: eine zweite Wurzel auf main"), "{weg} {args:?}: {text}");
+        }
+        assert_eq!(fern_ref("refs/heads/main"), stand, "{weg}: nichts ging hinaus");
+    };
+    // (a) Neuer Wurzel-Commit als erster Elternteil eines Merges mit dem fernen Stand.
+    o.git(&["checkout", "-q", "--orphan", "neu"]);
+    o.datei("src/w.rs", b"// w\n");
+    o.commit("neue Wurzel", &[]);
+    o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "main", "-m", "chore(merge): main"]].concat());
+    o.git(&["checkout", "-q", "main"]);
+    o.git(&["reset", "-q", "--hard", "neu"]);
+    zweite_wurzel("(a)");
+    o.git(&["reset", "-q", "--hard", &stand]);
+    // (b) Merge mit einer fremden Geschichte (eigene Wurzel) als zweitem Elternteil.
+    o.git(&["checkout", "-q", "--orphan", "fremd"]);
+    o.datei("src/x.rs", b"// x\n");
+    o.commit("fremde Wurzel", &[]);
+    o.git(&["checkout", "-q", "main"]);
+    o.git(&[&ranke[..], &["merge", "-q", "--no-ff", "--allow-unrelated-histories", "fremd", "-m", "chore(merge): fremd"]].concat());
+    zweite_wurzel("(b)");
+    o.git(&["reset", "-q", "--hard", &stand]);
+
+    // Gegenprobe: fremder Autor auf der Seitenlinie eines Merge-Commits wird abgewiesen;
+    // auch mit verstellter Remote-Tracking-Ref (Vorprüfung sieht keine neuen Commits) prüft der Hook den echten Bereich.
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    o.datei("src/f.rs", b"// f\n");
+    o.commit("fremd", &[("GIT_AUTHOR_NAME", "Fremd"), ("GIT_AUTHOR_EMAIL", "fremd@example.org")]);
+    o.git(&["checkout", "-q", "main"]);
+    o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "zweig", "-m", "chore(merge): zweig"]);
+    let (c, text) = hochladen(&["-Pruefen"]);
+    assert!(c == 1 && text.contains("Autor ist nicht"), "{text}");
+    o.git(&["update-ref", "refs/remotes/origin/main", "main"]);
+    let (c, text) = hochladen(&[]);
+    assert!(c == 1 && text.contains("Autor ist nicht") && text.contains("Das Hochladen ist gescheitert"), "{text}");
+    assert_eq!(fern_ref("refs/heads/main"), stand, "nichts ging hinaus");
+    o.git(&["update-ref", "refs/remotes/origin/main", &stand]);
+    o.git(&["reset", "-q", "--hard", &stand]);
+
+    // -Tag wie bisher: nur auf der First-Parent-Linie von main, nicht mit -Pruefen.
+    o.ueber_merge(|o| fassung_setzen(o, "0.1.0", true));
+    let (c, text) = hochladen(&[]);
+    assert_eq!(c, 0, "{text}");
+    o.git(&["tag", "v0.1.0", "main"]);
+    o.git(&["tag", "v0.2.0", "zweig"]);
+    let (c, text) = hochladen(&["-Tag", "v0.1.0", "-Pruefen"]);
+    assert!(c == 1 && text.contains("nicht zusammen mit -Pruefen"), "{text}");
+    assert!(fern_ref("refs/tags/v0.1.0").is_empty());
+    let (c, text) = hochladen(&["-Tag", "v0.2.0"]);
+    assert!(c == 1 && text.contains("nicht auf der First-Parent-Linie"), "{text}");
+    assert!(fern_ref("refs/tags/v0.2.0").is_empty());
+    let (c, text) = hochladen(&["-Tag", "v0.1.0"]);
+    assert_eq!(c, 0, "{text}");
+    assert_eq!(fern_ref("refs/tags/v0.1.0"), o.git(&["rev-parse", "main"]), "{text}");
 }
 
 /// Die Anleitung verlangt keinen Anhang mehr in Merge-Nachrichten: Der Hook
@@ -2745,7 +2786,7 @@ fn anleitung_ohne_anhang_in_nachrichten() {
 /// Overlay (Projekt-Repo ohne scripts/): core.hooksPath zeigt absolut auf die
 /// Hooks des Code-Repos; commit-msg und pre-push finden den Prüfer neben sich
 /// und prüfen das Overlay. `Hochladen.ps1 -Repo` lädt dort main nach main, mit
-/// der Adresse des Remotes (Art aus repos.toml), ohne -Wurzel. Das Remote ist
+/// der Adresse des Remotes (Art aus repos.toml). Das Remote ist
 /// ein Bare-Repo im Temp-Ordner.
 #[test]
 fn overlay_hooks_und_hochladen() {
@@ -2842,11 +2883,20 @@ fn overlay_hooks_und_hochladen() {
         assert!(text.contains(fund), "{args:?}: {text}");
     }
     assert_eq!(fern_main(), sauber, "nichts ging hinaus");
+    // Gegenprobe: main ohne den fernen Stand (kein Fast-Forward) bricht vor der Prüfung ab.
+    o.git(&["reset", "-q", "--hard", &format!("{sauber}~1")]);
+    o.ueber_merge(|o| o.datei("projects/alpha/anders.toml", b"y = 1\n"));
+    for args in [&["-Pruefen"][..], &[][..]] {
+        let (c, text) = hochladen(args);
+        assert_eq!(c, 1, "{args:?}: {text}");
+        assert!(text.contains("kein Fast-Forward") && !text.contains("Geprüft als"), "{args:?}: {text}");
+    }
+    assert_eq!(fern_main(), sauber, "nichts ging hinaus");
 
-    // Kein -Wurzel im Projekt-Repo; ohne core.hooksPath auf das Code-Repo bricht es ab.
+    // Kein -Wurzel (auch nicht im Projekt-Repo); ohne core.hooksPath auf das Code-Repo bricht es ab.
     let (c, text) = hochladen(&["-Wurzel"]);
     assert_eq!(c, 1, "{text}");
-    assert!(text.contains("-Wurzel gibt es nur im Code-Repo"), "{text}");
+    assert!(text.contains("-Wurzel gibt es nicht mehr"), "{text}");
     for haken in ["scripts/hooks", "C:/anders/scripts/hooks"] {
         o.git(&["config", "core.hooksPath", haken]);
         let (c, text) = hochladen(&["-Pruefen"]);

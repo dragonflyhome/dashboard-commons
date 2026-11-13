@@ -6,9 +6,10 @@ reihenfolge = 217
 beispiel = '''
 src/                Rust-Code des Servers und des Boten
   main.rs           Start von dashboard.exe: Aufruf lesen, dann Server, Dienst, pruefe oder --hilfe
-  lib.rs            die Bibliothek hinter beiden Programmen (dashboard.exe und dashboard-bote.exe)
+  lib.rs            die Bibliothek hinter den Programmen (dashboard.exe, dashboard-bote.exe, dashboard-herzschlag.exe)
   bin/
     dashboard-bote.rs  Start des Boten (ohne Fenster), seine Aufrufe und Exit-Codes
+    dashboard-herzschlag.rs  Stop-Hook ohne Fenster (ruft herzschlag::ausfuehren)
   dienst/           Betrieb (Etappe 7a)
     mod.rs          Aufrufe, Konsolen-Modus, Start und Ende, die Lauscher auf 127.0.0.1 und [::1]
     einstellungen.rs  dienst.toml lesen und prüfen, Fehler mit Datei und Zeile
@@ -100,8 +101,8 @@ projects/           je Projekt ein Ordner; nach dem Umzug des Inhalts hier nur n
                     Projekte liegen in dashboard-inhalt/projects (Anleitung, Abschnitt 14)
 vorlagen/           dashboard-lokal: Vorlage der Zusammenbau-Kiste (Bibliothek plus geprüfte Rechenteile)
 scripts/            Inhalt-Umziehen.ps1 (Umzug des Inhalts), Vor-Push.ps1 und hooks/pre-push (Pre-Push-Prüfer), hooks/pre-commit (Format, clippy), hooks/commit-msg (Conventional Commits),
-                    Hochladen.ps1 (der einzige Weg nach draußen), Wurzel-Entwurf.ps1 (frischer Wurzel-Commit
-                    als Entwurf), Inhalt-Orte.ps1 (die Orte des Inhalts für beide),
+                    Hochladen.ps1 (der einzige Weg nach draußen: main nach main), Inhalt-Orte.ps1 (die Orte
+                    des Inhalts für den Umzug und das Einrichten),
                     Start-Dashboard.ps1, Schluessel-Lesen.ps1, Warten.ps1 (ein Chat wartet auf Vorgänge),
                     Vendor-Pruefen.ps1 und Vendor-Holen.ps1 (Toolkit-Kopie prüfen, neue Fassung zur Durchsicht holen),
                     Dienst-*.ps1 (Dashboard als Dienst): Dienst-Einrichten.ps1 (einmal als Administrator,

@@ -613,18 +613,39 @@ pub fn aktualisierungen(inhalt: &Inhalt, slug: &str) -> Vec<Aktualisierung> {
             text: m.text.clone(),
         })
         .collect();
-    liste.extend(inhalt.speicher.vorgaenge.iter().filter(|v| v.slug == slug).map(|v| Aktualisierung {
-        quelle: "vorgang".to_string(),
-        id: v.id.clone(),
-        art: v.art.wort().to_string(),
-        titel: v.titel.clone(),
-        zeit: v.geaendert.clone(),
-        ziel: format!("/vorgaenge#vorgang-{}", v.id),
-        gelesen: true,
-        anzahl: 1,
-        behoben: false,
-        text: None,
-    }));
+    // Gleiche Vorgänge (Art und Titel) sind eine Zeile mit Anzahl, wie Meldungen:
+    // die neueste (Zeit, dann Kennung) bleibt mit Ziel und Zeit.
+    let mut vorgaenge: BTreeMap<(String, String), Aktualisierung> = BTreeMap::new();
+    for v in inhalt.speicher.vorgaenge.iter().filter(|v| v.slug == slug) {
+        let neu = Aktualisierung {
+            quelle: "vorgang".to_string(),
+            id: v.id.clone(),
+            art: v.art.wort().to_string(),
+            titel: v.titel.clone(),
+            zeit: v.geaendert.clone(),
+            ziel: format!("/vorgaenge#vorgang-{}", v.id),
+            gelesen: true,
+            anzahl: 1,
+            behoben: false,
+            text: None,
+        };
+        match vorgaenge.entry((neu.art.clone(), neu.titel.clone())) {
+            std::collections::btree_map::Entry::Vacant(e) => {
+                e.insert(neu);
+            }
+            std::collections::btree_map::Entry::Occupied(mut e) => {
+                let alt = e.get_mut();
+                let anzahl = alt.anzahl + 1;
+                // Als Zeitpunkt vergleichen (Sommer- und Winterzeit); Unlesbares gilt als alt, wie in der Oberfläche.
+                let wann = |a: &Aktualisierung| (chrono::DateTime::parse_from_rfc3339(&a.zeit).ok(), a.id.clone());
+                if wann(&neu) > wann(alt) {
+                    *alt = neu;
+                }
+                alt.anzahl = anzahl;
+            }
+        }
+    }
+    liste.extend(vorgaenge.into_values());
     liste.sort_by(|a, b| (&a.quelle, &a.id).cmp(&(&b.quelle, &b.id)));
     liste
 }
@@ -1649,6 +1670,50 @@ mod tests {
         // Filter nach Art.
         let f = Filter { art: Some(EintragsArt::Meldung), projekt: Some("beispiel".into()), ..Default::default() };
         assert_eq!(ids(&anstehend(&i, &f).eintraege), ["m-1", "m-2"]);
+    }
+
+    /// Gleiche Vorgänge (Art und Titel, etwa zwei Bauten, die ein Lauf
+    /// zugleich abschließt) sind eine Zeile: Anzahl ist die Summe, Zeit und
+    /// Ziel vom neuesten (Zeit, bei gleicher Zeit die höhere Kennung).
+    #[test]
+    fn gleiche_vorgaenge_eine_zeile() {
+        use crate::vertrag::api::{Vorgang, VorgangsArt, Zustand};
+        let mut i = inhalt();
+        let vorgang = |id: &str, art: VorgangsArt, titel: &str, zeit: &str| Vorgang {
+            id: id.into(),
+            art,
+            slug: "hallo".into(),
+            titel: titel.into(),
+            bezug: None,
+            zustand: Zustand::Erledigt,
+            erstellt: zeit.into(),
+            geaendert: zeit.into(),
+            letzte_nr: 1,
+            von: "browser".into(),
+            notiz: None,
+            bau: None,
+            merge: None,
+        };
+        i.speicher.vorgaenge.extend([
+            vorgang("v-20261031-0009", VorgangsArt::Bau, "Seite neu bauen", "2026-11-13T00:04:34+01:00"),
+            vorgang("v-20261031-0010", VorgangsArt::Bau, "Seite neu bauen", "2026-11-13T00:04:34+01:00"),
+            vorgang("v-20261106-0033", VorgangsArt::Schritt, "Dir angeboten: Schritt 12", "2026-11-06T20:10:00+01:00"),
+            vorgang("v-20261106-0035", VorgangsArt::Schritt, "Dir angeboten: Schritt 12", "2026-11-06T19:25:00+01:00"),
+            vorgang("v-20261106-0037", VorgangsArt::Schritt, "Dir angeboten: Schritt 12", "2026-11-06T18:41:00+01:00"),
+            vorgang("v-20261106-0040", VorgangsArt::Wunsch, "Seite neu bauen", "2026-11-06T18:00:00+01:00"),
+        ]);
+        let a = aktualisierungen(&i, "hallo");
+        let zeilen: Vec<(&str, &str, u64, &str)> = a.iter().map(|x| (x.id.as_str(), x.art.as_str(), x.anzahl, x.zeit.as_str())).collect();
+        assert_eq!(
+            zeilen,
+            [
+                ("v-20261031-0010", "bau", 2, "2026-11-13T00:04:34+01:00"),
+                ("v-20261106-0033", "schritt", 3, "2026-11-06T20:10:00+01:00"),
+                ("v-20261106-0040", "wunsch", 1, "2026-11-06T18:00:00+01:00"),
+            ],
+            "gleiche Zeit: höhere Kennung; sonst die neueste Zeit; andere Art bleibt eigene Zeile"
+        );
+        assert_eq!(a[0].ziel, "/vorgaenge#vorgang-v-20261031-0010");
     }
 
     /// Ampel: rot bei offenem Fehler, auch gelesen; behoben nicht mehr.

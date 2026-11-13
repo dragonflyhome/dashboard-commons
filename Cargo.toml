@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Lokales Dashboard: Zustand des PCs und aller Projekte im Browser"
-license = "AGPL-3.0-or-later"
+license = "AGPL-3.0-or-later AND GPL-3.0-or-later"
 publish = false
 
 # Workspace aus dem Dienst, dem SDK für Projekt-Module und der Vorlage eines

@@ -26,7 +26,8 @@
 <details class="eintrag" id="meldung-{a.id}">
 	<summary
 		><span class="zeichen" aria-hidden="true">{ART_ZEICHEN.meldung}</span>
-		<span class="titel">{a.titel}</span>{#if !a.gelesen}<span class="neu">neu</span>{/if}</summary
+		<span class="titel">{a.titel}</span>
+		{#if !a.gelesen}<span class="neu">neu</span>{/if}</summary
 	>
 	<ul class="plain einzel small">
 		<li>

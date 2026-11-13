@@ -113,6 +113,10 @@ Aufrufe von dashboard.exe:
   dashboard.exe pruefe-zusammenbau <ordner> --code <code-repo> [--ohne-lock]
       Wächter der Zusammenbau-Kiste dashboard-lokal: liest nur, baut nichts.
       Läuft vor jedem cargo-Aufruf dort (Dienst.ps1 -Neustart). 0 grün, 1 rot.
+  dashboard.exe herzschlag [--server 127.0.0.1:<port>]
+      Stop-Hook eines Chats: Eingabe des Hooks auf stdin; 2 mit Grund auf stderr,
+      solange die Sitzung im Dashboard offene Arbeit hat, sonst und bei jedem Fehler 0.
+      Als Hook eingetragen wird dashboard-herzschlag.exe (dasselbe, ohne Fenster).
   dashboard.exe --konsole --einstellungen <datei>
       Server in der Konsole mit einer Einstellungsdatei (dienst.toml); Protokoll
       zusätzlich in den Protokollordner. Beenden mit Strg+C.
@@ -133,6 +137,8 @@ pub enum Aufruf {
     /// `dashboard pruefe-zusammenbau <ordner> --code <code-repo>`: der Wächter
     /// der Zusammenbau-Kiste (vor jedem cargo-Aufruf dort, Umzug des Inhalts).
     PruefeZusammenbau(Vec<String>),
+    /// `dashboard herzschlag [--server …]`: Stop-Hook der Chats.
+    Herzschlag(Vec<String>),
     Hilfe,
     Konsole {
         einstellungen: PathBuf,
@@ -151,6 +157,7 @@ pub fn aufruf_lesen(args: &[String]) -> Aufruf {
         None => return Aufruf::Umgebung,
         Some("pruefe") => return Aufruf::Pruefe(args[1..].to_vec()),
         Some("pruefe-zusammenbau") => return Aufruf::PruefeZusammenbau(args[1..].to_vec()),
+        Some("herzschlag") => return Aufruf::Herzschlag(args[1..].to_vec()),
         Some("--hilfe" | "-h" | "--help" | "/?") => return Aufruf::Hilfe,
         _ => {}
     }
@@ -557,6 +564,7 @@ mod tests {
         assert_eq!(aufruf_lesen(&args(&["pruefe", "--alle"])), Aufruf::Pruefe(args(&["--alle"])));
         assert_eq!(aufruf_lesen(&args(&["pruefe-zusammenbau", "o", "--code", "c"])), Aufruf::PruefeZusammenbau(args(&["o", "--code", "c"])));
         assert_eq!(aufruf_lesen(&args(&["--hilfe"])), Aufruf::Hilfe);
+        assert_eq!(aufruf_lesen(&args(&["herzschlag", "--server", "127.0.0.1:8788"])), Aufruf::Herzschlag(args(&["--server", "127.0.0.1:8788"])));
         assert_eq!(
             aufruf_lesen(&args(&["--konsole", "--einstellungen", "C:/x/dienst.toml"])),
             Aufruf::Konsole { einstellungen: PathBuf::from("C:/x/dienst.toml") }

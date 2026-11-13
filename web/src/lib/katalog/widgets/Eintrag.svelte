@@ -34,7 +34,7 @@
 	<summary
 		>{#if e.art !== 'arbeit'}<span class="zeichen" aria-hidden="true">{ART_ZEICHEN[e.art]}</span
 			>{/if}
-		<span class="titel">{e.titel}</span>{#if schritte.length > 0}<span class="nur-vorlesen"
+		<span class="titel">{e.titel}</span>{#if schritte.length > 0}<span class="trenner"
 				>{TRENNER}</span
 			><span class="kurz small muted">{schritteKurz(schritte)}</span>{/if}</summary
 	>
@@ -64,6 +64,10 @@
 	}
 	summary {
 		cursor: pointer;
+	}
+	/* Nur für Vorleseprogramme, aber im Fluss und unsichtbar: .nur-vorlesen ist absolut und stünde in innerText als eigene Zeile „,“. */
+	.trenner {
+		opacity: 0;
 	}
 	.kurz {
 		display: block;

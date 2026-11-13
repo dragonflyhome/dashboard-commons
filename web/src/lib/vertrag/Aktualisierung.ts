@@ -32,7 +32,7 @@ ziel: string,
  */
 gelesen: boolean, 
 /**
- * Nur Meldungen: wie oft (ab 1); Vorgänge 1.
+ * Meldungen: wie oft (ab 1); Vorgänge: wie viele gleiche (Art und Titel) diese Zeile zusammenfasst.
  */
 anzahl: number, 
 /**

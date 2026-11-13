@@ -49,6 +49,15 @@ fn repos_frei(state: &AppState, p: &Project) -> Vec<RepoStatus> {
     state.git.repos_fuer(p).into_iter().map(crate::datenschutz::repo_verbergen).collect()
 }
 
+/// Kopfleiste, Fassung 3: der Schwerpunkt je Projekt für Liste und Einzelseite
+/// (ohne lesbare Datei alle unter „Sonstiges“, wie in „Anstehend“).
+fn schwerpunkte(bestand: &crate::inhalt::store::Bestand) -> crate::vertrag::schwerpunkte::Schwerpunkte {
+    match &bestand.schwerpunkte {
+        Ok(Some(s)) => s.clone(),
+        _ => crate::vertrag::schwerpunkte::Schwerpunkte::default(),
+    }
+}
+
 /// `GET /api/projects`
 ///
 /// Etappe B2: Ohne Windows-Anmeldung stehen die offenen Punkte nur als Zahl
@@ -64,12 +73,7 @@ pub async fn liste(State(state): State<AppState>, angemeldet: Option<Extension<A
     for b in &mut broken {
         b.error = crate::datenschutz::verbergen(&b.error);
     }
-    // Kopfleiste, Fassung 3: der Schwerpunkt je Projekt für die Seitenleiste
-    // (ohne lesbare Datei alle unter „Sonstiges“, wie in „Anstehend“).
-    let schwerpunkte = match &bestand.schwerpunkte {
-        Ok(Some(s)) => s.clone(),
-        _ => crate::vertrag::schwerpunkte::Schwerpunkte::default(),
-    };
+    let schwerpunkte = schwerpunkte(&bestand);
     // Etappe 4c: Bau-Stand der Projekte mit eigener Seite (frei, ohne Satz).
     let s = state.clone();
     let bau = tokio::task::spawn_blocking(move || crate::baustand::alle(&s)).await.unwrap_or_default();
@@ -136,10 +140,11 @@ pub async fn eine(State(state): State<AppState>, Path(slug): Path<String>, angem
             return Err(AppError::unlesbar(if angemeldet.is_some() { e } else { super::frei::SATZ_SEITE_KAPUTT.to_string() }));
         }
     };
+    let schwerpunkt = schwerpunkte(&bestand).von(&p.slug);
     drop(bestand);
     let (repos, checks, processes) = extras(&state, &p).await;
     Ok(Json(ProjectDetail {
-        head: ProjectSummary::from_project(&p, repos).ohne_texte(angemeldet.is_some()),
+        head: ProjectSummary::from_project(&p, repos).mit_schwerpunkt(schwerpunkt).ohne_texte(angemeldet.is_some()),
         // Lokale Pfade sind als Link erlaubt (die Oberfläche zeigt sie ohne Link); ohne Profil.
         links: p.meta.links.iter().map(|l| crate::vertrag::projekt::Link { name: l.name.clone(), url: crate::datenschutz::verbergen(&l.url) }).collect(),
         checks,
@@ -324,5 +329,22 @@ mod tests {
         assert_eq!((p("schaufenster")["schwerpunkt"].as_str(), p("schaufenster")["schwerpunkt_reihenfolge"].as_i64()), (Some("Chor und Verein"), Some(4)));
         assert_eq!((p("dashboard")["schwerpunkt"].as_str(), p("dashboard")["schwerpunkt_reihenfolge"].as_i64()), (Some("Bienen und Honig"), Some(5)));
         assert_eq!((p("geflecht")["schwerpunkt"].as_str(), p("geflecht")["schwerpunkt_reihenfolge"].as_i64()), (Some("Sonstiges"), Some(6)));
+    }
+
+    /// Die Einzelseite nennt denselben Schwerpunkt wie die Liste (vorher stand dort immer „Sonstiges“).
+    #[tokio::test]
+    async fn eine_nennt_den_schwerpunkt() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
+        for (slug, name, reihenfolge) in [("schaufenster", "Chor und Verein", 4), ("dashboard", "Bienen und Honig", 5), ("geflecht", "Sonstiges", 6)] {
+            let req = Request::get(format!("/api/projects/{slug}")).header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
+            let res = crate::app::router(state.clone()).oneshot(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK, "{slug}");
+            let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
+            assert_eq!((v["schwerpunkt"].as_str(), v["schwerpunkt_reihenfolge"].as_i64()), (Some(name), Some(reihenfolge)), "{slug}");
+        }
     }
 }

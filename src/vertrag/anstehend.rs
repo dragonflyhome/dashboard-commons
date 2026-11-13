@@ -438,6 +438,28 @@ pub struct ArbeitenListe {
     pub arbeiten: Vec<Arbeit>,
 }
 
+/// `GET /api/sitzungen/<id>/offen` (Herzschlag): der Chat einer Sitzung und
+/// was ihn aufhält. `von` fehlt (null), solange die Sitzung keinem Chat
+/// zugeordnet ist; dann ist `offen` leer.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct SitzungOffen {
+    pub sitzung: String,
+    pub von: Option<String>,
+    pub offen: Vec<OffenerSchritt>,
+}
+
+/// Ein Schritt (oder eine Arbeit ohne Schritte), der den Chat aufhält.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct OffenerSchritt {
+    /// Kennung der Arbeit.
+    pub arbeit: String,
+    /// Nummer des Schritts; fehlt (null) bei einer Arbeit ohne Schritte.
+    pub nr: Option<u32>,
+    pub titel: String,
+    /// `laeuft` (ihm gehört er und er läuft) oder `angeboten` (ihm angeboten).
+    pub grund: String,
+}
+
 // ----- Einstufung durch den Inhaber -----
 
 /// Die Einstufung eines Eintrags durch den Inhaber (Tabelle `einstufungen`). Schlüssel:
@@ -831,7 +853,7 @@ pub struct Aktualisierung {
     pub ziel: String,
     /// Vorgänge zählen als gelesen; Meldungen, bis der Inhaber „gelesen“ klickt, nicht.
     pub gelesen: bool,
-    /// Nur Meldungen: wie oft (ab 1); Vorgänge 1.
+    /// Meldungen: wie oft (ab 1); Vorgänge: wie viele gleiche (Art und Titel) diese Zeile zusammenfasst.
     pub anzahl: u64,
     /// Nur Fehler- und Frist-Meldungen: der Grund ist weg.
     pub behoben: bool,

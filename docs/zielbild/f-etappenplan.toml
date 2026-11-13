@@ -78,12 +78,12 @@ zeilen = [
   ["B5", "Unterlagen-Archiv: Archivseite, Vorschau und Download"],
   ["B6", "Gespräche und Rückmeldungen: Treffen, Rückmeldungen, „Als Nächstes“"],
   ["B7", "Schriftverkehr: Entwürfe, Platzhalter, Bearbeiten mit Passkey, Freigabe je Abschnitt"],
-  ["B8", "Plan und Verlauf: ein Plan statt Gantt, Fortschritt und Kanban von Hand"],
+  ["B8", "Projektseiten aus der API: Stand, Aufgabenliste, Plan und Zeitleiste; plan.toml nur Absicht, Stand und Verlauf vom Server (vorgezogen)"],
 ]
 
 [[block]]
 text = """
-Später: Finanzen, Repo-Stand, Prüfläufe. Der ganze Text steht in der Entscheidung „gemeinsame Bausteine“ der privaten Inhaltsquelle.
+Reihenfolge der offenen Etappen: kleine Behebungen und Aufräumen der Arbeiten, B8, Umstellung der übrigen Projektseiten, Chat-Schlüssel C0 bis C4, Einstellungen S1 bis S4, B4 neu, B5, B6, B7. Aus B7 wartet nur „Entwurfstext bearbeiten“, bis der Inhaber einen Passkey eingerichtet hat; Entwurf, Prüfen-und-selbst-Senden, Platzhalter und Freigabe je Abschnitt brauchen keinen. Später: Finanzen, Repo-Stand, Prüfläufe. Der ganze Text steht in der Entscheidung „gemeinsame Bausteine“ der privaten Inhaltsquelle.
 """
 
 [[block]]

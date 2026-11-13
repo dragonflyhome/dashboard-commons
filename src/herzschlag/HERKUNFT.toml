@@ -1,0 +1,74 @@
+# Herkunft der übernommenen Teile des Herzschlags (Stop-Hook `dashboard herzschlag`).
+# Die übernommenen und geänderten Dateien bleiben unter GPL-3.0-or-later
+# (Text: LICENSES/GPL-3.0-or-later.txt); die .rs-Dateien tragen Kopf, Urheberhinweis
+# und den Hinweis auf die Änderung.
+# Die .rs-Dateien sind gegenüber der Quelle (quelle, commit) geändert; was geändert ist, steht je
+# Datei unter geaendert. Zeitpunkt und Inhalt jeder Änderung stehen in der Git-Geschichte der
+# jeweiligen Datei in diesem Repo.
+quelle = "https://github.com/coraxloop/superloop-tools"
+commit = "6b36ea4460d3d0dfcfe81d11d461bc4cd953bf21"
+lizenz = "GPL-3.0-or-later"
+# Wörtlich authors aus Cargo.toml der Quelle; LICENSE-CODE dort ist der GPL-Text ohne eigenen
+# Urheberhinweis, und die übernommenen Quelldateien tragen keinen Kopf.
+urheber = "Orchestration helpers authors"
+# <Hook-Paket> steht für das Paket des Stop-Hooks unter packages/ der Quelle
+# (das einzige mit src/heartbeat/); sein Name nennt einen Werkzeugnamen.
+
+[[datei]]
+hier = "src/herzschlag/graph.rs"
+von = ["packages/session-core/src/heartbeat.rs"]
+geaendert = [
+  "Graph als Kantenliste mit std statt petgraph; 13 statt 39 Zustände: Postfach-, Wecker-, Warn- und Kompositionszustände entfallen.",
+  "Die Prüfung „Wecker scharf“ und der Projekt-Schalter (Flag-Datei unter HOME) sind ersetzt durch die Frage an das Dashboard, ob der Chat der Sitzung offene Arbeit hat (Zustand Tracker, Methode Observations::arbeit).",
+  "Eine unbekannte Sitzung lässt durch (Zustand Off); ein Fehler der Abfrage ist eine eigene Fehlerklasse (Tracker) und endet in FailOpen.",
+  "Beim Nachlesen nach 1 s wird auch das Dashboard neu gefragt.",
+  "Schlüssel der Sitzung für Dateinamen: alles außer ASCII-Buchstaben, Ziffern, - und _ wird - (auch /, \\ und : eines Laufwerkspfads).",
+  "Zustandsdateien unter %LOCALAPPDATA%/Dashboard/herzschlag statt HOME/.local/state; Warn- und Prompt-Marker entfallen, der Zähler je Zug bleibt.",
+  "Ein Stop mit stop_hook_active setzt den Zähler bei einem neuen Marker nicht zurück; die Grenze je Zug hängt so nicht davon ab, wie das Transkript die Rückmeldung eines Blocks schreibt.",
+  "Protokoll herzschlag.log statt orchestrator.log; Fehlerklassen Clock und LettersListingFailed entfallen; Temp-Dateien mit eigenem Präfix, bei einem Fehler entfernt.",
+  "herzschlag.log ist begrenzt: über LOG_HOECHSTENS wird es vor dem nächsten Eintrag zu herzschlag.log.alt.",
+]
+
+[[datei]]
+hier = "src/herzschlag/adapter.rs"
+von = [
+  "<Hook-Paket>/src/lib.rs (execute, evaluate, failure; nur Stop)",
+  "<Hook-Paket>/src/heartbeat/machine.rs",
+]
+geaendert = [
+  "Nur das Ereignis Stop; jede kaputte Eingabe und jedes falsche Ereignis lässt durch (Exit 0) statt abzulehnen (Exit 2).",
+  "Die Texte für Block und Lapse nennen die offenen Schritte statt des Weckers.",
+  "Postfach (letters, entry_listing, letters_context), PreToolUse, SessionStart und UserPromptSubmit entfallen.",
+  "Transkript: nur noch, ob eine Zeile ein echter Nutzer-Zug ist (Wecker-Aufrufe und Zeitstempel werden nicht mehr gelesen).",
+]
+
+[[datei]]
+hier = "src/herzschlag/tests.rs"
+von = [
+  "<Hook-Paket>/tests/heartbeat/support/mod.rs",
+  "<Hook-Paket>/tests/heartbeat/graph_contract.rs",
+  "<Hook-Paket>/tests/heartbeat/state_and_faults.rs",
+  "<Hook-Paket>/tests/heartbeat/structural_matrix.rs",
+  "<Hook-Paket>/tests/heartbeat/reference_scenarios.rs",
+  "<Hook-Paket>/tests/heartbeat/oracle_fixtures.rs",
+]
+geaendert = [
+  "Wecker-Szenarien entfallen; der Projekt-Schalter ist ersetzt durch die Antwort des Dashboards (unbekannt, frei, offen).",
+  "structural_matrix prüft Antwort × Zähler × Nachlesen statt Fristen des Weckers.",
+  "Ohne Python-Referenz und ohne Rechte-Spiele unter Unix; Schreibfehler über eine Datei an Stelle des Ordners.",
+  "Neu: Fehler der Abfrage (keine Verbindung, 401, Frist, unlesbare Antwort), kaputte Eingabe, Laufwerkspfad im Schlüssel, unbekannte Sitzung.",
+]
+
+[[datei]]
+hier = "src/herzschlag/fixtures/*.json"
+von = ["<Hook-Paket>/tests/heartbeat/fixtures/expected/spec-*.json"]
+geaendert = ["Unverändert; spec-nonnumeric-delay.json (Wecker) entfällt."]
+
+# Nicht übernommen: session-core/src/heartbeat_toggle.rs, pre_tool.rs, letters.rs,
+# project_root.rs, orchestrator*, <Hook-Paket>/src/permission.rs,
+# heartbeat/entry_listing.rs, heartbeat/letters*.rs, heartbeat/pre_tool.rs,
+# die Python-Referenz und das Meson-Gate.
+# Eigene Teile dieses Repos (AGPL-3.0-or-later): src/herzschlag/mod.rs,
+# src/herzschlag/abfrage.rs, src/api/sitzungen.rs, src/bin/dashboard-herzschlag.rs. mod.rs folgt in wenigen Zeilen
+# <Hook-Paket>/src/main.rs und lib.rs (stiller Panik-Hook, Eingabegrenze, Ausgabe
+# von stdout und stderr); diese Zeilen sind nachgebildet, nicht übernommen.
