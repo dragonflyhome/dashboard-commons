@@ -230,7 +230,7 @@ gestellt = "JJJJ-MM-TT"
 text = """
 Die Antwort des Benutzers speichert der Server im Datenspeicher (Abschnitt „Der Datenspeicher des Dashboards“, Tabelle antworten, nach sieben Tagen antworten_archiv). Schlüssel ist projekt/id/gestellt, die Felder heißen antwort und notiz (freiwillige Anmerkung, nicht bei text), dazu Zeit und Herkunft. Der Server legt dazu einen Vorgang antwort für den Projekt-Assistenten an (Abschnitt „Vorgänge und Rückruf“). Der Assistent holt die Antwort über die API (GET /api/antworten/<slug>/<id> oder GET /api/vorgaenge/<id>), nicht aus einer Datei. (Nachtrag A2: früher hieß das Feld hier wert.)
 
-bestaetigen ist der „Konzept bestätigen“-Knopf. Beantwortet wird in „Anstehend“, in „Jetzt für dich“ auf der Startseite und im Unter-Dashboard jeder Projektseite. Die Seite /fragen entfällt; „Anstehend“ mit dem Filter Fragen ersetzt sie (Konzept Anstehendes).
+bestaetigen ist der „Konzept bestätigen“-Knopf. Beantwortet wird in „Anstehend“, in „Jetzt für dich“ auf der Startseite und in der Aufgabenliste jeder Projektseite (Gruppe „Wartet auf dich“). Die Seite /fragen entfällt; „Anstehend“ mit dem Filter Fragen ersetzt sie (Konzept Anstehendes).
 
 Immer auch „Etwas anderes“: Wo der Benutzer eine von mehreren vorgegebenen Antworten anklickt (Fragen, Aufgaben mit Knöpfen, Abstimmungen), steht als letzter Knopf „Etwas anderes …“. Ein Klick klappt darunter ein Feld für eigene Worte auf. Die Antwort geht denselben Weg wie ein Klick (Antwort und Vorgang mit Zeit) und weckt den Assistenten genauso. Den Knopf setzt die Oberfläche selbst, ein Assistent kann ihn nicht abschalten. Nicht gemeint ist die Bedienung des Dashboards (Navigation, Anmelden, Bauen, Sicherheitsbestätigungen)."""
 
