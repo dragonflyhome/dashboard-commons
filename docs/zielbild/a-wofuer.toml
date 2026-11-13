@@ -3,7 +3,7 @@ reihenfolge = 1
 text = """
 Das Dashboard ist der eine Ort, an dem du siehst, was die Projekt-Assistenten tun, wie es dem Rechner geht und was gerade auf dich wartet.
 
-Es läuft nur auf dem eigenen Rechner. Nichts kommt aus dem Internet. Passwörter gibst du nur auf der Seite „Schlüssel“ ein, und das Dashboard zeigt sie nie wieder an."""
+Es läuft nur auf dem eigenen Rechner. Grundlage ist Windows; macOS kommt vollständig dazu (Abschnitt „macOS“ im Etappenplan). Nichts kommt aus dem Internet. Passwörter gibst du nur auf der Seite „Schlüssel“ ein, und das Dashboard zeigt sie nie wieder an."""
 
 [[block]]
 punkte = [
