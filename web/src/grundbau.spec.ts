@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { grundbauAbdruck, grundbauFassung } from '../scripts/grundbau.mjs';
+import { kennungZeit, neuere } from '#lib/fassung.ts';
 
 let wurzel = '';
 
@@ -45,5 +46,11 @@ describe('grundbauAbdruck', () => {
 	it('Fassung: Abdruck, Bindestrich, Bauzeit', () => {
 		const s = src();
 		expect(grundbauFassung(s, 1794553248560)).toBe(`${grundbauAbdruck(s)}-1794553248560`);
+	});
+
+	it('der Tab liest aus der Fassung die Bauzeit (src/lib/fassung.ts)', () => {
+		const s = src();
+		expect(kennungZeit(grundbauFassung(s, 1794553248560))).toBe(1794553248560);
+		expect(neuere('20271113-120000', grundbauFassung(s, 1794553248560))).toBe(true);
 	});
 });

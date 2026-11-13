@@ -422,6 +422,16 @@ describe('neuere: nur eine neuere Bau-Kennung macht die App veraltet', () => {
 		// Ein späterer Bau beginnt erst nach dem Ende des vorigen.
 		expect(neuere('20261104-120100', String(ms + 4000))).toBe(true);
 	});
+	it('mit dem Abdruck des Grundbaus davor (`<16 Hex>-<ms>`) wie ohne', () => {
+		const ms = kennungZeit(eigene) ?? 0;
+		const tab = `0123456789abcdef-${ms + 4000}`;
+		expect(kennungZeit(tab)).toBe(ms + 4000);
+		expect(neuere(eigene, tab)).toBe(false);
+		expect(neuere('20261104-120100', tab)).toBe(true);
+		// Gegenprobe: ein anderer Vorsatz ist keine Kennung.
+		expect(kennungZeit(`0123456789ABCDEF-${ms}`)).toBeNull();
+		expect(kennungZeit(`abc-${ms}`)).toBeNull();
+	});
 });
 
 describe('Fassung: Zustand im Tab', () => {
