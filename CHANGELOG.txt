@@ -15,6 +15,10 @@ Unreleased
 ----------
 
 Hinzugefügt
+- Mac-Probe in der Freigabe: cargo check der Bibliothek für
+  aarch64-apple-darwin, nur Ergebnis, nie ein Abbruch (scripts/Mac-Probe.ps1).
+- Gemeinsamer Baustein scripts/Laufzeit.ps1: Laufzeit und Auslastung der
+  Rechenkerne am Ende eines Skripts.
 - Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
   hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
   Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.

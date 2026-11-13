@@ -23,7 +23,7 @@ fn eingecheckt(pfad: &str) -> Option<Vec<String>> {
 #[test]
 fn alte_orte_ganz_oder_gar_nicht() {
     let Some(projekte) = eingecheckt("projects") else {
-        eprintln!("ÜBERSPRUNGEN: kein Git-Repo (etwa ein Paket ohne .git)");
+        assert!(dashboard::ueberspringen("kein Git-Repo (etwa ein Paket ohne .git)"));
         return;
     };
     let fremde_projekte: Vec<&String> = projekte.iter().filter(|p| !p.starts_with("projects/_vorlage/")).collect();
@@ -67,7 +67,7 @@ fn die_suche_nach_projekt_typen_greift() {
 #[test]
 fn web_bindet_keine_projekt_typen_ein() {
     let Some(dateien) = eingecheckt("web") else {
-        eprintln!("ÜBERSPRUNGEN: kein Git-Repo (etwa ein Paket ohne .git)");
+        assert!(dashboard::ueberspringen("kein Git-Repo (etwa ein Paket ohne .git)"));
         return;
     };
     if !eingecheckt("docs/entscheidungen").unwrap_or_default().is_empty() {

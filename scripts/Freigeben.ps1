@@ -30,8 +30,9 @@
          läuft vor 2, weil es Sekunden dauert und 2 Minuten.
       2. Prüfen: cargo fmt --check, clippy -D warnings, cargo test,
          npm run verify, dashboard pruefe --system für docs/anleitung und
-         docs/zielbild (0 Fehler, 0 Hinweise), Hochladen.ps1 -Pruefen (der
-         Prüfer über das, was hinausginge).
+         docs/zielbild (0 Fehler, 0 Hinweise), die Mac-Probe (Mac-Probe.ps1,
+         nur Ergebnis, nie ein Abbruch), Hochladen.ps1 -Pruefen (der Prüfer
+         über das, was hinausginge).
       4. Fassung-Festschreiben.ps1: Merge chore(release): v0.x.y auf main und
          leichter Tag, lokal. Dann im Inhalt dashboard-lokal/Cargo.lock mit
          cargo update -p dashboard -p dashboard-projekt --offline nachziehen
@@ -209,6 +210,9 @@ function Pruefungen([string]$stand) {
         # pruefe ist erst mit 0 Fehlern und 0 Hinweisen grün.
         if ($r.Code -ne 0 -or ($s[0] -like 'pruefe*' -and $r.Text -notmatch '(?m)^0 Fehler, 0 Hinweise\s*$')) { Ende 1 "Abbruch: $($s[0]) ist rot (siehe oben). $stand" }
     }
+    # Probe für macOS (Entscheidung macos-im-basis-repo): Ergebnis sichtbar, nie ein Abbruch.
+    Write-Host 'Mac-Probe (Mac-Probe.ps1, ohne Abbruch) ...'
+    [void](Skript (Join-Path $PSScriptRoot 'Mac-Probe.ps1') @())
     Write-Host 'Prüfer über das, was hinausginge (Hochladen.ps1 -Pruefen) ...'
     $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Pruefen', '-Inhalt', $Inhalt)
     if ($h.Code -ne 0) { Ende 1 "Abbruch: Hochladen.ps1 -Pruefen ist rot (siehe oben). $stand" }
