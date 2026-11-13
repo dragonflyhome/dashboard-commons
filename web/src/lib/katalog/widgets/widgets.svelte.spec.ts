@@ -157,6 +157,35 @@ describe('Widgets (A4) mit Beispieldaten', () => {
 		expect(screen.queryByRole('button', { name: 'Gelesen: Alt' })).toBeNull();
 	});
 
+	it('Zuletzt: gleiche Vorgänge als eine Zeile mit „2-mal“, Teilschritt als Wort', () => {
+		const v = (teil: Partial<Aktualisierung>): Aktualisierung => ({
+			quelle: 'vorgang',
+			id: 'v-20261031-0010',
+			art: 'bau',
+			titel: 'Seite neu bauen',
+			zeit: '2026-11-13T00:04:34+01:00',
+			ziel: '/vorgaenge#vorgang-v-20261031-0010',
+			gelesen: true,
+			anzahl: 2,
+			behoben: false,
+			text: null,
+			...teil
+		});
+		render(Zuletzt, {
+			aktualisierungen: [
+				v({}),
+				v({ id: 'v-2', art: 'schritt', titel: 'Dir angeboten', anzahl: 1 })
+			],
+			ungelesen: 0,
+			angemeldet: true
+		});
+		const zeilen = screen.getAllByRole('listitem').map((li) => li.textContent);
+		expect(zeilen).toEqual([
+			'↻ Seite neu bauen · Seite erneuern, 13.11. 00:04, 2-mal',
+			'↻ Dir angeboten · Teilschritt, 13.11. 00:04'
+		]);
+	});
+
 	it('Wörter: wartet auf, Frist-Bedeutung, Sortierung nach Frist', () => {
 		expect(wartetAufWort('inhaber')).toBe('wartet auf dich');
 		expect(wartetAufWort('chat:postfach')).toBe('wartet auf Chat postfach');

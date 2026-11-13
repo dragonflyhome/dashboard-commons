@@ -162,7 +162,8 @@ export const VORGANG_WORT: Readonly<Record<string, string>> = {
 	bau: 'Seite erneuern',
 	abnahme: 'Abnahme',
 	wunsch: 'Wunsch',
-	frage: 'Frage'
+	frage: 'Frage',
+	schritt: 'Teilschritt'
 };
 
 /** Wort einer Meldungsart; Unbekanntes bleibt, wie es kommt. */

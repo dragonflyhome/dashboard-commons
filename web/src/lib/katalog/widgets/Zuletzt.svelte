@@ -77,7 +77,9 @@
 						{:else}
 							<span>{a.titel}</span>
 						{/if}
-						<span class="muted small"> · {VORGANG_WORT[a.art] ?? a.art}, {kurzZeit(a.zeit)}</span>
+						<span class="muted small">
+							· {VORGANG_WORT[a.art] ?? a.art}, {kurzZeit(a.zeit)}{#if a.anzahl > 1}, {a.anzahl}-mal{/if}</span
+						>
 					{/if}
 				</li>
 			{/each}

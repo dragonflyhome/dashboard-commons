@@ -803,7 +803,7 @@ pub struct Aktualisierung {
     pub ziel: String,
     /// Vorgänge zählen als gelesen; Meldungen, bis der Inhaber „gelesen“ klickt, nicht.
     pub gelesen: bool,
-    /// Nur Meldungen: wie oft (ab 1); Vorgänge 1.
+    /// Meldungen: wie oft (ab 1); Vorgänge: wie viele gleiche (Art und Titel) diese Zeile zusammenfasst.
     pub anzahl: u64,
     /// Nur Fehler- und Frist-Meldungen: der Grund ist weg.
     pub behoben: bool,
