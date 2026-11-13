@@ -737,6 +737,7 @@ fn a_foreign_answer_gives_a_short_reason_without_control_characters() {
     assert_eq!(abfrage::kuerzen("abcd", 4), "abcd");
     assert_eq!(abfrage::kuerzen("abcde", 4), "a…");
     assert_eq!(abfrage::kuerzen("ääää", 6), "ä…");
+    assert_eq!(abfrage::kuerzen("a\u{2028}b\u{202E}c\u{2066}d\u{200B}e\u{FEFF}f", 160), "abcdef");
     assert_eq!(abfrage::arbeit_aus(br#"{"von":"chat:a","offen":[{"arbeit":"ar-1","nr":2,"titel":"Bauen","grund":"laeuft"}]}"#), Ok(offen()));
 }
 

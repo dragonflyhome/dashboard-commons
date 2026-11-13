@@ -523,6 +523,7 @@ fn append_log(state_dir: &Path, failure: FailureClass, session: Option<&str>) {
     let pfad = state_dir.join("herzschlag.log");
     if fs::metadata(&pfad).is_ok_and(|m| m.len() > LOG_HOECHSTENS) {
         // Die vorige .alt fällt weg; so liegen höchstens zwei volle Protokolle da.
+        // shortcut: Rotation ohne Sperre, gleichzeitige Stops können eine volle .alt durch eine kurze ersetzen; Sperrdatei, wenn das Protokoll gebraucht wird.
         let _ = fs::rename(&pfad, state_dir.join("herzschlag.log.alt"));
     }
     if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(pfad) {

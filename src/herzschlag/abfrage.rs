@@ -83,11 +83,15 @@ pub fn arbeit_aus(koerper: &[u8]) -> Result<Arbeit, String> {
 /// (der Grund bleibt so unter etwa 2 KB).
 pub const OFFEN_HOECHSTENS: usize = 1536;
 
-/// `s` ohne Steuerzeichen, höchstens `max` Bytes, an einer Zeichengrenze
+/// `s` ohne Steuerzeichen (dazu Zeilen- und Absatztrenner, Bidi- und
+/// Nullbreitenzeichen), höchstens `max` Bytes, an einer Zeichengrenze
 /// gekürzt; gekürzt endet es mit „…“ (zählt mit).
 #[must_use]
 pub fn kuerzen(s: &str, max: usize) -> String {
-    let rein: String = s.chars().filter(|c| !c.is_control()).collect();
+    let rein: String = s
+        .chars()
+        .filter(|c| !c.is_control() && !matches!(c, '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'))
+        .collect();
     if rein.len() <= max {
         return rein;
     }
