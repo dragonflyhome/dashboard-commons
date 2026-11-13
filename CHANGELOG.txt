@@ -171,6 +171,14 @@ Entfernt
   der Kasten „Aufgaben für dich“ und der Bau-Stand haben keinen eigenen
   Platz mehr.
 
+Behoben
+- Plan und Ampel: Fehlt einer fertigen Arbeit aus dem Altbestand der
+  Eintrag „fertig“ im Verlauf, gilt als ungefährer Fertig-Zeitpunkt ihr
+  letzter Eintrag stand oder zu einem Schritt, erst ohne ihn geaendert.
+  Pflege wie ein Besitzer-, Etappen- oder Titel-Eintrag verschiebt „fertig
+  am“ nicht mehr nach vorn. Dasselbe gilt für den Beginn des Wartens einer
+  Arbeit ohne Eintrag „wartet“ (wartet-lange).
+
 0.1.0 - 2026-11-06
 ------------------
 

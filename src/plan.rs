@@ -11,14 +11,15 @@
 //!
 //! Zeitpunkte einer Arbeit stehen im Verlauf: Einträge `stand` (Schema 11),
 //! für den Altbestand das erste Wort von `neu` der Schritt-Einträge. Ohne
-//! Eintrag gilt für eine fertige Arbeit `geaendert`, als „ungefähr“ markiert;
-//! für den Beginn einer begonnenen Arbeit `erstellt`.
+//! Eintrag gilt für eine fertige Arbeit die letzte Bewegung
+//! ([`letzte_bewegung`]), als „ungefähr“ markiert; für den Beginn einer
+//! begonnenen Arbeit `erstellt`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, FixedOffset};
 
-use crate::vertrag::anstehend::{Arbeit, ArbeitVerlaufArt, ArbeitsStand};
+use crate::vertrag::anstehend::{Arbeit, ArbeitVerlauf, ArbeitVerlaufArt, ArbeitsStand};
 use crate::vertrag::daten::Datei;
 use crate::vertrag::plan::{Etappe, EtappenStand, Plan, PlanArbeit, PlanEtappe, ProjektPlan};
 
@@ -31,6 +32,16 @@ fn grenzwert<'a>(zeiten: impl Iterator<Item = &'a String>, spaeteste: bool) -> O
     let lesbar = zeiten.filter_map(|z| zeit(z).map(|t| (t, z)));
     let beste = if spaeteste { lesbar.max_by_key(|(t, _)| *t) } else { lesbar.min_by_key(|(t, _)| *t) };
     beste.map(|(_, z)| z.clone())
+}
+
+/// Wann sich der Stand einer Arbeit zuletzt bewegt haben kann: der späteste
+/// Verlaufseintrag `stand` oder zu einem Schritt (Schritte bestimmen den
+/// Stand), sonst `geaendert`. Pflege (`besitzer`, `etappe`, `titel`; Notiz und
+/// Frist ohne Eintrag) rückt `geaendert` vor, diesen Zeitpunkt nicht.
+pub(crate) fn letzte_bewegung(a: &Arbeit) -> &String {
+    use ArbeitVerlaufArt::{SchrittAngelegt, SchrittGeaendert, SchrittGeweckt, SchrittUebernommen, Stand};
+    let zaehlt = |e: &&ArbeitVerlauf| matches!(e.art, Stand | SchrittAngelegt | SchrittUebernommen | SchrittGeaendert | SchrittGeweckt);
+    a.verlauf.iter().filter(zaehlt).filter_map(|e| zeit(&e.zeit).map(|t| (t, &e.zeit))).max_by_key(|(t, _)| *t).map_or(&a.geaendert, |(_, z)| z)
 }
 
 /// Beginn und Ende einer Arbeit aus ihrem Verlauf (auch für den Verlauf des
@@ -68,7 +79,11 @@ pub(crate) fn zeiten<'a>(a: &'a Arbeit) -> Zeiten {
         return Zeiten { begonnen, fertig: None, ungefaehr: false };
     }
     let genau = fertig_stand.or(fertig_schritt);
-    Zeiten { begonnen: begonnen.or_else(|| Some(a.erstellt.clone())), ungefaehr: genau.is_none(), fertig: Some(genau.unwrap_or_else(|| a.geaendert.clone())) }
+    Zeiten {
+        begonnen: begonnen.or_else(|| Some(a.erstellt.clone())),
+        ungefaehr: genau.is_none(),
+        fertig: Some(genau.unwrap_or_else(|| letzte_bewegung(a).clone())),
+    }
 }
 
 fn plan_arbeit(a: &Arbeit, archiviert: bool, slug: &str, z: &Zeiten) -> PlanArbeit {
@@ -191,7 +206,7 @@ pub fn plan(slug: &str, datei: Option<&Datei<Plan>>, arbeiten: &[(Arbeit, bool)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vertrag::anstehend::{ArbeitVerlauf, Stufe};
+    use crate::vertrag::anstehend::Stufe;
     use crate::vertrag::daten::ProjektDaten;
 
     fn datei(text: &str) -> Datei<Plan> {
@@ -303,6 +318,26 @@ mod tests {
         let geplant = arbeit("ar-20261103-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(3, 9), t(3, 9));
         let p = plan("p", Some(&datei(PLAN)), &[(geplant, false)]);
         assert_eq!((p.etappen[0].stand, p.etappen[0].begonnen.clone(), p.etappen[0].dazugekommen), (EtappenStand::Geplant, None, 0));
+    }
+
+    /// Altbestand ohne Eintrag „fertig“: Ersatz ist die letzte Bewegung (Eintrag
+    /// zu einem Schritt), nicht ein späterer Besitzer-Eintrag, der `geaendert`
+    /// vorrückt. Gegenprobe: nur Pflege im Verlauf, dann gilt `geaendert`.
+    #[test]
+    fn fertig_ungefaehr_ohne_pflege() {
+        let mut a = arbeit("ar-20261101-0001", "p", ArbeitsStand::Fertig, Some("p/eins"), t(1, 9), t(13, 9));
+        a.verlauf = vec![
+            eintrag(ArbeitVerlaufArt::SchrittUebernommen, t(2, 10), "als-naechstes", "laeuft, dran: chat:p"),
+            eintrag(ArbeitVerlaufArt::SchrittGeaendert, t(4, 10), "laeuft, dran: chat:p", "laeuft, dran: chat:p"),
+            eintrag(ArbeitVerlaufArt::Besitzer, t(13, 9), "chat:p", ""),
+        ];
+        let z = zeiten(&a);
+        assert_eq!((z.begonnen, z.fertig, z.ungefaehr), (Some(t(2, 10)), Some(t(4, 10)), true));
+        a.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, t(13, 9), "", "p/eins"));
+        assert_eq!(zeiten(&a).fertig, Some(t(4, 10)), "etappe ist Pflege");
+        a.verlauf.retain(|e| matches!(e.art, ArbeitVerlaufArt::Besitzer | ArbeitVerlaufArt::Etappe));
+        let z = zeiten(&a);
+        assert_eq!((z.fertig, z.ungefaehr), (Some(t(13, 9)), true), "ohne Bewegung gilt geaendert");
     }
 
     /// Lief eine Arbeit vor ihrem ersten Eintrag schon (erstes Wort von alt),
