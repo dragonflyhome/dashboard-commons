@@ -59,7 +59,7 @@
       Pfade      außerhalb der Positivliste der Ordner; projects\<slug> (außer
                  _vorlage), data\, docs\entscheidungen, docs\architektur-stand.md,
                  projekte.generated.ts, web\src\lib\vertrag\projekte\; jede
-                 *.md (seit Etappe 6d); Geheimnis-Dateinamen (feste Liste, Code und Beispiele
+                 *.md (seit Etappe 6d) außer CONTRIBUTING.md in der Wurzel; Geheimnis-Dateinamen (feste Liste, Code und Beispiele
                  ausgenommen); Namen der Tabu-Ordner; Chat-Exporte
                  (conversations.json, chat-export*, *-chat-*.md); lokale
                  Dateien (*.local.*, *.local); sensible Namen;

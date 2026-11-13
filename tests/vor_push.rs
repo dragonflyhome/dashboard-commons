@@ -314,7 +314,8 @@ fn sauberes_repo_geht_durch() {
 
 /// LICENSE (AGPL), LICENSES/CC0-1.0.txt und LICENSES/GPL-3.0-or-later.txt gehen mit ihrem
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
-/// Ebenso die schon committeten Wurzeldateien rustfmt.toml und .git-blame-ignore-revs.
+/// Ebenso die schon committeten Wurzeldateien rustfmt.toml, .git-blame-ignore-revs und
+/// CONTRIBUTING.md (die einzige erlaubte *.md, mit ihrem echten Text).
 #[test]
 fn lizenzdateien_gehen_durch() {
     if !bereit() {
@@ -323,7 +324,7 @@ fn lizenzdateien_gehen_durch() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
     let o = Ort::neu();
     o.ueber_merge(|o| {
-        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs"] {
+        for pfad in ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs", "CONTRIBUTING.md"] {
             o.datei(pfad, &std::fs::read(wurzel.join(pfad)).unwrap());
         }
     });
@@ -566,6 +567,10 @@ fn orte_und_dateien() {
         ("README.md", "Markdown-Datei"),
         ("web/README.md", "Markdown-Datei"),
         ("docs/anleitung/notiz.MD", "Markdown-Datei"),
+        // Die Ausnahme gilt nur für den Leitfaden in der Wurzel.
+        ("docs/CONTRIBUTING.md", "Markdown-Datei"),
+        ("web/CONTRIBUTING.md", "Markdown-Datei"),
+        ("CONTRIBUTING.md.alt", "Positivliste"),
     ] {
         abgewiesen(pfad, satz, |o| {
             o.datei(pfad, b"x\n");

@@ -45,7 +45,7 @@ Vor jedem Hochladen prüft ein Werkzeug die ganze Geschichte, die hinausgeht. Ei
 
 ## Lizenz
 
-Mit dem Angebot stellst du deinen Beitrag unter die Lizenzen dieses Repos: Code unter AGPL-3.0-or-later, Dokumentation unter CC0-1.0. Biete nur an, was du selbst geschrieben hast oder was unter einer dazu passenden Lizenz steht, und nenne im zweiten Fall die Quelle.
+Mit dem Angebot stellst du deinen Beitrag unter dieselbe Lizenz wie die Datei, die er ändert: Code unter AGPL-3.0-or-later (einzelne übernommene Dateien unter GPL-3.0-or-later, siehe LIESMICH.txt), die Dokumentation in `docs/anleitung` und `docs/zielbild` unter CC0-1.0. Biete nur an, was du selbst geschrieben hast oder was unter einer dazu passenden Lizenz steht, und nenne im zweiten Fall die Quelle.
 
 ## Sicherheitslücken
 
