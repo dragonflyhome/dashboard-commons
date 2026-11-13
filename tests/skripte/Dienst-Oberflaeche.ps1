@@ -11,10 +11,13 @@
     Neustart ohne bin\web, zweiter mit bin\web.alt, Rückweg, gescheiterter
     Austausch (Programm fehlt, Oberfläche fehlt) bringt Programme und
     Oberfläche zurück, ein Bau ohne index.html wird nicht bereitgelegt, ein
-    Bau im Repo nach dem Einspielen ändert bin\web nicht. Dazu das Einspielen
-    beim Einrichten (Dienst-Einrichten.ps1, OberflaecheEinspielen): nur mit neuen
-    Programmen oder ohne bin\web, nie über Verknüpfungen. Die Testwurzel
-    verschwindet danach wieder.
+    Bau im Repo nach dem Einspielen ändert bin\web nicht, dieselbe Kopie liegt
+    auch neben den Programmen im Bauordner, und scheitert der erste Neustart
+    (vorher ohne bin\web), fällt die neue bin\web wieder weg. Dazu das
+    Einspielen beim Einrichten (Dienst-Einrichten.ps1, OberflaecheEinspielen):
+    entschieden am Grundbau (auch der zweite Lauf nach einem Abbruch zwischen
+    Programmen und Oberfläche), nie ein Bau ohne Kennung, nie über
+    Verknüpfungen. Die Testwurzel verschwindet danach wieder.
 
     Ohne Pester, ohne Administrator, ohne Netz. Aufruf aus dem Repo, in beiden Shells:
 
@@ -47,7 +50,7 @@ foreach ($name in $gesucht) {
 $skriptE = Join-Path (Join-Path $repo 'scripts') 'Dienst-Einrichten.ps1'
 $astE = [System.Management.Automation.Language.Parser]::ParseFile($skriptE, [ref]$token, [ref]$parseFehler)
 if ($parseFehler.Count -gt 0) { Write-Host "FEHLER Dienst-Einrichten.ps1: $($parseFehler[0].Message)"; exit 1 }
-foreach ($name in @('OberflaecheEinspielen', 'Erste-Verknuepfung')) {
+foreach ($name in @('OberflaecheEinspielen', 'Grundbau', 'Erste-Verknuepfung')) {
     $f = @($astE.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true))
     if ($f.Count -ne 1) { Write-Host "FEHLER Dienst-Einrichten.ps1: Funktion $name fehlt (oder steht doppelt)"; exit 1 }
     . ([ScriptBlock]::Create($f[0].Extent.Text))
@@ -68,11 +71,14 @@ $programme = @('dashboard.exe', 'dashboard-bote.exe', 'dashboard-herzschlag.exe'
 
 function Inhalt([string]$datei) { if (Test-Path -LiteralPath $datei) { [IO.File]::ReadAllText($datei) } else { '<fehlt>' } }
 function Seite([string]$ordner) { Inhalt (Join-Path $ordner 'index.html') }
-function Bau([string]$text) {
+# Ein Bau wie von vite: $kennung ist der Grundbau (16 Hex-Zeichen), '' gibt eine Fassung ohne Kennung.
+function Bau([string]$text, [string]$kennung = 'aaaaaaaaaaaaaaaa') {
     if (Test-Path -LiteralPath $build) { Remove-Item -LiteralPath $build -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Join-Path $build '_app') | Out-Null
     [IO.File]::WriteAllText((Join-Path $build 'index.html'), $text)
     [IO.File]::WriteAllText((Join-Path $build '_app\teil.js'), "// $text")
+    $fassung = if ($kennung) { "$kennung-1794553248560" } else { '1794553248560' }
+    [IO.File]::WriteAllText((Join-Path $build '_app\version.json'), "{`"version`":`"$fassung`"}")
 }
 function Programme([string]$ordner, [string]$text, [string[]]$ohne = @()) {
     New-Item -ItemType Directory -Force -Path $ordner | Out-Null
@@ -106,6 +112,13 @@ try {
     Pruefe '2 getauscht' (-not $f -and $script:oberflaecheGetauscht) "$f"
     Pruefe '2 bin\web u2, web.alt u1' ((Seite $web) -eq 'u2' -and (Seite $webAlt) -eq 'u1')
 
+    # 2b. Mit Ablage liegt dieselbe Kopie neben den Programmen im Bauordner (eine ältere fällt weg).
+    $ablage = Join-Path $wurzel 'release\web'
+    New-Item -ItemType Directory -Force -Path (Join-Path $ablage 'alt') | Out-Null
+    $f = OberflaecheBereitlegen $build $ablage
+    Pruefe '2b Ablage ist u2, nichts Altes darin, web.neu ebenso' (-not $f -and (Seite $ablage) -eq 'u2' -and -not (Test-Path (Join-Path $ablage 'alt')) -and (Grundbau $ablage) -eq 'aaaaaaaaaaaaaaaa' -and (Seite $webNeu) -eq 'u2') "$f"
+    Remove-Item -LiteralPath $webNeu -Recurse -Force
+
     # 3. Rückweg: Programme (wie Dienst.ps1, Move-Item -Force) und Oberfläche gemeinsam.
     foreach ($n in $programme) { Move-Item -LiteralPath (Join-Path $script:bin ($n -replace '\.exe$', '.alt.exe')) -Destination (Join-Path $script:bin $n) -Force }
     $f = OberflaecheZurueck
@@ -113,6 +126,20 @@ try {
     Pruefe '3 bin\web u1, dashboard.exe p1, kein web.alt, kein web.verworfen' ((Seite $web) -eq 'u1' -and (Inhalt (Join-Path $script:bin 'dashboard.exe')) -eq 'p1' -and -not (Test-Path $webAlt) -and -not (Test-Path (Join-Path $script:bin 'web.verworfen')))
     $f = OberflaecheZurueck
     Pruefe '3 ohne web.alt: Satz, bin\web bleibt' ($f -and (Seite $web) -eq 'u1') "$f"
+
+    # 3b. Erster Neustart ohne bin\web scheitert: Der Rückweg räumt die neue bin\web weg
+    # (das vorige Programm liest wie bisher web\build), ohne Satz.
+    $binHaupt = $script:bin
+    $script:bin = Join-Path $wurzel 'binErst'
+    $null = Programme $script:bin 'p0'
+    Bau 'n1'
+    $f = OberflaecheBereitlegen $build
+    $f = if ($f) { $f } else { TauscheProgramme (Programme (Join-Path $wurzel 'qn') 'pn') (Join-Path $script:bin 'web.neu') }
+    Pruefe '3b getauscht, vorher ohne bin\web' (-not $f -and $script:oberflaecheGetauscht -and $script:webVorher -eq $false) "$f"
+    foreach ($n in $programme) { Move-Item -LiteralPath (Join-Path $script:bin ($n -replace '\.exe$', '.alt.exe')) -Destination (Join-Path $script:bin $n) -Force }
+    $f = OberflaecheZurueck
+    Pruefe '3b zurück: kein Satz, kein bin\web, kein web.alt, dashboard.exe p0' (-not $f -and -not (Test-Path (Join-Path $script:bin 'web')) -and -not (Test-Path (Join-Path $script:bin 'web.alt')) -and (Inhalt (Join-Path $script:bin 'dashboard.exe')) -eq 'p0') "$f"
+    $script:bin = $binHaupt
 
     # 4. Austausch scheitert am Programm: Programme und Oberfläche wie vorher.
     Bau 'u3'
@@ -137,38 +164,48 @@ try {
     $f = TauscheProgramme (Programme (Join-Path $wurzel 'q5') 'p5') $null
     Pruefe '7 nur Programme' (-not $f -and -not $script:oberflaecheGetauscht -and (Seite $web) -eq 'u1' -and (Inhalt (Join-Path $script:bin 'dashboard.exe')) -eq 'p5') "$f"
 
-    # 8. Einrichten (Dienst-Einrichten.ps1): bin\web nur neu, wenn die Programme neu sind oder sie fehlt.
+    # 8. Einrichten (Dienst-Einrichten.ps1): entschieden am Grundbau, nicht daran, ob dieser Lauf Programme kopiert hat.
     $binE = Join-Path $wurzel 'binE'
     New-Item -ItemType Directory -Force -Path $binE | Out-Null
     $webE = Join-Path $binE 'web'
-    Bau 'e1'
-    $s = OberflaecheEinspielen $binE $build $false
+    Bau 'e1' 'aaaaaaaaaaaaaaaa'
+    $s = OberflaecheEinspielen $binE $build
     Pruefe '8 frisch: kopiert' ((Seite $webE) -eq 'e1' -and -not (Test-Path (Join-Path $binE 'web.alt')) -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
-    Bau 'e2'
-    $s = OberflaecheEinspielen $binE $build $false
-    Pruefe '8 Programme gleich: bin\web bleibt' ((Seite $webE) -eq 'e1' -and $s -match 'schon da') "$s"
-    $s = OberflaecheEinspielen $binE $build $true
-    Pruefe '8 Programme neu: bin\web e2, web.alt e1' ((Seite $webE) -eq 'e2' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e1') "$s"
-    Bau 'e3'
-    $s = OberflaecheEinspielen $binE $build $true
-    Pruefe '8 noch einmal: web.alt ist die vorige' ((Seite $webE) -eq 'e3' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e2') "$s"
+    Bau 'e2' 'aaaaaaaaaaaaaaaa'
+    $s = OberflaecheEinspielen $binE $build
+    Pruefe '8 gleicher Grundbau: bin\web bleibt' ((Seite $webE) -eq 'e1' -and $s -match 'schon da') "$s"
+    # Der erste Lauf kopierte die Programme und brach vor der Oberfläche ab; im zweiten
+    # sind die Programme schon aktuell, die Oberfläche (anderer Grundbau) kommt trotzdem.
+    Bau 'e3' 'bbbbbbbbbbbbbbbb'
+    $s = OberflaecheEinspielen $binE $build
+    Pruefe '8 zweiter Lauf nach Abbruch: bin\web e3, web.alt e1' ((Seite $webE) -eq 'e3' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e1') "$s"
+    Bau 'e4' 'cccccccccccccccc'
+    $s = OberflaecheEinspielen $binE $build
+    Pruefe '8 noch einmal: web.alt ist die vorige' ((Seite $webE) -eq 'e4' -and (Seite (Join-Path $binE 'web.alt')) -eq 'e3') "$s"
+    # Ohne Kennung (älterer Bau) oder ohne version.json: Abbruch mit Satz, bin\web bleibt.
+    foreach ($ohne in @('ohne-kennung', 'ohne-datei')) {
+        Bau 'e5' ''
+        if ($ohne -eq 'ohne-datei') { Remove-Item -LiteralPath (Join-Path $build '_app\version.json') }
+        $s = try { OberflaecheEinspielen $binE $build; 'kein Fehler' } catch { $_.Exception.Message }
+        Pruefe "8 $($ohne): Abbruch, bin\web bleibt e4" ($s -match 'Kennung' -and (Seite $webE) -eq 'e4' -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
+    }
 
     # 9. Verknüpfungen: in web\build wird nicht kopiert, in web.alt nicht gelöscht; das Ziel bleibt.
     $ziel = Join-Path $wurzel 'fremd'
     New-Item -ItemType Directory -Force -Path $ziel | Out-Null
     [IO.File]::WriteAllText((Join-Path $ziel 'geheim.txt'), 'bleibt')
-    Bau 'e4'
+    Bau 'e6' 'dddddddddddddddd'
     $link = Join-Path $build 'link'
     New-Item -ItemType Junction -Path $link -Target $ziel | Out-Null
-    $s = try { OberflaecheEinspielen $binE $build $true; 'kein Fehler' } catch { $_.Exception.Message }
+    $s = try { OberflaecheEinspielen $binE $build; 'kein Fehler' } catch { $_.Exception.Message }
     [IO.Directory]::Delete($link)
-    Pruefe '9 Verknüpfung in web\build: Abbruch, bin\web bleibt' ($s -match 'Verknüpfung' -and (Seite $webE) -eq 'e3' -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
+    Pruefe '9 Verknüpfung in web\build: Abbruch, bin\web bleibt' ($s -match 'Verknüpfung' -and (Seite $webE) -eq 'e4' -and -not (Test-Path (Join-Path $binE 'web.neu'))) "$s"
     $link = Join-Path (Join-Path $binE 'web.alt') 'link'
     New-Item -ItemType Junction -Path $link -Target $ziel | Out-Null
-    $s = try { OberflaecheEinspielen $binE $build $true; 'kein Fehler' } catch { $_.Exception.Message }
+    $s = try { OberflaecheEinspielen $binE $build; 'kein Fehler' } catch { $_.Exception.Message }
     $bleibt = Inhalt (Join-Path $ziel 'geheim.txt')
     [IO.Directory]::Delete($link)
-    Pruefe '9 Verknüpfung in web.alt: Abbruch, Ziel unberührt, bin\web bleibt' ($s -match 'Verknüpfung' -and $bleibt -eq 'bleibt' -and (Seite $webE) -eq 'e3') "$s"
+    Pruefe '9 Verknüpfung in web.alt: Abbruch, Ziel unberührt, bin\web bleibt' ($s -match 'Verknüpfung' -and $bleibt -eq 'bleibt' -and (Seite $webE) -eq 'e4') "$s"
 } finally {
     Remove-Item -LiteralPath $wurzel -Recurse -Force -ErrorAction SilentlyContinue
 }

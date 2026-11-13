@@ -31,7 +31,10 @@
          entfernt.
       4. Programme aus %LOCALAPPDATA%\Dashboard\cache\dienst\release (dem Bauordner
          von Dienst.ps1 -Neustart; gibt es release\zusammenbau, von dort) nach bin
-         (die vorige Fassung bleibt als *.alt.exe).
+         (die vorige Fassung bleibt als *.alt.exe). Dazu die Oberfläche, die
+         Dienst.ps1 -Neustart als web neben die Programme legt (fehlt sie,
+         web\build im Repo), nach bin\web, wenn bin\web einen anderen Grundbau
+         hat (_app\version.json); ein Bau ohne diese Kennung wird nicht eingespielt.
       5. Datenspeicher und Sicherungen aus %USERPROFILE%\.var\dashboard kopieren,
          nur wenn unter ProgramData noch keiner liegt und weder .var,
          .var\dashboard noch etwas darin ein Reparse-Punkt ist. Das Original
@@ -200,6 +203,11 @@ $curlPfad = Join-Path $sys32 'curl.exe'
 $quelle = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\dienst\release'
 if (Test-Path -LiteralPath (Join-Path $quelle 'zusammenbau\dashboard.exe')) { $quelle = Join-Path $quelle 'zusammenbau' }
 $programme = @('dashboard.exe', 'dashboard-bote.exe', 'dashboard-herzschlag.exe')
+# Die Oberfläche zu diesen Programmen: die Kopie, die Dienst.ps1 -Neustart daneben
+# ablegt (derselbe Lauf), nicht web\build im Repo, das seitdem neuer sein kann.
+# shortcut: ohne sie (erstes Einrichten nach einem cargo build von Hand) web\build im Repo, nur mit Kennung; aufrüsten, wenn das erste Einrichten über Fassung-Bauen läuft.
+$quelleWeb = Join-Path $quelle 'web'
+if (-not (Test-Path -LiteralPath (Join-Path $quelleWeb 'index.html') -PathType Leaf)) { $quelleWeb = Join-Path $repo 'web\build' }
 $wurzel = Join-Path $programData $Dienstname
 $tomlPfad = Join-Path $wurzel 'dienst.toml'
 # Aus welcher dienst.toml InhaltOrdner liest (beim Testdienst dessen Datei).
@@ -747,16 +755,32 @@ function EntferneRepoRechte([string]$sid, [string]$name) {
     }
 }
 
+# Kennung des Grundbaus eines Baus der Oberfläche (wie app::grundbau): in
+# _app\version.json die 16 Hex-Zeichen vor `-<Bauzeit>`; $null ohne sie.
+function Grundbau([string]$ordner) {
+    try {
+        $v = (Get-Content -LiteralPath (Join-Path $ordner '_app\version.json') -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).version
+        if ("$v" -match '^([0-9a-f]{16})-\d+$') { return $Matches[1] }
+    } catch { }
+    return $null
+}
+
 # Die Oberfläche des Dienstes ist eine Kopie in bin\web (app::WebOrt) und gehört
-# zu den Programmen: Wurden sie erneuert oder fehlt sie, kommt web\build dazu,
-# die vorige als bin\web.alt (wie Dienst.ps1 -Neustart). Das Skript läuft als
-# Administrator und bin ist für den Inhaber änderbar: kopiert und gelöscht wird
-# nur ohne Verknüpfungen. Gibt den Satz für das Protokoll zurück, wirft sonst.
-function OberflaecheEinspielen([string]$bin, [string]$build, [bool]$programmeNeu) {
+# zu den Programmen. Entschieden wird am Inhalt, nicht am Lauf: Hat bin\web nicht
+# denselben Grundbau wie $build (die Kopie neben den Programmen), kommt $build
+# dazu, die vorige als bin\web.alt (wie Dienst.ps1 -Neustart); so holt auch ein
+# zweiter Lauf nach einem Abbruch zwischen Programmen und Oberfläche sie nach.
+# Ein Bau ohne Kennung wird nie eingespielt (er sperrte jeden Bau des Boten).
+# Das Skript läuft als Administrator und bin ist für den Inhaber änderbar:
+# kopiert und gelöscht wird nur ohne Verknüpfungen. Gibt den Satz für das
+# Protokoll zurück, wirft sonst.
+function OberflaecheEinspielen([string]$bin, [string]$build) {
     $web = Join-Path $bin 'web'
     $neu = Join-Path $bin 'web.neu'
     $alt = Join-Path $bin 'web.alt'
-    if (-not $programmeNeu -and (Test-Path -LiteralPath (Join-Path $web 'index.html') -PathType Leaf)) { return "Oberfläche in $web ist schon da" }
+    $soll = Grundbau $build
+    if (-not $soll) { throw "In $build fehlt die Kennung des Grundbaus (_app\version.json); eingespielt wird nur ein Bau von Dienst.ps1 -Neustart. Bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten in web\ npm run build)." }
+    if ((Test-Path -LiteralPath (Join-Path $web 'index.html') -PathType Leaf) -and (Grundbau $web) -eq $soll) { return "Oberfläche in $web ist schon da (Grundbau $soll)" }
     $oben = Split-Path -Parent $build
     if (((Get-Item -LiteralPath $oben -Force).Attributes -band $rp) -ne 0) { throw "$oben ist eine Verknüpfung; kopiert wird nur ohne Verknüpfungen." }
     foreach ($o in @($build, $neu, $alt, $web)) {
@@ -773,7 +797,7 @@ function OberflaecheEinspielen([string]$bin, [string]$build, [bool]$programmeNeu
         Move-Item -LiteralPath $web -Destination $alt
     }
     Move-Item -LiteralPath $neu -Destination $web
-    return "Oberfläche aus $build nach $web kopiert$(if ($vorige) { " (vorige als $alt)" })"
+    return "Oberfläche aus $build nach $web kopiert (Grundbau $soll)$(if ($vorige) { " (vorige als $alt)" })"
 }
 
 # Erst die Aufgabe anhalten, dann Wächter (--waechter) und Boten beenden,
@@ -904,7 +928,6 @@ function Richte-Ein {
 
     # Programme.
     $script:schritt = "Programme nach $bin kopieren"
-    $programmeNeu = $false
     foreach ($n in $programme) {
         $q = Join-Path $quelle $n
         $z = Join-Path $bin $n
@@ -916,16 +939,14 @@ function Richte-Ein {
             Move-Item -LiteralPath $z -Destination (Join-Path $bin ($n -replace '\.exe$', '.alt.exe')) -Force
             Copy-Item -LiteralPath $q -Destination $z
             Zeile "${vor}$n erneuert (vorige Fassung als $($n -replace '\.exe$', '.alt.exe'))"
-            $programmeNeu = $true
         } else {
             Copy-Item -LiteralPath $q -Destination $z
             Zeile "${vor}$n kopiert"
-            $programmeNeu = $true
         }
     }
 
     $script:schritt = "Oberfläche nach $bin\web kopieren"
-    Zeile ("${vor}" + (OberflaecheEinspielen $bin (Join-Path $repo 'web\build') $programmeNeu))
+    Zeile ("${vor}" + (OberflaecheEinspielen $bin $quelleWeb))
 
     # Datenspeicher (nur der echte Dienst).
     if (-not $Test) {
@@ -1351,7 +1372,7 @@ function Pruefe([string]$text, [bool]$gut, [string]$wennNicht) {
 foreach ($n in $programme) {
     Pruefe "Programm $n in $quelle" (Test-Path -LiteralPath (Join-Path $quelle $n)) 'bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten im Repo cargo build --release --locked mit CARGO_TARGET_DIR=%LOCALAPPDATA%\Dashboard\cache\dienst)'
 }
-Pruefe 'Oberfläche web\build\index.html' (Test-Path -LiteralPath (Join-Path $repo 'web\build\index.html')) 'bitte erst in web\ npm run build'
+Pruefe "Oberfläche $quelleWeb (index.html, Kennung des Grundbaus)" ((Test-Path -LiteralPath (Join-Path $quelleWeb 'index.html') -PathType Leaf) -and (Grundbau $quelleWeb)) 'bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten in web\ npm run build)'
 foreach ($o in $leseOrdner) {
     Pruefe "Ordner $o im Repo (der Dienst bekommt Lese-Recht darauf)" (Test-Path -LiteralPath (Join-Path $repo $o) -PathType Container) 'Ordner fehlt'
 }
@@ -1547,7 +1568,7 @@ $plan = @(
     "Dienst $Dienstname anlegen, Konto NT SERVICE\$Dienstname (ohne Passwort)"
     "Prozessrechte von $Dienstname auf $($dienstPrivilegien -join ', ') beschränken (sc privs, Prüfung mit sc qprivs; kein SeImpersonatePrivilege)"
     "Ordner $($wurzel): ist er schon da, nur wenn er den Administratoren (oder SYSTEM) gehört und keine Verknüpfung enthält, sonst Abbruch; neu angelegt sofort gesperrt. Mit bin, daten, sicherung, protokoll, protokoll\bote, geheim; Besitzer Administratoren; Vererbung aus; fremde ausdrückliche Einträge weg; SYSTEM und Administratoren voll; NT SERVICE\$Dienstname ändern auf daten, sicherung, protokoll (samt protokoll\bote), lesen auf bin und dienst.toml; $($script:kontoName) ändern auf bin und protokoll\bote (dort schreibt der Bote sein Protokoll), lesen auf sicherung, protokoll, dienst.toml, nichts auf daten; protokoll\bote ohne Vererbung mit genau SYSTEM, Administratoren, $($script:kontoName), NT SERVICE\$Dienstname; geheim (Schlüssel der Passkey-Ausweise, 7c) ohne Vererbung mit genau SYSTEM, Administratoren und NT SERVICE\$Dienstname (ändern)"
-    "Programme aus $quelle nach $wurzel\bin (vorige Fassung als *.alt.exe)"
+    "Programme aus $quelle nach $wurzel\bin (vorige Fassung als *.alt.exe); Oberfläche aus $quelleWeb nach $wurzel\bin\web, wenn der Grundbau ein anderer ist (vorige als bin\web.alt)"
     "Datenspeicher und Sicherungen aus $(if ($script:profil) { Join-Path $script:profil '.var\dashboard' } else { '%USERPROFILE%\.var\dashboard' }) kopieren, nur wenn unter daten noch keiner liegt und dort keine Verknüpfung ist (Original bleibt)"
     "$tomlPfad schreiben (nur wenn sie fehlt), Port $wirkPort, mit inhaber_sid und dienst_sid$(if ($dienstSid) { " ($dienstSid)" })"
     "Lese-Recht für NT SERVICE\$Dienstname auf $((@($leseOrdner) + @($leseOrdnerWennDa) | ForEach-Object { "$repo\$_" }) -join ', ') (vererbt; docs nur diese Unterordner, fehlende werden übersprungen; web ganz, damit jeder Neubau der Oberfläche es erbt) und auf den Ordner $repo selbst (ohne Vererbung); eine ältere eigene Regel auf web\build wird entfernt, falls vorhanden; target, .git und sonst nichts im Profil$(if ($Durchlaufrecht) { '; dazu Durchlaufrecht (X) auf den Ordnern darüber' })"

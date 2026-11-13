@@ -777,7 +777,9 @@ fn dienst_ps1_rueckweg_startet_im_finally() {
 
 /// Die Oberfläche des Dienstes ist eine Kopie in bin\web, die nur
 /// Dienst.ps1 -Neustart zusammen mit den Programmen wechselt: bereitgelegt
-/// (bin\web.neu) nach dem Bau und vor dem Anhalten des Dienstes, getauscht in
+/// (bin\web.neu, dieselbe Kopie als web neben den Programmen im Bauordner,
+/// von dort nimmt sie Dienst-Einrichten.ps1) nach dem Bau und vor dem
+/// Anhalten des Dienstes, getauscht in
 /// TauscheProgramme, auf dem Rückweg mit den Programmen zurück (nur wenn
 /// dieser Lauf sie getauscht hat und dashboard.exe wieder die vorige ist).
 /// Dazu läuft tests/skripte/Dienst-Oberflaeche.ps1 (die echten Funktionen an
@@ -791,11 +793,17 @@ fn dienst_ps1_spielt_die_oberflaeche_mit_den_programmen_ein() {
     let stelle = |s: &str| neustart.find(s).unwrap_or_else(|| panic!("{s} fehlt im Neustart"));
     let (bau, bereit, aus, tausch) = (
         stelle("if ($code -ne 0) { Ende 1 'npm run build ist gescheitert."),
-        stelle("$f = OberflaecheBereitlegen (Join-Path $web 'build')\n"),
+        stelle("$f = OberflaecheBereitlegen (Join-Path $web 'build') (Join-Path $quelle 'web')\n"),
         stelle("$dienstAus = $true\n"),
         stelle("$fehler = TauscheProgramme $quelle $oberflaeche\n"),
     );
     assert!(bau < bereit && bereit < aus && aus < tausch, "Reihenfolge Bau, Kopie, Anhalten, Tausch");
+    // Einrichten nimmt die Oberfläche von dort, wo -Neustart sie neben die Programme legt.
+    let einrichten = std::fs::read_to_string(wurzel.join("scripts").join("Dienst-Einrichten.ps1")).unwrap().replace("\r\n", "\n");
+    assert!(
+        einrichten.contains("\n$quelleWeb = Join-Path $quelle 'web'\n") && einrichten.contains("(OberflaecheEinspielen $bin $quelleWeb)"),
+        "Einrichten: Oberfläche aus <quelle>\\web"
+    );
     let rueck = ps1.split("Hole die vorige Fassung zurück ...\"\n").nth(1).expect("Rückweg in Dienst.ps1");
     let versuch = &rueck[..rueck.find("\n} finally {\n").expect("finally des Rückwegs")];
     let (alt, zurueck) = (versuch.find("'.alt.exe'").expect("*.alt.exe"), versuch.find("$f = OberflaecheZurueck").expect("OberflaecheZurueck im Rückweg"));

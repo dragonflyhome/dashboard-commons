@@ -56,7 +56,8 @@
                von web, es ist nichts neu zu setzen) und web\build als Kopie
                nach bin\web.neu (der Dienst liefert die Oberfläche aus bin\web,
                nie aus web\build: ein Bau im Repo ändert die laufende Seite
-               nicht); dann den Dienst
+               nicht; dieselbe Kopie liegt als web neben den neuen Programmen
+               im Bauordner, Dienst-Einrichten.ps1 nimmt sie von dort); dann den Dienst
                anhalten, web\builds\aktuell löschen (der Zeiger auf den letzten
                Bau über den Boten; danach gilt sicher die frische Fassung aus
                bin\web), die Programme (dashboard.exe, dashboard-bote.exe und
@@ -465,12 +466,19 @@ function BoteStarten {
 # Die Oberfläche des Dienstes ist eine Kopie in bin\web, neben den Programmen
 # (der Dienst liest sie dort, app::WebOrt); ein npm run build im Repo ändert
 # die laufende Seite also nicht. Legt web\build als bin\web.neu bereit (ein
-# liegen gebliebenes web.neu fällt vorher weg). Gibt $null zurück, sonst einen Satz.
-function OberflaecheBereitlegen([string]$build) {
+# liegen gebliebenes web.neu fällt vorher weg). Mit $ablage liegt dieselbe Kopie
+# auch neben den neuen Programmen im Bauordner (<quelle>\web): Dienst-Einrichten.ps1
+# spielt sie von dort ein, nicht aus web\build, das danach neuer sein kann.
+# Gibt $null zurück, sonst einen Satz.
+function OberflaecheBereitlegen([string]$build, [string]$ablage) {
     $neu = Join-Path $script:bin 'web.neu'
     try {
         if (Test-Path -LiteralPath $neu) { Remove-Item -LiteralPath $neu -Recurse -Force }
         if (-not (Test-Path -LiteralPath (Join-Path $build 'index.html') -PathType Leaf)) { return "in $build fehlt index.html" }
+        if ($ablage) {
+            if (Test-Path -LiteralPath $ablage) { Remove-Item -LiteralPath $ablage -Recurse -Force }
+            Copy-Item -LiteralPath $build -Destination $ablage -Recurse
+        }
         Copy-Item -LiteralPath $build -Destination $neu -Recurse
         if (-not (Test-Path -LiteralPath (Join-Path $neu 'index.html') -PathType Leaf)) { return "in $neu fehlt nach dem Kopieren index.html" }
         return $null
@@ -484,13 +492,15 @@ function OberflaecheBereitlegen([string]$build) {
 # Schritt, kommen die schon verschobenen Fassungen zurück (Programme und
 # Oberfläche); gibt dann einen Satz zurück (sonst $null). So bleibt bin nie ohne
 # dashboard.exe und nie halb eingespielt. $script:oberflaecheGetauscht sagt dem
-# Rückweg, ob bin\web.alt zu dieser Fassung gehört.
+# Rückweg, ob bin\web.alt zu dieser Fassung gehört, $script:webVorher, ob es
+# vor diesem Lauf bin\web gab.
 function TauscheProgramme([string]$quelle, [string]$oberflaeche) {
     $verschoben = @()
     $web = Join-Path $script:bin 'web'
     $webAlt = Join-Path $script:bin 'web.alt'
     $webVerschoben = $false
     $script:oberflaecheGetauscht = $false
+    $script:webVorher = Test-Path -LiteralPath $web
     try {
         foreach ($n in $programme) {
             $z = Join-Path $script:bin $n
@@ -529,11 +539,23 @@ function TauscheProgramme([string]$quelle, [string]$oberflaeche) {
 
 # Rückweg der Oberfläche: bin\web.alt wird wieder bin\web (die neue geht über
 # bin\web.verworfen und wird danach gelöscht). Scheitert das Zurückholen, bleibt
-# die neue in bin\web. Gibt $null zurück, sonst einen Satz.
+# die neue in bin\web. Gab es vor dem Lauf kein bin\web ($script:webVorher), fällt
+# die neue weg; das vorige Programm liest dann wie bisher web\build. Gibt $null
+# zurück, sonst einen Satz.
 function OberflaecheZurueck {
     $web = Join-Path $script:bin 'web'
     $webAlt = Join-Path $script:bin 'web.alt'
     $weg = Join-Path $script:bin 'web.verworfen'
+    if ($script:webVorher -eq $false) {
+        try {
+            # bin\web stammt aus diesem Lauf (kopiert, ohne Verknüpfungen darin); nur der Ordner selbst könnte inzwischen eine sein.
+            if (((Get-Item -LiteralPath $web -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "$web ist eine Verknüpfung" }
+            Remove-Item -LiteralPath $web -Recurse -Force -ErrorAction Stop
+            return $null
+        } catch {
+            return "$web ließ sich nicht entfernen ($($_.Exception.Message)); die Oberfläche bleibt die neue."
+        }
+    }
     if (-not (Test-Path -LiteralPath $webAlt)) { return "$webAlt fehlt; die Oberfläche bleibt die neue." }
     try {
         if (Test-Path -LiteralPath $weg) { Remove-Item -LiteralPath $weg -Recurse -Force }
@@ -836,8 +858,9 @@ try {
                 if ($code -eq 0) { Write-Host 'Hinweis: Gebaut ohne Projektseiten. Erst wenn das Projekt repariert ist, kommen die Seiten mit dem nächsten Bau zurück.' }
             }
             if ($code -ne 0) { Ende 1 'npm run build ist gescheitert. Der Dienst läuft unverändert weiter.' }
-            # Die Kopie für den Dienst, noch bei laufendem Dienst (er liest bin\web, nicht web.neu).
-            $f = OberflaecheBereitlegen (Join-Path $web 'build')
+            # Die Kopie für den Dienst, noch bei laufendem Dienst (er liest bin\web, nicht web.neu),
+            # und dieselbe neben den Programmen im Bauordner für Dienst-Einrichten.ps1.
+            $f = OberflaecheBereitlegen (Join-Path $web 'build') (Join-Path $quelle 'web')
             if ($f) { Ende 1 "Die Oberfläche ließ sich nicht nach $($script:bin)\web.neu kopieren ($f). Der Dienst läuft unverändert weiter." }
             $oberflaeche = Join-Path $script:bin 'web.neu'
         }
@@ -925,7 +948,9 @@ try {
     # hat und dashboard.exe wieder die vorige ist (sonst passten sie nicht zusammen).
     if ($script:oberflaecheGetauscht -and -not ($neuGeblieben -contains 'dashboard.exe')) {
         $f = OberflaecheZurueck
-        if ($f) { Write-Host "Achtung: $f" } else { Write-Host 'Die vorige Oberfläche liegt wieder in bin\web.' }
+        if ($f) { Write-Host "Achtung: $f" }
+        elseif ($script:webVorher) { Write-Host 'Die vorige Oberfläche liegt wieder in bin\web.' }
+        else { Write-Host 'Die neue Oberfläche in bin\web ist wieder entfernt; die vorige Fassung liefert wie bisher aus web\build.' }
     }
 } finally {
     $fehler2 = $null
