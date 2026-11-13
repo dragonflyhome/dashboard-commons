@@ -62,8 +62,10 @@ Hinzugefügt
   der auf origin fehlt; -Inhalt gilt auch für die Hooks beim Push. Jeder
   rote Schritt bricht vor jeder Wirkung nach außen ab; ein zweiter Aufruf
   setzt nach dem Festschreiben wieder an, prüft erneut, solange main nicht
-  draußen ist, und seine Sätze nennen, was schon draußen ist. -Pruefen sagt nur, welche Fassung hinausginge, oder dass eine
-  fertige Fassung auf das Hochladen wartet.
+  draußen ist, und seine Sätze nennen, was schon draußen ist. Hat sich
+  main seit den Prüfungen bewegt, geht nichts hinaus. -Pruefen sagt nur,
+  welche Fassung hinausginge, oder dass eine fertige Fassung auf das
+  Hochladen wartet.
 
 Geändert
 - Versionsregel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere

@@ -8,9 +8,11 @@
          Abbruch mit einem Satz. Steht main genau auf einem Merge
          chore(release): v0.x.y mit Tag v0.x.y, geht es bei der Lock-Datei
          des Inhalts (Ende von 4) weiter; beide Pushes sind wiederholbar.
-         Ist main noch nicht draußen, laufen vorher die Prüfungen von 2 noch
+         Ist main noch nicht draußen, laufen vorher die Probe
+         auf den Tag davor (wie in 1) und die Prüfungen von 2 noch
          einmal (Arbeitsbaum sauber auf main): Der Merge kann auch ohne
-         Freigeben.ps1 entstanden sein. Draußen heißt: origin/main enthält
+         Freigeben.ps1 entstanden sein. Hat sich main danach bewegt, Abbruch
+         vor der Lock-Datei und vor jedem Push. Draußen heißt: origin/main enthält
          main (nach git fetch), der Tag zeigt dort auf denselben Commit.
          Jeder Satz sagt dann, was von ihr schon draußen ist. Sind main und
          Tag draußen, hält die Lock-Datei Schritt 6 nicht auf; sie wird nur
@@ -169,7 +171,26 @@ function Draussen([string]$tag) {
     elseif ($m) { "main ist schon draußen, der Tag $tag noch nicht." }
     elseif ($t) { "Der Tag $tag ist schon draußen, main noch nicht." }
     else { "main trägt Fassung $($tag.Substring(1)) lokal (Merge und Tag). $NICHTS" }
-    return [pscustomobject]@{ Main = $m; Alles = ($m -and $t); Satz = $satz }
+    return [pscustomobject]@{ Main = $m; Tag = $t; Alles = ($m -and $t); Satz = $satz }
+}
+
+# Der letzte Tag bis $bis muss auf origin auf demselben Commit liegen, sonst fehlte er draußen in der Reihe.
+# Kein Nachholen hier: main trägt danach Ungeprüftes, und der Tag allein läge draußen neben origin/main.
+function Luecke([string]$bis, [string]$stand) {
+    $letzter = @((GitLauf $repo @('tag', '--merged', $bis, '--list', 'v*', '--sort=-v:refname')).Text -split "`n" | Where-Object { $_ -cmatch $TAG_FORM }) | Select-Object -First 1
+    if (-not $letzter) { return }
+    $fern = Fern "refs/tags/$letzter" $stand
+    if (-not $fern) { Ende 1 "Abbruch: Der letzte Tag $letzter auf main ist nicht auf origin (sein Hochladen ging nicht durch); die Fassung danach leitet von ihm ab, und draußen fehlte er in der Reihe. Erst müssen sein Merge auf main und er selbst hinaus; das ist von Hand zu klären (ein Fall für einen Chat), dann erneut aufrufen. $stand" }
+    if ($fern -cne (GitLauf $repo @('rev-parse', "refs/tags/$letzter")).Text) {
+        Ende 1 "Abbruch: Der letzte Tag $letzter auf main zeigt auf origin auf einen anderen Commit als lokal; die Fassung danach leitet von einem Stand ab, den es draußen so nicht gibt. Erst klären (kein Verschieben eines Tags draußen). $stand"
+    }
+}
+
+# Hinaus geht nur der geprüfte Stand: main und der Tag stehen noch auf $fest.
+function Fest([string]$stand) {
+    if ((GitLauf $repo @('rev-parse', 'refs/heads/main')).Text -cne $fest -or (GitLauf $repo @('rev-parse', "refs/tags/$tag^{commit}")).Text -cne $fest) {
+        Ende 1 "Abbruch: Seit den Prüfungen hat sich main bewegt oder der Tag $tag steht nicht mehr darauf (geprüft war $fest); was jetzt dort liegt, ist ungeprüft. $stand"
+    }
 }
 
 # Schritt 2 auf dem Arbeitsbaum (main); rot: Abbruch mit $stand (was schon draußen ist).
@@ -241,10 +262,12 @@ try {
         $version = $tag.Substring(1)
         $draussen = Draussen $tag
         # Merge und Tag können ohne die Prüfungen entstanden sein (Fassung-Festschreiben.ps1 -Basis allein, von Hand): vor dem Hinaus prüfen.
+        $fest = (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text
         if (-not $draussen.Main) {
             if ((GitLauf $repo @('symbolic-ref', '--quiet', '--short', 'HEAD') -Still).Text -cne 'main' -or (GitLauf $repo @('status', '--porcelain')).Text) {
                 Ende 1 "Abbruch: Der Arbeitsbaum steht nicht sauber auf main; die Prüfungen vor dem Hinaus laufen auf ihm. $($draussen.Satz)"
             }
+            Luecke "refs/tags/$tag^1" $draussen.Satz
             Write-Host "Fassung $version ist lokal fertig, main noch nicht draußen: erst die Prüfungen."
             Pruefungen $draussen.Satz
         }
@@ -260,16 +283,7 @@ try {
             (GitLauf $repo @('merge-base', '--is-ancestor', 'refs/remotes/origin/main', 'refs/heads/main') -Still).Code -ne 0) {
             Ende 1 "Abbruch: main enthält origin/main nicht (kein Fast-Forward); erst origin/main einbringen. $NICHTS"
         }
-        # Die nächste Fassung leitet vom letzten Tag auf main ab; fehlt er draußen, entstünde dort eine Lücke in der Reihe.
-        $letzter = @((GitLauf $repo @('tag', '--merged', 'refs/heads/main', '--list', 'v*', '--sort=-v:refname')).Text -split "`n" | Where-Object { $_ -cmatch $TAG_FORM }) | Select-Object -First 1
-        if ($letzter) {
-            $l = GitLauf $repo @('ls-remote', '--tags', 'origin', "refs/tags/$letzter") -Still
-            if ($l.Code -ne 0) { Ende 1 "Abbruch: origin ist nicht erreichbar (git ls-remote): $($l.Text) $NICHTS" }
-            if (-not $l.Text) { Ende 1 "Abbruch: Der letzte Tag $letzter auf main ist nicht auf origin (sein Hochladen ging nicht durch); die nächste Fassung leitete von ihm ab, und draußen fehlte er in der Reihe. Erst main und ihn hinaus (scripts/Hochladen.ps1, dann scripts/Hochladen.ps1 -Tag $letzter), dann erneut aufrufen. $NICHTS" }
-            if ((($l.Text -split "`n")[0] -split '\s+')[0] -cne (GitLauf $repo @('rev-parse', "refs/tags/$letzter")).Text) {
-                Ende 1 "Abbruch: Der letzte Tag $letzter auf main zeigt auf origin auf einen anderen Commit als lokal; die nächste Fassung leitete von einem Stand ab, den es draußen so nicht gibt. Erst klären (kein Verschieben eines Tags draußen). $NICHTS"
-            }
-        }
+        Luecke 'refs/heads/main' $NICHTS
         $o = LockOffen
         if ($o) { Ende 1 "Abbruch: $o $NICHTS" }
 
@@ -298,10 +312,12 @@ try {
         if ($r.Code -ne 0) { Ende $(if ($r.Code -eq 1) { 1 } else { 2 }) "Abbruch beim Festschreiben (siehe oben). $NICHTS" }
         $tag = "v$version"
         if ((GitLauf $repo @('rev-parse', "refs/tags/$tag^{commit}")).Text -ne (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text) { throw "Der Tag $tag steht nicht auf main." }
-        $draussen = [pscustomobject]@{ Main = $false; Alles = $false; Satz = "main trägt Fassung $version lokal (Merge und Tag). $NICHTS" }
+        $draussen = [pscustomobject]@{ Main = $false; Tag = $false; Alles = $false; Satz = "main trägt Fassung $version lokal (Merge und Tag). $NICHTS" }
+        $fest = (GitLauf $repo @('rev-parse', 'refs/heads/main')).Text
     }
     # Ist alles draußen, hält die Lock-Datei den Dienst nicht auf; sie wird nur gemeldet.
     $hinweis = ''
+    if (-not $draussen.Alles) { Fest $draussen.Satz }
     $f = LockNachziehen $version
     if ($f -and $draussen.Alles) {
         $hinweis = "Die Lock-Datei im Inhalt ist nicht nachgezogen: $f"
@@ -311,11 +327,13 @@ try {
     # 5. Hinaus. Was origin schon hat, geht nicht noch einmal hinaus: Der Hook
     # bekäme dann keine Ref-Zeilen und wiese den Push ab.
     if ($draussen.Main) { Write-Host 'main ist schon draußen.' } else {
+        Fest $draussen.Satz
         Write-Host 'main hinaus (Hochladen.ps1) ...'
         $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Inhalt', $Inhalt)
         if ($h.Code -ne 0) { Ende 1 "Abbruch: main ging nicht hinaus (siehe oben). $($draussen.Satz) Nach der Behebung erneut aufrufen." }
     }
     if ((Fern "refs/tags/$tag" "main ist draußen; ob der Tag $tag draußen ist, ist offen.") -ceq (GitLauf $repo @('rev-parse', "refs/tags/$tag")).Text) { Write-Host "Tag $tag ist schon draußen." } else {
+        Fest "main ist draußen, der Tag $tag nicht."
         Write-Host "Tag $tag hinaus (Hochladen.ps1 -Tag) ..."
         $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Tag', $tag)
         if ($h.Code -ne 0) { Ende 1 "Abbruch: main ist draußen, der Tag $tag nicht (siehe oben). Nach der Behebung erneut aufrufen." }

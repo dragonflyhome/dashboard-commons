@@ -227,6 +227,21 @@ impl Probe {
         )
     }
 
+    /// Merge und Tag v0.4.0 ohne Freigeben.ps1 (Fassung-Festschreiben.ps1 -Basis allein), nichts draußen.
+    fn festschreiben_allein(&self) {
+        let a = pwsh()
+            .unwrap()
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(self.repo().join("scripts").join("Fassung-Festschreiben.ps1"))
+            .args(["-Basis", &self.git(&["rev-parse", "main"])])
+            .env("CARGO_TARGET_DIR", self.ziel())
+            .output()
+            .unwrap();
+        assert!(a.status.success(), "{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr));
+        assert_eq!(self.git(&["log", "-1", "--format=%s", "main"]), "chore(release): v0.4.0");
+        assert_eq!(self.git(&["rev-parse", "v0.4.0"]), self.git(&["rev-parse", "main"]));
+    }
+
     fn lauf(&self, pruefen: bool) -> (i32, String) {
         let mut c = pwsh().unwrap();
         c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
@@ -481,6 +496,55 @@ fn main_bewegt_sich_waehrend_der_pruefung() {
     assert_eq!(o.neustarts(), 0);
 }
 
+/// Wiederaufnahme (Merge und Tag lokal, nichts draußen): Ein Merge, der während der
+/// Prüfungen (über npm run verify) oder beim Commit der Lock-Datei (über den
+/// pre-commit des Inhalts) auf main landet, wurde nicht geprüft und geht nicht hinaus.
+#[test]
+fn main_bewegt_sich_in_der_wiederaufnahme() {
+    if !bereit() {
+        return;
+    }
+    let merge = "git merge -q --no-ff --no-verify -m \\\"chore(merge): nebenher nach main\\\" nebenher";
+    for waehrend_der_pruefung in [true, false] {
+        let o = Probe::neu();
+        o.zweig("feat(web): neu", |o| {
+            o.changelog("Hinzugefügt\n- Neu.\n");
+            if waehrend_der_pruefung {
+                let p = o.repo().join("web/package.json");
+                schreiben(&p, &std::fs::read_to_string(&p).unwrap().replace("node --version", merge));
+            }
+        });
+        o.festschreiben_allein();
+        o.git(&["checkout", "-q", "-b", "nebenher"]);
+        o.commit("chore: nebenher");
+        o.git(&["checkout", "-q", "main"]);
+        if !waehrend_der_pruefung {
+            // GIT_INDEX_FILE und Co. des Inhalts gelten nicht für das Code-Repo.
+            schreiben(
+                &o.inhalt().join(".git").join("hooks").join("pre-commit"),
+                &format!(
+                    "#!/bin/sh\nunset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE\ncd '{}' && {}\n",
+                    o.repo().to_str().unwrap().replace('\\', "/"),
+                    merge.replace("\\\"", "'")
+                ),
+            );
+        }
+        let kopf = o.git(&["rev-parse", "main"]);
+        let lock_alt = git_in(&o.inhalt(), &["rev-parse", "HEAD"]);
+        let fern_vorher = git_in(&o.fern(), &["for-each-ref", "--format=%(refname) %(objectname)"]);
+        let (code, text) = o.lauf(false);
+        assert_eq!(code, 1, "{text}");
+        assert!(text.contains("erst die Prüfungen") && text.contains("cargo test ..."), "{text}");
+        assert!(text.contains(&format!("Seit den Prüfungen hat sich main bewegt oder der Tag v0.4.0 steht nicht mehr darauf (geprüft war {kopf})")), "{text}");
+        assert!(text.contains("main trägt Fassung 0.4.0 lokal (Merge und Tag). Es ging nichts hinaus."), "{text}");
+        assert_eq!(o.git(&["log", "-1", "--format=%s", "main"]), "chore(merge): nebenher nach main");
+        assert_eq!(git_in(&o.fern(), &["for-each-ref", "--format=%(refname) %(objectname)"]), fern_vorher, "draußen nichts");
+        // Während der Prüfung: Abbruch noch vor der Lock-Datei.
+        assert_eq!(git_in(&o.inhalt(), &["rev-parse", "HEAD"]) == lock_alt, waehrend_der_pruefung, "{text}");
+        assert_eq!(o.neustarts(), 0);
+    }
+}
+
 /// Merge und Tag ohne Freigeben.ps1 (Fassung-Festschreiben.ps1 -Basis allein) auf
 /// einem roten cargo test: Die Wiederaufnahme prüft vor dem Hinaus und lädt nichts hoch.
 #[test]
@@ -493,19 +557,8 @@ fn festschreiben_allein_wird_vor_dem_hinaus_geprueft() {
         o.changelog("Hinzugefügt\n- Neu.\n");
         schreiben(&o.repo().join("src/lib.rs"), "//! Probe.\n\n#[test]\nfn rot() {\n    panic!(\"rot\");\n}\n");
     });
-    let basis = o.git(&["rev-parse", "main"]);
     let lock_alt = git_in(&o.inhalt(), &["rev-parse", "HEAD"]);
-    let a = pwsh()
-        .unwrap()
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(o.repo().join("scripts").join("Fassung-Festschreiben.ps1"))
-        .args(["-Basis", &basis])
-        .env("CARGO_TARGET_DIR", o.ziel())
-        .output()
-        .unwrap();
-    assert!(a.status.success(), "{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr));
-    assert_eq!(o.git(&["log", "-1", "--format=%s", "main"]), "chore(release): v0.4.0");
-    assert_eq!(o.git(&["rev-parse", "v0.4.0"]), o.git(&["rev-parse", "main"]));
+    o.festschreiben_allein();
 
     let fern_vorher = git_in(&o.fern(), &["for-each-ref", "--format=%(refname) %(objectname)"]);
     for pruefen in [true, false] {

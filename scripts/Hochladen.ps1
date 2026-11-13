@@ -17,8 +17,8 @@
 
     Mit -Tag v0.MINOR.PATCH (Teil 3) nur dieser Tag: git push <Remote>
     refs/tags/<tag>:refs/tags/<tag>, ohne --no-verify; der Hook prüft (leicht,
-    neu, auf der First-Parent-Linie von main). -Tag ruft scripts/Freigeben.ps1
-    auf (nach main), nicht von Hand. Nur leichte Tags (git tag ohne -a, -s, -m).
+    neu, auf der First-Parent-Linie von main). scripts/Freigeben.ps1 ruft
+    -Tag auf (nach main), nicht von Hand. Nur leichte Tags (git tag ohne -a, -s, -m).
 
     Ohne Remote bricht das Skript mit einem Satz ab.
 
