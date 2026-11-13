@@ -26,7 +26,7 @@ zeilen = [
   ['Der Bau-Stand mit Satz bei rot (/api/bauen)', 'nur Sie'],
   ['PC-Seite: Prozessor, Speicher, Platte, Dienste (/pc, /api/pc)', 'alle Konten an diesem PC'],
   ['PC-Seite: Programme, Autostart, Werkzeuge, Ordnergrößen, Schlüssel-Zähler (/api/pc/benutzer)', 'nur Sie'],
-  ['Verlauf des PCs mit Starts, Meldungen und Vorgängen (/api/pc/verlauf/voll); Unter-Dashboard mit Titeln (/api/projekte/<slug>/stand/voll)', 'nur Sie'],
+  ['Verlauf des PCs mit Starts, Meldungen und Vorgängen (/api/pc/verlauf/voll); Stand eines Projekts mit Titeln (/api/projekte/<slug>/stand/voll)', 'nur Sie'],
   ['Schlüssel (/schluessel, /api/schluessel, auch Passkeys freigeben, ablehnen, widerrufen)', 'nur Sie'],
   ['Anmelden mit Passkey (/anmelden, /api/passkey/stand, …/anmelden/…, …/abmelden)', 'alle Konten an diesem PC'],
   ['Passkey beantragen (/api/passkey/antrag…)', 'jedes Konto an diesem PC mit Windows-Anmeldung; berechtigt erst nach Ihrer Freigabe'],

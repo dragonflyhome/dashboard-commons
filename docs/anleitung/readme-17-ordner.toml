@@ -91,7 +91,7 @@ tests/dienst_konsole.rs  dashboard.exe --konsole mit eigener dienst.toml im Temp
 tests/bote_pipe.rs  der Bote mit eigener Pipe, Verbindung und Prüfung durch den Dienst-Client
 web/                Oberfläche (SvelteKit); web/build ist das Ergebnis von npm run build
   src/lib/vertrag/  von cargo test erzeugte Typen ($vertrag), nie von Hand ändern; in projekte/<slug>/ die der Module
-  src/lib/katalog/  die Bausteine ($katalog): grund/ (Grundteile auf Bits UI), widgets/ (Unter-Dashboard), zeit/
+  src/lib/katalog/  die Bausteine ($katalog): grund/ (Grundteile auf Bits UI), widgets/ (Stand, Eintrag, Schritte, Meldung und Widgets für den Katalog), zeit/
   src/routes/katalog/  die Seite /katalog mit Beispielen und den Entwürfen der Widgets
   .projekte-gruen/  letzte grüne Kopie je Projekt und stand.json des Baumeisters (4b, nicht in Git)
   .baumeister/      tsconfig je Prüfung des Baumeisters (4b, nicht in Git)

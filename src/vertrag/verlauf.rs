@@ -88,7 +88,7 @@ pub enum Quelle {
     Entscheidung,
     /// Ein Bau der Seite (grün `routine`, rot `problem`).
     Bau,
-    /// Eine offene Frist mit Datum (immer `geplant`).
+    /// Eine offene Frist mit Datum (`geplant`, verstrichen `problem`).
     Frist,
 }
 

@@ -15,9 +15,10 @@
 	 *
 	 * Etappe B8 (`teil`): der Teil „Stand“ der Projektseite, ohne eigene Karte
 	 * (die Überschrift trägt der Abschnitt). Ein Satz, vier Zahlen (laufen,
-	 * warten auf dich, als Nächstes, fertig in 7 Tagen), jede ein Sprung zu
-	 * ihrer Gruppe; daneben die Ampel als Bedeutung in Worten mit Grund-Satz
-	 * und Link („Wartet: „…“ wartet seit 9 Tagen auf dich.“). Darunter, was der
+	 * warten auf dich, als Nächstes je ein Sprung zu ihrer Gruppe, fertig in
+	 * 7 Tagen zur Zeitleiste); daneben die Ampel als Bedeutung in Worten mit
+	 * Grund-Satz und Link („Problem: „…“ wartet seit 9 Tagen auf dich.“, ab
+	 * dem vierten Tag; davor „Wartet“). Darunter, was der
 	 * Aufrufer klein dazugibt (Bau, Notizen).
 	 */
 	import type { Snippet } from 'svelte';

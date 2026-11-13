@@ -789,8 +789,8 @@
 	<section id="widgets" aria-labelledby="widgets-titel">
 		<h2 id="widgets-titel">Widgets</h2>
 		<p class="muted">
-			Die Bausteine des Unter-Dashboards (Konzept „Anstehendes“, A4). Das Designteam zeigt je Widget
-			drei Entwürfe und wählt einen; der gewählte steht oben auf jeder Projektseite. Zahlen, Fristen
+			Die Widgets aus dem Konzept „Anstehendes“ (A4). Das Designteam zeigt je Widget drei Entwürfe
+			und wählt einen; Stand und Frage stehen in den vier Teilen jeder Projektseite. Zahlen, Fristen
 			und Zustände kommen vom Server, Farbe, Satz und Reihenfolge entstehen hier. Regeln: nur Token,
 			relative Maße, ruhig, Tastatur und Vorlese-Programm, am Handy eine Spalte.
 		</p>

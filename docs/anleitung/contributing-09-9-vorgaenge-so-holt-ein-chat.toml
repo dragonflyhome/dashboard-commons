@@ -240,8 +240,8 @@ punkte = [
   'Fertige Arbeiten bleiben sieben Tage in der Liste der API und ziehen dann ins Archiv (nichts wird gelöscht). Eine Arbeit im Archiv lässt sich nicht mehr fortschreiben (422); dann eine neue anlegen.',
   'Höchstens 30 nicht fertige Arbeiten je Projekt; darüber 429 mit Satz.',
   'Nur per Api.ps1: Aus dem Browser nimmt der Server keine Arbeit an (der Inhaber liest nur). Umstufen (Jetzt, Bald, Irgendwann) kann nur der Inhaber im Browser.',
-  'Die Übersicht holst du mit GET /api/anstehend (Filter projekt, stufe, art, schwerpunkt, nur_fuer_mich=1), das Unter-Dashboard deiner Seite mit GET /api/projekte/<slug>/stand. Ab Etappe 3a+ kommen dort alle offenen Einträge (auch alle offenen Fragen) in fester, neutraler Ordnung (Projekt, Art, Kennung), ohne Zähler und ohne Auswahl; je Eintrag stehen die Fakten stufe.wirksam, frist_stufe, tage_bis, wartet_auf_dich, schwerpunkt und schwerpunkt_reihenfolge. Wie der Inhaber sie sieht (Reihenfolge, Gruppen, Zahlen), rechnet die Oberfläche in web/src/lib/anstehend.ts; welche Frage je Projekt sichtbar ist, sagt seit Etappe B2 der Server (warteschlange, siehe „Fragen an den Inhaber“). Ohne Anmeldung hat /stand keine Einträge, nur zahlen.',
-  'Ab Etappe 3a-4 hat jeder Eintrag mit Frist frist_stufe (ueberfaellig, heute, bald bis frist_bald_tage Tage, sonst spaeter); frist_bald_tage (7) steht in der Liste und im Stand des Unter-Dashboards. Aus derselben Stufe hebt der Server die wirksame Stufe (überfällig und heute: Jetzt). Sie hängt vom Tag ab; die Oberfläche lädt um Mitternacht neu.',
+  'Die Übersicht holst du mit GET /api/anstehend (Filter projekt, stufe, art, schwerpunkt, nur_fuer_mich=1), den Teil „Stand“ deiner Projektseite mit GET /api/projekte/<slug>/stand. Ab Etappe 3a+ kommen dort alle offenen Einträge (auch alle offenen Fragen) in fester, neutraler Ordnung (Projekt, Art, Kennung), ohne Zähler und ohne Auswahl; je Eintrag stehen die Fakten stufe.wirksam, frist_stufe, tage_bis, wartet_auf_dich, schwerpunkt und schwerpunkt_reihenfolge. Wie der Inhaber sie sieht (Reihenfolge, Gruppen, Zahlen), rechnet die Oberfläche in web/src/lib/anstehend.ts; welche Frage je Projekt sichtbar ist, sagt seit Etappe B2 der Server (warteschlange, siehe „Fragen an den Inhaber“). Ohne Anmeldung hat /stand keine Einträge, nur zahlen.',
+  'Ab Etappe 3a-4 hat jeder Eintrag mit Frist frist_stufe (ueberfaellig, heute, bald bis frist_bald_tage Tage, sonst spaeter); frist_bald_tage (7) steht in der Liste und in /api/projekte/<slug>/stand. Aus derselben Stufe hebt der Server die wirksame Stufe (überfällig und heute: Jetzt). Sie hängt vom Tag ab; die Oberfläche lädt um Mitternacht neu.',
   'von ist eine Angabe, kein Nachweis; trotzdem ehrlich setzen. Arbeiten nur für dein eigenes Projekt anlegen und fortschreiben.',
 ]
 
@@ -255,7 +255,7 @@ punkte = [
   'Was die Abnahme braucht (Zweig, Commit, Dauer von Bau und Test), schreibst du in die notiz deines eigenen Bau-Schritts, bevor er fertig ist (das geht im selben Aufruf mit "stand":"fertig"). Bietest du einen Schritt an, der dir nicht gehört, schickst du nur von und anbieten, nichts sonst (keine notiz, kein stand); sonst lehnt der Server ab. Deine Angaben gehören in die notiz deines eigenen Schritts.',
   'Funde aus einer Abnahme, Seite des Abnehmenden: die Funde in die notiz des eigenen Abnahme-Schritts schreiben, den fertigen Bau-Schritt dem Bauenden wieder anbieten (nur von und anbieten) und danach am eigenen Abnahme-Schritt auf genau diesen Bau-Schritt warten ("wartet_auf":"schritt:<nr>"). Anbieten und warten sind getrennte Aufrufe, erst anbieten, dann warten; auf einen fertigen Schritt kann niemand warten, nur auf einen angebotenen oder laufenden (Beispiel unten).',
   'Funde aus einer Abnahme, Seite des Bauenden: Das Dashboard weckt dich mit einem Vorgang der Art schritt. Du übernimmst den Bau-Schritt, besserst nach, schreibst Zweig, Commit und Läufe in seine notiz und setzt ihn fertig. Dann weckt das Dashboard den Abnehmenden, sein Abnahme-Schritt läuft wieder. Die Runde endet, wenn der Abnehmende seinen Abnahme-Schritt fertig setzt (mit dem Urteil in der notiz).',
-  'Hat eine Etappe eine Arbeit im Tracker, schreibst du in fortschritt.toml, ampel.toml und in den Status des Gantt-Balkens nur noch „Stand: siehe Arbeit im Kasten Arbeiten“. Der Zeitstrahl bleibt als Geschichte, der Gantt-Balken als Plan; den Stand sagt allein der Tracker.',
+  'Stand steht nur im Tracker. Die Etappen deines Projekts stehen in daten/plan.toml (nur Absicht: kennung, titel, ziel, reihenfolge); jede Arbeit nennt ihre Etappe im Feld etappe („<projekt>/<kennung>“). Plan, Stand und Zeitleiste der Projektseite rechnet der Server daraus. Stand-Dateien (fortschritt.toml mit prozent, gantt.toml mit laufenden Balken, Kennzahlen ohne berechnet und ohne stand, kanban.toml, Zeitstrahl-Einträge begonnen oder geplant mit verstrichenem Datum) wandern bei der Umstellung der Seite ins Archiv; bis dahin meldet pruefe sie als Hinweis. Der Zeitstrahl bleibt für Inhalt und für die Zeit vor dem Tracker.',
 ]
 
 [[block]]
@@ -303,7 +303,7 @@ zeilen = [
 text = '''
 Die Einstufung des Inhabers gilt für die Frage mit genau dieser id und diesem gestellt. Stellst du dieselbe Frage neu (neues gestellt), gilt wieder dein Vorschlag. Um Mitternacht rechnet das Dashboard neu: Eine Frist für morgen ist „Bald“, ab 0 Uhr ist sie heute und damit „Jetzt“.
 
-Eine Frage auf einmal (Warteschlange, ab Etappe B2): Je Projekt zeigt das Dashboard immer nur eine Frage, in „Anstehend“, auf der Startseite unter „Jetzt für dich“, im Unter-Dashboard, im Backlog und im Baustein Fragen. Welche, rechnet der Server an einer Stelle und schreibt jeder offenen Frage ihren Platz an (warteschlange = { platz, offen } in /api/anstehend und /stand/voll; Platz 1 ist die sichtbare): zuerst die höchste wirksame Stufe (also prioritaet, Frist und Einstufung des Inhabers), bei Gleichstand die frühere frist (ohne Frist danach), dann die Reihenfolge in fragen.toml (bis B1: die älteste nach gestellt, dann nach id). Die übrigen nennt ein Vermerk an dieser Frage: „noch 1 Frage wartet“ bzw. „noch N Fragen warten“, ohne ihren Text. Auch die Zähler (Jetzt, Bald, Irgendwann, „wartet auf dich“) zählen je Projekt höchstens eine Frage. Für dich als Chat heißt das:'''
+Eine Frage auf einmal (Warteschlange, ab Etappe B2): Je Projekt zeigt das Dashboard immer nur eine Frage, in „Anstehend“, auf der Startseite unter „Jetzt für dich“, in der Aufgabenliste der Projektseite und im Baustein Fragen. Welche, rechnet der Server an einer Stelle und schreibt jeder offenen Frage ihren Platz an (warteschlange = { platz, offen } in /api/anstehend und /stand/voll; Platz 1 ist die sichtbare): zuerst die höchste wirksame Stufe (also prioritaet, Frist und Einstufung des Inhabers), bei Gleichstand die frühere frist (ohne Frist danach), dann die Reihenfolge in fragen.toml (bis B1: die älteste nach gestellt, dann nach id). Die übrigen nennt ein Vermerk an dieser Frage: „noch 1 Frage wartet“ bzw. „noch N Fragen warten“, ohne ihren Text. Auch die Zähler (Jetzt, Bald, Irgendwann, „wartet auf dich“) zählen je Projekt höchstens eine Frage. Für dich als Chat heißt das:'''
 
 [[block]]
 punkte = [
@@ -315,7 +315,7 @@ punkte = [
 ]
 
 [[block]]
-text = 'Schwerpunkte (data/schwerpunkte.toml): Die Datei liegt im Repo des Dashboards (data/, neben projects/) und ordnet jedes Projekt genau einem Schwerpunkt zu. Die Ansicht „nach Schwerpunkt“ in „Anstehend“ und das Unter-Dashboard benutzen sie. Aufbau:'
+text = 'Schwerpunkte (data/schwerpunkte.toml): Die Datei liegt im Repo des Dashboards (data/, neben projects/) und ordnet jedes Projekt genau einem Schwerpunkt zu. Die Ansicht „nach Schwerpunkt“ in „Anstehend“ und der Teil „Stand“ der Projektseite benutzen sie. Aufbau:'
 
 [[block]]
 beispiel = '''
@@ -506,7 +506,7 @@ zeilen = [
   ['/vorgaenge, /api/vorgaenge (auch warten)', '/pc und /api/pc mit Rechner-Werten (CPU, Speicher, Platte)'],
   ['/daten, /api/daten (auch Export und Sichern)', 'Dateien der Oberfläche (index.html, JS, CSS)'],
   ['/api/aufgaben (Aufgaben für den Inhaber, auch Haken und Zurückziehen)', ''],
-  ['/api/arbeiten, /api/einstufung, /api/anstehend (ab A1), /api/antworten (ab A2)', '/api/projekte/<slug>/stand (Unter-Dashboard; Aufgaben und Meldungen ohne Anmeldung nur als Zahl)'],
+  ['/api/arbeiten, /api/einstufung, /api/anstehend (ab A1), /api/antworten (ab A2)', '/api/projekte/<slug>/stand (Teil „Stand“ der Projektseite; Aufgaben und Meldungen ohne Anmeldung nur als Zahl)'],
   ['/api/events (Live-Kanal)', '/healthz, /api/betrieb, /api/pruefung, /api/anmeldung/… (Probe)'],
   ['/api/pc/benutzer: Benutzer-Daten der PC-Seite (Programme, Autostart, Werkzeuge, Ordnergrößen, Stand der Schlüssel, Bote-Stand)', '/api/pc/verlauf (für Werkzeuge; Starts, Meldungen, Vorgänge nur auf einer schon angemeldeten Verbindung)'],
   ['/api/pc/verlauf/voll, /api/projekte/<slug>/stand/voll (ab Hotfix 3a-1, für die Oberfläche)', ''],
