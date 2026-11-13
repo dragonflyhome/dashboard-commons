@@ -1,11 +1,11 @@
-﻿#Requires -Version 7
+﻿#Requires -Version 7.6
 # Herzschlag-Einspielen.ps1 - schaltet den Herzschlag (Stop-Hook der Chats) ein oder aus.
 #
 # Ein (ohne -Aus):
 #   1. Trägt in die Einstellungsdatei des Chat-Clients (-Einstellungen, JSON) unter hooks.Stop
 #      eine Gruppe mit dem Hook dashboard-herzschlag.exe ein (-Programm, Frist -Sekunden).
-#      Vorhandene Hooks und alle anderen Einstellungen bleiben; ein früherer eigener Eintrag
-#      wird ersetzt, nie verdoppelt.
+#      Vorhandene Hooks und alle anderen Einstellungen bleiben; ein gleicher eigener Eintrag
+#      bleibt an seiner Stelle, ein abweichender wird ersetzt, nie verdoppelt.
 #   2. Setzt die Benutzer-Umgebungsvariable DASHBOARD_SITZUNG_VARIABLE auf -Variable, den
 #      Namen der Umgebungsvariable, in der der Client die Kennung seiner Sitzung mitgibt.
 #      scripts\Api.ps1 liest darüber die Kennung (Anleitung, Abschnitt 16).
@@ -15,6 +15,8 @@
 # Geschrieben wird erst, wenn die Datei gelesen und geprüft ist: Kaputtes JSON oder eine
 # unerwartete Form von hooks bricht ohne Schreiben ab (Exit 1). Vor jeder Änderung liegt eine
 # Sicherung daneben (<datei>.<zeit>.bak); ist schon alles so, wird nichts geschrieben.
+# Geschrieben wird mit 2 Leerzeichen Einrückung; Zeilenenden, BOM und das Zeilenende am
+# Schluss folgen der gelesenen Datei.
 # Ein Pfad der Einstellungen steht hier bewusst nicht: Er nennt den Client.
 #
 # -Umgebung ist der Registry-Schlüssel der Benutzer-Umgebung (Standard HKCU:\Environment);
@@ -47,7 +49,11 @@ function Fehler([string]$satz) {
 if (-not $Einstellungen) { Fehler 'Es fehlt -Einstellungen <datei>, die Einstellungsdatei des Chat-Clients (JSON).' }
 if (-not $Aus) {
 	if ($Variable -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,99}$') { Fehler 'Es fehlt -Variable <name> (Buchstaben, Ziffern, _), der Name der Umgebungsvariable mit der Sitzungskennung des Clients.' }
-	if ($Programm -match '"' -or -not (Test-Path -LiteralPath $Programm -PathType Leaf)) { Fehler "$Programm gibt es nicht (erst den Dienst mit der neuen Fassung einrichten, oder -Programm angeben)." }
+	# Absolut, denn der Client startet den Hook in seinem eigenen Arbeitsordner.
+	$Programm = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Programm)
+	# Am Dateinamen erkennt -Aus den eigenen Eintrag; " $ ` würde die Shell des Clients deuten.
+	if ((Split-Path -Leaf $Programm) -ne $eigen -or $Programm -match '["$`]') { Fehler "-Programm muss ein Pfad auf $eigen ohne die Zeichen "" $ `` sein: $Programm" }
+	if (-not (Test-Path -LiteralPath $Programm -PathType Leaf)) { Fehler "$Programm gibt es nicht (erst den Dienst mit der neuen Fassung einrichten, oder -Programm angeben)." }
 }
 $datei = [IO.Path]::GetFullPath($Einstellungen)
 $ordner = Split-Path -Parent $datei
@@ -56,8 +62,15 @@ if (-not (Test-Path -LiteralPath $Umgebung)) { Fehler "Den Schlüssel $Umgebung 
 
 # Lesen und prüfen. Bis zum Schreiben ändert sich nur das Dokument im Speicher.
 $da = Test-Path -LiteralPath $datei -PathType Leaf
+if ($da -and ((Get-Item -LiteralPath $datei -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { Fehler "$datei ist eine Verknüpfung; bitte die Zieldatei angeben. Nichts geändert." }
+$roh = if ($da) { [IO.File]::ReadAllText($datei) } else { '' }
+$bom = $da -and (([IO.File]::ReadAllBytes($datei) | Select-Object -First 3) -join ',') -eq '239,187,191'
+$nl = if ($roh.Contains("`r`n")) { "`r`n" } else { "`n" }
+$schluss = if (-not $da -or $roh -match '\n\s*\z') { $nl } else { '' }
+$dopt = [Text.Json.JsonDocumentOptions]::new()
+$dopt.AllowDuplicateProperties = $false
 try {
-	if ($da) { $dok = [System.Text.Json.Nodes.JsonNode]::Parse([IO.File]::ReadAllText($datei)) } else { $dok = [System.Text.Json.Nodes.JsonObject]::new() }
+	if ($da) { $dok = [System.Text.Json.Nodes.JsonNode]::Parse($roh, $null, $dopt) } else { $dok = [System.Text.Json.Nodes.JsonObject]::new() }
 } catch {
 	Fehler "$datei ist kein gültiges JSON ($($_.Exception.GetBaseException().Message)). Nichts geändert."
 }
@@ -87,27 +100,34 @@ $stop = $null
 if ($null -ne $hooks) { $stop = Feld $hooks 'Stop' }
 if ($null -ne $stop -and $stop -isnot [System.Text.Json.Nodes.JsonArray]) { Fehler $form }
 
-# Eigene Einträge entfernen (bei Ein ebenso, damit es nie zwei gibt).
+# Vorwärtsstriche: Der Client startet den Befehl über eine Shell, in der \ ein Fluchtzeichen sein kann.
+$befehl = '"' + ($Programm -replace '\\', '/') + '"'
+
+# Eigene Einträge entfernen; bei Ein bleibt der erste gleiche an seiner Stelle, damit es nie zwei gibt.
+$behalten = $null
 if ($null -ne $stop) {
-	for ($g = $stop.Count - 1; $g -ge 0; $g--) {
+	for ($g = 0; $g -lt $stop.Count; $g++) {
 		$gruppe = $stop[$g]
 		if ($gruppe -isnot [System.Text.Json.Nodes.JsonObject]) { Fehler $form }
 		$liste = Feld $gruppe 'hooks'
 		if ($liste -isnot [System.Text.Json.Nodes.JsonArray]) { Fehler $form }
 		$hatte = $liste.Count
-		for ($h = $liste.Count - 1; $h -ge 0; $h--) { if (Ist-Eigen $liste[$h]) { $liste.RemoveAt($h) } }
-		if ($hatte -gt 0 -and $liste.Count -eq 0) { $stop.RemoveAt($g) }
+		for ($h = 0; $h -lt $liste.Count) {
+			$hook = $liste[$h]
+			if (-not (Ist-Eigen $hook)) { $h++ }
+			elseif (-not $Aus -and $null -eq $behalten -and $hook['command'].ToString() -ceq $befehl -and "$($hook['timeout'])" -eq "$Sekunden" -and "$($hook['type'])" -eq 'command') { $behalten = $hook; $h++ }
+			else { $liste.RemoveAt($h) }
+		}
+		if ($hatte -gt 0 -and $liste.Count -eq 0) { $stop.RemoveAt($g); $g-- }
 	}
 }
 
 if ($Aus) {
 	if ($null -ne $stop -and $stop.Count -eq 0) { $null = $hooks.Remove('Stop') }
 	if ($null -ne $hooks -and $hooks.Count -eq 0) { $null = $dok.Remove('hooks') }
-} else {
+} elseif ($null -eq $behalten) {
 	if ($null -eq $hooks) { $hooks = [System.Text.Json.Nodes.JsonObject]::new(); $dok['hooks'] = $hooks }
 	if ($null -eq $stop) { $stop = [System.Text.Json.Nodes.JsonArray]::new(); $hooks['Stop'] = $stop }
-	# Vorwärtsstriche: Der Client startet den Befehl über eine Shell, in der \ ein Fluchtzeichen sein kann.
-	$befehl = '"' + ($Programm -replace '\\', '/') + '"'
 	$gruppe = [ordered]@{ hooks = @([ordered]@{ type = 'command'; command = $befehl; timeout = $Sekunden }) } | ConvertTo-Json -Depth 5 -Compress
 	$stop.Add([System.Text.Json.Nodes.JsonNode]::Parse($gruppe))
 }
@@ -123,8 +143,10 @@ if ($nachher -ceq $vorher -and ($da -or $Aus)) {
 	}
 	$temp = Join-Path $ordner ('.herzschlag-einspielen-{0}.tmp' -f [guid]::NewGuid().ToString('N'))
 	try {
-		[IO.File]::WriteAllText($temp, $nachher + "`n", [Text.UTF8Encoding]::new($false))
+		[IO.File]::WriteAllText($temp, $nachher.ReplaceLineEndings($nl) + $schluss, [Text.UTF8Encoding]::new($bom))
 		[IO.File]::Move($temp, $datei, $true)
+	} catch {
+		Fehler "$datei ließ sich nicht schreiben ($($_.Exception.GetBaseException().Message)). Nichts geändert, die Sicherung bleibt."
 	} finally {
 		if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }
 	}
@@ -140,6 +162,6 @@ if ("$jetzt" -ceq "$soll") {
 	if ($Aus) { Remove-ItemProperty -LiteralPath $Umgebung -Name $name }
 	else { New-ItemProperty -LiteralPath $Umgebung -Name $name -Value $Variable -PropertyType String -Force | Out-Null }
 	if ($Umgebung -eq 'HKCU:\Environment') { [Environment]::SetEnvironmentVariable($name, $soll, 'User') }
-	Write-Output "$($name): $(if ($Aus) { 'entfernt' } else { "auf $Variable gesetzt" }). Gilt für Chats, die danach starten."
+	Write-Output "$($name): $(if ($Aus) { 'entfernt' } else { "auf $Variable gesetzt" }). Gilt erst nach einem Neustart des Chat-Clients (er gibt seinen Chats die Umgebung mit, die er beim Start hatte)."
 }
 exit 0

@@ -16,6 +16,12 @@ use winreg::RegKey;
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
 
 const NAME: &str = "DASHBOARD_SITZUNG_VARIABLE";
+const BOM: &[u8] = b"\xEF\xBB\xBF";
+
+/// So schreibt das Skript: 2 Leerzeichen, CRLF, BOM und CRLF am Schluss wie die Vorlage.
+fn mit_crlf_und_bom(v: &Value) -> Vec<u8> {
+    [BOM, serde_json::to_string_pretty(v).unwrap().replace('\n', "\r\n").as_bytes(), b"\r\n"].concat()
+}
 
 fn skript() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Herzschlag-Einspielen.ps1")
@@ -47,11 +53,15 @@ impl Ort {
     }
 
     fn laufen(&self, args: &[&str]) -> Option<Output> {
+        self.laufen_mit(&self.ordner.join("bin").join("dashboard-herzschlag.exe"), args)
+    }
+
+    /// Mit eigenem -Programm, im Ordner der Wurzel als Arbeitsordner.
+    fn laufen_mit(&self, programm: &Path, args: &[&str]) -> Option<Output> {
         let mut c = programme::befehl(Werkzeug::PowerShell7).ok()?;
         let umgebung = format!("HKCU:\\{}", self.schluessel);
-        let programm = self.ordner.join("bin").join("dashboard-herzschlag.exe");
         c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(skript());
-        c.arg("-Umgebung").arg(umgebung).arg("-Programm").arg(programm).args(args);
+        c.arg("-Umgebung").arg(umgebung).arg("-Programm").arg(programm).args(args).current_dir(&self.ordner);
         Some(c.output().unwrap())
     }
 
@@ -60,7 +70,8 @@ impl Ort {
     }
 
     fn json(&self) -> Value {
-        serde_json::from_slice(&std::fs::read(self.datei()).unwrap()).unwrap()
+        let b = std::fs::read(self.datei()).unwrap();
+        serde_json::from_slice(b.strip_prefix(BOM).unwrap_or(&b)).unwrap()
     }
 
     fn sicherungen(&self) -> Vec<PathBuf> {
@@ -117,7 +128,7 @@ fn einspielen_ein_ein_aus_und_kaputtes_json() {
             "PreToolUse": [{"matcher": "Werkzeug", "hooks": [{"type": "command", "command": "p.exe"}]}]
         }
     });
-    std::fs::write(ort.datei(), serde_json::to_vec_pretty(&fremd).unwrap()).unwrap();
+    std::fs::write(ort.datei(), mit_crlf_und_bom(&fremd)).unwrap();
     let urtext = bytes(&ort.datei());
 
     // Ohne -Einstellungen: kein Standard, nichts geschrieben.
@@ -130,7 +141,8 @@ fn einspielen_ein_ein_aus_und_kaputtes_json() {
 
     let datei = ort.datei().display().to_string();
     // Ein.
-    gut(&ort.laufen(&["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), "Ein");
+    let text = gut(&ort.laufen(&["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), "Ein");
+    assert!(text.contains("nach einem Neustart des Chat-Clients"), "{text}");
     let ein = ort.json();
     let e = eigene(&ein);
     assert_eq!(e.len(), 1, "{ein:#}");
@@ -147,6 +159,9 @@ fn einspielen_ein_ein_aus_und_kaputtes_json() {
     let bak = ort.sicherungen();
     assert_eq!(bak.len(), 1, "{bak:?}");
     assert_eq!(std::fs::read(&bak[0]).unwrap(), urtext, "Sicherung ist die Datei vor der Änderung");
+    let stand = bytes(&ort.datei());
+    assert!(stand.starts_with(BOM) && stand.ends_with(b"}\r\n"), "BOM und Schluss bleiben");
+    assert!(!String::from_utf8_lossy(&stand).replace("\r\n", "").contains('\n'), "nur CRLF");
 
     // Zweimal Ein: nichts geschrieben, keine weitere Sicherung.
     let stand = bytes(&ort.datei());
@@ -158,13 +173,21 @@ fn einspielen_ein_ein_aus_und_kaputtes_json() {
     // Aus: nur der eigene Eintrag und die Variable gehen.
     gut(&ort.laufen(&["-Einstellungen", &datei, "-Aus"]).unwrap(), "Aus");
     assert_eq!(ort.json(), fremd, "nach Aus wie vorher");
+    assert_eq!(bytes(&ort.datei()), urtext, "nach Aus byte-gleich");
     assert_eq!(ort.wert(), None);
     assert_eq!(ort.sicherungen().len(), 2);
     let text = gut(&ort.laufen(&["-Einstellungen", &datei, "-Aus"]).unwrap(), "Aus 2");
     assert!(text.contains("schon ausgetragen") && text.contains("schon entfernt"), "{text}");
 
     // Kaputtes JSON und eine fremde Form von hooks: Abbruch ohne Schreiben.
-    for (fall, inhalt) in [("kaputt", "{ \"hooks\": "), ("kommentar", "// x\n{}"), ("form", "{\"hooks\": []}"), ("gruppe", "{\"hooks\": {\"Stop\": [1]}}")] {
+    for (fall, inhalt) in [
+        ("kaputt", "{ \"hooks\": "),
+        ("kommentar", "// x\n{}"),
+        ("form", "{\"hooks\": []}"),
+        ("gruppe", "{\"hooks\": {\"Stop\": [1]}}"),
+        ("doppelt", "{\"hooks\": {\"Stop\": []}, \"hooks\": {}}"),
+        ("doppelt innen", "{\"hooks\": {\"Stop\": [], \"Stop\": []}}"),
+    ] {
         std::fs::write(ort.datei(), inhalt).unwrap();
         let zahl = ort.sicherungen().len();
         let text = rot(&ort.laufen(&["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), fall);
@@ -180,6 +203,36 @@ fn einspielen_ein_ein_aus_und_kaputtes_json() {
     assert_eq!(eigene(&ort.json()).len(), 1);
     gut(&ort.laufen(&["-Einstellungen", &datei, "-Aus"]).unwrap(), "Aus neu");
     assert_eq!(ort.json(), json!({}));
+
+    // Steht nach dem eigenen Eintrag eine fremde Gruppe, ändert ein zweites Ein nichts.
+    gut(&ort.laufen(&["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), "Ein vor fremd");
+    let mut v = ort.json();
+    v["hooks"]["Stop"].as_array_mut().unwrap().push(json!({"hooks": [{"type": "command", "command": "spaeter.exe"}]}));
+    std::fs::write(ort.datei(), serde_json::to_vec_pretty(&v).unwrap()).unwrap();
+    let (stand, zahl) = (bytes(&ort.datei()), ort.sicherungen().len());
+    let text = gut(&ort.laufen(&["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), "Ein nach fremd");
+    assert!(text.contains("schon eingetragen"), "{text}");
+    assert_eq!((bytes(&ort.datei()), ort.sicherungen().len()), (stand, zahl));
+    gut(&ort.laufen(&["-Einstellungen", &datei, "-Aus"]).unwrap(), "Aus nach fremd");
+    assert_eq!(ort.json(), json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "spaeter.exe"}]}]}}));
+    assert!(!bytes(&ort.datei()).contains(&b'\r'), "LF-Datei bleibt LF");
+
+    // -Programm: ein anderer Dateiname oder $ im Pfad bricht ab; ein relativer Pfad wird absolut.
+    for (fall, unter) in [("name", "bin/herz.exe"), ("dollar", "x$y/dashboard-herzschlag.exe")] {
+        let p = ort.ordner.join(unter);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, b"").unwrap();
+        let stand = bytes(&ort.datei());
+        let text = rot(&ort.laufen_mit(&p, &["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), fall);
+        assert!(text.contains("-Programm"), "{fall}: {text}");
+        assert_eq!(bytes(&ort.datei()), stand, "{fall}");
+    }
+    gut(&ort.laufen_mit(Path::new("bin\\dashboard-herzschlag.exe"), &["-Einstellungen", &datei, "-Variable", "TEST_SITZUNG"]).unwrap(), "relativ");
+    let e = eigene(&ort.json());
+    let voll = ort.ordner.join("bin").join("dashboard-herzschlag.exe").display().to_string().replace('\\', "/");
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert_eq!(e[0]["command"], format!("\"{voll}\""));
+    gut(&ort.laufen(&["-Einstellungen", &datei, "-Aus"]).unwrap(), "Aus relativ");
 
     drop(ort);
     assert_eq!(echt(), vorher_echt, "die echte Benutzer-Umgebung bleibt unberührt");

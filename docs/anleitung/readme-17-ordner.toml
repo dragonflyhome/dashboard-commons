@@ -6,9 +6,10 @@ reihenfolge = 217
 beispiel = '''
 src/                Rust-Code des Servers und des Boten
   main.rs           Start von dashboard.exe: Aufruf lesen, dann Server, Dienst, pruefe oder --hilfe
-  lib.rs            die Bibliothek hinter beiden Programmen (dashboard.exe und dashboard-bote.exe)
+  lib.rs            die Bibliothek hinter den Programmen (dashboard.exe, dashboard-bote.exe, dashboard-herzschlag.exe)
   bin/
     dashboard-bote.rs  Start des Boten (ohne Fenster), seine Aufrufe und Exit-Codes
+    dashboard-herzschlag.rs  Stop-Hook ohne Fenster (ruft herzschlag::ausfuehren)
   dienst/           Betrieb (Etappe 7a)
     mod.rs          Aufrufe, Konsolen-Modus, Start und Ende, die Lauscher auf 127.0.0.1 und [::1]
     einstellungen.rs  dienst.toml lesen und prüfen, Fehler mit Datei und Zeile
