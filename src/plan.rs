@@ -103,19 +103,28 @@ fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanE
     // ihr `erstellt` sagt nichts über die Etappe, sie zählen weder als dazugekommen noch beim ersten Tag.
     // Dazugekommen ist eine Arbeit erst nach dem Beginn und nach dem Tag der ersten Zuordnung: was an
     // diesem Tag zugeordnet wurde, ist der Umfang (Umstellung des Bestands, auch Arbeit für Arbeit).
+    // Eine Arbeit, die vor ihrer Zuordnung schon begonnen hatte, ist nie dazugekommen: dazugekommen
+    // heißt neuer Umfang, nicht Umsortieren laufender Arbeit.
     // shortcut: am selben Tag später Angehängtes zählt nicht; aufrüsten, wenn das stört.
     // shortcut: nur gelistete Etappe, die erste echte Zuordnung zählt nie als dazugekommen; aufrüsten, wenn alte Etappen wieder Arbeit bekommen.
     let ziel = format!("{slug}/{}", e.kennung);
-    let zugeordnet: Vec<&String> = arbeiten
+    let zugeordnet: Vec<(&String, Option<&String>)> = arbeiten
         .iter()
-        .filter_map(|(a, _)| match a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel) {
-            Some(v) => Some(&v.zeit),
-            None => a.etappe.as_ref().map(|_| &a.erstellt),
+        .zip(&zeiten)
+        .filter_map(|((a, _), z)| {
+            let seit = match a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel) {
+                Some(v) => Some(&v.zeit),
+                None => a.etappe.as_ref().map(|_| &a.erstellt),
+            };
+            seit.map(|s| (s, z.begonnen.as_ref()))
         })
         .collect();
-    let erster_tag = zugeordnet.iter().filter_map(|z| zeit(z)).min().map(|t| t.date_naive());
-    let spaeter: Vec<&String> =
-        zugeordnet.into_iter().filter(|z| zeit(z).is_some_and(|t| beginn.is_some_and(|b| t > b) && erster_tag.is_some_and(|d| t.date_naive() > d))).collect();
+    let erster_tag = zugeordnet.iter().filter_map(|(z, _)| zeit(z)).min().map(|t| t.date_naive());
+    let neu_seit = |z: &String, begonnen: Option<&String>| {
+        let lief_schon = |t| begonnen.and_then(|b| zeit(b)).is_some_and(|b| b < t);
+        zeit(z).is_some_and(|t| beginn.is_some_and(|b| t > b) && erster_tag.is_some_and(|d| t.date_naive() > d) && !lief_schon(t))
+    };
+    let spaeter: Vec<&String> = zugeordnet.into_iter().filter(|(z, b)| neu_seit(z, *b)).map(|(z, _)| z).collect();
     let dazugekommen = spaeter.len() as u32;
     PlanEtappe {
         kennung: e.kennung.clone(),
@@ -387,5 +396,29 @@ mod tests {
         let eins = &plan("p", Some(&datei(plan_text)), &[(alt, true), (neu, false)]).etappen[0];
         assert_eq!(eins.arbeiten_gesamt, 2);
         assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (0, None));
+    }
+
+    /// Neue Arbeit mit Feld `etappe` am 10., zwei laufende Altarbeiten erst
+    /// am 14. per Eintrag `etappe` zugeordnet: sie liefen vorher schon, das
+    /// ist Umsortieren, kein neuer Umfang. Gegenprobe: eine am 14. zugeordnete,
+    /// noch nicht begonnene Arbeit ist dazugekommen.
+    #[test]
+    fn vor_der_zuordnung_begonnen_ist_nicht_dazugekommen() {
+        let neu = arbeit("ar-20261110-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(10, 9), t(10, 9));
+        let lief = |id: &str, erstellt: String, um: String| {
+            let mut a = arbeit(id, "p", ArbeitsStand::Laeuft, Some("p/eins"), erstellt.clone(), um.clone());
+            a.verlauf.push(eintrag(ArbeitVerlaufArt::Stand, erstellt, "als-naechstes", "laeuft"));
+            a.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, um, "", "p/eins"));
+            a
+        };
+        let mut alle = vec![(neu, false), (lief("ar-20261103-0001", t(3, 9), t(14, 9)), false), (lief("ar-20261104-0001", t(4, 9), t(14, 10)), false)];
+        let eins = &plan("p", Some(&datei(PLAN)), &alle).etappen[0];
+        assert_eq!((eins.arbeiten_gesamt, eins.begonnen.clone()), (3, Some(t(3, 9))));
+        assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (0, None));
+        let mut offen = arbeit("ar-20261102-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(2, 9), t(14, 11));
+        offen.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, t(14, 11), "", "p/eins"));
+        alle.push((offen, false));
+        let eins = &plan("p", Some(&datei(PLAN)), &alle).etappen[0];
+        assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (1, Some(t(14, 11))));
     }
 }

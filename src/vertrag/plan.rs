@@ -188,14 +188,18 @@ pub struct PlanEtappe {
     /// im Verlauf, für sie gilt ihre letzte Änderung.
     pub ungefaehr: bool,
     /// Ortszeit, RFC 3339: die früheste Zuordnung einer dazugekommenen Arbeit,
-    /// sonst leer.
+    /// sonst leer. Wie bei `dazugekommen` zählt eine Arbeit, die vor
+    /// ihrer Zuordnung schon begonnen hatte, nicht.
     pub gewachsen_seit: Option<String>,
     /// Wie viele Arbeiten nach `begonnen` dazukamen: ihre Zuordnung (letzter
     /// Eintrag `etappe`, sonst `erstellt`) liegt danach und nach dem Tag der
     /// ersten Zuordnung. Was an diesem Tag zugeordnet wurde, etwa bei der
-    /// Umstellung des Bestands, zählt nicht. Arbeiten nur aus der Liste
-    /// `arbeiten` in `plan.toml` haben keine Zuordnungszeit: sie zählen nie
-    /// und bestimmen den Tag der ersten Zuordnung nicht mit.
+    /// Umstellung des Bestands, zählt nicht. Eine Arbeit, die vor ihrer
+    /// Zuordnung schon begonnen hatte, zählt nie: dazugekommen heißt neuer
+    /// Umfang, nicht Umsortieren laufender Arbeit. Arbeiten aus der Liste
+    /// `arbeiten` in `plan.toml` ohne `etappe`-Eintrag haben keine
+    /// Zuordnungszeit: sie zählen nie und bestimmen den Tag der ersten
+    /// Zuordnung nicht mit.
     pub dazugekommen: u32,
     /// Nach Kennung, also nach Anlage.
     pub arbeiten: Vec<PlanArbeit>,
