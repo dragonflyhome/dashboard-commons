@@ -33,7 +33,7 @@ const SKRIPTE: [&str; 10] = [
 ];
 
 fn pwsh() -> Option<Command> {
-    [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok())
+    programme::befehl(Werkzeug::PowerShell7).ok()
 }
 
 fn bereit() -> bool {
@@ -266,7 +266,7 @@ impl Probe {
             c.arg("-Pruefen");
         }
         // Ohne DASHBOARD_INHALT: der Inhalt kommt nur über -Inhalt.
-        c.env_remove("DASHBOARD_INHALT").env("CARGO_TARGET_DIR", self.ziel());
+        c.env_remove("DASHBOARD_INHALT").env("CARGO_TARGET_DIR", self.ziel()).env("DASHBOARD_PRUEFER_CACHE", self.0.join("pruefer-cache"));
         let a = c.output().unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     }

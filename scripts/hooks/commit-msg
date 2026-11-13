@@ -8,5 +8,6 @@
 # Im Projekt-Repo (Overlay, ohne scripts/) zeigt core.hooksPath absolut hierher; der Prüfer liegt neben dem Hook.
 repo=$(git rev-parse --show-toplevel) || exit 2
 code=$(cd "$(dirname "$0")/../.." && { pwd -W 2>/dev/null || pwd; }) || exit 2
-if command -v pwsh >/dev/null 2>&1; then ps=pwsh; else ps=powershell.exe; fi
-exec "$ps" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$code/scripts/Vor-Push.ps1" -Repo "$repo" -Nachricht "$1"
+# Nur PowerShell 7 (pwsh, mindestens 7.7, siehe #Requires im Prüfer); ohne sie geht nichts weiter.
+command -v pwsh >/dev/null 2>&1 || { echo "commit-msg: PowerShell 7 (pwsh) fehlt; der Prüfer läuft nur damit (winget install Microsoft.PowerShell)." >&2; exit 2; }
+exec pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$code/scripts/Vor-Push.ps1" -Repo "$repo" -Nachricht "$1"

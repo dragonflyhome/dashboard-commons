@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Pre-Push-Prüfer des Code-Repos: Was hinausgeht, darf nichts Privates enthalten.
 .DESCRIPTION
@@ -185,6 +186,21 @@
     kein gültiges UTF-8 ist (oder U+FFFD enthält), eine Liste zweimal nennt
     oder einen TOML-Escape außer \\ enthält, ist kaputt (Exit 2).
 
+    Cache (nur mit -MitCache, das Hochladen.ps1 für seine Vorprüfung setzt;
+    ohne den Schalter und immer im Hook kalt): Ein Blob, dessen
+    Inhaltsprüfung (Text, Kodierung, Binär, Metadaten, SVG) an einem Pfad
+    nichts fand, wird am Ende eines Laufs ohne jeden Fund gemerkt, als Zeile
+    „<sha><Tab><pfad>“ in <ort>\<regel-schlüssel>\sauber.txt (ort:
+    DASHBOARD_PRUEFER_CACHE, sonst %LOCALAPPDATA%\Dashboard\cache\pruefer). Der
+    Regel-Schlüssel ist SHA-256 über die Art, $GRENZE, die PowerShell-Fassung
+    (Haupt und Neben), den Inhalt der Dateien des Prüfers (dieses Skript,
+    Laufzeit.ps1) und der gelesenen Listen (namen.toml, tokens\*.toml,
+    repos.toml, die benutzte Ausnahmedatei). Ein Treffer überspringt nur die
+    Inhaltsprüfung genau dieses Blobs an genau diesem Pfad; Pfadregeln,
+    Commits, Refs und Tags laufen immer. Eine Verknüpfung (Junction, Symlink)
+    im Pfad des Caches schaltet ihn ab; ein kaputter Eintrag ist kein Treffer.
+    Behalten werden die zwei zuletzt genutzten Regel-Ordner.
+
     Ausgabe: je Fund eine Zeile „ABGEWIESEN <Datei>, Zeile <n>: <Muster>“,
     ohne den gefundenen Wert (FEHLER- und HINWEIS-Zeilen nennen das
     Benutzerprofil nur als %USERPROFILE%); jede Zeile je Muster (bis 50 je Datei, dann die
@@ -225,6 +241,9 @@
 .PARAMETER RemoteUrl
     Adresse des Remotes (vom Hook, zweites Argument); bestimmt mit
     <Inhalt>\pruefer\repos.toml die Art des Repos.
+.PARAMETER MitCache
+    Nutzt den Cache sauberer Blobs (siehe oben). Nur für Vorprüfungen
+    (Hochladen.ps1); mit -Hook wirkt er nie, die letzte Schranke prüft kalt.
 #>
 [CmdletBinding()]
 param(
@@ -241,7 +260,8 @@ param(
     [string]$Bundle,
     [string]$Nachricht,
     [string]$RemoteName,
-    [string]$RemoteUrl
+    [string]$RemoteUrl,
+    [switch]$MitCache
 )
 
 $ErrorActionPreference = 'Stop'
@@ -259,8 +279,16 @@ function OhneProfil([string]$t) {
 trap {
     Write-Host "FEHLER Der Prüfer ist selbst gescheitert ($(OhneProfil $_.Exception.Message)). Es geht nichts hinaus."
     if ($script:wegwerf) { Remove-Item -LiteralPath $script:wegwerf -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($uhr) { try { UhrZeile $uhr } catch { } }
     exit 2
 }
+
+# Die Dateien, die der Prüfer lädt: Ihr Inhalt geht in den Regel-Schlüssel des Caches.
+$script:prueferDateien = @($PSCommandPath, (Join-Path $PSScriptRoot 'Laufzeit.ps1'))
+. $script:prueferDateien[1]
+$uhr = UhrStart
+# Die Zeile zur Laufzeit ändert nie das Ergebnis der Prüfung.
+function Ende([int]$code) { try { UhrZeile $uhr } catch { }; exit $code }
 
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
@@ -446,11 +474,18 @@ function Blobs([string[]]$shas) {
 # ---------------------------------------------------------------------------
 # Namenslisten aus dem Inhalts-Repo (nie im Code-Repo); geschlossen scheitern
 # ---------------------------------------------------------------------------
+# Genau die gelesenen Bytes jeder Liste (Ordner/Datei, etwa tokens/x.toml) für den Regel-Schlüssel des Caches.
+$script:gelesen = New-Object 'System.Collections.Generic.SortedDictionary[string,byte[]]' ([StringComparer]::Ordinal)
+function ListeGelesen([string]$datei, [byte[]]$roh) {
+    $script:gelesen["$([IO.Path]::GetFileName([IO.Path]::GetDirectoryName($datei)))/$([IO.Path]::GetFileName($datei))"] = $roh
+}
 function ListenLaden([string]$datei, [string[]]$namen = @('sensibel', 'allgemein', 'tabu', 'benutzer', 'rechner', 'wlan', 'schluessel', 'mac', 'nur_basis'), [string[]]$pflichten = @('allgemein', 'tabu', 'benutzer')) {
     if (-not (Test-Path -LiteralPath $datei -PathType Leaf)) { throw "Die Namensliste $datei fehlt. Ohne sie prüft der Prüfer nicht, und es geht nichts hinaus." }
     # Streng UTF-8: eine Datei in Windows-1252 machte
     # jeden Umlaut-Namen still wirkungslos. Kaputt ist sie auch mit U+FFFD.
-    try { $text = $strikt.GetString([IO.File]::ReadAllBytes($datei)) } catch { $text = $null }
+    $roh = [IO.File]::ReadAllBytes($datei)
+    ListeGelesen $datei $roh
+    try { $text = $strikt.GetString($roh) } catch { $text = $null }
     if ($null -eq $text -or $text.IndexOf([char]0xFFFD) -ge 0) { throw "Die Namensliste $datei ist kaputt (kein gültiges UTF-8, etwa Windows-1252). Ohne sie prüft der Prüfer nicht." }
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     $listen = @{}
@@ -544,9 +579,9 @@ if ($Nachricht) {
     foreach ($f in $script:funde) { Write-Host $f }
     if ($script:funde.Count -gt 0) {
         Write-Host "$beispiel. Keine Fußzeilen und keine Anhänge (Trailer), keine Namen von KI-Modellen oder ihren Firmen."
-        exit 1
+        Ende 1
     }
-    exit 0
+    Ende 0
 }
 
 $listen = ListenLaden (Join-Path $Inhalt 'pruefer\namen.toml')
@@ -591,7 +626,9 @@ function AdresseNormal([string]$adresse) {
 # andere (auch eine Adresse zweimal) ist kaputt und bricht ab (Exit 2).
 function ReposLaden([string]$datei) {
     if (-not (Test-Path -LiteralPath $datei -PathType Leaf)) { return $null }
-    $text = [IO.File]::ReadAllText($datei, $utf8)
+    $roh = [IO.File]::ReadAllBytes($datei)
+    ListeGelesen $datei $roh
+    $text = $utf8.GetString($roh)
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     # Groß/Klein zählt bei den Adressen (ein Hashtable von PowerShell unterschiede sie nicht).
     $tabelle = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::Ordinal)
@@ -1016,21 +1053,32 @@ function EintraegePruefen($eintraege) {
         if ($e.Art -ne 'blob') { Fund $e.Pfad 0 'kein normaler Dateieintrag (Submodul?)' }
         if ($e.Modus -eq '120000') { Fund $e.Pfad 0 'Verknüpfung (Symlink)' }
     }
-    $blobs = Blobs @($eintraege | Where-Object { $_.Art -eq 'blob' } | ForEach-Object { $_.Sha } | Sort-Object -Unique)
+    # Cache: Ein Treffer (genau dieser Blob an genau diesem Pfad) überspringt nur die Inhaltsprüfung; ohne -MitCache ist die Menge leer.
+    $offen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($e in $eintraege) { if ($e.Art -eq 'blob' -and -not $script:sauber.Contains("$($e.Sha)`t$($e.Pfad)")) { [void]$offen.Add($e.Sha) } }
+    $blobs = Blobs @($offen)
     foreach ($e in $eintraege) {
         if ($e.Art -ne 'blob') { continue }
-        $b = $blobs[$e.Sha]
-        if ($binaerEndung.IsMatch($e.Pfad)) {
+        $istBinaer = $binaerEndung.IsMatch($e.Pfad)
+        if ($istBinaer) {
             $erlaubt = $false
             foreach ($r in $binaerErlaubt) { if ($r.IsMatch($e.Pfad)) { $erlaubt = $true; break } }
             # Die Positivliste der Binärdateien gilt nur im Basis-Repo, die Metadaten überall.
-            if (-not $erlaubt -and $script:istBasis) { Fund $e.Pfad 0 'Binärdatei außerhalb der Positivliste' }
-            else { MetadatenPruefen $e.Pfad $b }
-            continue
+            if (-not $erlaubt -and $script:istBasis) { Fund $e.Pfad 0 'Binärdatei außerhalb der Positivliste'; continue }
         }
-        $text = Utf8Text $b $e.Pfad $true
-        SvgPruefen $e.Pfad $text
-        TextPruefen $e.Pfad $text $false $e.Pfad
+        $schluessel = "$($e.Sha)`t$($e.Pfad)"
+        if ($script:sauber.Contains($schluessel)) { $script:ausCache++; continue }
+        $vorher = $script:funde.Count
+        $b = $blobs[$e.Sha]
+        if ($istBinaer) { MetadatenPruefen $e.Pfad $b }
+        else {
+            $text = Utf8Text $b $e.Pfad $true
+            SvgPruefen $e.Pfad $text
+            TextPruefen $e.Pfad $text $false $e.Pfad
+        }
+        $script:inhaltGeprueft++
+        # Gemerkt wird nur ein Blob ohne Fund; ein Pfad mit Zeilenumbruch passte nicht in eine Zeile der Cache-Datei.
+        if ($script:cacheDatei -and $script:funde.Count -eq $vorher -and $e.Pfad.IndexOfAny([char[]]"`r`n") -lt 0) { [void]$script:neuSauber.Add($schluessel) }
     }
 }
 
@@ -1301,7 +1349,7 @@ if ($null -eq $reposListe) {
 }
 if ($Art -and $Art -ne $artAusAdresse) {
     Write-Host "FEHLER -Art $Art passt nicht zur Art aus der Adresse des Remotes und repos.toml ($artAusAdresse). Es geht nichts hinaus."
-    exit 2
+    Ende 2
 }
 $script:istBasis = ($artAusAdresse -eq 'Basis')
 $script:istProjekt = ($artAusAdresse -eq 'Projekt')
@@ -1346,6 +1394,83 @@ if ($script:istBasis) {
     # sind es oft Fachwörter. Davor kein Buchstabe, keine Ziffer, kein + (Base64-Inneres); ein / davor
     # trifft (Pfade), darum fallen Prüfsummen sha512-… vorher weg ($herkunft).
     $listenRx['KI-Name'] = Rx "(?<![a-z0-9+])(?:$kiNamen)"
+}
+
+# ---------------------------------------------------------------------------
+# Cache sauberer Blobs: nur mit -MitCache (Vorprüfung in Hochladen.ps1), nie im Hook
+# ---------------------------------------------------------------------------
+# Die letzte Schranke prüft immer kalt: Ein vergifteter Eintrag täuscht höchstens eine
+# Vorprüfung, nie den Push. Eine Datei je Regel-Schlüssel, als Menge geladen: Eine Datei
+# mit einigen tausend Zeilen liest sich schneller als ebenso viele kleine Dateien.
+$script:sauber = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$script:neuSauber = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$script:cacheDatei = $null
+$script:ausCache = 0
+$script:inhaltGeprueft = 0
+$cacheZeile = [regex]::new('^[0-9a-f]{40}(?:[0-9a-f]{24})?\t[^\r\n]+$', [Text.RegularExpressions.RegexOptions]'Compiled, CultureInvariant')
+
+# SHA-256 über alles, wovon die Inhaltsprüfung abhängt (der Slug eines Projekt-Repos nicht: Er gilt nur in PfadPruefen).
+function RegelSchluessel {
+    $strom = [IO.MemoryStream]::new()
+    $teil = { param([string]$name, [byte[]]$b) $k = $utf8.GetBytes("$name`n$($b.Length)`n"); $strom.Write($k, 0, $k.Length); $strom.Write($b, 0, $b.Length) }
+    & $teil 'regeln' $utf8.GetBytes("art=$artAusAdresse grenze=$GRENZE ps=$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)")
+    foreach ($d in $script:prueferDateien) { & $teil "pruefer/$([IO.Path]::GetFileName($d))" ([IO.File]::ReadAllBytes($d)) }
+    foreach ($k in $script:gelesen.Keys) { & $teil "liste/$k" $script:gelesen[$k] }
+    return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($strom.ToArray())).ToLowerInvariant()
+}
+
+# Liegt auf dem Weg zu $pfad (so weit er besteht) eine Verknüpfung (Junction, Symlink, Reparse-Point)?
+function MitVerknuepfung([string]$pfad) {
+    for ($p = [IO.Path]::GetFullPath($pfad); $p; $p = [IO.Path]::GetDirectoryName($p)) {
+        if (([IO.File]::Exists($p) -or [IO.Directory]::Exists($p)) -and ([IO.File]::GetAttributes($p) -band [IO.FileAttributes]::ReparsePoint)) { return $true }
+    }
+    return $false
+}
+
+if ($MitCache -and $Hook) { Write-Host 'HINWEIS -MitCache gilt nicht im Hook; die letzte Schranke prüft kalt.' }
+elseif ($MitCache) {
+    $cacheOrt = if ($env:DASHBOARD_PRUEFER_CACHE) { $env:DASHBOARD_PRUEFER_CACHE } elseif ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Dashboard\cache\pruefer' } else { $null }
+    try {
+        if (-not $cacheOrt) { Write-Host 'HINWEIS Ohne LOCALAPPDATA gibt es keinen Prüfer-Cache; geprüft wird kalt.' }
+        else {
+            $regelOrdner = Join-Path $cacheOrt (RegelSchluessel)
+            $datei = Join-Path $regelOrdner 'sauber.txt'
+            if (-not (MitVerknuepfung $datei)) { [void][IO.Directory]::CreateDirectory($regelOrdner) }
+            if (MitVerknuepfung $datei) { Write-Host 'HINWEIS Im Pfad des Prüfer-Caches liegt eine Verknüpfung (Junction oder Symlink); geprüft wird kalt.' }
+            else {
+                $script:cacheDatei = $datei
+                [IO.Directory]::SetLastWriteTimeUtc($regelOrdner, [DateTime]::UtcNow)
+                # Unlesbar oder kein UTF-8: kein Treffer; eine Zeile anderer Form auch nicht.
+                if ([IO.File]::Exists($datei)) {
+                    try { foreach ($z in $strikt.GetString([IO.File]::ReadAllBytes($datei)).Split("`n")) { if ($cacheZeile.IsMatch($z)) { [void]$script:sauber.Add($z) } } }
+                    catch { $script:sauber.Clear() }
+                }
+                # Nur die zwei zuletzt genutzten Regel-Ordner bleiben (dieser ist gerade genutzt).
+                $alt = @([IO.DirectoryInfo]::new($cacheOrt).GetDirectories() | Where-Object { $_.Name -cmatch '^[0-9a-f]{64}$' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
+                    Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 2)
+                foreach ($d in $alt) { try { $d.Delete($true) } catch { } }
+            }
+        }
+    } catch {
+        $script:cacheDatei = $null
+        $script:sauber.Clear()
+        Write-Host "HINWEIS Der Prüfer-Cache ist nicht nutzbar ($(OhneProfil $_.Exception.Message)); geprüft wird kalt."
+    }
+}
+
+# Am Ende eines Laufs ohne jeden Fund: die neuen sauberen Blobs dazu, atomar (temporäre Datei, dann Move).
+function CacheSchreiben {
+    if (-not $script:cacheDatei -or $script:funde.Count -gt 0 -or $script:neuSauber.Count -eq 0) { return }
+    $tmp = "$($script:cacheDatei).$([guid]::NewGuid().ToString('N')).tmp"
+    try {
+        if (MitVerknuepfung $script:cacheDatei) { throw 'Verknüpfung im Pfad' }
+        $script:sauber.UnionWith($script:neuSauber)
+        [IO.File]::WriteAllText($tmp, ([string]::Join("`n", [string[]]@($script:sauber)) + "`n"), $utf8)
+        [IO.File]::Move($tmp, $script:cacheDatei, $true)
+    } catch {
+        try { [IO.File]::Delete($tmp) } catch { }
+        Write-Host 'HINWEIS Der Prüfer-Cache ließ sich nicht schreiben; der nächste Lauf prüft diese Blobs wieder.'
+    }
 }
 
 # Teil 3: main für die Tags, zuerst was dieser Push nach main schickt, dann was
@@ -1416,11 +1541,14 @@ if ($Commits) {
     if ($v -gt 0) { Write-Host "Geprüft: $v weitere Blobs aus den Commits $Commits." }
 }
 
+if ($script:cacheDatei) { Write-Host "Inhalt: $($script:ausCache) Blobs aus dem Cache, $($script:inhaltGeprueft) geprüft." }
+else { Write-Host "Inhalt kalt: $($script:inhaltGeprueft) Blobs geprüft." }
 Write-Host "Geprüft als $artText."
 foreach ($f in $script:funde) { Write-Host $f }
 if ($script:funde.Count -gt 0) {
     Write-Host "$($script:funde.Count) Fund(e). Es geht nichts hinaus; die Werte stehen hier absichtlich nicht."
-    exit 1
+    Ende 1
 }
+CacheSchreiben
 Write-Host 'Nichts gefunden.'
-exit 0
+Ende 0

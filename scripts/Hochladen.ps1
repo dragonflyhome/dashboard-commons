@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Der einzige Weg nach draußen: prüft main ganz und lädt nur dann hoch.
 .DESCRIPTION
@@ -10,7 +11,9 @@
          Fast-Forward),
       3. prüft mit scripts\Vor-Push.ps1 den ganzen Baum von main, alle
          Commits, die hinausgingen (fern..main; Autor, Committer, Nachricht),
-         und dass main dabei nur Merge-Commits bekommt (First-Parent-Linie),
+         und dass main dabei nur Merge-Commits bekommt (First-Parent-Linie);
+         diese Vorprüfung nutzt den Cache sauberer Blobs (-MitCache), der
+         Hook beim Push prüft kalt,
       4. lädt erst dann hoch, und nur refs/heads/main nach refs/heads/main
          (keine anderen Zweige, kein --force, kein --no-verify).
     Mit -Pruefen kein Schritt 4.
@@ -61,6 +64,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Laufzeit.ps1')
+$uhr = UhrStart
 $codeRepo = Split-Path -Parent $PSScriptRoot
 # $repo ist zugleich der Parameter -Repo (PowerShell unterscheidet Groß/Klein nicht).
 if (-not $repo) { $repo = $codeRepo }
@@ -87,7 +92,8 @@ try {
         Write-Host "Abbruch: core.hooksPath dieses Repos zeigt nicht auf die Hooks des Code-Repos. Einmal setzen: git config core.hooksPath <code-repo>/scripts/hooks (absolut)"
         exit 1
     }
-    $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+    # Der Prüfer läuft in derselben PowerShell (mindestens 7.7) wie dieses Skript.
+    $ps = [Environment]::ProcessPath
     if ($Tag) {
         # Ein Tag lässt sich nicht zurücknehmen (Verschieben und Löschen sind ein Fund): kein Push bei einem gemeinten Probelauf.
         if ($Pruefen) { Write-Host 'Abbruch: -Tag geht nicht zusammen mit -Pruefen; -Tag lädt den Tag immer hoch.'; exit 1 }
@@ -117,7 +123,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "git merge-base --is-ancestor endete mit $LASTEXITCODE" }
     }
     $bereich = if ($fern) { "$fern..$main" } else { $main }
-    $argumente = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'Vor-Push.ps1'), '-Repo', $repo, '-Baum', $lokal, '-Commits', $bereich, '-AufMain')
+    $argumente = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'Vor-Push.ps1'), '-Repo', $repo, '-Baum', $lokal, '-Commits', $bereich, '-AufMain', '-MitCache')
     # Die Art (Projekt) kommt nur aus der Adresse und repos.toml, nie aus diesem Skript.
     if ($fremd) {
         # Gepusht wird an die Push-Adressen (pushurl, bei mehreren an alle): genau die prüft er; verschiedene gehen nicht.
@@ -146,4 +152,4 @@ try {
 } catch {
     Write-Host "FEHLER $($_.Exception.Message). Es wurde nichts hochgeladen."
     exit 2
-}
+} finally { try { UhrZeile $uhr } catch { } }

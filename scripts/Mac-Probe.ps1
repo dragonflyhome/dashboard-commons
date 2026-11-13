@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Probe: übersetzt die Bibliothek für macOS (aarch64-apple-darwin), ohne Abbruch.
 .DESCRIPTION

@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Gibt eine neue Fassung des Code-Repos heraus: ein Aufruf, ohne Rückfrage,
     in fester Folge. Jeder rote Schritt bricht ab, bevor etwas hinausgeht.
@@ -81,7 +82,8 @@ $env:DASHBOARD_INHALT = $Inhalt
 if (-not $Dienst) { $Dienst = Join-Path $PSScriptRoot 'Dienst.ps1' }
 # Kinder (cargo, Hooks, Fassung-Festschreiben.ps1) erben denselben Bauordner.
 if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\freigabe' }
-$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+# Kinder (Prüfweg, Dienst.ps1) laufen in derselben PowerShell (mindestens 7.7) wie dieses Skript.
+$ps = [Environment]::ProcessPath
 $TAG_FORM = '^v0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$'
 $lokal = Join-Path $Inhalt 'dashboard-lokal'
 $NICHTS = 'Es ging nichts hinaus.'

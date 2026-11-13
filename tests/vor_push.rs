@@ -29,9 +29,9 @@ const PROJEKT_ADRESSE: &str = "https://git.example.INVALID/Team/projekt";
 /// Die Adresse des Inhalts-Repos in der scp-Form, mit / am Ende.
 const INHALT_ADRESSE: &str = "git@GIT.example.invalid:team/inhalt/";
 
-/// PowerShell 7, sonst Windows PowerShell (beide an festen Orten, ohne Fenster).
+/// PowerShell 7 an festem Ort, ohne Fenster (der Prüfweg verlangt 7.7, kein Rückfall auf Windows PowerShell).
 fn pwsh() -> Option<Command> {
-    [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok())
+    programme::befehl(Werkzeug::PowerShell7).ok()
 }
 
 /// git an festem Ort, ohne Fenster.
@@ -218,9 +218,25 @@ impl Ort {
     }
 
     fn lauf(&self, args: &[&str], eingabe: Option<&str>) -> (i32, String) {
+        self.lauf_mit(&skript(), &self.cache(), args, eingabe)
+    }
+
+    /// Der eigene Cache-Ordner dieses Orts (DASHBOARD_PRUEFER_CACHE).
+    fn cache(&self) -> PathBuf {
+        self.wurzel.join("cache")
+    }
+
+    /// Wie `pruefen`, mit dem Cache sauberer Blobs (wie die Vorprüfung in Hochladen.ps1).
+    fn mit_cache(&self) -> (i32, String) {
+        self.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"], None)
+    }
+
+    /// Ein Lauf mit diesem Prüfer und diesem Cache-Ort.
+    fn lauf_mit(&self, skript: &Path, cache: &Path, args: &[&str], eingabe: Option<&str>) -> (i32, String) {
         let mut c = pwsh().unwrap();
-        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(skript())
+        c.env("DASHBOARD_PRUEFER_CACHE", cache)
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(skript)
             .arg("-Repo")
             .arg(self.repo())
             .arg("-Inhalt")
@@ -1354,6 +1370,14 @@ fn ausnahme_nur_alleinstehend() {
     }
 }
 
+/// Kopiert den Prüfer und die Datei, die er lädt (Laufzeit.ps1), in diesen Ordner.
+fn prueferdateien_kopieren(nach: &Path) {
+    std::fs::create_dir_all(nach).unwrap();
+    for name in ["Vor-Push.ps1", "Laufzeit.ps1"] {
+        std::fs::copy(skript().with_file_name(name), nach.join(name)).unwrap();
+    }
+}
+
 /// Kopiert einen Ordner samt Unterordnern.
 fn ordner_kopieren(von: &Path, nach: &Path) {
     std::fs::create_dir_all(nach).unwrap();
@@ -1383,7 +1407,7 @@ fn inhalt_neben_dem_code_repo() {
     std::fs::write(koeder.join("pruefer").join("namen.toml"), LISTE.replace(SENSIBEL, "sensibel = [\"nurimkoeder\"]")).unwrap();
     let code = o.wurzel.join("ablage").join("code");
     std::fs::create_dir_all(code.join("scripts")).unwrap();
-    std::fs::copy(skript(), code.join("scripts").join("Vor-Push.ps1")).unwrap();
+    prueferdateien_kopieren(&code.join("scripts"));
     ordner_kopieren(&o.wurzel.join("inhalt"), &o.wurzel.join("ablage").join("dashboard-inhalt"));
     let lauf = |umgebung: Option<&Path>| {
         let mut c = pwsh().unwrap();
@@ -2627,7 +2651,7 @@ fn commit_nachricht_nach_conventional_commits() {
     // Ein echter git commit: Der Hook bekommt die Nachricht vor dem Aufräumen (Kommentare noch drin).
     let skripte = o.repo().join("scripts");
     std::fs::create_dir_all(skripte.join("hooks")).unwrap();
-    std::fs::copy(skript(), skripte.join("Vor-Push.ps1")).unwrap();
+    prueferdateien_kopieren(&skripte);
     std::fs::copy(skript().with_file_name("hooks").join("commit-msg"), skripte.join("hooks").join("commit-msg")).unwrap();
     o.git(&["config", "core.hooksPath", "scripts/hooks"]);
     let datei = o.wurzel.join("nachricht.txt").to_string_lossy().to_string();
@@ -2695,7 +2719,7 @@ fn hochladen_main_nach_main() {
     // Skripte und Hooks liegen unversioniert im Repo (Hochladen nimmt den Elternordner als Repo); ausgeschlossen, damit main sauber bleibt.
     let skripte = o.repo().join("scripts");
     std::fs::create_dir_all(skripte.join("hooks")).unwrap();
-    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
+    for name in ["Vor-Push.ps1", "Hochladen.ps1", "Laufzeit.ps1"] {
         std::fs::copy(skript().with_file_name(name), skripte.join(name)).unwrap();
     }
     for name in ["pre-push", "commit-msg"] {
@@ -2718,6 +2742,7 @@ fn hochladen_main_nach_main() {
             .arg(&inhalt)
             .args(args)
             .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
             .output()
             .unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
@@ -2731,7 +2756,9 @@ fn hochladen_main_nach_main() {
     }
     // Ohne Remote: -Pruefen prüft (als Basis), Hochladen bricht ab.
     let (c, text) = hochladen(&["-Pruefen"]);
-    assert!(c == 0 && text.contains("main ginge so nach main"), "{text}");
+    // Die Vorprüfung nutzt den Cache (-MitCache), und beide Skripte nennen Laufzeit und Auslastung.
+    assert!(c == 0 && text.contains("main ginge so nach main") && text.contains("Blobs aus dem Cache"), "{text}");
+    assert!(text.matches("Laufzeit ").count() >= 2, "{text}");
     let (c, text) = hochladen(&[]);
     assert!(c == 1 && text.contains("Es gibt kein Remote origin"), "{text}");
     o.git(&["remote", "add", "origin", &fern.to_string_lossy().replace('\\', "/")]);
@@ -2745,6 +2772,8 @@ fn hochladen_main_nach_main() {
     let (c, text) = hochladen(&[]);
     assert_eq!(c, 0, "{text}");
     assert_eq!(fern_ref("refs/heads/main"), o.git(&["rev-parse", "main"]), "{text}");
+    // Die Vorprüfung nimmt den Cache, der Hook beim Push prüft kalt.
+    assert!(text.contains("Blobs aus dem Cache") && text.contains("Inhalt kalt:"), "{text}");
     // Fast-Forward mit einem weiteren Merge-Commit.
     o.ueber_merge(|o| o.datei("src/c.rs", b"// c\n"));
     let (c, text) = hochladen(&[]);
@@ -2864,7 +2893,7 @@ fn overlay_hooks_und_hochladen() {
     let code = o.wurzel.join("code");
     let hooks = code.join("scripts").join("hooks");
     std::fs::create_dir_all(&hooks).unwrap();
-    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
+    for name in ["Vor-Push.ps1", "Hochladen.ps1", "Laufzeit.ps1"] {
         std::fs::copy(skript().with_file_name(name), code.join("scripts").join(name)).unwrap();
     }
     for name in ["pre-push", "commit-msg"] {
@@ -2900,6 +2929,7 @@ fn overlay_hooks_und_hochladen() {
             .arg(&inhalt)
             .args(args)
             .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
             .output()
             .unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
@@ -3452,4 +3482,272 @@ fn echter_fork_nach_leitfaden() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Cache sauberer Blobs (-MitCache, nur Vorprüfungen; der Hook prüft immer kalt)
+// ---------------------------------------------------------------------------
+
+/// Die Adresse des Basis-Repos aus `REPOS`.
+const BASIS_ADRESSE: &str = "https://git.example.invalid/team/basis.git";
+
+/// Die Zahlen der Zeile „Inhalt: n Blobs aus dem Cache, m geprüft.“ (`None`: kalt).
+fn cache_zahlen(text: &str) -> Option<(usize, usize)> {
+    let z = text.lines().find_map(|z| z.trim().strip_prefix("Inhalt: "))?;
+    let (n, rest) = z.split_once(" Blobs aus dem Cache, ")?;
+    Some((n.parse().ok()?, rest.strip_suffix(" geprüft.")?.parse().ok()?))
+}
+
+/// Die Regel-Ordner (64 Hex-Zeichen) eines Cache-Orts, sortiert.
+fn regel_ordner(cache: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(cache) else { return Vec::new() };
+    let mut v: Vec<PathBuf> = rd.map(|e| e.unwrap().path()).filter(|p| p.is_dir() && p.file_name().is_some_and(|n| n.len() == 64)).collect();
+    v.sort();
+    v
+}
+
+/// Die Cache-Datei des einen Regel-Ordners eines Orts.
+fn cache_datei(o: &Ort) -> PathBuf {
+    let r = regel_ordner(&o.cache());
+    assert_eq!(r.len(), 1, "genau ein Regel-Ordner erwartet: {r:?}");
+    r[0].join("sauber.txt")
+}
+
+/// Ein sauberer erster Lauf mit Cache: gibt die Zahl der geprüften Blobs.
+fn cache_fuellen(o: &Ort) -> usize {
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "{text}");
+    let (aus, geprueft) = cache_zahlen(&text).unwrap_or_else(|| panic!("keine Cache-Zeile: {text}"));
+    assert!(aus == 0 && geprueft > 0, "{text}");
+    geprueft
+}
+
+/// Ein zweiter Lauf mit Cache trifft jeden sauberen Blob und meldet dieselben
+/// Funde wie ein kalter Lauf (Text, Binär, nur_basis, ein Zwischenstand).
+#[test]
+fn cache_warm_meldet_dieselben_funde() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let geprueft = cache_fuellen(&o);
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "{text}");
+    assert_eq!(cache_zahlen(&text), Some((geprueft, 0)), "der zweite Lauf trifft alles: {text}");
+    o.ueber_merge(|o| {
+        o.datei("src/a.rs", b"// nebelfink\n");
+        o.datei("web/static/icons/b.png", &png(true));
+        o.datei("src/zwischen.rs", b"// geheimprojekt\n");
+    });
+    o.ueber_merge(|o| std::fs::remove_file(o.repo().join("src/zwischen.rs")).unwrap());
+    let (ck, kalt) = o.pruefen();
+    assert!(ck == 1 && kalt.contains("Inhalt kalt:") && fundzeilen(&kalt).len() >= 3, "{kalt}");
+    // Zweimal warm: Auch was ein Lauf mit Funden hinterließe, ändert den nächsten nicht.
+    for lauf in 1..=2 {
+        let (cw, warm) = o.mit_cache();
+        assert_eq!(cw, 1, "Lauf {lauf}: {warm}");
+        assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "Lauf {lauf}, kalt:\n{kalt}\nwarm:\n{warm}");
+        assert!(cache_zahlen(&warm).is_some_and(|(n, _)| n > 0), "Lauf {lauf}: der warme Lauf trifft: {warm}");
+    }
+}
+
+/// Ein Lauf mit Fund schreibt nichts in den Cache; der Blob mit Fund steht nie
+/// darin, und jeder weitere Lauf meldet ihn wieder.
+#[test]
+fn cache_merkt_keinen_blob_mit_fund() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    let datei = cache_datei(&o);
+    let vorher = std::fs::read(&datei).unwrap();
+    o.ueber_merge(|o| {
+        o.datei("src/a.rs", b"// geheimprojekt\n");
+        o.datei("src/sauber.rs", b"// sauber\n");
+    });
+    let sha = o.git(&["rev-parse", "main:src/a.rs"]);
+    for lauf in 1..=2 {
+        let (c, text) = o.mit_cache();
+        assert!(c == 1 && text.contains("ABGEWIESEN src/a.rs, Zeile 1: sensibler Name"), "Lauf {lauf}: {text}");
+        let jetzt = std::fs::read(&datei).unwrap();
+        assert_eq!(jetzt, vorher, "Lauf {lauf}: ein Lauf mit Fund schreibt nichts");
+        assert!(!String::from_utf8_lossy(&jetzt).contains(&sha), "Lauf {lauf}: der Blob mit Fund steht nie im Cache");
+    }
+}
+
+/// Jede Änderung an dem, wovon die Inhaltsprüfung abhängt (Listen, repos.toml,
+/// Prüfer, Laufzeit.ps1, Art, Ausnahmedatei), gibt einen neuen Regel-Schlüssel:
+/// kein Treffer. Dieselben Dateien an anderem Ort treffen (nur der Inhalt zählt).
+/// Das Aufräumen behält zwei Regel-Ordner.
+#[test]
+fn cache_neuer_regel_schluessel() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let code = o.wurzel.join("code");
+    prueferdateien_kopieren(&code);
+    let args = ["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"];
+    let lauf = |extra: &[&str]| o.lauf_mit(&code.join("Vor-Push.ps1"), &o.cache(), &[&args[..], extra].concat(), None);
+    let geprueft = cache_fuellen(&o);
+    let (c, text) = lauf(&[]);
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "dieselben Dateien an anderem Ort treffen: {text}");
+    let pruefer = o.wurzel.join("inhalt").join("pruefer");
+    // Je Fall eine Zeile an die Datei anhängen.
+    for (name, datei, zeile) in [
+        ("namen.toml", pruefer.join("namen.toml"), "# geändert\n"),
+        ("tokens", pruefer.join("tokens").join("erfunden.toml"), "# geändert\n"),
+        ("repos.toml", pruefer.join("repos.toml"), "# geändert\n"),
+        ("Vor-Push.ps1", code.join("Vor-Push.ps1"), "\r\n# geändert\r\n"),
+        ("Laufzeit.ps1", code.join("Laufzeit.ps1"), "\r\n# geändert\r\n"),
+    ] {
+        let mut t = std::fs::read(&datei).unwrap();
+        t.extend_from_slice(zeile.as_bytes());
+        std::fs::write(&datei, t).unwrap();
+        let (c, text) = lauf(&[]);
+        assert!(c == 0 && cache_zahlen(&text) == Some((0, geprueft)), "{name}: neuer Schlüssel, kein Treffer: {text}");
+        let (c, text) = lauf(&[]);
+        assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "{name}: der neue Schlüssel trifft beim zweiten Lauf: {text}");
+        assert!(regel_ordner(&o.cache()).len() <= 2, "{name}: das Aufräumen behält zwei: {:?}", regel_ordner(&o.cache()));
+    }
+    // Eine andere Art (Inhalt aus der Adresse) ist ein anderer Schlüssel.
+    let (c, text) = lauf(&["-RemoteUrl", INHALT_ADRESSE]);
+    assert!(c == 0 && text.contains("Geprüft als Inhalts-Repo") && cache_zahlen(&text) == Some((0, geprueft)), "Art: {text}");
+
+    // Im Projekt-Repo: eine Ausnahmedatei (sie gilt nur dort) ist Teil des Schlüssels.
+    let p = Ort::projekt();
+    let proj = |p: &Ort| p.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache", "-RemoteUrl", PROJEKT_ADRESSE], None);
+    let (c, text) = proj(&p);
+    let (_, g) = cache_zahlen(&text).unwrap_or_default();
+    assert!(c == 0 && g > 0, "{text}");
+    let (c, text) = proj(&p);
+    assert!(c == 0 && cache_zahlen(&text) == Some((g, 0)), "{text}");
+    p.ausnahmen("projekt", "erlaubt = [\"geheimprojekt\"]\n");
+    let (c, text) = proj(&p);
+    assert!(c == 0 && text.contains("Ausnahmen für dieses Repo: 1") && cache_zahlen(&text) == Some((0, g)), "Ausnahmedatei: {text}");
+}
+
+/// Derselbe Blob an einem anderen Pfad wird neu geprüft: Was unter
+/// tests/beispiel*/ erlaubt ist (projects/<allgemeiner slug>), ist unter src/ ein Fund.
+#[test]
+fn cache_derselbe_blob_an_anderem_pfad() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/notiz.txt", b"projects/alpha ist hier erlaubt.\n"));
+    assert_eq!(o.git(&["rev-parse", "main:src/notiz.txt"]), o.git(&["rev-parse", "main:tests/beispiel/projects/alpha/notiz.txt"]));
+    let (c, text) = o.mit_cache();
+    assert!(c == 1 && text.contains("ABGEWIESEN src/notiz.txt, Zeile 1: Projektname als Pfad"), "{text}");
+    assert_eq!(cache_zahlen(&text).map(|z| z.1), Some(1), "genau der neue Pfad wird geprüft: {text}");
+}
+
+/// MUSS (Architektur): Ein vergifteter Eintrag („sauber“ für einen Blob mit
+/// Fund, von Hand in den richtigen Regel-Ordner geschrieben) täuscht die
+/// Vorprüfung, nie den Hook: Er prüft kalt, auch mit -MitCache.
+#[test]
+fn cache_vergiftet_der_hook_findet_trotzdem() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/gift.rs", b"// geheimprojekt\n"));
+    let sha = o.git(&["rev-parse", "main:src/gift.rs"]);
+    let datei = cache_datei(&o);
+    let mut t = std::fs::read_to_string(&datei).unwrap();
+    t.push_str(&format!("{sha}\tsrc/gift.rs\n"));
+    std::fs::write(&datei, t).unwrap();
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "die Vorprüfung übernimmt den Eintrag (darum ist sie nie die letzte Schranke): {text}");
+    let (c, text) = o.hook_mit(BASIS_ADRESSE);
+    assert!(c == 1 && text.contains("ABGEWIESEN src/gift.rs, Zeile 1: sensibler Name") && text.contains("Inhalt kalt:"), "Hook: {text}");
+    let kopf = o.git(&["rev-parse", "HEAD"]);
+    let (c, text) = o
+        .lauf(&["-Hook", "-RemoteName", "origin", "-RemoteUrl", BASIS_ADRESSE, "-MitCache"], Some(&format!("refs/heads/main {kopf} refs/heads/main {NULL}\n")));
+    assert!(
+        c == 1 && text.contains("ABGEWIESEN src/gift.rs, Zeile 1: sensibler Name") && text.contains("HINWEIS -MitCache gilt nicht im Hook"),
+        "Hook mit -MitCache: {text}"
+    );
+}
+
+/// Ein kaputter Cache ist nie ein Fehler des Laufs: kein UTF-8 heißt kein
+/// Treffer (kalt geprüft, danach neu geschrieben); eine Zeile anderer Form trifft nicht.
+#[test]
+fn cache_kaputt_ist_kein_treffer() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let geprueft = cache_fuellen(&o);
+    let datei = cache_datei(&o);
+    let gut = std::fs::read_to_string(&datei).unwrap();
+    let mut zeilen: Vec<&str> = gut.lines().collect();
+    zeilen.sort_unstable();
+    std::fs::write(&datei, b"\xff\xfe kaputt\n").unwrap();
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((0, geprueft)) && !text.contains("HINWEIS"), "{text}");
+    let neu = std::fs::read_to_string(&datei).unwrap();
+    let mut neu_zeilen: Vec<&str> = neu.lines().collect();
+    neu_zeilen.sort_unstable();
+    assert_eq!(neu_zeilen, zeilen, "nach dem kalten Lauf wieder geschrieben");
+    // Die Zeile von src/main.rs in anderer Form (SHA groß) und Unsinn: nur diese Zeile trifft nicht.
+    let sha = o.git(&["rev-parse", "main:src/main.rs"]);
+    let kaputt = gut.replace(&format!("{sha}\t"), &format!("{}\t", sha.to_uppercase())) + "unsinn\tsrc/main.rs\n\n";
+    std::fs::write(&datei, kaputt).unwrap();
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft - 1, 1)), "{text}");
+}
+
+/// Eine Junction ohne Administrator (mklink /J); `false`, wenn es nicht ging.
+fn junction(link: &Path, ziel: &Path) -> bool {
+    let Ok(mut c) = programme::befehl(Werkzeug::Cmd) else { return false };
+    c.args(["/c", "mklink", "/J"]).arg(link).arg(ziel).output().is_ok_and(|o| o.status.success()) && link.exists()
+}
+
+/// Eine Verknüpfung im Pfad des Caches (als Ort selbst oder darüber): kein
+/// Cache, ein Satz, kalt geprüft, nichts geschrieben.
+#[test]
+fn cache_nie_ueber_eine_verknuepfung() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let ziel = o.wurzel.join("ziel");
+    std::fs::create_dir_all(&ziel).unwrap();
+    let link = o.wurzel.join("verweis");
+    if !junction(&link, &ziel) {
+        dashboard::ueberspringen("mklink /J ging nicht");
+        return;
+    }
+    for ort in [link.clone(), link.join("cache")] {
+        let (c, text) = o.lauf_mit(&skript(), &ort, &["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"], None);
+        assert!(c == 0 && text.contains("HINWEIS Im Pfad des Prüfer-Caches liegt eine Verknüpfung") && text.contains("Inhalt kalt:"), "{ort:?}: {text}");
+        assert!(std::fs::read_dir(&ziel).unwrap().next().is_none(), "{ort:?}: nichts geschrieben");
+    }
+}
+
+/// Das Aufräumen behält die zwei zuletzt genutzten Regel-Ordner (den eigenen und
+/// den jüngsten anderen); was nicht wie ein Regel-Ordner heißt, bleibt.
+#[test]
+fn cache_aufraeumen_behaelt_zwei() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    for z in ["a", "b", "c"] {
+        std::fs::create_dir_all(o.cache().join(z.repeat(64))).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::fs::create_dir_all(o.cache().join("fremd")).unwrap();
+    cache_fuellen(&o);
+    let mut namen: Vec<String> = std::fs::read_dir(o.cache()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    namen.sort();
+    assert_eq!(namen.len(), 3, "{namen:?}");
+    assert!(
+        namen.contains(&"c".repeat(64)) && namen.contains(&"fremd".to_string()) && !namen.contains(&"a".repeat(64)) && !namen.contains(&"b".repeat(64)),
+        "{namen:?}"
+    );
 }
