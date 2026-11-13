@@ -238,6 +238,10 @@ fn etappe_pruefen(state: &AppState, wert: &str) -> Result<String, AppError> {
     };
     let datei = format!("projects/{projekt}/daten/plan.toml");
     match state.inhalt.bestand().daten(projekt, "plan") {
+        // Abgeschlossen heißt: vor dem Tracker, ohne jede Arbeit.
+        Ok(Some((DatenInhalt::Plan(p), _))) if p.etappe(kennung).is_some_and(|e| e.abgeschlossen) => Err(AppError::unlesbar(format!(
+            "Die Etappe „{kennung}“ ist in {datei} vor dem Tracker abgeschlossen; ihr gehört keine Arbeit an. Eine andere Etappe wählen."
+        ))),
         Ok(Some((DatenInhalt::Plan(p), _))) if p.etappe(kennung).is_some() => Ok(wert.to_string()),
         Ok(Some((DatenInhalt::Plan(p), _))) => {
             let da: Vec<&str> = p.inhalte().into_iter().flat_map(|t| &t.etappe).map(|e| e.kennung.as_str()).collect();
@@ -787,23 +791,22 @@ mod tests {
         // Verlauf: alter und neuer Titel, auch in der Liste der API.
         let (_, l) = schicke(&state, get("/api/arbeiten?projekt=dashboard")).await;
         let verlauf = &l["arbeiten"][0]["verlauf"];
-        assert_eq!(verlauf.as_array().map(Vec::len), Some(1), "{l}");
-        assert_eq!(
-            (verlauf[0]["art"].as_str(), verlauf[0]["alt"].as_str(), verlauf[0]["neu"].as_str()),
-            (Some("titel"), Some("Alter Titel"), Some("Neuer Titel"))
-        );
-        assert_eq!(verlauf[0]["von"].as_str(), Some("chat:dashboard"));
-        assert_eq!(verlauf[0]["text"].as_str(), Some("Titel geändert: „Alter Titel“ → „Neuer Titel“"));
+        assert_eq!(verlauf.as_array().map(Vec::len), Some(2), "{l}");
+        assert_eq!(verlauf[0]["art"].as_str(), Some("stand"), "angelegt mit laeuft");
+        let verlauf = &verlauf[1];
+        assert_eq!((verlauf["art"].as_str(), verlauf["alt"].as_str(), verlauf["neu"].as_str()), (Some("titel"), Some("Alter Titel"), Some("Neuer Titel")));
+        assert_eq!(verlauf["von"].as_str(), Some("chat:dashboard"));
+        assert_eq!(verlauf["text"].as_str(), Some("Titel geändert: „Alter Titel“ → „Neuer Titel“"));
         // Derselbe Titel: nichts geändert.
         let (_, v) = schicke(&state, post(&pfad, &format!(r#"{{{DASH}, "titel": "Neuer Titel"}}"#))).await;
         assert_eq!(v["geaendert"].as_bool(), Some(false));
         assert!(anstehend_changes(&mut changes).is_empty());
         // Titel und fertig zusammen: die Meldung „fertig“ kommt wie bisher (mit
-        // dem neuen Titel), eine für das Umbenennen nicht. Dazu der Wechsel des Stands (dritter Eintrag), der Besitzer wird frei (vierter).
+        // dem neuen Titel), eine für das Umbenennen nicht. Nach dem Anlegen und zwei Titeln der Wechsel des Stands (vierter Eintrag), der Besitzer wird frei (fünfter).
         let (status, v) = schicke(&state, post(&pfad, &format!(r#"{{{DASH}, "titel": "Letzter Titel", "stand": "fertig"}}"#))).await;
-        assert_eq!((status, v["arbeit"]["verlauf"].as_array().map(Vec::len)), (StatusCode::OK, Some(4)), "{v}");
-        assert_eq!(v["arbeit"]["verlauf"][2]["art"].as_str(), Some("stand"), "{v}");
-        assert_eq!((v["arbeit"]["verlauf"][3]["art"].as_str(), v["arbeit"].get("besitzer")), (Some("besitzer"), None), "{v}");
+        assert_eq!((status, v["arbeit"]["verlauf"].as_array().map(Vec::len)), (StatusCode::OK, Some(5)), "{v}");
+        assert_eq!(v["arbeit"]["verlauf"][3]["art"].as_str(), Some("stand"), "{v}");
+        assert_eq!((v["arbeit"]["verlauf"][4]["art"].as_str(), v["arbeit"].get("besitzer")), (Some("besitzer"), None), "{v}");
         let (_, m) = schicke(&state, get("/api/meldungen")).await;
         let m = m["meldungen"].as_array().unwrap();
         assert_eq!(m.len(), meldungen_vorher + 1, "{m:?}");
@@ -832,7 +835,7 @@ mod tests {
         assert_eq!(schicke(&state, post_browser(&pfad, &format!(r#"{{{DASH}, "titel": "t"}}"#))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
         let (_, l) = schicke(&state, get("/api/arbeiten")).await;
         assert_eq!(l["arbeiten"][0]["titel"].as_str(), Some("x".repeat(TITEL_HOECHSTENS).as_str()));
-        assert_eq!(l["arbeiten"][0]["verlauf"].as_array().map(Vec::len), Some(1), "{l}");
+        assert_eq!(l["arbeiten"][0]["verlauf"].as_array().map(Vec::len), Some(2), "{l}");
     }
 
     /// T3: Eine Arbeit mit Besitzer ändert nur er, auch den Titel (sonst 409
@@ -889,7 +892,9 @@ mod tests {
             std::fs::create_dir_all(p.join("daten")).unwrap();
             std::fs::write(p.join("projekt.toml"), "schema = 3\ntitle = \"Probe\"\nstatus = \"aktiv\"\nsummary = \"Erfunden.\"\n").unwrap();
             if let Some(k) = plan {
-                let text = format!("[[etappe]]\nkennung = \"{k}\"\ntitel = \"T\"\nziel = \"Z\"\nreihenfolge = 1\n");
+                let text = format!(
+                    "[[etappe]]\nkennung = \"{k}\"\ntitel = \"T\"\nziel = \"Z\"\nreihenfolge = 1\n[[etappe]]\nkennung = \"alt\"\ntitel = \"A\"\nziel = \"Z\"\nreihenfolge = 2\nabgeschlossen = true\n"
+                );
                 std::fs::write(p.join("daten").join("plan.toml"), text).unwrap();
             }
         }
@@ -899,7 +904,8 @@ mod tests {
             ("b8", SATZ_ETAPPE),
             ("probe/B8", SATZ_ETAPPE),
             ("probe/b8/x", SATZ_ETAPPE),
-            ("probe/b9", "Die Etappe „b9“ gibt es in projects/probe/daten/plan.toml nicht (vorhanden: b8)."),
+            ("probe/b9", "Die Etappe „b9“ gibt es in projects/probe/daten/plan.toml nicht (vorhanden: b8, alt)."),
+            ("probe/alt", "Die Etappe „alt“ ist in projects/probe/daten/plan.toml vor dem Tracker abgeschlossen;"),
             ("ohne/b8", "projects/ohne/daten/plan.toml gibt es nicht."),
             ("fehlt/b8", "projects/fehlt/daten/plan.toml gibt es nicht."),
         ] {
@@ -1038,6 +1044,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         let fertig = neu(&state, &format!(r#"{{{p}, "titel": "Fertig", "stand": "fertig", "etappe": "probe/c1"}}"#)).await;
         let spaeter = neu(&state, &format!(r#"{{{p}, "titel": "Später", "stand": "als-naechstes", "frist": "{}"}}"#, tag(10))).await;
+        let verpasst = neu(&state, &format!(r#"{{{p}, "titel": "Verpasst", "stand": "als-naechstes", "frist": "{}"}}"#, tag(-1))).await;
         neu(&state, r#"{"projekt": "anderes", "von": "chat:anderes", "titel": "Fremd", "stand": "laeuft"}"#).await;
         let s = state.speicher.clone().unwrap();
         let (bau, _) = s.vorgang_anlegen(VorgangsArt::Bau, "probe", "Bau der Seite", None, "baumeister").unwrap();
@@ -1060,6 +1067,9 @@ mod tests {
         for projekt in ["probe", "anderes"] {
             s.meldung_melden(meldung(projekt), Wiederholung::Zustand, &aufgaben::jetzt()).unwrap();
         }
+        // Dieselbe Sache als Meldung: roter Bau (steht schon als `bau`).
+        let bau_rot = NeueMeldung { art: MeldungsArt::Fehler, schluessel: "probe/bau-rot".into(), titel: "Bau rot".into(), ..meldung("probe") };
+        s.meldung_melden(bau_rot, Wiederholung::Zustand, &aufgaben::jetzt()).unwrap();
         let (status, v) = schicke(&state, get("/api/projekte/probe/verlauf")).await;
         assert_eq!(status, StatusCode::OK, "{v}");
         let e = v["ereignisse"].as_array().unwrap();
@@ -1068,7 +1078,8 @@ mod tests {
         let paar = |q: &str, a: &str| (q.to_string(), a.to_string());
         assert_eq!(qa(finde("hand:start")), paar("hand", "erledigt"));
         assert_eq!(qa(finde(&format!("arbeit:{laeuft}:begonnen"))), paar("arbeit", "begonnen"));
-        assert_eq!(qa(finde(&format!("arbeit:{fertig}:fertig"))), paar("arbeit", "erledigt"));
+        let f = finde(&format!("arbeit:{fertig}:fertig"));
+        assert_eq!((qa(f), f["text"].is_null()), (paar("arbeit", "erledigt"), true), "fertig angelegt: Zeitpunkt genau");
         assert_eq!(qa(finde("etappe:c1")), paar("arbeit", "erledigt"), "c1 hat nur die fertige Arbeit");
         assert!(!e.iter().any(|x| x["kennung"] == "etappe:b8"), "b8 läuft noch: {v}");
         assert!(e.iter().any(|x| x["quelle"] == "schritt" && x["kennung"].as_str().unwrap().starts_with(&format!("schritt:{laeuft}/"))), "{v}");
@@ -1077,8 +1088,10 @@ mod tests {
         assert_eq!(qa(finde(&format!("vorgang:{}", abnahme.id))), paar("vorgang", "begonnen"));
         let frist = finde(&format!("frist:arbeit:{spaeter}"));
         assert_eq!((qa(frist), frist["genauigkeit"].as_str()), (paar("frist", "geplant"), Some("tag")));
+        assert_eq!(qa(finde(&format!("frist:arbeit:{verpasst}"))), paar("frist", "problem"), "verstrichen ist nicht geplant");
         assert_eq!(qa(finde("entscheidung:e-probe.toml")), paar("entscheidung", "erledigt"));
-        // Dazu kommt die Meldung „Fertig: …“ des Servers zur fertigen Arbeit.
+        // Kein Inhalt in zwei Zeilen: keine Meldung „Fertig: …“ und kein `bau-rot` neben dem roten Bau.
+        assert!(!e.iter().any(|x| x["quelle"] == "meldung" && (x["titel"].as_str().unwrap().starts_with("Fertig") || x["titel"] == "Bau rot")), "{v}");
         assert_eq!(e.iter().filter(|x| x["quelle"] == "meldung" && x["titel"] == "Hinweis").count(), 1, "nur die Meldung des Projekts: {v}");
         assert!(!v.to_string().contains("Fremd") && !v.to_string().contains("Für anderes") && !v.to_string().contains("Ohne Feld"), "{v}");
         assert!(v["hinweise"].as_array().unwrap().is_empty(), "{v}");
@@ -1087,6 +1100,9 @@ mod tests {
         assert!(!v.to_string().contains(&format!("frist:arbeit:{spaeter}")) && v.to_string().contains("hand:start"), "{v}");
         let (status, _) = schicke(&state, get("/api/projekte/probe/verlauf?seit=gestern")).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        // „seit“ allein darf 400 Tage zurück; die Vorschau ohne „bis“ zählt nicht mit.
+        let (status, v) = schicke(&state, get(&format!("/api/projekte/probe/verlauf?seit={}", tag(-350)))).await;
+        assert_eq!(status, StatusCode::OK, "{v}");
         // Ohne Datenspeicher: der Eintrag von Hand bleibt, dazu der Hinweis.
         let ohne = AppState::fuer_tests_ohne_speicher(&ordner, "kaputt");
         let (status, v) = schicke(&ohne, get("/api/projekte/probe/verlauf")).await;

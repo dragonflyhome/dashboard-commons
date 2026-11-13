@@ -28,14 +28,18 @@ Hinzugefügt
   verantwortet (sonst 409).
 - Jeder Wechsel des Stands einer Arbeit steht in ihrem Verlauf (art stand,
   alt und neu als Stand-Wort), ob von Hand gesetzt oder aus den Schritten
-  abgeleitet; eine geänderte Etappe ebenso (art etappe).
+  abgeleitet; eine geänderte Etappe ebenso (art etappe). Wird eine Arbeit
+  gleich mit laeuft, wartet oder fertig angelegt, steht das als Eintrag
+  stand mit leerem alt da.
 - GET /api/projekte/<slug>/plan (geschützt wie /backlog): die Etappen aus
   daten/plan.toml in ihrer Reihenfolge mit Stand (geplant, laeuft, fertig,
   vor-dem-tracker), x von y Arbeiten fertig, begonnen, fertig,
-  gewachsen_seit und den Arbeiten mit Titel und Stand, auch archivierte und
+  gewachsen_seit (seit wann und wie viele Arbeiten nach dem Beginn dazukamen,
+  auch durch eine spätere Zuordnung) und den Arbeiten mit Titel und Stand, auch archivierte und
   solche aus anderen Projekten (aus); Arbeiten, deren Etappe nicht mehr in
   plan.toml steht, in ohne_etappe. Ohne Eintrag stand im Verlauf gilt der
-  letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr).
+  letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr); lief die
+  Arbeit vor ihrem ersten Eintrag schon, beginnt sie bei erstellt.
 - Live: Zeigt die Etappe einer Arbeit auf ein anderes Projekt, kommt
   anstehend/<slug> auch für jenes; ebenso bei einer geänderten
   daten/plan.toml.
@@ -43,9 +47,11 @@ Hinzugefügt
   Zeitleiste eines Projekts in derselben Form wie /api/pc/verlauf, mit den
   neuen Quellen arbeit (Beginn, Ende, fertige Etappe), schritt, frage
   (beantwortet), entscheidung, bau (rot problem, sonst routine) und frist
-  (offene Fristen mit Datum, art geplant), dazu daten/zeitstrahl.toml als
-  hand sowie Vorgänge und Meldungen des Projekts. Ohne bis reicht der
-  Zeitraum 90 Tage über heute hinaus.
+  (offene Fristen mit Datum, art geplant, verstrichene problem), dazu
+  daten/zeitstrahl.toml als hand sowie Vorgänge und Meldungen des Projekts;
+  Meldungen „Fertig: …“ und bau-rot fehlen dort, weil sie als Arbeit und Bau
+  schon dastehen. Ohne bis reicht der Zeitraum 90 Tage über heute hinaus;
+  diese Vorschau zählt nicht gegen die Höchstlänge.
 - Entscheidungsdateien können projekte = ["slug"] nennen; nur dann
   erscheinen sie in der Zeitleiste dieser Projekte. pruefe --alle meldet
   unbekannte Slugs und eine andere Form als eine Liste als Fehler.
@@ -56,15 +62,17 @@ Hinzugefügt
   Arbeit ist offen, aber seit sieben Tagen hat sich an keiner Arbeit des
   Projekts etwas geändert, gelb).
 - GET /api/projekte/<slug>/backlog: Karten von Arbeiten tragen etappe,
-  besitzer und schritte.
+  besitzer und schritte; „Als Nächstes“ steht zuerst nach der Reihenfolge
+  der Etappe, ohne Etappe zuletzt.
+- Eine Etappe mit abgeschlossen = true nimmt keine Arbeit an (422).
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
   Schema 10 wird beim Start nach einer Sicherung umgestellt, ohne dass sich
   eine Arbeit ändert; ältere Programme öffnen sie danach nicht mehr.
-- Ein Wechsel auf laeuft oder wartet zählt bei vollem Verlauf einer Arbeit
-  gegen die Grenze von 500 Einträgen; auf als-naechstes und fertig geht
-  weiterhin immer.
+- Ein Wechsel des Stands zählt bei vollem Verlauf einer Arbeit gegen die
+  Grenze von 500 Einträgen, auch Wiederöffnen aus fertig; auf fertig und
+  das Abgeben aus laeuft oder wartet gehen weiterhin immer.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
 

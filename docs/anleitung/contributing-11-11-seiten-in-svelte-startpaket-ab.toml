@@ -152,7 +152,7 @@ zeilen = [
   ['Für dich', 'offene Aufgaben, die eine sichtbare Frage, Arbeiten mit "wartet_auf": "inhaber" ohne verweis'],
   ['Läuft', 'Arbeiten mit "stand": "laeuft"'],
   ['Wartet', 'Arbeiten mit "stand": "wartet" (auf einen Chat, extern oder auf den Inhaber mit verweis), Aufgaben beim Chat (eigene Worte des Inhabers)'],
-  ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes"'],
+  ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes", zuerst nach der Reihenfolge ihrer Etappe in daten/plan.toml, ohne Etappe zuletzt'],
 ]
 
 [[block]]

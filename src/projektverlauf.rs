@@ -7,11 +7,12 @@
 
 use chrono::NaiveDate;
 
-use crate::api::pc::aus_vorgang;
+use crate::api::pc::{aus_meldung, aus_vorgang};
 use crate::api::system_seiten::projekte_der;
 use crate::speicher::antworten::aus_bezug;
-use crate::vertrag::anstehend::{Arbeit, ArbeitsStand};
-use crate::vertrag::api::{BauZustand, Vorgang, VorgangsArt};
+use crate::speicher::meldungen::schluessel;
+use crate::vertrag::anstehend::{Arbeit, ArbeitsStand, Meldung};
+use crate::vertrag::api::{BauZustand, MeldungsArt, Vorgang, VorgangsArt};
 use crate::vertrag::daten::Datei;
 use crate::vertrag::fristen::FristenListe;
 use crate::vertrag::plan::{EtappenStand, Plan};
@@ -47,7 +48,8 @@ pub fn aus_arbeiten(slug: &str, plan: Option<&Datei<Plan>>, arbeiten: &[(Arbeit,
             let fertig = e.neu.split(',').next().is_some_and(|w| w.trim() == ArbeitsStand::Fertig.wort());
             let art = if fertig { Art::Erledigt } else { Art::Routine };
             let kennung = format!("schritt:{}/{nr}:{n}", a.id);
-            liste.push(ereignis(kennung, e.zeit.clone(), titel, Some(e.text.clone()), Quelle::Schritt, art, ziel.clone()));
+            let text = format!("Bei „{}“: {}", a.titel, e.text);
+            liste.push(ereignis(kennung, e.zeit.clone(), titel, Some(text), Quelle::Schritt, art, ziel.clone()));
         }
     }
     let p = crate::plan::plan(slug, plan, arbeiten);
@@ -103,7 +105,7 @@ pub fn aus_entscheidungen(slug: &str, l: &EntscheidungsListe) -> Vec<Ereignis> {
     liste
 }
 
-/// Die offenen Fristen mit Datum als `geplant` (Tag genau); Fristen, die an
+/// Die offenen Fristen mit Datum als `geplant`, verstrichene als `problem` (Tag genau); Fristen, die an
 /// einem Ereignis ohne Datum hängen, fehlen.
 pub fn aus_fristen(f: &FristenListe) -> Vec<Ereignis> {
     let mut liste = Vec::new();
@@ -116,11 +118,20 @@ pub fn aus_fristen(f: &FristenListe) -> Vec<Ereignis> {
             &z.titel,
             z.hinweis.clone(),
             Quelle::Frist,
-            Art::Geplant,
+            if z.tage_bis.is_some_and(|t| t < 0) { Art::Problem } else { Art::Geplant },
             z.ziel.clone(),
         );
         x.genauigkeit = Genauigkeit::Tag;
         liste.push(x);
     }
     liste
+}
+
+/// Die Meldungen von `slug` ohne die, die schon eine eigene Zeile haben
+/// („Kein Inhalt steht in zwei Teilen“): „Fertig: …“ steht als
+/// `arbeit:<id>:fertig`, `<slug>/bau-rot` als roter Bau, sobald einer da ist.
+pub fn aus_meldungen(slug: &str, meldungen: &[Meldung], ereignisse: &[Ereignis]) -> Vec<Ereignis> {
+    let roter_bau = ereignisse.iter().any(|e| e.quelle == Quelle::Bau && e.art == Art::Problem);
+    let bau_rot = schluessel(slug, "bau-rot");
+    meldungen.iter().filter(|m| m.projekt == slug && m.art != MeldungsArt::Fertig && !(roter_bau && m.schluessel == bau_rot)).map(aus_meldung).collect()
 }

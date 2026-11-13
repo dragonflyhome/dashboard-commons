@@ -41,20 +41,23 @@ pub(crate) struct Zeiten {
     pub ungefaehr: bool,
 }
 
-pub(crate) fn zeiten(a: &Arbeit) -> Zeiten {
+pub(crate) fn zeiten<'a>(a: &'a Arbeit) -> Zeiten {
     let mut begonnen = None;
     let (mut fertig_stand, mut fertig_schritt) = (None, None);
     for e in &a.verlauf {
         // SchrittAngelegt trägt in `neu` meist den Titel, keinen Stand.
-        let (neu, aus_stand) = match e.art {
-            ArbeitVerlaufArt::Stand => (e.neu.as_str(), true),
+        let erstes = |s: &'a str| s.split(',').next().unwrap_or_default().trim();
+        let (alt, neu, aus_stand) = match e.art {
+            ArbeitVerlaufArt::Stand => (e.alt.as_str(), e.neu.as_str(), true),
             ArbeitVerlaufArt::SchrittUebernommen | ArbeitVerlaufArt::SchrittGeaendert | ArbeitVerlaufArt::SchrittGeweckt => {
-                (e.neu.split(',').next().unwrap_or_default().trim(), false)
+                (erstes(&e.alt), erstes(&e.neu), false)
             }
             _ => continue,
         };
-        if begonnen.is_none() && matches!(ArbeitsStand::aus_wort(neu), Some(ArbeitsStand::Laeuft | ArbeitsStand::Wartet | ArbeitsStand::Fertig)) {
-            begonnen = Some(e.zeit.clone());
+        let begonnen_bei = |w: &str| matches!(ArbeitsStand::aus_wort(w), Some(ArbeitsStand::Laeuft | ArbeitsStand::Wartet | ArbeitsStand::Fertig));
+        if begonnen.is_none() {
+            // Lief sie vor dem ersten Eintrag schon (Altbestand: erstes Wort von alt), gilt `erstellt`.
+            begonnen = if begonnen_bei(alt) { Some(a.erstellt.clone()) } else { begonnen_bei(neu).then(|| e.zeit.clone()) };
         }
         if neu == ArbeitsStand::Fertig.wort() {
             *(if aus_stand { &mut fertig_stand } else { &mut fertig_schritt }) = Some(e.zeit.clone());
@@ -81,7 +84,7 @@ fn plan_arbeit(a: &Arbeit, archiviert: bool, slug: &str, z: &Zeiten) -> PlanArbe
     }
 }
 
-fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanEtappe {
+fn etappe_rechnen<'a>(e: &Etappe, arbeiten: &[(&'a Arbeit, bool)], slug: &str) -> PlanEtappe {
     let zeiten: Vec<Zeiten> = arbeiten.iter().map(|(a, _)| zeiten(a)).collect();
     let gesamt = arbeiten.len() as u32;
     let fertig_n = arbeiten.iter().filter(|(a, _)| a.stand == ArbeitsStand::Fertig).count() as u32;
@@ -95,7 +98,11 @@ fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanE
     };
     let ist_fertig = stand == EtappenStand::Fertig;
     let beginn = begonnen.as_deref().and_then(zeit);
-    let dazugekommen = arbeiten.iter().filter(|(a, _)| beginn.is_some_and(|b| zeit(&a.erstellt).is_some_and(|t| t > b))).count() as u32;
+    // Seit wann eine Arbeit zur Etappe gehört: der letzte Eintrag `etappe` dorthin, sonst `erstellt`.
+    let ziel = format!("{slug}/{}", e.kennung);
+    let zugeordnet = |a: &'a Arbeit| a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel).map_or(&a.erstellt, |v| &v.zeit);
+    let spaeter: Vec<&String> = arbeiten.iter().map(|(a, _)| zugeordnet(a)).filter(|z| beginn.is_some_and(|b| zeit(z).is_some_and(|t| t > b))).collect();
+    let dazugekommen = spaeter.len() as u32;
     PlanEtappe {
         kennung: e.kennung.clone(),
         titel: e.titel.clone(),
@@ -107,7 +114,7 @@ fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanE
         arbeiten_gesamt: gesamt,
         fertig: if ist_fertig { grenzwert(zeiten.iter().filter_map(|z| z.fertig.as_ref()), true) } else { None },
         ungefaehr: ist_fertig && zeiten.iter().any(|z| z.ungefaehr),
-        gewachsen_seit: if dazugekommen > 0 { begonnen.clone() } else { None },
+        gewachsen_seit: grenzwert(spaeter.into_iter(), false),
         begonnen,
         dazugekommen,
         arbeiten: arbeiten.iter().zip(&zeiten).map(|((a, arch), z)| plan_arbeit(a, *arch, slug, z)).collect(),
@@ -230,8 +237,8 @@ mod tests {
         assert_eq!(eins.arbeiten[0].aus, None);
         // Beginn: die fertige ohne Verlauf ab erstellt; nicht fertig, also kein Fertig-Zeitpunkt.
         assert_eq!((eins.begonnen.clone(), eins.fertig.clone()), (Some(t(1, 9)), None));
-        // Zwei Arbeiten kamen nach dem Beginn dazu.
-        assert_eq!((eins.gewachsen_seit.clone(), eins.dazugekommen), (Some(t(1, 9)), 2));
+        // Zwei Arbeiten kamen nach dem Beginn dazu, die erste am 2.
+        assert_eq!((eins.gewachsen_seit.clone(), eins.dazugekommen), (Some(t(2, 9)), 2));
         // Über die Liste in plan.toml, aus dem Archiv, Fertig-Zeitpunkt aus dem Verlauf.
         let zwei = &p.etappen[1];
         assert_eq!((zwei.arbeiten_fertig, zwei.arbeiten_gesamt), (1, 1));
@@ -273,5 +280,30 @@ mod tests {
         let geplant = arbeit("ar-20261103-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(3, 9), t(3, 9));
         let p = plan("p", Some(&datei(PLAN)), &[(geplant, false)]);
         assert_eq!((p.etappen[0].stand, p.etappen[0].begonnen.clone(), p.etappen[0].dazugekommen), (EtappenStand::Geplant, None, 0));
+    }
+
+    /// Lief eine Arbeit vor ihrem ersten Eintrag schon (erstes Wort von alt),
+    /// beginnt sie bei `erstellt`, nicht beim späteren Wechsel.
+    #[test]
+    fn beginn_vor_dem_ersten_eintrag() {
+        let mut a = arbeit("ar-20261101-0001", "p", ArbeitsStand::Fertig, Some("p/eins"), t(1, 9), t(5, 9));
+        a.verlauf.push(eintrag(ArbeitVerlaufArt::SchrittGeaendert, t(5, 9), "laeuft, dran: chat:p", "fertig, dran: chat:p"));
+        let z = zeiten(&a);
+        assert_eq!((z.begonnen, z.fertig), (Some(t(1, 9)), Some(t(5, 9))));
+        a.verlauf = vec![eintrag(ArbeitVerlaufArt::Stand, t(5, 9), "wartet", "fertig")];
+        assert_eq!(zeiten(&a).begonnen, Some(t(1, 9)));
+    }
+
+    /// Eine ältere Arbeit, die erst nach dem Beginn der Etappe zugeordnet
+    /// wird (Eintrag `etappe`), ist dazugekommen; seit dem Tag der Zuordnung.
+    #[test]
+    fn spaeter_zugeordnet_ist_dazugekommen() {
+        let mut lauf = arbeit("ar-20261102-0001", "p", ArbeitsStand::Laeuft, Some("p/eins"), t(2, 9), t(2, 9));
+        lauf.verlauf.push(eintrag(ArbeitVerlaufArt::Stand, t(2, 9), "", "laeuft"));
+        let mut alt = arbeit("ar-20261101-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(1, 9), t(4, 9));
+        alt.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, t(4, 9), "", "p/eins"));
+        let p = plan("p", Some(&datei(PLAN)), &[(lauf, false), (alt, false)]);
+        let eins = &p.etappen[0];
+        assert_eq!((eins.begonnen.clone(), eins.dazugekommen, eins.gewachsen_seit.clone()), (Some(t(2, 9)), 1, Some(t(4, 9))));
     }
 }

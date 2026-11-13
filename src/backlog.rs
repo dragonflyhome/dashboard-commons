@@ -22,12 +22,14 @@
 //! (`/api/projekte/<slug>/plan`), ihre Zahl der Stand (`fertig_7_tage`).
 //! Karten von Arbeiten tragen Etappe, Besitzer und Schritte.
 //!
-//! In einer Spalte stehen die Karten wie in „Anstehend“: wirksame Stufe,
+//! In einer Spalte stehen die Karten wie in „Anstehend“ (in „Als Nächstes“
+//! zuerst nach der Reihenfolge der Etappe): wirksame Stufe,
 //! Frist (ohne Frist zuletzt), Alter, Kennung. Wartende Einträge stehen
 //! zusätzlich je Verantwortlichem ([`WartendGruppe`]): Inhaber, dann die
 //! Chats nach Name, dann extern.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::anstehend::{INHABER, Inhalt, ZUSTAND_BEIM_CHAT, alle_eintraege, fragen_auswahl, ist_sichtbar};
 use crate::vertrag::api::{AnstehendEintrag, ArbeitsStand, EintragsArt};
@@ -117,6 +119,12 @@ fn vergleich(a: &AnstehendEintrag, b: &AnstehendEintrag) -> Ordering {
         .then_with(|| a.id.cmp(&b.id))
 }
 
+/// Die Projekte, auf deren Etappen Arbeiten von `slug` zeigen (deren
+/// `plan.toml` braucht `backlog` für die Reihenfolge).
+pub fn etappen_projekte<'a>(inhalt: &'a Inhalt, slug: &str) -> BTreeSet<&'a str> {
+    inhalt.speicher.arbeiten.iter().filter(|a| a.projekt == slug).filter_map(|a| a.etappe.as_deref()?.split_once('/').map(|(p, _)| p)).collect()
+}
+
 /// Die wartenden Karten je Verantwortlichem: Inhaber, Chats nach Name, extern.
 pub fn wartend_gruppen(karten: &[BacklogKarte]) -> Vec<WartendGruppe> {
     let mut gruppen: Vec<WartendGruppe> = Vec::new();
@@ -132,8 +140,10 @@ pub fn wartend_gruppen(karten: &[BacklogKarte]) -> Vec<WartendGruppe> {
 }
 
 /// Das Backlog eines Projekts; `None`, wenn es das Projekt nicht gibt.
-/// `kanban_datei`: Das Projekt hat noch `daten/kanban.toml`.
-pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool) -> Option<Backlog> {
+/// `kanban_datei`: Das Projekt hat noch `daten/kanban.toml`. `reihenfolge`:
+/// `<projekt>/<kennung>` einer Etappe → ihre Reihenfolge in `plan.toml`
+/// ([`etappen_projekte`]); „Als Nächstes“ steht zuerst danach, ohne Etappe zuletzt.
+pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool, reihenfolge: &BTreeMap<String, u32>) -> Option<Backlog> {
     inhalt.projekte.iter().find(|p| p.slug == slug)?;
     let mut offen: Vec<AnstehendEintrag> = alle_eintraege(inhalt).into_iter().filter(|e| e.projekt == slug).collect();
     offen.sort_by(vergleich);
@@ -150,6 +160,11 @@ pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool) -> Option<Backlo
         if let Some(art) = spalte_von(e) {
             in_spalte(art, karte(inhalt, e, art));
         }
+    }
+    if let Some(s) = spalten.iter_mut().find(|s| s.art == BacklogSpaltenArt::AlsNaechstes) {
+        // Stabil: innerhalb einer Etappe bleibt die Folge aus `vergleich`.
+        // shortcut: Etappen anderer Projekte zählen nach ihrer eigenen Nummer; eigene Regel, wenn das stört.
+        s.karten.sort_by_key(|k| k.etappe.as_ref().and_then(|e| reihenfolge.get(e)).map_or((true, 0), |r| (false, *r)));
     }
     let wartende: Vec<BacklogKarte> =
         spalten.iter().filter(|s| matches!(s.art, BacklogSpaltenArt::FuerDich | BacklogSpaltenArt::Wartet)).flat_map(|s| s.karten.iter().cloned()).collect();
@@ -287,7 +302,7 @@ mod tests {
     /// Fragen-Warteschlange zeigt nur eine Frage mit dem Satz zu den übrigen.
     #[test]
     fn spalten_aus_stand_und_status() {
-        let b = backlog(&inhalt(), "beispiel", true).unwrap();
+        let b = backlog(&inhalt(), "beispiel", true, &BTreeMap::new()).unwrap();
         let arten: Vec<BacklogSpaltenArt> = b.spalten.iter().map(|s| s.art).collect();
         assert_eq!(arten, BacklogSpaltenArt::ALLE, "alle vier, auch leere, in fester Folge");
         assert_eq!(arten.len(), 4, "Etappe B8: ohne „Fertig“");
@@ -307,8 +322,8 @@ mod tests {
         let beim_chat = &s(BacklogSpaltenArt::Wartet).karten[4];
         assert_eq!((beim_chat.zustand.as_str(), beim_chat.wartet_auf.as_deref()), ("beim-chat", Some("chat:beispiel")));
         // Ein anderes Projekt ist leer, ein unbekanntes `None`.
-        assert!(backlog(&inhalt(), "anderes", false).unwrap().spalten.iter().all(|s| s.karten.is_empty()));
-        assert!(backlog(&inhalt(), "gibt-es-nicht", false).is_none());
+        assert!(backlog(&inhalt(), "anderes", false, &BTreeMap::new()).unwrap().spalten.iter().all(|s| s.karten.is_empty()));
+        assert!(backlog(&inhalt(), "gibt-es-nicht", false, &BTreeMap::new()).is_none());
     }
 
     /// Etappe B8: Karten von Arbeiten tragen Etappe, Besitzer und Schritte;
@@ -332,12 +347,34 @@ mod tests {
             notiz: None,
             vorgang: None,
         }];
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         let k = &b.spalten[1].karten[0];
         assert_eq!((k.id.as_str(), k.etappe.as_deref(), k.besitzer.as_deref()), ("ar-20261102-0001", Some("beispiel/b8"), Some("chat:beispiel")));
         assert_eq!(k.schritte.iter().map(|s| s.titel.as_str()).collect::<Vec<_>>(), ["Vertrag"]);
         let andere: Vec<&BacklogKarte> = b.spalten.iter().flat_map(|s| &s.karten).filter(|k| k.id != "ar-20261102-0001").collect();
         assert!(andere.iter().all(|k| k.etappe.is_none() && k.besitzer.is_none() && k.schritte.is_empty()));
+    }
+
+    /// Etappe B8: „Als Nächstes“ zuerst nach der Reihenfolge der Etappe, auch
+    /// gegen die Stufe; ohne (bekannte) Etappe zuletzt, dort weiter nach Stufe.
+    #[test]
+    fn als_naechstes_nach_etappen_reihenfolge() {
+        let mut i = inhalt();
+        let mut neu = |id: &str, stufe: Stufe, etappe: Option<&str>| {
+            let mut a = arbeit(id, ArbeitsStand::AlsNaechstes, None, None);
+            a.prioritaet = stufe;
+            a.etappe = etappe.map(str::to_string);
+            i.speicher.arbeiten.push(a);
+        };
+        neu("ar-20261102-0101", Stufe::Jetzt, Some("beispiel/spaet"));
+        neu("ar-20261102-0102", Stufe::Irgendwann, Some("beispiel/frueh"));
+        neu("ar-20261102-0103", Stufe::Jetzt, Some("beispiel/unbekannt"));
+        assert_eq!(etappen_projekte(&i, "beispiel").into_iter().collect::<Vec<_>>(), ["beispiel"]);
+        let reihenfolge = BTreeMap::from([("beispiel/frueh".to_string(), 1), ("beispiel/spaet".to_string(), 2)]);
+        let b = backlog(&i, "beispiel", false, &reihenfolge).unwrap();
+        let s = b.spalten.iter().find(|s| s.art == BacklogSpaltenArt::AlsNaechstes).unwrap();
+        let ids: Vec<&str> = s.karten.iter().map(|k| k.id.as_str()).collect();
+        assert_eq!(ids, ["ar-20261102-0102", "ar-20261102-0101", "ar-20261102-0103", "ar-20261102-0006"]);
     }
 
     /// Etappe B8, Gleichheit von Stand und Backlog: Die Zahlen des Stands
@@ -352,7 +389,7 @@ mod tests {
         let mut alt = arbeit("ar-20261027-0001", ArbeitsStand::Fertig, None, None);
         alt.geaendert = "2026-10-27T23:00:00+01:00".into();
         i.speicher.arbeiten.push(alt);
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         let groesse = |a: BacklogSpaltenArt| b.spalten.iter().find(|s| s.art == a).unwrap().karten.len() as u64;
         for sichtbar in [false, true] {
             let s = crate::anstehend::stand(&i, "beispiel", sichtbar).unwrap();
@@ -369,7 +406,7 @@ mod tests {
     /// Arbeit mit Verweis), dann die Chats nach Name, dann extern.
     #[test]
     fn wartende_je_verantwortlichem() {
-        let b = backlog(&inhalt(), "beispiel", false).unwrap();
+        let b = backlog(&inhalt(), "beispiel", false, &BTreeMap::new()).unwrap();
         let gruppen: Vec<(&str, Vec<&str>)> = b.wartend.iter().map(|g| (g.wer.as_str(), g.karten.iter().map(|k| k.id.as_str()).collect())).collect();
         assert_eq!(
             gruppen,
@@ -402,7 +439,7 @@ mod tests {
     fn warteschlange_rueckt_nach() {
         let mut i = inhalt();
         i.speicher.beantwortet.insert(crate::speicher::antworten::antwort_schluessel("beispiel", "farbe", "2026-11-01"));
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         let fuer_dich = &b.spalten[0];
         assert!(fuer_dich.karten.iter().any(|k| k.id == "name" && k.hinweis.as_deref() == Some("noch 1 Frage wartet")));
         assert_eq!(b.fragen_weitere, 1);
@@ -414,7 +451,7 @@ mod tests {
             stufe: Some(Stufe::Jetzt),
             zeit: "2026-11-03T08:00:00+01:00".into(),
         });
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         assert!(b.spalten[0].karten.iter().any(|k| k.id == "termin"));
         assert!(!b.spalten[0].karten.iter().any(|k| k.id == "name"));
     }
@@ -425,7 +462,7 @@ mod tests {
         let mut i = inhalt();
         i.speicher = AusDemSpeicher::default();
         i.speicher_fehlt = true;
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         assert!(b.speicher_fehlt);
         let alle: Vec<&str> = b.spalten.iter().flat_map(|s| s.karten.iter().map(|k| k.id.as_str())).collect();
         assert_eq!(alle, ["farbe"]);

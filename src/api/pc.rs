@@ -307,7 +307,8 @@ async fn projekt_quellen(
                 })?;
             ereignisse.extend(pv::aus_arbeiten(slug, plan.as_ref(), &arbeiten));
             ereignisse.extend(pv::aus_vorgaengen(slug, &vorgaenge));
-            ereignisse.extend(meldungen.iter().filter(|m| m.projekt == slug).map(aus_meldung));
+            let ohne_doppelte = pv::aus_meldungen(slug, &meldungen, ereignisse);
+            ereignisse.extend(ohne_doppelte);
         }
     }
     let inhalt = super::anstehend::inhalt_sammeln(state).await?;
@@ -348,14 +349,15 @@ fn zeitraum(uri: &Uri, jetzt: &DateTime<FixedOffset>, vorschau: i64) -> Result<(
         Some(t) => zeit_aus_abfrage("seit", &t, false)?,
         None => verlauf::tagesanfang(jetzt.date_naive() - chrono::Duration::days(VERLAUF_TAGE)).fixed_offset(),
     };
-    let bis = match angegeben(abfrage(uri, "bis")) {
-        Some(t) => zeit_aus_abfrage("bis", &t, true)?,
-        None => *jetzt + chrono::Duration::days(vorschau),
+    // Ohne `bis` zählt die Vorschau nicht gegen die Länge (sonst ginge „seit“ allein weniger weit zurück).
+    let (bis, vorschau) = match angegeben(abfrage(uri, "bis")) {
+        Some(t) => (zeit_aus_abfrage("bis", &t, true)?, 0),
+        None => (*jetzt + chrono::Duration::days(vorschau), vorschau),
     };
     if seit > bis {
         return Err(AppError::unlesbar("„seit“ liegt nach „bis“. Bitte einen Zeitraum angeben, der vorwärts läuft."));
     }
-    if bis - seit > chrono::Duration::days(VERLAUF_HOECHSTENS_TAGE) {
+    if bis - seit > chrono::Duration::days(VERLAUF_HOECHSTENS_TAGE + vorschau) {
         return Err(AppError::unlesbar(format!(
             "Der Zeitraum ist zu lang: höchstens {VERLAUF_HOECHSTENS_TAGE} Tage auf einmal. Bitte „seit“ und „bis“ enger wählen, etwa seit=2026-01-01&bis=2026-12-31."
         )));

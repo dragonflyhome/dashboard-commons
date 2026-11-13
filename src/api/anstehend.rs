@@ -144,7 +144,14 @@ pub async fn backlog(State(state): State<AppState>, Path(slug): Path<String>, an
         // Läuft noch eine kanban.toml von Hand? (läuft aus, Etappe B2)
         let kanban_datei = state.inhalt.bestand().projekt(&slug).is_some_and(|p| p.namen.as_ref().is_ok_and(|n| n.iter().any(|x| x == "kanban")));
         let inhalt = inhalt_sammeln(&state).await?;
-        crate::backlog::backlog(&inhalt, &slug, kanban_datei).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
+        // Reihenfolge der Etappen für „Als Nächstes“; eine unlesbare plan.toml meldet /plan.
+        let mut reihenfolge = std::collections::BTreeMap::new();
+        for p in crate::backlog::etappen_projekte(&inhalt, &slug) {
+            if let Ok(Some((DatenInhalt::Plan(d), _))) = state.inhalt.bestand().daten(p, "plan") {
+                reihenfolge.extend(d.inhalte().into_iter().flat_map(|t| &t.etappe).map(|e| (format!("{p}/{}", e.kennung), e.reihenfolge)));
+            }
+        }
+        crate::backlog::backlog(&inhalt, &slug, kanban_datei, &reihenfolge).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
     };
     match antwort.await {
         Ok(b) => Json(b).into_response(),
