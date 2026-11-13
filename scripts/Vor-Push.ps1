@@ -37,12 +37,18 @@
                  GitHub-noreply (<zahl>+<login>@users.noreply.github.com oder
                  <login>@users.noreply.github.com, Login
                  nach GitHub-Regeln) oder eine Adresse auf .invalid oder
-                 .example; der Name dazu läuft durch die Textprüfung (Listen,
+                 .example; der Name und die Adresse (ohne die feste
+                 noreply-Endung) laufen durch die Textprüfung (Listen,
                  KI-Namen, Steuerzeichen). Ein Commit mit fremdem Autor oder
-                 Committer ändert keinen Prüfpfad (scripts/**,
-                 tests/vor_push.rs; gezählt wird, was er gegen jeden
-                 Elternteil ändert): Änderungen am Prüfer übernimmt der
-                 Betreuer als eigenen Commit. Für alle Commits: eine erste Zeile nicht
+                 Committer ändert keinen Prüfpfad (scripts/**, .cargo/**,
+                 .github/**, tests/vor_push.rs, KONTAKT-PGP.asc; in jeder
+                 Art, auch im Projekt-Repo; gezählt wird, was er gegen jeden
+                 Elternteil ändert), und ein Merge der Linie, der fremde
+                 Commits hereinholt, ändert gegenüber seinem ersten
+                 Elternteil keinen Prüfpfad: Änderungen am Prüfer übernimmt der
+                 Betreuer als eigenen Commit. Mit -AufMain und einem Bereich
+                 a..b setzt die Linie a fort (erster Elternteil des ältesten
+                 neuen Linien-Commits ist a). Für alle Commits: eine erste Zeile nicht
                  nach Conventional Commits (wie bei Nachricht, auch für
                  Merges); Nachrichten mit
                  einem der Text-Muster unten oder mit Anhängen (Trailer) und
@@ -51,7 +57,8 @@
                  Namen von KI-Assistenten, Modellen und ihren Anbietern,
                  Groß/Klein egal, auch mit Strichen oder Leerzeichen dazwischen) und
                  jeder Trailer, den git erkennt; Kopfzeilen außer tree,
-                 parent, author, committer (etwa eine Signatur); eine Ref,
+                 parent, author, committer (etwa eine Signatur) und
+                 Fortsetzungszeilen im Kopf; eine Ref,
                  die auf kein Commit zeigt (etwa ein Tag-Objekt).
                  git replace und Grafts gelten nicht (geprüft wird, was ein
                  Push überträgt).
@@ -70,7 +77,8 @@
                  jedes Objekt, das keine Ref erreicht, als Fund; ein Bundle
                  mit Voraussetzungen (nicht ab der Wurzel) bricht ab (Exit 2).
       Pfade      außerhalb der Positivliste der Ordner und Wurzeldateien (von
-                 .github nur die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml); projects\<slug> (außer
+                 .github nur die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml
+                 ohne config.yml); projects\<slug> (außer
                  _vorlage), data\, docs\entscheidungen, docs\architektur-stand.md,
                  projekte.generated.ts, web\src\lib\vertrag\projekte\; jede
                  *.md (seit Etappe 6d) außer CONTRIBUTING.md in der Wurzel; ein privater
@@ -690,7 +698,7 @@ $positiv = @(
     '^\.cargo/config\.toml$',
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Nur die Issue-Formulare (Merge-Angebote), nicht ganz .github (keine Workflows, die auf GitHub Code ausführen).
-    '^\.github/ISSUE_TEMPLATE/[^/]+\.yml$',
+    '^\.github/ISSUE_TEMPLATE/(?!config\.yml$)[^/]+\.yml$',
     # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
     # LICENSE in der Wurzel bleibt allein für GitHub.
     '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
@@ -1066,7 +1074,13 @@ $beitragsMail = Rx ('^(?:(?:[0-9]+\+)?[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}@u
 # Positivlisten, Wurzeldateien und Listenverarbeitung, Hooks, Hochladen, Freigeben,
 # Fassung-Festschreiben, dazu Skripte, die mit Rechten laufen) und die Gegentests
 # des Prüfers; eine engere Liste vergäße still die nächste Datei, die er liest.
-$pruefPfad = Rx '^(?:scripts/|tests/vor_push\.rs$)'
+# Dazu .cargo/: runner, rustc-wrapper und Aliase führen beim nächsten Bau Code aus.
+# Dazu .github/ (das Formular für Merge-Angebote und, falls die Positivliste je wächst,
+# Workflows) und KONTAKT-PGP.asc: Ein Beitrag tauscht weder Vorlage noch Kontaktschlüssel.
+# CONTRIBUTING.md bleibt frei: ein Textbeitrag; Regeln, die gelten, setzt dieser Prüfer durch.
+# Gilt in jeder Art. Im Projekt-Repo liegen diese Pfade ohnehin außerhalb der Positivliste;
+# dashboard-version.toml dort bleibt frei, sie nennt nur die Fassung (Abweichung ist ein Hinweis).
+$pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$)'
 
 # Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
 # gegen JEDEN Elternteil unterscheiden. Was ein Merge unverändert von einem
@@ -1112,7 +1126,8 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
             $fremd = $true
             $erlaubt[$rolle[1]] = "$name <$mail>"
             # Der Name wie jeder Text (Listen, KI-Namen im Basis-Repo, Steuerzeichen), dazu KI-Namen in jeder Art wie in Nachrichten.
-            TextPruefen "Commit $kurz ($($rolle[0]))" "$name`n$($mail.Split('@')[0])" $false $null
+            # Die ganze Adresse ohne die feste noreply-Endung (auch die Domäne einer .invalid-Adresse); das @ als Leerzeichen, sonst schlüge das Adressmuster an.
+            TextPruefen "Commit $kurz ($($rolle[0]))" "$name`n$($mail -replace '@users\.noreply\.github\.com$', '' -replace '@', ' ')" $false $null
             if ($anhang.IsMatch((Falten $name))) { Fund "Commit $kurz ($($rolle[0]))" 0 'Anhang oder KI-Name im Namen' }
         }
         # M1: Änderungen am Prüfer kommen nie aus einem fremden Commit.
@@ -1134,9 +1149,9 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         # Jeder Trailer, den git selbst erkennt (Reviewed-by, Change-Id, …).
         if ((Git @('log', '-1', '--format=%(trailers:only,unfold)', $c)).Trim()) { Fund "Commit $kurz (Nachricht)" 0 'Anhang (Trailer) in der Nachricht' }
         # Nur die Kopfzeilen tree, parent, author, committer (encoding nur UTF-8):
-        # eine Signatur (gpgsig), ein mergetag oder eine eigene Kopfzeile ginge sonst ungeprüft hinaus.
+        # eine Signatur (gpgsig), ein mergetag, eine eigene Kopfzeile oder eine Fortsetzungszeile
+        # (mit Leerzeichen am Anfang; erlaubt sind nur einzeilige Kopfzeilen) ginge sonst ungeprüft hinaus.
         foreach ($k in ($kopfteil -split "`n")) {
-            if ($k.StartsWith(' ')) { continue }
             if ($k -cnotmatch '^(?:tree|parent|author|committer) ' -and $k -notmatch '^encoding utf-?8$') { Fund "Commit $kurz" 0 'Kopfzeile außer tree, parent, author, committer (etwa Signatur)'; break }
             # Die Kopfzeile selbst (handgebaute Objekte): genau die oben erlaubte Angabe (Ranke oder der Beitrag), Zeit, Zone.
             if ($k -cmatch '^(author|committer) ') {
@@ -1146,7 +1161,29 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
             }
         }
     }
+    # M1 auch auf der Linie: Holt ein Merge fremde Commits herein (irgendeiner in L^1..L
+    # nicht genau Ranke), ändert er gegenüber seinem ersten Elternteil keinen Prüfpfad.
+    # Sonst brächte ein fremder Merge mit einem alten main-Stand als Elternteil einen
+    # alten Prüfer zurück, ohne dass ein einzelner Commit ihn gegen alle Eltern ändert.
+    $ranke = "$RANKE_NAME`0$RANKE_MAIL`0$RANKE_NAME`0$RANKE_MAIL"
+    foreach ($c in $linie) {
+        $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
+        if ($eltern.Count -lt 2) { continue }
+        $wer = @((Git @('log', '--format=%an%x00%ae%x00%cn%x00%ce', "$($eltern[0])..$c")) -split "`n" | Where-Object { $_ })
+        if (-not @($wer | Where-Object { $_ -cne $ranke }).Count) { continue }
+        foreach ($p in @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $eltern[0], $c)) -split "`0" | Where-Object { $_ })) {
+            if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit" }
+        }
+    }
     if ($nurMain) {
+        # main setzt die bisherige Linie fort: Der älteste neue Commit der Linie hat den
+        # alten Stand als ersten Elternteil (sonst etwa ein Merge falsch herum, und ein
+        # fremder Commit, der schon draußen liegt, rückte auf die Linie).
+        if ($bereich -match '^(.+)\.\.(.+)$' -and $linie.Count) {
+            $alt = (Git @('rev-parse', "$($Matches[1])^{commit}")).Trim()
+            $erster = (((Git @('log', '-1', '--format=%P', $linie[-1])).Trim() -split ' ') | Select-Object -First 1)
+            if ($erster -ne $alt) { Fund "Commit $($linie[-1].Substring(0, 10))" 0 'main setzt die bisherige Linie nicht fort (erster Elternteil ist nicht der alte Stand von main, etwa ein Merge falsch herum)' }
+        }
         foreach ($c in $linie) {
             $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
             if ($eltern.Count -eq 1) { Fund "Commit $($c.Substring(0, 10))" 0 'auf main nur Merge-Commits (kein Fast-Forward)' }
