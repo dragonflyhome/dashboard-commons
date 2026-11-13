@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SATZ_NICHT_MEHR_DA, SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
 import { live, type InhaltAenderung } from '#lib/live.svelte.ts';
 import { beispielProjektStand, eintrag, json } from '#lib/anstehend.beispiel.ts';
+import { SATZ_TEIL_FEHLT } from '#lib/projektteile.ts';
 import type { BauLage } from '#lib/bau.svelte.ts';
 import type {
 	AnstehendEintrag,
@@ -347,6 +348,75 @@ function aufrufe(f: ReturnType<typeof netz>, teil: string): number {
 }
 
 const SATZ_LISTE_FEHLT = 'Die Aufgabenliste lässt sich gerade nicht laden.';
+
+/** Eine Antwort, wie eine ältere Fassung des Dienstes sie schickt: ohne `felder`. */
+function ohneFelder(x: object, ...felder: string[]): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(x).filter(([n]) => !felder.includes(n)));
+}
+
+/** Wie `netz`, aber `ersetzt` beantwortet die Wege, deren Adresse einen der Schlüssel enthält. */
+function netzMit(ersetzt: Record<string, () => Promise<Response>>) {
+	const basis = netz();
+	return vi.fn((eingabe: RequestInfo | URL) => {
+		const url = typeof eingabe === 'string' ? eingabe : '';
+		const weg = Object.keys(ersetzt).find((t) => url.includes(t));
+		const antwort = weg === undefined ? undefined : ersetzt[weg];
+		return antwort === undefined ? basis(eingabe) : antwort();
+	});
+}
+
+describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () => {
+	it('404 auf /plan und 405 auf /verlauf: Plan und Zeitleiste sagen es, Stand und Aufgabenliste bleiben', async () => {
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({
+				'/plan': () => Promise.resolve(json({ fehler: 'x' }, 404)),
+				'/verlauf?': () => Promise.resolve(json({ fehler: 'x' }, 405))
+			})
+		});
+		await waitFor(() => {
+			expect(screen.getAllByText(SATZ_TEIL_FEHLT)).toHaveLength(2);
+		});
+		expect(teile()).toEqual(['Stand', 'Aufgabenliste', 'Plan', 'Zeitleiste']);
+		await screen.findByText(/In den letzten 7 Tagen sind 6 fertig geworden/);
+		const dich = await screen.findByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+		expect(screen.queryByText('Der Plan lässt sich gerade nicht laden.')).toBeNull();
+	});
+
+	it('/backlog ohne die Felder der Aufgabenliste (Karten ohne schritte): ein Satz, die Frage bleibt beantwortbar', async () => {
+		const alt = backlog();
+		const ohneSchritte = {
+			...alt,
+			spalten: alt.spalten.map((s) => ({
+				...s,
+				karten: s.karten.map((k) => ohneFelder(k, 'schritte', 'etappe', 'besitzer'))
+			}))
+		};
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({ '/backlog': () => Promise.resolve(json(ohneSchritte)) })
+		});
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+		// Die übrigen Teile stehen ganz da.
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_LISTE_FEHLT)).toBeNull();
+	});
+
+	it('Gegenprobe: mit allen Wegen kein Satz über den Dienst', async () => {
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+	});
+});
 
 describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)', () => {
 	it('/backlog scheitert (500): die Frage bleibt beantwortbar, ein eigener Satz statt „ohne Anmeldung“', async () => {

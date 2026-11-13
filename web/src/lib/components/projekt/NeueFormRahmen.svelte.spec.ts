@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import * as svelteMount from 'svelte';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
@@ -68,6 +68,24 @@ describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 		expect(screen.getByRole('link', { name: 'Zeitachse' })).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByRole('link', { name: 'Übersicht' })).not.toHaveAttribute('aria-current');
 		expect(teile).not.toHaveBeenCalled();
+	});
+
+	it('wirft ein Teil beim Zeichnen, bleibt der Inhalt der Seite sichtbar', () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		teile.mockImplementationOnce(() => {
+			throw new TypeError("Cannot read properties of undefined (reading 'length')");
+		});
+		render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByText('Seite des Projekts')).toBeInTheDocument();
+		expect(screen.getByRole('status')).toHaveTextContent(
+			'Stand, Aufgabenliste, Plan und Zeitleiste lassen sich mit dem laufenden Dienst gerade nicht zeigen.'
+		);
+		expect(fehler).toHaveBeenCalled();
+		fehler.mockRestore();
+		// Gegenprobe: ohne Fehler kein Satz.
+		cleanup();
+		render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.queryByRole('status')).toBeNull();
 	});
 
 	it('rot auf einer Unterseite: der Bau-Hinweis bleibt, ohne die vier Teile', () => {

@@ -166,6 +166,11 @@ Geändert
   beide die alten. Ein grüner Bau über den Boten (web\builds\aktuell) gilt
   weiter sofort; ohne bin\web (vor dem ersten -Neustart, ohne Dienst) wie
   bisher web\build.
+- Projektseite: Kennt der laufende Dienst /backlog, /plan oder /verlauf
+  nicht (404, 405) oder fehlen in der Antwort Felder, zeigt nur dieser Teil
+  „Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.“; die
+  übrigen Teile und Seite.svelte bleiben stehen. Wirft ein Teil beim
+  Zeichnen, bleibt der Inhalt der Seite darunter sichtbar.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

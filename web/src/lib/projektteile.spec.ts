@@ -28,6 +28,11 @@ import {
 import { eintrag, routineZusammenfassen } from '#lib/zeit/verlauf.ts';
 import { backlog, projektPlan, tagIso } from '../routes/katalog/beispiele.ts';
 
+/** Eine Antwort, wie eine ältere Fassung des Dienstes sie schickt: ohne `felder`. */
+function ohneFelder(x: object, ...felder: string[]): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(x).filter(([n]) => !felder.includes(n)));
+}
+
 /** Das Element oder ein Fehler (die Beispiele haben es immer). */
 function da<T>(x: T | undefined): T {
 	if (x === undefined) throw new Error('Beispiel fehlt');
@@ -289,7 +294,7 @@ describe('Zeitleiste', () => {
 describe('Laden der geschützten Wege', () => {
 	it('/plan und /verlauf mit seit (14 Tage bis heute); 401 heißt anmelden, Netzfehler nicht', async () => {
 		const f = vi.fn(() => Promise.resolve(json({ fehler: 'x' }, 401)));
-		expect(await ladePlan('a b', f)).toEqual({ wert: null, anmelden: true });
+		expect(await ladePlan('a b', f)).toEqual({ wert: null, anmelden: true, fehlt: false });
 		expect(f).toHaveBeenCalledWith('/api/projekte/a%20b/plan', expect.anything());
 		await ladeProjektVerlauf('x', 14, f, new Date(2026, 10, 13, 12));
 		expect(f).toHaveBeenLastCalledWith(
@@ -297,14 +302,63 @@ describe('Laden der geschützten Wege', () => {
 			expect.anything()
 		);
 		const kaputt = (): Promise<Response> => Promise.reject(new Error('Netz'));
-		expect(await ladePlan('x', kaputt)).toEqual({ wert: null, anmelden: false });
+		expect(await ladePlan('x', kaputt)).toEqual({ wert: null, anmelden: false, fehlt: false });
 		// /backlog wie /plan: 401 heißt anmelden, ein Serverfehler nicht.
-		expect(await ladeBacklog('x', f)).toEqual({ wert: null, anmelden: true });
+		expect(await ladeBacklog('x', f)).toEqual({ wert: null, anmelden: true, fehlt: false });
 		expect(f).toHaveBeenLastCalledWith('/api/projekte/x/backlog', expect.anything());
 		const kaputtServer = vi.fn(() => Promise.resolve(json({ fehler: 'x' }, 500)));
-		expect(await ladeBacklog('x', kaputtServer)).toEqual({ wert: null, anmelden: false });
-		expect(await ladeBacklog('x', kaputt)).toEqual({ wert: null, anmelden: false });
+		expect(await ladeBacklog('x', kaputtServer)).toEqual({
+			wert: null,
+			anmelden: false,
+			fehlt: false
+		});
+		expect(await ladeBacklog('x', kaputt)).toEqual({ wert: null, anmelden: false, fehlt: false });
 		const gut = vi.fn(() => Promise.resolve(json(projektPlan())));
 		expect((await ladePlan('x', gut)).wert?.etappen).toHaveLength(3);
+	});
+
+	it('404 und 405 (Weg im laufenden Dienst unbekannt) heißen fehlt', async () => {
+		const fehlt = { wert: null, anmelden: false, fehlt: true };
+		for (const status of [404, 405]) {
+			const f = vi.fn(() => Promise.resolve(json({ fehler: 'x' }, status)));
+			expect(await ladePlan('x', f)).toEqual(fehlt);
+			expect(await ladeProjektVerlauf('x', 14, f)).toEqual(fehlt);
+			expect(await ladeBacklog('x', f)).toEqual(fehlt);
+		}
+		// Gegenprobe: 500 ist ein Fehler, kein fehlender Weg.
+		const f = vi.fn(() => Promise.resolve(json({ fehler: 'x' }, 500)));
+		expect((await ladePlan('x', f)).fehlt).toBe(false);
+	});
+
+	it('eine Antwort ohne die erwarteten Felder heißt fehlt, nie ein halber Wert', async () => {
+		const antwort = (wert: unknown) => vi.fn(() => Promise.resolve(json(wert)));
+		// Backlog einer älteren Fassung: Karten ohne schritte, etappe und besitzer.
+		const alt = backlog();
+		const ohneSchritte = {
+			...alt,
+			spalten: alt.spalten.map((s) => ({
+				...s,
+				karten: s.karten.map((k) => ohneFelder(k, 'schritte', 'etappe', 'besitzer'))
+			}))
+		};
+		expect(alt.spalten.some((s) => s.karten.length > 0)).toBe(true);
+		expect(await ladeBacklog('x', antwort(ohneSchritte))).toEqual({
+			wert: null,
+			anmelden: false,
+			fehlt: true
+		});
+		expect((await ladeBacklog('x', antwort({ slug: 'x' }))).fehlt).toBe(true);
+		const planOhneEtappen = ohneFelder(projektPlan(), 'etappen');
+		expect((await ladePlan('x', antwort(planOhneEtappen))).fehlt).toBe(true);
+		expect((await ladePlan('x', antwort([]))).fehlt).toBe(true);
+		expect((await ladeProjektVerlauf('x', 14, antwort({ seit: 'x', bis: 'y' }))).fehlt).toBe(true);
+		expect((await ladeProjektVerlauf('x', 14, antwort(null))).fehlt).toBe(true);
+		// Gegenprobe: die vollständigen Antworten gelten.
+		const gut = await ladeBacklog('x', antwort(alt));
+		expect(gut.fehlt).toBe(false);
+		expect(gut.wert?.spalten).toHaveLength(alt.spalten.length);
+		expect((await ladePlan('x', antwort(projektPlan()))).fehlt).toBe(false);
+		const verlauf = { ereignisse: [], seit: '2026-11-01', bis: '2026-11-13', hinweise: [] };
+		expect((await ladeProjektVerlauf('x', 14, antwort(verlauf))).wert).toEqual(verlauf);
 	});
 });

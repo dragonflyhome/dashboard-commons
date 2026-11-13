@@ -47,6 +47,7 @@
 		meldungGelesen
 	} from '#lib/anstehend.ts';
 	import {
+		SATZ_TEIL_FEHLT,
 		ZEITLEISTE_AELTER,
 		ZEITLEISTE_TAGE,
 		etappenNamen,
@@ -350,7 +351,7 @@
 				<p class="muted">{SATZ_OHNE_ANMELDUNG}</p>
 			{:else if liste !== null}
 				<!-- Fragen und Aufgaben kommen nicht aus /backlog: Sie bleiben beantwortbar. -->
-				<p class="muted">{SATZ_LISTE_FEHLT}</p>
+				<p class="muted">{liste.fehlt ? SATZ_TEIL_FEHLT : SATZ_LISTE_FEHLT}</p>
 				<section aria-labelledby={gruppenAnker(slug, 'dich')}>
 					<h3 id={gruppenAnker(slug, 'dich')} tabindex="-1">
 						Wartet auf dich <span class="muted">({wartet?.zahl ?? 0})</span>
@@ -368,7 +369,11 @@
 			<Plan plan={plan.wert} />
 		{:else if plan !== null}
 			<p class="muted">
-				{plan.anmelden ? SATZ_OHNE_ANMELDUNG : 'Der Plan lässt sich gerade nicht laden.'}
+				{plan.anmelden
+					? SATZ_OHNE_ANMELDUNG
+					: plan.fehlt
+						? SATZ_TEIL_FEHLT
+						: 'Der Plan lässt sich gerade nicht laden.'}
 			</p>
 		{:else}
 			<p class="muted">Plan wird geladen …</p>
@@ -411,7 +416,11 @@
 			{/if}
 		{:else if verlauf !== null}
 			<p class="muted">
-				{verlauf.anmelden ? SATZ_OHNE_ANMELDUNG : 'Die Zeitleiste lässt sich gerade nicht laden.'}
+				{verlauf.anmelden
+					? SATZ_OHNE_ANMELDUNG
+					: verlauf.fehlt
+						? SATZ_TEIL_FEHLT
+						: 'Die Zeitleiste lässt sich gerade nicht laden.'}
 			</p>
 		{:else}
 			<p class="muted">Zeitleiste wird geladen …</p>
