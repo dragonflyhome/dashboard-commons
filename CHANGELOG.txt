@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.3.0 - 2026-11-13
+------------------
+
 Hinzugefügt
 - Leitfaden für Mitwirkende (CONTRIBUTING.md): Beiträge kommen als
   Merge-Angebot in einem Issue aus dem eigenen Fork, ohne Pull Requests;
