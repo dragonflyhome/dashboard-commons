@@ -149,6 +149,8 @@ describe('Widgets (A4) mit Beispieldaten', () => {
 			ongelesen: gelesen
 		});
 		expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Aktualisierungen 1 neu');
+		// Ein Leerzeichen vor „neu“: der Abstand allein (margin) ergab in Edges innerText „rotneu“.
+		expect(document.querySelector('#meldung-m1 > summary')?.textContent).toBe('• Bau rot neu');
 		const knopf = screen.getByRole('button', { name: 'Gelesen: Bau rot' });
 		await fireEvent.click(knopf);
 		expect(gelesen).toHaveBeenCalledWith('m1', knopf);

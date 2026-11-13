@@ -66,8 +66,11 @@ describe('Schritte einer Arbeit (T4)', () => {
 		arbeitMit(sieben);
 		const kopf = document.querySelector('#arbeit-ar-1 > summary');
 		expect(kopf).toHaveTextContent('Etappe 6, 3 von 7 fertig · dran: Chat architektur');
-		// Der Trenner ist nur für Vorleseprogramme (T5, Auflage aus T4).
-		expect(kopf?.querySelector('.nur-vorlesen')?.textContent).toBe(', ');
+		// Der Trenner ist nur für Vorleseprogramme (T5, Auflage aus T4), steht aber im Fluss
+		// direkt hinter dem Titel: .nur-vorlesen ist absolut, Edge zeigte in innerText ein loses Komma.
+		const trenner = kopf?.querySelector('.titel + .trenner');
+		expect(trenner?.textContent).toBe(', ');
+		expect(trenner).not.toHaveClass('nur-vorlesen');
 		const liste = screen.getByRole('list', { name: 'Schritte von „Etappe 6“' });
 		const punkte = within(liste).getAllByRole('listitem');
 		expect(punkte).toHaveLength(7);
