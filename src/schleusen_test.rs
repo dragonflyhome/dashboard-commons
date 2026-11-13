@@ -1350,6 +1350,8 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
         // Etappe B8: die Zeitleiste eines Projekts nennt Titel.
         "/api/projekte/neu-form/verlauf",
         "/api/antworten",
+        // „Neu in …“ im Layout.
+        "/api/fassungen/gezeigt",
     ] {
         let res = schicke(&app, hole(pfad)).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{pfad}");
@@ -1698,6 +1700,9 @@ fn liste_der_geschuetzten_wege() {
         "/Api/Events",
         "/api/events/frei/x",
         "/api/betrieb/voll",
+        // „Neu in …“ (Freigabe in einem Schritt).
+        "/api/fassungen/gezeigt",
+        "/API/Fassungen/Gezeigt",
         "/api/aufgaben",
         "/api/aufgaben/a-20261028-0001/erledigt",
         "/API/Aufgaben",

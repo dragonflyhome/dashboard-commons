@@ -23,6 +23,14 @@ Hinzugefügt
 - GET /api/betrieb nennt version_datum (Datum der laufenden Fassung) und
   unveroeffentlicht (Unreleased hat Einträge, ein Bau zwischen zwei
   Fassungen läuft).
+- Seite /fassungen mit dem Änderungsverlauf (Fassung, Datum, Tag,
+  Abschnitte, Brüche mit hervorgehobenem Wort). Die Fußzeile nennt die
+  laufende Fassung als Link dorthin, zwischen zwei Fassungen als
+  „0.x.y + Unveröffentlicht“.
+- Nach einem Neustart mit neuer Fassung steht angemeldet einmal oben
+  „Neu in 0.x.y“ mit den Zeilen dieser Fassung; welche Fassung schon
+  gezeigt wurde, merkt sich der Datenspeicher (GET und POST
+  /api/fassungen/gezeigt, geschützt).
 
 0.2.0 - 2026-11-13
 ------------------

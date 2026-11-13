@@ -42,6 +42,15 @@ pub fn betrieb_angaben() -> (Option<String>, bool) {
     (datum, !a.unveroeffentlicht.leer())
 }
 
+/// „Neu in …“: die laufende Fassung mit ihren Zeilen, solange `gezeigt`
+/// (aus dem Datenspeicher) nicht sie ist; ohne Abschnitt oder Einträge nichts.
+pub fn neu_in(a: &FassungenAntwort, gezeigt: Option<&str>) -> Option<FassungsEintrag> {
+    if gezeigt == Some(a.laufend.as_str()) {
+        return None;
+    }
+    a.fassungen.iter().find(|f| f.version == a.laufend && !f.zeilen.leer()).cloned()
+}
+
 /// `x.y.z` als Zahlen, sonst `None`.
 pub fn version_zahlen(v: &str) -> Option<[u64; 3]> {
     let mut teile = v.split('.');
@@ -280,6 +289,19 @@ mod tests {
         for falsch in ["", "0.1", "v0.1.0", "0.1.0.0", "a.b.c", "0.-1.0"] {
             assert!(seit(&a, falsch).is_err(), "{falsch}");
         }
+    }
+
+    #[test]
+    fn neu_in_bis_gezeigt() {
+        let a = lesen(&beispiel(), "0.2.0");
+        for gezeigt in [None, Some("0.1.0"), Some("0.3.0")] {
+            assert_eq!(neu_in(&a, gezeigt).map(|f| f.version), Some("0.2.0".to_string()), "{gezeigt:?}");
+        }
+        assert_eq!(neu_in(&a, Some("0.2.0")), None);
+        // Ohne Einträge oder ohne Abschnitt der laufenden Version: nichts zu zeigen.
+        let leer = lesen("Unreleased\n---\n\n0.2.0 - 2026-11-13\n---\n", "0.2.0");
+        assert_eq!(neu_in(&leer, None), None);
+        assert_eq!(neu_in(&lesen(&beispiel(), "0.9.0"), None), None);
     }
 
     /// Das eingebettete Changelog dieses Baus liest sich ohne Hinweis und nennt die laufende Version.

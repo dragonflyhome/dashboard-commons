@@ -51,3 +51,12 @@ pub struct FassungenAntwort {
     /// Was sich im Changelog nicht lesen ließ, je ein Satz (leer: alles gelesen).
     pub hinweise: Vec<String>,
 }
+
+/// `GET` und `POST /api/fassungen/gezeigt` (geschützt): die laufende Fassung,
+/// solange die Oberfläche ihr „Neu in …“ noch nicht gezeigt hat; danach
+/// (und nach dem `POST`) `null`. Ebenso `null`, wenn das Changelog die
+/// laufende Version nicht oder ohne Einträge nennt.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct NeuIn {
+    pub neu_in: Option<FassungsEintrag>,
+}

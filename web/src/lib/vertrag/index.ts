@@ -157,6 +157,7 @@ export type { MeldungsArt } from './MeldungsArt';
 export type { MeldungsZahlen } from './MeldungsZahlen';
 export type { MergeAntrag } from './MergeAntrag';
 export type { NachholEvent } from './NachholEvent';
+export type { NeuIn } from './NeuIn';
 export type { Neustart } from './Neustart';
 export type { NeustartGrund } from './NeustartGrund';
 export type { NeustartLage } from './NeustartLage';

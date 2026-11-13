@@ -183,6 +183,7 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         Betrieb,
         // Fassungen aus dem Changelog (Freigabe in einem Schritt)
         FassungenAntwort,
+        NeuIn,
         // Reiter „Hallo“: welches Projekt den Begrüßungstext trägt
         HalloOrt,
         // Kopfleiste, Fassung 3: Stand für die Aktualitätsprüfung

@@ -165,6 +165,8 @@ pub const META_FASSUNG_JWT_SPERRLISTE: &str = "fassung.jwt_sperrliste";
 pub const META_FASSUNG_PC_EREIGNISSE: &str = "fassung.pc_ereignisse";
 pub const META_FASSUNG_PC_EREIGNISSE_ARCHIV: &str = "fassung.pc_ereignisse_archiv";
 pub const META_LETZTE_SICHERUNG: &str = "letzte_sicherung";
+/// Die Fassung, deren „Neu in …“ die Oberfläche schon gezeigt hat (`/api/fassungen/gezeigt`).
+pub const META_NEU_IN_GEZEIGT: &str = "neu_in.gezeigt";
 /// Tageszähler für Arbeitskennungen: `arbeit.zaehler.JJJJMMTT` → letzte Nummer des Tages.
 pub const META_ARBEIT_ZAEHLER: &str = "arbeit.zaehler.";
 /// Tageszähler für Vorgangskennungen: `vorgang.zaehler.JJJJMMTT` → letzte Nummer des Tages.

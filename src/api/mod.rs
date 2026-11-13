@@ -66,6 +66,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/anleitung", get(system_seiten::anleitung))
         // Freigabe in einem Schritt: die Fassungen aus dem eingebetteten Changelog (frei).
         .route("/api/fassungen", get(fassungen::liste))
+        // „Neu in …“ (geschützt): ob die Oberfläche die laufende Fassung schon gezeigt hat.
+        .route("/api/fassungen/gezeigt", get(fassungen::neu_in).post(fassungen::gezeigt))
         .route("/api/pc", get(pc::bericht))
         .route("/api/pc/benutzer", get(pc::benutzer))
         .route("/api/pc/verlauf", get(pc::verlauf))
