@@ -804,6 +804,8 @@ fn dienst_ps1_spielt_die_oberflaeche_mit_den_programmen_ein() {
         einrichten.contains("\n$quelleWeb = Join-Path $quelle 'web'\n") && einrichten.contains("(OberflaecheEinspielen $bin $quelleWeb)"),
         "Einrichten: Oberfläche aus <quelle>\\web"
     );
+    // Und bricht vor jeder Änderung ab, wenn die Programme neuer sind als diese Oberfläche.
+    assert!(einrichten.contains("(-not (ProgrammeNeuerAlsOberflaeche $quelle $quelleWeb))"), "Einrichten: Prüfzeile Programme neuer als Oberfläche");
     let rueck = ps1.split("Hole die vorige Fassung zurück ...\"\n").nth(1).expect("Rückweg in Dienst.ps1");
     let versuch = &rueck[..rueck.find("\n} finally {\n").expect("finally des Rückwegs")];
     let (alt, zurueck) = (versuch.find("'.alt.exe'").expect("*.alt.exe"), versuch.find("$f = OberflaecheZurueck").expect("OberflaecheZurueck im Rückweg"));

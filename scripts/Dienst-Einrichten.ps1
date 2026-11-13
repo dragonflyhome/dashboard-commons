@@ -35,6 +35,8 @@
          Dienst.ps1 -Neustart als web neben die Programme legt (fehlt sie,
          web\build im Repo), nach bin\web, wenn bin\web einen anderen Grundbau
          hat (_app\version.json); ein Bau ohne diese Kennung wird nicht eingespielt.
+         Ist dashboard.exe neuer als diese Oberfläche, ändert das Skript nichts
+         und verlangt erst Dienst.ps1 -Neustart.
       5. Datenspeicher und Sicherungen aus %USERPROFILE%\.var\dashboard kopieren,
          nur wenn unter ProgramData noch keiner liegt und weder .var,
          .var\dashboard noch etwas darin ein Reparse-Punkt ist. Das Original
@@ -765,6 +767,17 @@ function Grundbau([string]$ordner) {
     return $null
 }
 
+# Ist dashboard.exe in $quelle neuer als die Oberfläche daneben, brach -Neustart
+# zwischen dem Bau der Programme und der Ablage der Oberfläche ab (oder
+# zusammenbau ist veraltet): Programme und Oberfläche passten nicht zusammen.
+# Copy-Item behält die Änderungszeit, und cargo ohne Änderung schreibt die exe nicht neu.
+function ProgrammeNeuerAlsOberflaeche([string]$quelle, [string]$web) {
+    $exe = Join-Path $quelle 'dashboard.exe'
+    $seite = Join-Path $web 'index.html'
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf) -or -not (Test-Path -LiteralPath $seite -PathType Leaf)) { return $false }
+    return (Get-Item -LiteralPath $exe).LastWriteTimeUtc -gt (Get-Item -LiteralPath $seite).LastWriteTimeUtc
+}
+
 # Die Oberfläche des Dienstes ist eine Kopie in bin\web (app::WebOrt) und gehört
 # zu den Programmen. Entschieden wird am Inhalt, nicht am Lauf: Hat bin\web nicht
 # denselben Grundbau wie $build (die Kopie neben den Programmen), kommt $build
@@ -1373,6 +1386,7 @@ foreach ($n in $programme) {
     Pruefe "Programm $n in $quelle" (Test-Path -LiteralPath (Join-Path $quelle $n)) 'bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten im Repo cargo build --release --locked mit CARGO_TARGET_DIR=%LOCALAPPDATA%\Dashboard\cache\dienst)'
 }
 Pruefe "Oberfläche $quelleWeb (index.html, Kennung des Grundbaus)" ((Test-Path -LiteralPath (Join-Path $quelleWeb 'index.html') -PathType Leaf) -and (Grundbau $quelleWeb)) 'bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten in web\ npm run build)'
+Pruefe "Oberfläche $quelleWeb nicht älter als $quelle\dashboard.exe (gehört zu den Programmen)" (-not (ProgrammeNeuerAlsOberflaeche $quelle $quelleWeb)) 'die Programme sind neuer, -Neustart brach wohl vor der Oberfläche ab; bitte erst scripts\Dienst.ps1 -Neustart (beim ersten Einrichten in web\ npm run build nach dem cargo build)'
 foreach ($o in $leseOrdner) {
     Pruefe "Ordner $o im Repo (der Dienst bekommt Lese-Recht darauf)" (Test-Path -LiteralPath (Join-Path $repo $o) -PathType Container) 'Ordner fehlt'
 }

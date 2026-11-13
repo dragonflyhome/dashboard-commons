@@ -172,7 +172,9 @@ Geändert
   Programme im Bauordner; Dienst-Einrichten.ps1 spielt sie von dort nach
   bin\web ein (ohne sie web\build), wenn der Grundbau in bin\web ein anderer
   ist, auch nach einem Abbruch im ersten Lauf, nie einen Bau ohne Kennung
-  und nur ohne Verknüpfungen. Scheitert der erste -Neustart (vorher ohne
+  und nur ohne Verknüpfungen. Sind die Programme dort neuer als die
+  Oberfläche daneben (-Neustart brach dazwischen ab), ändert
+  Dienst-Einrichten.ps1 nichts und verlangt erst -Neustart. Scheitert der erste -Neustart (vorher ohne
   bin\web), fällt die neue bin\web beim Weg zurück wieder weg. Ohne bin\web
   (ohne Dienst) wie bisher web\build.
 - Bruch: npm run build im Repo ändert die laufende Seite des Dienstes nicht
@@ -188,7 +190,8 @@ Geändert
   Pflichtfeld der Vertragstypen, auch in Schritten, Etappen und Ereignissen.
   Fehlen dem Stand Felder, sagt der Stand „Der Stand lässt sich gerade nicht
   laden.“, ohne dass etwas wirft. Wirft ein Teil beim Zeichnen, steht nur an
-  seiner Stelle der Satz mit „neu versuchen“ (lädt die Daten neu, danach
+  seiner Stelle der Satz mit „neu versuchen“ (lädt die Daten neu und
+  zeichnet erst dann, auch wenn die vorigen Daten den Fehler auslösten; danach
   steht der Fokus auf der Überschrift des Teils); der Inhalt der Seite
   bleibt, und ein Fehler gilt nicht für das nächste Projekt.
 

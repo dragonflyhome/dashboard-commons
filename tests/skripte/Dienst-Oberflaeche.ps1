@@ -17,7 +17,8 @@
     Einspielen beim Einrichten (Dienst-Einrichten.ps1, OberflaecheEinspielen):
     entschieden am Grundbau (auch der zweite Lauf nach einem Abbruch zwischen
     Programmen und Oberfläche), nie ein Bau ohne Kennung, nie über
-    Verknüpfungen. Die Testwurzel verschwindet danach wieder.
+    Verknüpfungen, und sind die Programme im Bauordner neuer als die Oberfläche
+    daneben (Abbruch von -Neustart dazwischen), meldet Einrichten das. Die Testwurzel verschwindet danach wieder.
 
     Ohne Pester, ohne Administrator, ohne Netz. Aufruf aus dem Repo, in beiden Shells:
 
@@ -50,7 +51,7 @@ foreach ($name in $gesucht) {
 $skriptE = Join-Path (Join-Path $repo 'scripts') 'Dienst-Einrichten.ps1'
 $astE = [System.Management.Automation.Language.Parser]::ParseFile($skriptE, [ref]$token, [ref]$parseFehler)
 if ($parseFehler.Count -gt 0) { Write-Host "FEHLER Dienst-Einrichten.ps1: $($parseFehler[0].Message)"; exit 1 }
-foreach ($name in @('OberflaecheEinspielen', 'Grundbau', 'Erste-Verknuepfung')) {
+foreach ($name in @('OberflaecheEinspielen', 'Grundbau', 'Erste-Verknuepfung', 'ProgrammeNeuerAlsOberflaeche')) {
     $f = @($astE.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true))
     if ($f.Count -ne 1) { Write-Host "FEHLER Dienst-Einrichten.ps1: Funktion $name fehlt (oder steht doppelt)"; exit 1 }
     . ([ScriptBlock]::Create($f[0].Extent.Text))
@@ -206,6 +207,21 @@ try {
     $bleibt = Inhalt (Join-Path $ziel 'geheim.txt')
     [IO.Directory]::Delete($link)
     Pruefe '9 Verknüpfung in web.alt: Abbruch, Ziel unberührt, bin\web bleibt' ($s -match 'Verknüpfung' -and $bleibt -eq 'bleibt' -and (Seite $webE) -eq 'e4') "$s"
+
+    # 10. Einrichten prüft, ob die Oberfläche neben den Programmen zu ihnen gehört: -Neustart
+    # baut die Programme vor der Oberfläche; bricht er dazwischen ab, ist die exe neuer.
+    Bau 'z1' 'eeeeeeeeeeeeeeee'
+    $vorher = (Get-Date).ToUniversalTime().AddMinutes(-10)
+    Get-ChildItem -LiteralPath $build -Recurse -File | ForEach-Object { $_.LastWriteTimeUtc = $vorher }
+    $qz = Programme (Join-Path $wurzel 'qz') 'pz'
+    $ablageZ = Join-Path $qz 'web'
+    $f = OberflaecheBereitlegen $build $ablageZ
+    Pruefe '10 Ablage behält die Zeit des Baus' (-not $f -and ((Get-Item -LiteralPath (Join-Path $ablageZ 'index.html')).LastWriteTimeUtc - $vorher).Duration().TotalSeconds -lt 2) "$f"
+    Pruefe '10 Programme neuer als die Ablage: gemeldet' (ProgrammeNeuerAlsOberflaeche $qz $ablageZ)
+    (Get-Item -LiteralPath (Join-Path $qz 'dashboard.exe')).LastWriteTimeUtc = $vorher.AddMinutes(-1)
+    Pruefe '10 Programme älter als die Ablage: passt' (-not (ProgrammeNeuerAlsOberflaeche $qz $ablageZ))
+    Pruefe '10 ohne Ablage: keine Meldung (das meldet die Prüfung auf index.html)' (-not (ProgrammeNeuerAlsOberflaeche $qz (Join-Path $wurzel 'gibt-es-nicht')))
+    Remove-Item -LiteralPath (Join-Path $script:bin 'web.neu') -Recurse -Force -ErrorAction SilentlyContinue
 } finally {
     Remove-Item -LiteralPath $wurzel -Recurse -Force -ErrorAction SilentlyContinue
 }
