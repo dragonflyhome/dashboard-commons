@@ -46,12 +46,14 @@
 		SATZ_OHNE_ANMELDUNG,
 		meldungGelesen
 	} from '#lib/anstehend.ts';
-	import { ladeBacklog } from '#lib/backlog.ts';
 	import {
 		ZEITLEISTE_AELTER,
 		ZEITLEISTE_TAGE,
 		etappenNamen,
+		gruppenAnker,
+		ladeBacklog,
 		ladePlan,
+		listenAnker,
 		ladeProjektVerlauf,
 		ungeleseneMeldungen,
 		zeitleisteAnker,
@@ -78,13 +80,13 @@
 
 	let daten = $state<UnterDaten | null>(null);
 	let geladenFuer = $state<string | null>(null);
-	let backlog = $state<BacklogDaten | null>(null);
-	let backlogFehlt = $state(false);
+	let liste = $state<Ladung<BacklogDaten> | null>(null);
 	let plan = $state<Ladung<ProjektPlan> | null>(null);
 	let verlauf = $state<Ladung<VerlaufDaten> | null>(null);
 	/** Die Zeitleiste zeigt so viele Tage bis heute. */
 	let tage = $state(ZEITLEISTE_TAGE);
 	const nr = { stand: 0, backlog: 0, plan: 0, verlauf: 0 };
+	const SATZ_LISTE_FEHLT = 'Die Aufgabenliste lässt sich gerade nicht laden.';
 
 	async function ladeStand(fuer: string): Promise<void> {
 		const n = ++nr.stand;
@@ -97,8 +99,7 @@
 		const n = ++nr.backlog;
 		const b = await ladeBacklog(fuer, mitZugang(fetchFn));
 		if (fuer !== slug || n !== nr.backlog) return;
-		backlog = b;
-		backlogFehlt = b === null;
+		liste = b;
 	}
 	async function ladePlanFuer(fuer: string): Promise<void> {
 		const n = ++nr.plan;
@@ -126,8 +127,7 @@
 	$effect(() => {
 		const s = slug;
 		daten = null;
-		backlog = null;
-		backlogFehlt = false;
+		liste = null;
 		plan = null;
 		verlauf = null;
 		tage = ZEITLEISTE_TAGE;
@@ -149,9 +149,11 @@
 			beiTageswechsel(() => {
 				allesLaden(s);
 			}),
-			// daten/plan.toml geändert: nur der Plan (und die Etappen in der Aufgabenliste).
+			// daten/plan.toml geändert: der Plan und die Liste (Etappen-Titel, Folge in „Als Nächstes“).
 			live.onInhalt((a: InhaltAenderung) => {
-				if (betrifftProjekt(a, s)) void ladePlanFuer(s);
+				if (!betrifftProjekt(a, s)) return;
+				void ladePlanFuer(s);
+				void ladeListe(s);
 			})
 		];
 		return () => {
@@ -169,7 +171,10 @@
 	const wartet = $derived(daten?.wartet ?? null);
 	const notizenZahl = $derived(stand?.notizen_zahl ?? stand?.notizen.length ?? 0);
 	const etappen = $derived(etappenNamen(plan?.wert ?? null));
-	const meldungen = $derived(ungeleseneMeldungen(daten?.eintraege ?? []));
+	const backlog = $derived(liste?.wert ?? null);
+	const meldungen = $derived(
+		ungeleseneMeldungen(daten?.eintraege ?? [], verlauf?.wert?.ereignisse ?? [])
+	);
 	const ereignisse = $derived(zeitleisteEreignisse(verlauf?.wert?.ereignisse ?? [], meldungen));
 
 	// ----- Antworten und „gelesen“ -----
@@ -187,7 +192,12 @@
 
 	let gelesenLaeuft = $state<string | null>(null);
 	let gelesenFehler = $state<string | null>(null);
-	let zeitTitel = $state<HTMLElement | null>(null);
+	/**
+	 * Fokusziel der Zeitleiste nach „gelesen“ und „Ältere anzeigen“: eine Zeile
+	 * nur für Vorlese-Programme, die auch ohne Meldungen steht, nicht der
+	 * Kasten mit allen Meldungen (Auflage aus A2).
+	 */
+	let zeitFokus = $state<HTMLElement | null>(null);
 	/** „gelesen“: danach neu laden; den Fokus nur nehmen, wenn er noch auf dem Knopf oder body liegt. */
 	async function gelesen(id: string, knopf: HTMLButtonElement): Promise<void> {
 		gelesenLaeuft = id;
@@ -205,7 +215,14 @@
 		}
 		await tick();
 		const aktiv = document.activeElement;
-		if (aktiv === null || aktiv === document.body || aktiv === knopf) zeitTitel?.focus();
+		if (aktiv === null || aktiv === document.body || aktiv === knopf) zeitFokus?.focus();
+	}
+
+	/** Der Knopf verschwindet mit dem Klick; der Fokus bleibt in der Zeitleiste. */
+	function aelterAnzeigen(): void {
+		tage = ZEITLEISTE_AELTER;
+		zeitFokus?.focus();
+		void ladeVerlaufFuer(slug, tage);
 	}
 
 	// ----- Anker: `#<art>-<id>` aufklappen, hervorheben, Fokus, sobald die Daten da sind -----
@@ -224,13 +241,16 @@
 		// Fragen, Aufgaben und Arbeiten stehen in der Aufgabenliste, Meldungen kommen mit dem Stand.
 		const bereit =
 			geladenFuer === slug &&
-			(backlog !== null || backlogFehlt) &&
+			liste !== null &&
+			(ziel.art !== 'arbeit' || plan !== null) &&
 			(ziel.art !== 'aufgabe' || aufgaben.stand !== 'laedt');
 		if (!bereit || angesteuert === h) return;
 		angesteuert = h;
 		const wissen = ziel.art === 'aufgabe' ? aufgaben.stand === 'da' : angemeldet;
+		const ohneListe = ziel.art === 'arbeit' && liste?.wert === null && !liste.anmelden;
 		void tick().then(() => {
 			if (ansteuern(h)) ankerSatz = null;
+			else if (ohneListe) ankerSatz = SATZ_LISTE_FEHLT;
 			else ankerSatz = wissen ? SATZ_NICHT_MEHR_DA : SATZ_OHNE_ANMELDUNG;
 		});
 	});
@@ -288,7 +308,7 @@
 				schwerpunkt={stand.schwerpunkt}
 				kurz={stand.kurz}
 				speicherFehlt={stand.speicher_fehlt}
-				teil={{ slug, fertig7: stand.fertig_7_tage }}
+				teil={{ slug, fertig7: stand.fertig_7_tage, springen: backlog !== null }}
 			>
 				<BauKopf {slug} nurAuffaellig />
 				{#if notizenZahl > 0}
@@ -314,13 +334,24 @@
 	</Abschnitt>
 
 	<Abschnitt titel="Aufgabenliste">
-		{#if backlog !== null}
-			<Backlog {backlog} {etappen} {fuerDich} fuerDichZahl={wartet?.zahl ?? 0} />
-		{:else if backlogFehlt}
-			<p class="muted">{SATZ_OHNE_ANMELDUNG}</p>
-		{:else}
-			<p class="muted">Aufgabenliste wird geladen …</p>
-		{/if}
+		<div id={listenAnker(slug)}>
+			{#if backlog !== null}
+				<Backlog {backlog} {etappen} {fuerDich} fuerDichZahl={wartet?.zahl ?? 0} />
+			{:else if liste?.anmelden}
+				<p class="muted">{SATZ_OHNE_ANMELDUNG}</p>
+			{:else if liste !== null}
+				<!-- Fragen und Aufgaben kommen nicht aus /backlog: Sie bleiben beantwortbar. -->
+				<p class="muted">{SATZ_LISTE_FEHLT}</p>
+				<section aria-labelledby={gruppenAnker(slug, 'dich')}>
+					<h3 id={gruppenAnker(slug, 'dich')} tabindex="-1">
+						Wartet auf dich <span class="muted">({wartet?.zahl ?? 0})</span>
+					</h3>
+					{@render fuerDich()}
+				</section>
+			{:else}
+				<p class="muted">Aufgabenliste wird geladen …</p>
+			{/if}
+		</div>
 	</Abschnitt>
 
 	<Abschnitt titel="Plan">
@@ -336,7 +367,8 @@
 	</Abschnitt>
 
 	<Abschnitt titel="Zeitleiste">
-		<div id={zeitleisteAnker(slug)} tabindex="-1" bind:this={zeitTitel} class="zeit-ziel">
+		<div id={zeitleisteAnker(slug)}>
+			<p class="nur-vorlesen" tabindex="-1" bind:this={zeitFokus}>Zeitleiste</p>
 			{#if meldungen.length > 0}
 				<h3>Neue Meldungen ({meldungen.length})</h3>
 				<ul class="plain widget-liste">
@@ -366,14 +398,7 @@
 				leer="In diesen Tagen ist nichts geschehen, und nichts steht an."
 			/>
 			{#if tage < ZEITLEISTE_AELTER}
-				<button
-					type="button"
-					class="pill"
-					onclick={() => {
-						tage = ZEITLEISTE_AELTER;
-						void ladeVerlaufFuer(slug, tage);
-					}}>Ältere anzeigen</button
-				>
+				<button type="button" class="pill" onclick={aelterAnzeigen}>Ältere anzeigen</button>
 			{/if}
 		{:else if verlauf !== null}
 			<p class="muted">
@@ -410,10 +435,6 @@
 		display: grid;
 		gap: 0.4rem;
 		margin: 0 0 0.6rem;
-	}
-	.zeit-ziel:focus {
-		outline: 0.125rem solid var(--accent);
-		outline-offset: 0.125rem;
 	}
 	h3 {
 		margin: 0 0 0.3rem;

@@ -15,6 +15,7 @@ import type {
 	AmpelGrund,
 	AnstehendEintrag,
 	Backlog,
+	EintragsArt,
 	BacklogKarte,
 	Bedeutung,
 	EtappenStand,
@@ -48,6 +49,11 @@ async function holen<T>(pfad: string, fetchFn: typeof fetch): Promise<Ladung<T>>
 	}
 }
 
+/** `GET /api/projekte/<slug>/backlog` (geschützt), die Aufgabenliste. Wirft nie. */
+export function ladeBacklog(slug: string, fetchFn: typeof fetch): Promise<Ladung<Backlog>> {
+	return holen(`${API}/projekte/${encodeURIComponent(slug)}/backlog`, fetchFn);
+}
+
 /** `GET /api/projekte/<slug>/plan` (geschützt). Wirft nie. */
 export function ladePlan(slug: string, fetchFn: typeof fetch): Promise<Ladung<ProjektPlan>> {
 	return holen(`${API}/projekte/${encodeURIComponent(slug)}/plan`, fetchFn);
@@ -76,6 +82,11 @@ export type ListenArt = 'dich' | 'laeuft' | 'naechstes' | 'andere';
 /** Anker einer Gruppe der Aufgabenliste (kein Eintrags-Anker wie `arbeit-…`). */
 export function gruppenAnker(slug: string, art: ListenArt): string {
 	return `liste-${art}-${slug}`;
+}
+
+/** Anker der ganzen Aufgabenliste (eine Arbeit kann in jeder Gruppe stehen). */
+export function listenAnker(slug: string): string {
+	return `aufgabenliste-${slug}`;
 }
 
 /** Anker der Zeitleiste. */
@@ -143,16 +154,23 @@ export const AMPEL_WORT: Record<StandAmpel, string> = {
 };
 
 /** Anker, zu dem der Grund-Satz der Ampel führt (ohne `#`); `null` ohne passendes Ziel. */
-export function ampelZiel(grund: AmpelGrund, slug: string): string | null {
-	switch (grund) {
+export function ampelZiel(
+	g: { grund_art: AmpelGrund; bezug_art: EintragsArt | null },
+	slug: string
+): string | null {
+	switch (g.grund_art) {
 		case 'wartet':
 		case 'wartet-lange':
 			return gruppenAnker(slug, 'dich');
 		case 'ohne-bewegung':
 			return gruppenAnker(slug, 'laeuft');
 		case 'fehler-offen':
-		case 'frist-vorbei':
 			return zeitleisteAnker(slug);
+		case 'frist-vorbei':
+			// Die Zeitleiste zeigt nur 14 Tage; Aufgabe, Frage und Arbeit stehen sicher in der Liste.
+			// Eine Frist aus fristen.toml (ohne bezug_art) hat kein sicheres Ziel; der Satz nennt sie.
+			if (g.bezug_art === 'aufgabe' || g.bezug_art === 'frage') return gruppenAnker(slug, 'dich');
+			return g.bezug_art === 'arbeit' ? listenAnker(slug) : null;
 		case 'nichts-wartet':
 		case 'speicher-fehlt':
 			return null;
@@ -176,7 +194,9 @@ const LISTEN_TITEL: Record<ListenArt, string> = {
 
 /**
  * Das Backlog als Gruppen untereinander: Wartet auf dich, Läuft, Als
- * Nächstes, Wartet auf andere (alle vier, auch leere). `mitKasten`: Fragen
+ * Nächstes, Wartet auf andere (alle vier, auch leere), aus den Spalten des
+ * Servers: Eine Arbeit, die über eine offene Frage auf dich wartet, steht
+ * wie dort bei „Wartet“, die Frage selbst bei dir. `mitKasten`: Fragen
  * und Aufgaben stehen auf der Projektseite mit ihren Knöpfen (Frage mit
  * Antwort, AufgabenKasten samt „Beim Chat“); dann bleiben hier nur die
  * Arbeiten, die auf dich warten, und bei den anderen keine Aufgaben.
@@ -184,16 +204,8 @@ const LISTEN_TITEL: Record<ListenArt, string> = {
 export function listenGruppen(b: Backlog, mitKasten: boolean): ListenGruppe[] {
 	const spalte = (art: string): BacklogKarte[] =>
 		b.spalten.find((s) => s.art === art)?.karten ?? [];
-	const inhaber = b.wartend.filter((g) => g.rolle === 'inhaber').flatMap((g) => g.karten);
-	const andere = b.wartend.filter((g) => g.rolle !== 'inhaber').flatMap((g) => g.karten);
-	const schluessel = (k: BacklogKarte): string => `${k.art}-${k.id}`;
-	const einmal = (liste: BacklogKarte[]): BacklogKarte[] => {
-		const je = new Map(liste.map((k) => [schluessel(k), k]));
-		return [...je.values()];
-	};
-	const dich = mitKasten
-		? einmal(inhaber.filter((k) => k.art === 'arbeit'))
-		: einmal([...spalte('fuer-dich'), ...inhaber]);
+	const dich = spalte('fuer-dich').filter((k) => !mitKasten || k.art === 'arbeit');
+	const andere = spalte('wartet').filter((k) => !mitKasten || k.art !== 'aufgabe');
 	const gruppe = (art: ListenArt, karten: BacklogKarte[]): ListenGruppe => ({
 		art,
 		titel: LISTEN_TITEL[art],
@@ -203,7 +215,7 @@ export function listenGruppen(b: Backlog, mitKasten: boolean): ListenGruppe[] {
 		gruppe('dich', dich),
 		gruppe('laeuft', spalte('laeuft')),
 		gruppe('naechstes', spalte('als-naechstes')),
-		gruppe('andere', einmal(mitKasten ? andere.filter((k) => k.art !== 'aufgabe') : andere))
+		gruppe('andere', andere)
 	];
 }
 
@@ -370,8 +382,16 @@ export function zeitstreifen(plan: ProjektPlan, heute: string): Streifen | null 
 
 // ----- 4 Zeitleiste -----
 
-/** Ungelesene Meldungen (aus den offenen Einträgen) in der Form des Widgets `Meldung`. */
-export function ungeleseneMeldungen(eintraege: readonly AnstehendEintrag[]): {
+/**
+ * Ungelesene Meldungen (aus den offenen Einträgen) in der Form des Widgets
+ * `Meldung`, ohne die, deren Sache der Verlauf schon als eigene Zeile hat
+ * (dieselbe Regel wie `aus_meldungen` im Server): „Fertig: …“ steht dort als
+ * `arbeit:<id>:fertig`, „Bau rot“ als roter Bau.
+ */
+export function ungeleseneMeldungen(
+	eintraege: readonly AnstehendEintrag[],
+	ereignisse: readonly VerlaufEreignis[]
+): {
 	id: string;
 	art: string;
 	titel: string;
@@ -381,8 +401,16 @@ export function ungeleseneMeldungen(eintraege: readonly AnstehendEintrag[]): {
 	gelesen: boolean;
 	text: string | null;
 }[] {
+	const kennungen = new Set(ereignisse.map((e) => e.kennung));
+	const roterBau = ereignisse.some((e) => e.quelle === 'bau' && e.art === 'problem');
+	const schonDa = (e: AnstehendEintrag): boolean => {
+		const schluessel = e.meldung?.schluessel ?? '';
+		const arbeit = /\/fertig:(.+)$/.exec(schluessel)?.[1];
+		if (arbeit !== undefined) return kennungen.has(`arbeit:${arbeit}:fertig`);
+		return roterBau && schluessel.endsWith('/bau-rot');
+	};
 	return eintraege
-		.filter((e) => e.art === 'meldung')
+		.filter((e) => e.art === 'meldung' && !schonDa(e))
 		.map((e) => ({
 			id: e.id,
 			art: e.meldung?.art ?? 'info',

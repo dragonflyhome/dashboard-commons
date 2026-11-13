@@ -43,7 +43,8 @@
 {#snippet arbeiten(liste: readonly PlanArbeit[])}
 	<ul class="arbeiten small">
 		{#each liste as a (a.id)}
-			<li>
+			<!-- Fertige und archivierte Arbeiten dieses Projekts haben ihr Ziel (`#arbeit-…`, etwa aus der Zeitleiste) hier; offene in der Aufgabenliste. -->
+			<li id={inListe(a) || a.aus !== null ? undefined : `arbeit-${a.id}`}>
 				{#if inListe(a)}
 					<a href="#arbeit-{a.id}">{a.titel}</a>
 				{:else}
@@ -87,7 +88,7 @@
 				{/each}
 				<span class="achse">
 					<span>{kurzDatum(streifen.von)}</span>
-					<span>heute {kurzDatum(tagText(jetzt))}</span>
+					<span>{streifen.bis === tagText(jetzt) ? 'heute ' : ''}{kurzDatum(streifen.bis)}</span>
 				</span>
 			</div>
 		{/if}

@@ -7,11 +7,19 @@
  * Anmeldung. Jede Regel mit Gegenprobe. Alle Daten erfunden.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
+import { SATZ_NICHT_MEHR_DA, SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
+import { live, type InhaltAenderung } from '#lib/live.svelte.ts';
 import { beispielProjektStand, eintrag, json } from '#lib/anstehend.beispiel.ts';
 import type { BauLage } from '#lib/bau.svelte.ts';
-import type { AnstehendEintrag, ProjektStand, Verlauf, VerlaufEreignis } from '$vertrag';
+import type {
+	AnstehendEintrag,
+	ChangeEvent,
+	ProjektStand,
+	Verlauf,
+	VerlaufEreignis
+} from '$vertrag';
 import { backlog, projektPlan, tagIso } from '../../../routes/katalog/beispiele.ts';
 
 const { ort } = vi.hoisted(() => ({
@@ -34,6 +42,7 @@ const { default: ProjektTeile } = await import('./ProjektTeile.svelte');
 
 afterEach(() => {
 	cleanup();
+	vi.restoreAllMocks();
 	ort.url = new URL('http://localhost:8787/projects/beispiel');
 });
 
@@ -102,8 +111,12 @@ const verlauf: Verlauf = {
 	hinweise: []
 };
 
-/** fetch für alle Wege; `angemeldet: false` gibt auf den geschützten 401. */
-function netz(angemeldet = true, eintraege: AnstehendEintrag[] = [frage, meldung]) {
+/** fetch für alle Wege; `angemeldet: false` gibt auf den geschützten 401; `liste` ersetzt /backlog. */
+function netz(
+	angemeldet = true,
+	eintraege: AnstehendEintrag[] = [frage, meldung],
+	liste: () => Promise<Response> = () => Promise.resolve(json(backlog()))
+) {
 	return vi.fn((eingabe: RequestInfo | URL) => {
 		const url =
 			typeof eingabe === 'string' ? eingabe : eingabe instanceof URL ? eingabe.href : eingabe.url;
@@ -144,7 +157,7 @@ function netz(angemeldet = true, eintraege: AnstehendEintrag[] = [frage, meldung
 					aktualisierungen: []
 				})
 			);
-		if (url.endsWith('/backlog')) return Promise.resolve(json(backlog()));
+		if (url.endsWith('/backlog')) return liste();
 		if (url.endsWith('/plan')) return Promise.resolve(json(projektPlan()));
 		if (url.includes('/verlauf?')) return Promise.resolve(json(verlauf));
 		if (url.includes('/gelesen')) return Promise.resolve(json({}));
@@ -219,6 +232,20 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		// Gegenprobe: eine Arbeit aus einem anderen Projekt hat hier keine Zeile, also keinen Link.
 		expect(within(einladung).queryByRole('link', { name: 'Druck prüfen' })).toBeNull();
 		expect(document.querySelector('[data-streifen]')).toHaveAttribute('aria-hidden', 'true');
+		// Der Termin von „Das Fest“ liegt in der Zukunft: rechts steht sein Datum, nicht „heute“.
+		expect(document.querySelector('.achse')).not.toHaveTextContent('heute');
+	});
+
+	it('ein Anker auf eine fertige Arbeit (etwa aus der Zeitleiste) klappt ihre Etappe im Plan auf', async () => {
+		ort.url = new URL('http://localhost:8787/projects/beispiel#arbeit-ar-20261020-0002');
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		await waitFor(() => {
+			expect(document.activeElement?.id).toBe('arbeit-ar-20261020-0002');
+		});
+		expect(document.getElementById('etappe-vorbereitung')).toHaveAttribute('open');
+		expect(screen.queryByRole('status')).toBeNull();
+		// Gegenprobe: eine Arbeit aus einem anderen Projekt hat hier kein Ziel (sie steht bei ihrem Projekt).
+		expect(document.getElementById('arbeit-ar-20261102-0007')).toBeNull();
 	});
 
 	it('Zeitleiste: Kommendes oben, ungelesene Meldung eigens mit „gelesen“, nicht doppelt; „Ältere anzeigen“ lädt 400 Tage', async () => {
@@ -238,7 +265,17 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		await waitFor(() => {
 			expect(f).toHaveBeenCalledWith(expect.stringContaining('/gelesen'), expect.anything());
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Ältere anzeigen' }));
+		// Fokus nach „gelesen“: die Zeile „Zeitleiste“ nur zum Vorlesen, nicht der Kasten mit allen Meldungen.
+		await waitFor(() => {
+			expect(document.activeElement).toHaveTextContent(/^Zeitleiste$/);
+		});
+		expect(document.activeElement).toHaveClass('nur-vorlesen');
+		(document.activeElement as HTMLElement).blur();
+		const aelter = screen.getByRole('button', { name: 'Ältere anzeigen' });
+		aelter.focus();
+		await fireEvent.click(aelter);
+		// Der Knopf verschwindet; der Fokus bleibt in der Zeitleiste statt auf body.
+		expect(document.activeElement).toHaveTextContent(/^Zeitleiste$/);
 		await waitFor(() => {
 			expect(f).toHaveBeenCalledWith(
 				`/api/projekte/beispiel/verlauf?seit=${tagIso(-399)}`,
@@ -257,12 +294,14 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		expect(document.activeElement?.id).toBe('arbeit-ar-20261102-0001');
 	});
 
-	it('ohne Anmeldung: Stand mit Zahlen, sonst je Teil der Satz, keine Titel', async () => {
+	it('ohne Anmeldung: Stand mit Zahlen als Text (ohne Ziel kein Link), sonst je Teil der Satz, keine Titel', async () => {
 		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz(false) });
-		await screen.findByRole('link', { name: '1 wartet auf dich' });
 		await waitFor(() => {
 			expect(screen.getAllByText(SATZ_OHNE_ANMELDUNG)).toHaveLength(3);
 		});
+		await screen.findByText(/In den letzten 7 Tagen/);
+		expect(document.querySelector('.vier')).toHaveTextContent('1 wartet auf dich');
+		expect(document.querySelectorAll('.vier a, .ampel a')).toHaveLength(0);
 		expect(screen.queryByText('Soll die Ampel oben stehen?')).toBeNull();
 		expect(screen.getByText('Notizen (1)')).toBeInTheDocument();
 	});
@@ -289,5 +328,177 @@ describe('Bau im Stand-Kopf nur, wenn auffällig', () => {
 			nurAuffaellig: true
 		});
 		expect(screen.queryByText('Seite in Ordnung')).toBeNull();
+	});
+});
+
+/** Wie oft fetch einen Weg gerufen hat, dessen Adresse `teil` enthält. */
+function aufrufe(f: ReturnType<typeof netz>, teil: string): number {
+	return f.mock.calls.filter(([u]) => typeof u === 'string' && u.includes(teil)).length;
+}
+
+const SATZ_LISTE_FEHLT = 'Die Aufgabenliste lässt sich gerade nicht laden.';
+
+describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)', () => {
+	it('/backlog scheitert (500): die Frage bleibt beantwortbar, ein eigener Satz statt „ohne Anmeldung“', async () => {
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netz(true, [frage, meldung], () => Promise.resolve(json({ fehler: 'x' }, 500)))
+		});
+		expect(await screen.findByText(SATZ_LISTE_FEHLT)).toBeInTheDocument();
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+		expect(screen.queryByText(SATZ_OHNE_ANMELDUNG)).toBeNull();
+		// Ohne Liste haben die Zahlen kein Ziel: Text statt Link.
+		await screen.findByText(/In den letzten 7 Tagen/);
+		expect(document.querySelectorAll('.vier a')).toHaveLength(0);
+	});
+
+	it('„Fertig: …“ steht nicht als Meldung, wenn die Zeitleiste die Arbeit schon als fertig zeigt', async () => {
+		const fertig = eintrag({
+			art: 'meldung',
+			id: 'm-fertig',
+			projekt: 'beispiel',
+			titel: 'Fertig: Gästeliste abgeschlossen',
+			meldung: {
+				art: 'fertig',
+				anzahl: 1,
+				zuletzt: '2026-11-13T09:00:00+01:00',
+				text: null,
+				system: false,
+				schluessel: 'beispiel/fertig:ar-1'
+			}
+		});
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz(true, [frage, meldung, fertig]) });
+		await screen.findByText('Gästeliste abgeschlossen');
+		await screen.findByText('Prüfung meldet einen Fehler');
+		expect(screen.queryByText('Fertig: Gästeliste abgeschlossen')).toBeNull();
+		expect(screen.getByRole('heading', { name: 'Neue Meldungen (1)' })).toBeInTheDocument();
+	});
+
+	it('Anker ohne Ziel: angemeldet „nicht mehr da“, ohne Anmeldung der Anmelde-Satz, bei kaputter Liste ihr Satz', async () => {
+		const satz = async (f: ReturnType<typeof netz>): Promise<string | null> => {
+			ort.url = new URL('http://localhost:8787/projects/beispiel#arbeit-ar-9');
+			render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+			const el = await waitFor(() => {
+				const p = document.querySelector('.anker-satz');
+				if (p === null) throw new Error('noch kein Satz');
+				return p;
+			});
+			const text = el.textContent;
+			cleanup();
+			return text;
+		};
+		expect(await satz(netz())).toBe(SATZ_NICHT_MEHR_DA);
+		expect(await satz(netz(false))).toBe(SATZ_OHNE_ANMELDUNG);
+		expect(await satz(netz(true, [frage], () => Promise.resolve(json({ fehler: 'x' }, 500))))).toBe(
+			SATZ_LISTE_FEHLT
+		);
+	});
+
+	it('eine späte Antwort überschreibt keine neuere (Auflage aus A1)', async () => {
+		let erste: (r: Response) => void = () => undefined;
+		let n = 0;
+		const mitTitel = (titel: string): Response => {
+			const b = backlog();
+			const k = b.spalten[1]?.karten[0];
+			if (k) k.titel = titel;
+			return json(b);
+		};
+		const f = netz(true, [frage], () => {
+			n += 1;
+			if (n === 1)
+				return new Promise<Response>((fertig) => {
+					erste = fertig;
+				});
+			return Promise.resolve(mitTitel('Neuer Stand'));
+		});
+		let hoerer: ((c: ChangeEvent) => void) | null = null;
+		vi.spyOn(live, 'onChange').mockImplementation((l) => {
+			hoerer = l;
+			return () => undefined;
+		});
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		(hoerer as ((c: ChangeEvent) => void) | null)?.({
+			area: 'anstehend',
+			path: 'anstehend/beispiel',
+			at: ''
+		});
+		await screen.findByText('Neuer Stand');
+		erste(mitTitel('Alter Stand'));
+		await new Promise((r) => setTimeout(r, 0));
+		await tick();
+		expect(screen.getByText('Neuer Stand')).toBeInTheDocument();
+		expect(screen.queryByText('Alter Stand')).toBeNull();
+	});
+
+	it('live: anstehend/<slug> lädt alle Teile neu, ein anderes Projekt nicht', async () => {
+		let hoerer: ((c: ChangeEvent) => void) | null = null;
+		vi.spyOn(live, 'onChange').mockImplementation((l) => {
+			hoerer = l;
+			return () => undefined;
+		});
+		const f = netz();
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		await waitFor(() => {
+			expect(aufrufe(f, '/verlauf?')).toBe(1);
+		});
+		const melden = hoerer as ((c: ChangeEvent) => void) | null;
+		melden?.({ area: 'anstehend', path: 'anstehend/anderes', at: '' });
+		await tick();
+		expect(aufrufe(f, '/backlog')).toBe(1);
+		melden?.({ area: 'anstehend', path: 'anstehend/beispiel', at: '' });
+		await waitFor(() => {
+			for (const weg of ['/api/anstehend', '/backlog', '/plan', '/verlauf?'])
+				expect(aufrufe(f, weg), weg).toBe(2);
+		});
+	});
+
+	it('live: eine Änderung am Inhalt des Projekts (plan.toml) lädt Plan und Liste neu, nur für dieses Projekt', async () => {
+		let hoerer: ((a: InhaltAenderung) => void) | null = null;
+		vi.spyOn(live, 'onInhalt').mockImplementation((l) => {
+			hoerer = l;
+			return () => undefined;
+		});
+		const f = netz();
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		await waitFor(() => {
+			expect(aufrufe(f, '/plan')).toBe(1);
+		});
+		const melden = hoerer as ((a: InhaltAenderung) => void) | null;
+		const aenderung = (slug: string): InhaltAenderung => ({
+			projekte: [slug],
+			daten: [],
+			version: 2,
+			sammel: false
+		});
+		melden?.(aenderung('anderes'));
+		await tick();
+		expect(aufrufe(f, '/plan')).toBe(1);
+		melden?.(aenderung('beispiel'));
+		await waitFor(() => {
+			expect(aufrufe(f, '/plan')).toBe(2);
+			expect(aufrufe(f, '/backlog')).toBe(2);
+		});
+		expect(aufrufe(f, '/verlauf?')).toBe(1);
+	});
+
+	it('lädt um Mitternacht neu (Frist morgen wird heute, die Zeitleiste rückt weiter)', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+		vi.setSystemTime(new Date(2026, 10, 13, 23, 59, 0));
+		try {
+			const f = netz();
+			render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+			await vi.waitFor(() => {
+				expect(aufrufe(f, '/verlauf?')).toBe(1);
+			});
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(aufrufe(f, '/verlauf?')).toBe(1);
+			await vi.advanceTimersByTimeAsync(31_000);
+			expect(aufrufe(f, '/verlauf?seit=2026-11-01')).toBe(1);
+			for (const weg of ['/api/anstehend', '/backlog', '/plan'])
+				expect(aufrufe(f, weg), weg).toBe(2);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

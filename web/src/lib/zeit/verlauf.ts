@@ -265,7 +265,8 @@ export function routineTitel(quelle: VerlaufQuelle, n: number): string {
 		case 'meldung':
 			return `${String(n)} Hinweise`;
 		case 'bau':
-			return `Bau ${String(n)}-mal grün`;
+			// Der Server führt auch laufende Bauten als routine: „grün“ wäre nicht immer wahr.
+			return `${String(n)} Bauten`;
 		case 'schritt':
 			return `${String(n)} Schritte`;
 		case 'hand':

@@ -4,20 +4,22 @@
  * (`routineZusammenfassen`). Jede Regel mit Gegenprobe. Alle Daten erfunden.
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { Backlog, PlanEtappe, VerlaufEreignis } from '$vertrag';
-import { json } from '#lib/anstehend.beispiel.ts';
+import type { AmpelGrund, Backlog, EintragsArt, PlanEtappe, VerlaufEreignis } from '$vertrag';
+import { eintrag as anstehendEintrag, json } from '#lib/anstehend.beispiel.ts';
 import {
 	ampelZiel,
 	etappenNamen,
 	etappenWort,
 	gewachsenSatz,
 	inListe,
+	ladeBacklog,
 	ladePlan,
 	ladeProjektVerlauf,
 	listenGruppen,
 	planArbeitWort,
 	standSatz,
 	standZahlen,
+	ungeleseneMeldungen,
 	zaehlung,
 	zeilenAngaben,
 	zeitleisteEreignisse,
@@ -62,10 +64,20 @@ describe('Stand', () => {
 	});
 
 	it('der Grund der Ampel führt zur Gruppe oder Zeitleiste; ohne Ziel kein Link', () => {
-		expect(ampelZiel('wartet-lange', 'x')).toBe('liste-dich-x');
-		expect(ampelZiel('ohne-bewegung', 'x')).toBe('liste-laeuft-x');
-		expect(ampelZiel('fehler-offen', 'x')).toBe('zeitleiste-x');
-		expect(ampelZiel('nichts-wartet', 'x')).toBeNull();
+		const g = (grund_art: AmpelGrund, bezug_art: EintragsArt | null = null) => ({
+			grund_art,
+			bezug_art
+		});
+		expect(ampelZiel(g('wartet-lange', 'frage'), 'x')).toBe('liste-dich-x');
+		expect(ampelZiel(g('ohne-bewegung'), 'x')).toBe('liste-laeuft-x');
+		expect(ampelZiel(g('fehler-offen', 'meldung'), 'x')).toBe('zeitleiste-x');
+		expect(ampelZiel(g('nichts-wartet'), 'x')).toBeNull();
+		// Verstrichene Frist: dorthin, wo der Eintrag sicher steht, nicht in die Zeitleiste (nur 14 Tage).
+		expect(ampelZiel(g('frist-vorbei', 'aufgabe'), 'x')).toBe('liste-dich-x');
+		expect(ampelZiel(g('frist-vorbei', 'frage'), 'x')).toBe('liste-dich-x');
+		expect(ampelZiel(g('frist-vorbei', 'arbeit'), 'x')).toBe('aufgabenliste-x');
+		// Gegenprobe: eine Frist aus fristen.toml hat kein sicheres Ziel, der Satz steht ohne Link.
+		expect(ampelZiel(g('frist-vorbei'), 'x')).toBeNull();
 	});
 });
 
@@ -82,17 +94,36 @@ describe('Aufgabenliste', () => {
 
 	it('mit Kasten: in „Wartet auf dich“ nur Arbeiten, bei anderen keine Aufgaben (stehen „Beim Chat“)', () => {
 		const b: Backlog = backlog();
-		const beimChat = { ...da(da(b.wartend[1]).karten[0]) };
-		beimChat.art = 'aufgabe';
-		beimChat.id = 'a-20261104-0009';
-		b.wartend[1]?.karten.push(beimChat);
+		const fuerDich = da(b.spalten[0]);
+		const wartet = da(b.spalten[2]);
+		const beimChat = { ...da(wartet.karten[0]), art: 'aufgabe' as const, id: 'a-20261104-0009' };
+		wartet.karten.push(beimChat);
 		const fuerMich = { ...beimChat, art: 'arbeit' as const, id: 'ar-20261104-0001' };
-		b.wartend[0]?.karten.push(fuerMich, fuerMich);
+		fuerDich.karten.push(fuerMich);
 		const mit = listenGruppen(b, true);
 		expect(mit[0]?.karten.map((k) => k.id)).toEqual(['ar-20261104-0001']);
 		expect(mit[3]?.karten.map((k) => k.art)).toEqual(['arbeit', 'arbeit']);
 		// Gegenprobe: ohne Kasten steht die Aufgabe beim Chat bei den anderen.
 		expect(listenGruppen(b, false)[3]?.karten.map((k) => k.id)).toContain('a-20261104-0009');
+	});
+
+	it('die Gruppen folgen den Spalten des Servers: eine Arbeit, die über eine Frage auf dich wartet, steht bei „Wartet“', () => {
+		const b: Backlog = backlog();
+		// Wie im Server: wartet_auf inhaber mit Verweis auf eine offene Frage → Spalte „Wartet“,
+		// in `wartend` aber in der Gruppe des Inhabers.
+		const ueberFrage = {
+			...da(da(b.spalten[2]).karten[0]),
+			id: 'ar-20261104-0002',
+			wartet_auf: 'inhaber',
+			hinweis: 'wartet auf die Frage „farbe“'
+		};
+		da(b.spalten[2]).karten.push(ueberFrage);
+		da(b.wartend[0]).karten.push(ueberFrage);
+		for (const mitKasten of [true, false]) {
+			const [dich, , , andere] = listenGruppen(b, mitKasten);
+			expect(dich?.karten.map((k) => k.id)).not.toContain('ar-20261104-0002');
+			expect(andere?.karten.map((k) => k.id)).toContain('ar-20261104-0002');
+		}
 	});
 
 	it('Angaben einer Zeile: Etappe mit Titel aus dem Plan, wer dran ist, sonst die Kennung', () => {
@@ -165,6 +196,9 @@ describe('Plan', () => {
 		expect(Math.abs(ende - s.heute)).toBeLessThan(2);
 		expect(fest?.balken).toBeNull();
 		expect(fest?.raute).toBeGreaterThan(s.heute);
+		// Der Termin liegt in der Zukunft: die Achse reicht bis zu ihm, heute steht nicht am Rand.
+		expect(s.bis).toBe(`${tagIso(40, heute).slice(0, 7)}-01`);
+		expect(s.heute).toBeLessThan(95);
 		expect(fertig?.balken?.links).toBeGreaterThanOrEqual(0);
 		expect(s.von).toBe(tagIso(-20, heute));
 		// Gegenprobe: ohne jedes Datum gibt es keinen Streifen (nichts geschätzt).
@@ -188,6 +222,35 @@ describe('Zeitleiste', () => {
 		...mehr
 	});
 
+	it('„Fertig: …“ und „Bau rot“ stehen nicht als Meldung, wenn der Verlauf sie als eigene Zeile hat', () => {
+		const meldung = (id: string, art: 'fertig' | 'fehler', schluessel: string) =>
+			anstehendEintrag({
+				art: 'meldung',
+				id,
+				titel: id,
+				meldung: {
+					art,
+					anzahl: 1,
+					zuletzt: '2026-11-13T09:00:00+01:00',
+					text: null,
+					system: false,
+					schluessel
+				}
+			});
+		const liste = [
+			meldung('fertig', 'fertig', 'beispiel/fertig:ar-1'),
+			meldung('rot', 'fehler', 'beispiel/bau-rot'),
+			meldung('anderes', 'fehler', 'beispiel/pruefung')
+		];
+		const verlauf = [
+			ereignis('arbeit:ar-1:fertig', { quelle: 'arbeit', art: 'erledigt' }),
+			ereignis('bau:v-9', { quelle: 'bau', art: 'problem' })
+		];
+		expect(ungeleseneMeldungen(liste, verlauf).map((m) => m.id)).toEqual(['anderes']);
+		// Gegenprobe: ohne diese Zeilen im Verlauf (älter als 14 Tage, Bau wieder grün) stehen sie als Meldung da.
+		expect(ungeleseneMeldungen(liste, []).map((m) => m.id)).toEqual(['fertig', 'rot', 'anderes']);
+	});
+
 	it('ungelesene Meldungen stehen eigens, nicht noch einmal im Verlauf', () => {
 		const e = [ereignis('meldung:m-1', { quelle: 'meldung' }), ereignis('meldung:m-2')];
 		expect(zeitleisteEreignisse(e, [{ id: 'm-1' }]).map((x) => x.kennung)).toEqual(['meldung:m-2']);
@@ -208,7 +271,7 @@ describe('Zeitleiste', () => {
 		expect(z.map((x) => (x.art === 'routine' ? x.titel : x.eintrag.e.kennung))).toEqual([
 			'3 Schritte bei „Projektseiten neu“',
 			'schritt:ar-2/1:0',
-			'Bau 2-mal grün',
+			'2 Bauten',
 			'bau:v-3'
 		]);
 	});
@@ -226,6 +289,12 @@ describe('Laden der geschützten Wege', () => {
 		);
 		const kaputt = (): Promise<Response> => Promise.reject(new Error('Netz'));
 		expect(await ladePlan('x', kaputt)).toEqual({ wert: null, anmelden: false });
+		// /backlog wie /plan: 401 heißt anmelden, ein Serverfehler nicht.
+		expect(await ladeBacklog('x', f)).toEqual({ wert: null, anmelden: true });
+		expect(f).toHaveBeenLastCalledWith('/api/projekte/x/backlog', expect.anything());
+		const kaputtServer = vi.fn(() => Promise.resolve(json({ fehler: 'x' }, 500)));
+		expect(await ladeBacklog('x', kaputtServer)).toEqual({ wert: null, anmelden: false });
+		expect(await ladeBacklog('x', kaputt)).toEqual({ wert: null, anmelden: false });
 		const gut = vi.fn(() => Promise.resolve(json(projektPlan())));
 		expect((await ladePlan('x', gut)).wert?.etappen).toHaveLength(3);
 	});

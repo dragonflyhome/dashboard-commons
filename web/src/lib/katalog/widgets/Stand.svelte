@@ -33,8 +33,12 @@
 		kurz?: KurzAnsicht | null;
 		/** Der Datenspeicher fehlt gerade (ein Satz dazu). */
 		speicherFehlt?: boolean;
-		/** Etappe B8: als Teil der Projektseite (Projekt und fertige Arbeiten der letzten 7 Tage). */
-		teil?: { slug: string; fertig7: number } | null;
+		/**
+		 * Etappe B8: als Teil der Projektseite (Projekt, fertige Arbeiten der
+		 * letzten 7 Tage, `springen`: die Ziele der Links stehen auf der Seite;
+		 * ohne, etwa ohne Anmeldung, stehen Zahlen und Grund als Text).
+		 */
+		teil?: { slug: string; fertig7: number; springen: boolean } | null;
 		/** Nur mit `teil`: klein darunter (Bau, Notizen). */
 		children?: Snippet;
 	}
@@ -59,7 +63,7 @@
 					{ zahl: kurz.als_naechstes, wort: 'als Nächstes' }
 				].filter((z) => z.zahl > 0)
 	);
-	const ziel = $derived(teil === null ? null : ampelZiel(gesamt.grund_art, teil.slug));
+	const ziel = $derived(teil?.springen === true ? ampelZiel(gesamt, teil.slug) : null);
 </script>
 
 {#snippet speicher()}
@@ -77,7 +81,11 @@
 			<p class="satz">{standSatz(kurz, teil.fertig7)}</p>
 			<ul class="plain vier">
 				{#each standZahlen(teil.slug, kurz, teil.fertig7) as z (z.ziel)}
-					<li><a class="zahl" href="#{z.ziel}"><b>{z.zahl}</b> <span>{z.wort}</span></a></li>
+					<li>
+						{#if teil.springen}<a class="zahl" href="#{z.ziel}"
+								><b>{z.zahl}</b> <span>{z.wort}</span></a
+							>{:else}<span class="zahl"><b>{z.zahl}</b> <span>{z.wort}</span></span>{/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}
@@ -156,7 +164,7 @@
 		color: var(--muted);
 		font-size: var(--text-sm);
 	}
-	.zahl:hover span {
+	a.zahl:hover span {
 		text-decoration: underline;
 	}
 	.ampel {

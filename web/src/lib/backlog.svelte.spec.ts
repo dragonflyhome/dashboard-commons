@@ -1,7 +1,7 @@
 /**
  * Etappe B2, Modul Backlog, seit B8 die Aufgabenliste der Projektseite: der
  * Baustein `Backlog` (Gruppen untereinander, Zeilen mit Etappe, wer dran ist,
- * Frist und Schritten), das Laden, die Fragen-Warteschlange in `auswaehlen`
+ * Frist und Schritten), die Fragen-Warteschlange in `auswaehlen`
  * und im Baustein `Fragen`. Alle Daten erfunden.
  */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
@@ -11,8 +11,7 @@ import type { AnstehendEintrag, Backlog as BacklogDaten, Frage } from '$vertrag'
 import { Backlog, Fragen } from '$katalog';
 import FragenListe from '#lib/components/projekt/FragenListe.svelte';
 import { auswaehlen } from '#lib/anstehend.ts';
-import { eintrag, json } from '#lib/anstehend.beispiel.ts';
-import { ladeBacklog } from '#lib/backlog.ts';
+import { eintrag } from '#lib/anstehend.beispiel.ts';
 import { etappenNamen } from '#lib/projektteile.ts';
 import { backlog, fragen, fragenAbgeleitet, projektPlan } from '../routes/katalog/beispiele.ts';
 
@@ -109,14 +108,6 @@ describe('Baustein Backlog als Aufgabenliste (Etappe B8)', () => {
 		render(Backlog, { backlog: b });
 		expect(screen.getByText(/Der Datenspeicher fehlt gerade/)).toBeInTheDocument();
 		expect(screen.getByText('Nichts wartet auf dich.')).toBeInTheDocument();
-	});
-
-	it('ladeBacklog: ohne Anmeldung, ohne Projekt oder bei Netzfehler null', async () => {
-		for (const status of [401, 404]) {
-			expect(await ladeBacklog('beispiel', () => Promise.resolve(json({}, status)))).toBeNull();
-		}
-		expect(await ladeBacklog('beispiel', () => Promise.reject(new Error('Netz')))).toBeNull();
-		expect(await ladeBacklog('beispiel', () => Promise.resolve(json(backlog())))).not.toBeNull();
 	});
 });
 
