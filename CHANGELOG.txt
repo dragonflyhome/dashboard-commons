@@ -18,6 +18,30 @@ Hinzugefügt
 - Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
   hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
   Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.
+- Beiträge aus Forks: Der Prüfer nimmt Commits außerhalb der
+  First-Parent-Linie von main (Seitenzweige, Beiträge aus Forks) mit fremdem
+  Autor und Committer an, wenn die Adresse eine GitHub-noreply-Adresse ist
+  oder auf .invalid oder .example endet; Name und Adresse laufen durch die
+  Textprüfung. Auf der Linie bleibt es genau Ranke. Die Regel gilt in jeder
+  Art, auch im Projekt-Repo.
+- Ein fremder Commit ändert keinen Prüfpfad (scripts/, .cargo/, .github/,
+  tests/vor_push.rs, KONTAKT-PGP.asc), und ein Merge der Linie, der fremde
+  Commits hereinholt, ändert sie gegenüber seinem ersten Elternteil nicht.
+- Issue-Formular .github/ISSUE_TEMPLATE/merge-angebot.yml (Fork-URL, Ref,
+  Beschreibung, Pflicht-Kontrollkästchen zu den Regeln); die Positivliste
+  lässt genau die Formulare darin zu, ohne config.yml.
+
+Geändert
+- Der Leitfaden für Mitwirkende (CONTRIBUTING.md) ist formell: kein
+  Schreibzugriff, kein direkter Push, keine Zweige und keine Pull Requests;
+  Merge-Angebot im Issue mit Fork-URL und Ref, Merge nur durch die
+  Betreuer; die Commit-Regeln so, wie der Prüfer sie durchsetzt.
+- Der Prüfer weist Fortsetzungszeilen im Commit-Kopf ab, und Hook und
+  Hochladen.ps1 verlangen, dass main die bisherige Linie fortsetzt (kein
+  Merge falsch herum).
+- Anleitung, Abschnitte 14, 15 und 17: die Regel für Beiträge aus Forks, wie
+  die Betreuer ein Angebot übernehmen (erst den ganzen Diff lesen, dann
+  bauen) und wer Antworten in Issues sendet.
 
 0.4.0 - 2026-11-13
 ------------------
