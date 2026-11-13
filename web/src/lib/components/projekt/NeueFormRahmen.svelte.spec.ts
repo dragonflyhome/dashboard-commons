@@ -4,13 +4,12 @@ import { createRawSnippet } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProjektAntwort } from '$vertrag';
 
-// Unter-Dashboard und Aufgaben laden selbst; hier zählt nur der Rahmen.
-const { leer, ladenFuer } = vi.hoisted(() => ({
-	leer: vi.fn(),
+// Die vier Teile laden selbst (eigene Tests); hier zählt nur der Rahmen.
+const { teile, ladenFuer } = vi.hoisted(() => ({
+	teile: vi.fn(),
 	ladenFuer: vi.fn(() => Promise.resolve())
 }));
-vi.mock('#lib/components/projekt/UnterDashboard.svelte', () => ({ default: leer }));
-vi.mock('#lib/components/aufgaben/AufgabenKasten.svelte', () => ({ default: leer }));
+vi.mock('#lib/components/projekt/ProjektTeile.svelte', () => ({ default: teile }));
 vi.mock('#lib/aufgaben.svelte.ts', () => ({
 	aufgaben: { benutzen: () => () => undefined, fuer: () => [], haken: vi.fn(), ladenFuer }
 }));
@@ -35,9 +34,14 @@ const inhalt = createRawSnippet(() => ({ render: () => '<p>Seite des Projekts</p
 
 describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 	it('kein Hinweis, kein „Zur Hauptseite“, Unterseiten direkt unter /projects/<slug>', () => {
+		teile.mockClear();
 		render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
 		expect(screen.getByText('Seite des Projekts')).toBeInTheDocument();
-		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Architektur');
+		// Etappe B8: das Status-Wort einmal, in der Überschrift; keine zweite Zeile „Status: …“.
+		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Architektur\s*aktiv$/);
+		expect(screen.queryByText(/^Status:/)).toBeNull();
+		// Die vier Teile stehen auf der Übersicht.
+		expect(teile).toHaveBeenCalledTimes(1);
 		expect(screen.queryByRole('link', { name: 'Zur Hauptseite' })).toBeNull();
 		expect(screen.queryByText(/neue Ansicht/i)).toBeNull();
 		// Den Weg tragen die Brotkrumen der Kopfleiste; keine eigene Zeile „Übersicht › …“ mehr.
@@ -50,10 +54,12 @@ describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 		expect(links).toEqual(['/projects/alpha', '/projects/alpha/zeitachse']);
 	});
 
-	it('die gezeigte Unterseite ist markiert', () => {
+	it('die gezeigte Unterseite ist markiert; dort stehen die vier Teile nicht', () => {
+		teile.mockClear();
 		render(NeueFormRahmen, { kopf: kopf(), aktiv: 'zeitachse', children: inhalt });
 		expect(screen.getByRole('link', { name: 'Zeitachse' })).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByRole('link', { name: 'Übersicht' })).not.toHaveAttribute('aria-current');
+		expect(teile).not.toHaveBeenCalled();
 	});
 });
 
