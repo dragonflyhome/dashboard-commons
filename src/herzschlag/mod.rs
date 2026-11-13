@@ -1,3 +1,4 @@
+//! `dashboard-herzschlag.exe` (ohne Fenster, für den Hook) und
 //! `dashboard.exe herzschlag`: der Stop-Hook eines Chats. Er liest die Eingabe
 //! des Hooks von stdin, fragt das Dashboard, ob der Chat dieser Sitzung noch
 //! offene Arbeit hat (`GET /api/sitzungen/<id>/offen`), und hält den Stop auf,
@@ -40,7 +41,8 @@ pub fn ausfuehren(args: &[String]) -> i32 {
         [] => abfrage::SERVER.to_string(),
         [schalter, wert] if schalter == "--server" => wert.clone(),
         _ => {
-            eprintln!("herzschlag: Aufruf ohne Wirkung, erwartet: dashboard.exe herzschlag [--server 127.0.0.1:<port>]");
+            // writeln! statt eprintln!: Bei geschlossenem stderr bräche eprintln! mit Exit 101 ab.
+            let _ = writeln!(std::io::stderr(), "herzschlag: Aufruf ohne Wirkung, erwartet: [--server 127.0.0.1:<port>]");
             return 0;
         }
     };

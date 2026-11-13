@@ -342,7 +342,7 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
 
     // Herzschlag: Api.ps1 schickt die Kennung aus der Variable, die
     // DASHBOARD_SITZUNG_VARIABLE nennt; ein POST damit ordnet die Sitzung dem Chat
-    // zu, und dashboard.exe herzschlag hält ihren Stop dann auf (Exit 2).
+    // zu, und der Hook (dashboard-herzschlag.exe, ohne Fenster) hält ihren Stop dann auf (Exit 2).
     let arbeit = r#"{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Probe Herzschlag", "stand": "laeuft"}"#;
     let zugeordnet = || {
         let (status, koerper) = anfrage(&format!("{basis}/api/sitzungen/s-konsole/offen"), true, None);
@@ -359,8 +359,8 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
     let transkript = ort.ordner.join("transkript.jsonl");
     std::fs::write(&transkript, "{\"type\":\"user\",\"message\":{\"content\":\"frage\"}}\n").unwrap();
     let eingabe = serde_json::json!({"hook_event_name": "Stop", "session_id": "s-konsole", "transcript_path": transkript, "stop_hook_active": false});
-    let mut hook = eigener_befehl(PROGRAMM)
-        .args(["herzschlag", "--server", &format!("127.0.0.1:{port}")])
+    let mut hook = eigener_befehl(env!("CARGO_BIN_EXE_dashboard-herzschlag"))
+        .args(["--server", &format!("127.0.0.1:{port}")])
         .env("LOCALAPPDATA", &ort.ordner)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

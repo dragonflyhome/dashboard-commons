@@ -116,6 +116,7 @@ Aufrufe von dashboard.exe:
   dashboard.exe herzschlag [--server 127.0.0.1:<port>]
       Stop-Hook eines Chats: Eingabe des Hooks auf stdin; 2 mit Grund auf stderr,
       solange die Sitzung im Dashboard offene Arbeit hat, sonst und bei jedem Fehler 0.
+      Als Hook eingetragen wird dashboard-herzschlag.exe (dasselbe, ohne Fenster).
   dashboard.exe --konsole --einstellungen <datei>
       Server in der Konsole mit einer Einstellungsdatei (dienst.toml); Protokoll
       zusätzlich in den Protokollordner. Beenden mit Strg+C.
