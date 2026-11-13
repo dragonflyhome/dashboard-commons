@@ -15,7 +15,8 @@ export type VerlaufEreignis = {
  * `arbeit:<id>:begonnen`, `arbeit:<id>:fertig`, `etappe:<kennung>`
  * (Etappe fertig), `schritt:<id>/<nr>:<n>` (n-ter Eintrag im Verlauf der
  * Arbeit), `frage:<vorgang>`, `bau:<vorgang>`, `entscheidung:<datei>`
- * und `frist:<quelle>:<id>`.
+ * und `frist:<quelle>:<id>`. Vorgänge der Art `schritt` und `oeffnen`
+ * fehlen im Verlauf eines Projekts (Schritte stehen als `schritt:`).
  */
 kennung: string, 
 /**
@@ -33,6 +34,7 @@ bis: string | null, titel: string,
  */
 text: string | null, quelle: VerlaufQuelle, art: VerlaufArt, 
 /**
- * Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`.
+ * Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; leer, wenn es
+ * kein Ziel gibt (etwa eine Arbeit, die die Projektseite nicht zeigt).
  */
 verweis: string | null, };

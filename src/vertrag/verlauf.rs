@@ -29,7 +29,8 @@ pub struct Ereignis {
     /// `arbeit:<id>:begonnen`, `arbeit:<id>:fertig`, `etappe:<kennung>`
     /// (Etappe fertig), `schritt:<id>/<nr>:<n>` (n-ter Eintrag im Verlauf der
     /// Arbeit), `frage:<vorgang>`, `bau:<vorgang>`, `entscheidung:<datei>`
-    /// und `frist:<quelle>:<id>`.
+    /// und `frist:<quelle>:<id>`. Vorgänge der Art `schritt` und `oeffnen`
+    /// fehlen im Verlauf eines Projekts (Schritte stehen als `schritt:`).
     pub kennung: String,
     /// Beginn, RFC 3339 mit Zone (Ortszeit). Bei `tag`, `monat` und `jahr`
     /// der Anfang des Tages, Monats oder Jahres.
@@ -43,7 +44,8 @@ pub struct Ereignis {
     pub text: Option<String>,
     pub quelle: Quelle,
     pub art: Art,
-    /// Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`.
+    /// Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; leer, wenn es
+    /// kein Ziel gibt (etwa eine Arbeit, die die Projektseite nicht zeigt).
     pub verweis: Option<String>,
 }
 

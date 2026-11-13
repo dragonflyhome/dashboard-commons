@@ -387,6 +387,7 @@ impl Speicher {
         } else if a.stand == ArbeitsStand::Wartet && a.wartet_auf != altes_warten {
             // Wartet jetzt auf jemand anderen: neuer Beginn des Wartens (`anstehend::wartet_seit`).
             // Nur für die Ampel: bei vollem Verlauf entfällt der Eintrag, die Änderung geht durch.
+            // shortcut: dann zählt wartet-lange ab dem alten Warten, zu früh rot; aufrüsten, wenn es vorkommt.
             let wer = match a.wartet_auf.as_deref().unwrap_or_default() {
                 "inhaber" => "den Inhaber".to_string(),
                 "extern" => "jemand anderen".to_string(),
