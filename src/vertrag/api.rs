@@ -17,6 +17,8 @@ use crate::speicher::tabellen::PcMesswert;
 pub use super::anstehend::*;
 /// Das Backlog eines Projekts (Etappe B2) steht in `backlog.rs`; hier als Teil der API.
 pub use super::backlog::*;
+/// Die Fassungen aus dem Changelog stehen in `fassungen.rs`; hier als Teil der API.
+pub use super::fassungen::*;
 /// Die System-Seiten (Etappe 4d) stehen in `system_seiten.rs`; hier als Teil der API.
 pub use super::system_seiten::*;
 /// Befund und Schwere stehen bei den Regeln (`inhalt::pruefung`); hier als Teil der API.
@@ -950,6 +952,12 @@ pub struct Betrieb {
     pub modus: String,
     /// Fassung aus Cargo.toml.
     pub version: String,
+    /// Datum dieser Fassung aus dem eingebetteten Changelog (`JJJJ-MM-TT`);
+    /// `null`, wenn das Changelog sie nicht nennt.
+    pub version_datum: Option<String>,
+    /// `true`, wenn Unreleased im eingebetteten Changelog Einträge hat: Es
+    /// läuft ein Bau zwischen zwei Fassungen.
+    pub unveroeffentlicht: bool,
     /// Commit, wenn beim Bauen `DASHBOARD_COMMIT` gesetzt war; sonst `null`.
     pub commit: Option<String>,
     /// Startzeit des Servers, Ortszeit, RFC 3339.

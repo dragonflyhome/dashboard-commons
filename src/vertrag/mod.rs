@@ -19,6 +19,7 @@
 //! - `plan`: die Etappen eines Projekts aus `daten/plan.toml` (Etappe B8)
 //! - `schwerpunkte`: `data/schwerpunkte.toml`
 //! - `gruppen`: `data/gruppen.toml` (Projektgruppen)
+//! - `fassungen`: die Fassungen aus dem Changelog (`/api/fassungen`)
 //! - `passkey`: Passkeys und ihre Wege (Etappe 7c)
 //! - `system_seiten`: Entscheidungen und Zielbild aus `docs/` (Etappe 4d)
 //! - `verlauf`: Ereignisse für den Verlauf (PC und Zeitstrahl, Etappe 2e)
@@ -32,6 +33,7 @@ pub mod bausteine;
 pub mod bedeutung;
 pub mod bote;
 pub mod daten;
+pub mod fassungen;
 pub mod fristen;
 pub mod gruppen;
 pub mod lesen;

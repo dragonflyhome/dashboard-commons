@@ -1362,7 +1362,8 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
 #[tokio::test]
 async fn freie_wege_ohne_anmeldung() {
     let app = app_ohne_anmeldung();
-    for pfad in ["/api/projects", "/api/projects/dashboard", "/healthz", "/api/betrieb", "/api/pc", "/projects/schaufenster/assets/bild.svg"] {
+    for pfad in ["/api/projects", "/api/projects/dashboard", "/healthz", "/api/betrieb", "/api/fassungen", "/api/pc", "/projects/schaufenster/assets/bild.svg"]
+    {
         assert_eq!(schicke(&app, hole(pfad)).await.status(), StatusCode::OK, "{pfad}");
     }
 }
@@ -1732,6 +1733,8 @@ fn liste_der_geschuetzten_wege() {
         "/api/projects",
         "/api/pc",
         "/api/betrieb",
+        // Freigabe in einem Schritt: das Changelog ist öffentlich.
+        "/api/fassungen",
         "/healthz",
         "/api/pruefung",
         "/api/anmeldung/probe",

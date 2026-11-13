@@ -14,6 +14,16 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- GET /api/fassungen (frei): die laufende Version, Unreleased und alle
+  Fassungen dieses Changelogs mit Tag, Datum, Hinzugefügt, Geändert,
+  Entfernt, Behoben und den Brüchen, neueste zuerst; ?seit=<x.y.z> nur die
+  neueren. Das Changelog wird beim Bau eingebettet und passt so immer zur
+  laufenden Fassung; was sich darin nicht lesen lässt, steht als Hinweis da.
+- GET /api/betrieb nennt version_datum (Datum der laufenden Fassung) und
+  unveroeffentlicht (Unreleased hat Einträge, ein Bau zwischen zwei
+  Fassungen läuft).
+
 0.2.0 - 2026-11-13
 ------------------
 
