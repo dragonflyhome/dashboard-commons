@@ -240,6 +240,17 @@ Entfernt
   Platz mehr.
 
 Behoben
+- Projektseite: vor der Marke „neu“ steht ein Leerzeichen, und der
+  Trenner unter Arbeitstiteln steht nicht mehr als loses Komma auf eigener
+  Zeile.
+- GET /api/projects/<slug> nennt den Schwerpunkt des Projekts wie die Liste
+  (vorher immer „Sonstiges“).
+- Bekommt eine fertige Arbeit wieder Schritte, gilt ihre Meldung „Fertig“
+  als behoben; wird sie erneut fertig, kommt die Meldung ungelesen zurück.
+- Aktualisierungen: gleiche Vorgänge (gleiche Art, gleicher Titel) stehen
+  als eine Zeile mit „N-mal“ statt mehrfach untereinander.
+- scripts/Vor-Push.ps1 weist einen Commit ohne Eltern auf main ab, außer der
+  einen Wurzel beim ersten Push; eine zweite Wurzel kam vorher durch.
 - Plan und Ampel: Fehlt einer fertigen Arbeit aus dem Altbestand der
   Eintrag „fertig“ im Verlauf, gilt als ungefährer Fertig-Zeitpunkt ihr
   letzter Eintrag stand oder zu einem Schritt, der den Stand wechselt, erst
