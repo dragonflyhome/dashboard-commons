@@ -151,6 +151,8 @@ zeilen = [
   ['lib/components/LiveBadge.svelte', 'svelte/no-navigation-without-resolve', '1', 'Baut mit resolve(), dazu die Sprungmarke #dashboard'],
   ['lib/components/OldLink.svelte', 'svelte/no-navigation-without-resolve', '1', 'Ziel liegt außerhalb der App, resolve() kennt es nicht'],
   ['lib/components/Schloss.svelte', 'svelte/no-navigation-without-resolve', '1', 'Baut mit resolve(), dazu Rückweg (ziel) und Sprungmarke'],
+  ['lib/components/projekt/NeueFormRahmen.svelte', '@typescript-eslint/no-unused-vars', '1', 'Der Fehler steht schon im Protokoll (onerror); der Snippet failed braucht nur sein zweites Argument, neu versuchen'],
+  ['lib/components/projekt/ProjektTeile.svelte', '@typescript-eslint/no-unused-vars', '1', 'Der Fehler steht schon im Protokoll (onerror); der Snippet failed braucht nur sein zweites Argument, neu versuchen'],
   ['lib/components/projekt/StandardDatei.svelte', 'state_referenced_locally', '1', 'Der Name ändert sich für eine Komponente nicht'],
   ['lib/katalog/Tabelle.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Rollt der Rahmen, ist er per Tab erreichbar (WCAG 2.1.1)'],
   ['lib/components/system/Beispiel.svelte', 'a11y_no_noninteractive_tabindex', '1', 'Rollt das Beispiel, ist der Rahmen per Tab erreichbar (WCAG 2.1.1)'],

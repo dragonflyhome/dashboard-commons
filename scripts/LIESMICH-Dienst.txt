@@ -9,7 +9,12 @@ Was hier liegt
 --------------
   bin\          Die Programme: dashboard.exe (der Dienst) und
                 dashboard-bote.exe (der Bote, siehe unten). Daneben die
-                vorige Fassung als *.alt.exe.
+                vorige Fassung als *.alt.exe. In bin\web die Oberfläche,
+                die der Dienst ausliefert (eine Kopie von web\build aus dem
+                letzten -Neustart oder Einrichten, die vorige in
+                bin\web.alt). Ein npm run build im Repo ändert sie nicht;
+                ein Bau des Boten gilt nur mit demselben Grundbau, sonst
+                erst nach dem nächsten -Neustart.
   daten\        Der Datenspeicher dashboard.redb. Er gehört nur dem Dienst.
                 Bitte nicht öffnen, nicht kopieren, nicht ändern, solange
                 der Dienst läuft. Auch Ihr Konto hat hier absichtlich keinen
@@ -55,9 +60,12 @@ Neu starten (zum Beispiel nach Änderungen am Dashboard)
 
 Das baut die neue Fassung, tauscht Dienst und Boten aus und startet beide
 neu. Das Dashboard ist dabei weniger als eine Minute weg. Startet die neue
-Fassung nicht, kommt die alte von selbst zurück. Kein Administrator nötig.
-Der Bau legt web\build neu an; der Ordner erbt das Lese-Recht des Dienstes
-von web. -Status zeigt, ob das Lese-Recht stimmt.
+Fassung nicht, kommt die alte von selbst zurück, Programme und Oberfläche
+gemeinsam. Kein Administrator nötig.
+Der Bau legt web\build neu an; -Neustart kopiert ihn nach bin\web, zusammen
+mit den Programmen. Ein npm run build im Repo ändert die laufende Seite
+darum nicht, erst der nächste -Neustart. -Status zeigt, ob das Lese-Recht
+im Repo stimmt.
 
 Nach jedem Start prüft das Skript auch, ob die Daten da sind. -Status zeigt
 das in der Zeile "Speicher:". Läuft die neue Fassung, aber mit ihren Daten

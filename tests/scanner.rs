@@ -775,6 +775,51 @@ fn dienst_ps1_rueckweg_startet_im_finally() {
     assert!(rest.contains("ZurueckSatz"));
 }
 
+/// Die Oberfläche des Dienstes ist eine Kopie in bin\web, die nur
+/// Dienst.ps1 -Neustart zusammen mit den Programmen wechselt: bereitgelegt
+/// (bin\web.neu, dieselbe Kopie als web neben den Programmen im Bauordner,
+/// von dort nimmt sie Dienst-Einrichten.ps1) nach dem Bau und vor dem
+/// Anhalten des Dienstes, getauscht in
+/// TauscheProgramme, auf dem Rückweg mit den Programmen zurück (nur wenn
+/// dieser Lauf sie getauscht hat und dashboard.exe wieder die vorige ist).
+/// Dazu läuft tests/skripte/Dienst-Oberflaeche.ps1 (die echten Funktionen an
+/// einer Testwurzel) in powershell.exe 5.1.
+#[cfg(windows)]
+#[test]
+fn dienst_ps1_spielt_die_oberflaeche_mit_den_programmen_ein() {
+    let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let ps1 = std::fs::read_to_string(wurzel.join("scripts").join("Dienst.ps1")).unwrap().replace("\r\n", "\n");
+    let neustart = ps1.split("# -Neustart\n").nth(1).expect("Abschnitt -Neustart");
+    let stelle = |s: &str| neustart.find(s).unwrap_or_else(|| panic!("{s} fehlt im Neustart"));
+    let (bau, bereit, aus, tausch) = (
+        stelle("if ($code -ne 0) { Ende 1 'npm run build ist gescheitert."),
+        stelle("$f = OberflaecheBereitlegen (Join-Path $web 'build') (Join-Path $quelle 'web')\n"),
+        stelle("$dienstAus = $true\n"),
+        stelle("$fehler = TauscheProgramme $quelle $oberflaeche\n"),
+    );
+    assert!(bau < bereit && bereit < aus && aus < tausch, "Reihenfolge Bau, Kopie, Anhalten, Tausch");
+    // Einrichten nimmt die Oberfläche von dort, wo -Neustart sie neben die Programme legt.
+    let einrichten = std::fs::read_to_string(wurzel.join("scripts").join("Dienst-Einrichten.ps1")).unwrap().replace("\r\n", "\n");
+    assert!(
+        einrichten.contains("\n$quelleWeb = Join-Path $quelle 'web'\n") && einrichten.contains("(OberflaecheEinspielen $bin $quelleWeb)"),
+        "Einrichten: Oberfläche aus <quelle>\\web"
+    );
+    // Und bricht vor jeder Änderung ab, wenn die Programme neuer sind als diese Oberfläche.
+    assert!(einrichten.contains("(-not (ProgrammeNeuerAlsOberflaeche $quelle $quelleWeb))"), "Einrichten: Prüfzeile Programme neuer als Oberfläche");
+    let rueck = ps1.split("Hole die vorige Fassung zurück ...\"\n").nth(1).expect("Rückweg in Dienst.ps1");
+    let versuch = &rueck[..rueck.find("\n} finally {\n").expect("finally des Rückwegs")];
+    let (alt, zurueck) = (versuch.find("'.alt.exe'").expect("*.alt.exe"), versuch.find("$f = OberflaecheZurueck").expect("OberflaecheZurueck im Rückweg"));
+    assert!(alt < zurueck && versuch.contains("if ($script:oberflaecheGetauscht -and -not ($neuGeblieben -contains 'dashboard.exe')) {"), "{versuch}");
+    let aus = dashboard::dienst::programme::eigener_befehl(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(wurzel.join("tests").join("skripte").join("Dienst-Oberflaeche.ps1"))
+        .output()
+        .expect("powershell.exe startet");
+    let ausgabe = format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr));
+    assert_eq!(aus.status.code(), Some(0), "{ausgabe}");
+    assert!(ausgabe.contains("Alle Pr") && !ausgabe.contains("FEHLER"), "{ausgabe}");
+}
+
 /// Nachbildung zu `dienst_ps1_rueckweg_startet_im_finally` mit dem echten
 /// `Ende`, dem echten `DienstStarten` und dem echten `finally` des Rückwegs
 /// aus Dienst.ps1 (Attrappen: ScExe, DienstStatus, BoteStarten,

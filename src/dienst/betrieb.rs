@@ -71,7 +71,8 @@ pub async fn bericht(state: &AppState, voll: bool) -> Betrieb {
 }
 
 /// Kleinkram 2: Störungen im Betrieb. Weicht die Fassung des Bau-Prüfers (des
-/// Boten, aus seinem letzten Hallo) von der des Dienstes ab, ist das eine.
+/// Boten, aus seinem letzten Hallo) von der des Dienstes ab, ist das eine;
+/// ebenso ein Bau des Boten, der auf Dienst.ps1 -Neustart wartet.
 pub fn stoerungen(state: &AppState) -> Vec<String> {
     let mut s = Vec::new();
     if let Some(b) = &state.bote {
@@ -80,6 +81,8 @@ pub fn stoerungen(state: &AppState) -> Vec<String> {
             s.extend(crate::bote::client::pruefer_abweichung(stand.pruefer.as_deref(), &crate::werkzeug::pruefer_fassung()));
         }
     }
+    // Ein Bau des Boten mit neuerem Grundbau wartet auf den Neustart (`WebOrt`).
+    s.extend(state.web.wartender_bau());
     s
 }
 
@@ -115,7 +118,8 @@ pub fn fassung_name(state: &AppState) -> String {
 }
 
 fn fassung_name_von(state: &AppState, ordner: &std::path::Path) -> String {
-    if ordner == state.web.build() {
+    // Die eingespielte Kopie ist derselbe Grundbau wie web/build, nur von Dienst.ps1 -Neustart kopiert.
+    if ordner == state.web.build() || Some(ordner) == state.web.kopie() {
         "build".to_string()
     } else {
         ordner.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "build".to_string())

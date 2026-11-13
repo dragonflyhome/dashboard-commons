@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import * as svelteMount from 'svelte';
 import { createRawSnippet } from 'svelte';
 import { describe, expect, it, vi } from 'vitest';
@@ -68,6 +68,47 @@ describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 		expect(screen.getByRole('link', { name: 'Zeitachse' })).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByRole('link', { name: 'Übersicht' })).not.toHaveAttribute('aria-current');
 		expect(teile).not.toHaveBeenCalled();
+	});
+
+	it('wirft ein Teil beim Zeichnen, bleibt der Inhalt der Seite sichtbar', () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		teile.mockImplementationOnce(() => {
+			throw new TypeError("Cannot read properties of undefined (reading 'length')");
+		});
+		render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByText('Seite des Projekts')).toBeInTheDocument();
+		expect(screen.getByRole('status')).toHaveTextContent(
+			'Stand, Aufgabenliste, Plan und Zeitleiste lassen sich mit dem laufenden Dienst gerade nicht zeigen.'
+		);
+		expect(fehler).toHaveBeenCalled();
+		fehler.mockRestore();
+		// Gegenprobe: ohne Fehler kein Satz.
+		cleanup();
+		render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
+	it('der Fehler der Teile gilt nicht für das nächste Projekt, „neu versuchen“ zeichnet neu', async () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		const werfen = (): never => {
+			throw new TypeError("Cannot read properties of undefined (reading 'length')");
+		};
+		teile.mockReset();
+		teile.mockImplementationOnce(werfen);
+		const { rerender } = render(NeueFormRahmen, { kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByRole('status')).toBeInTheDocument();
+		// Ein anderes Projekt auf derselben Route: die Teile zeichnen neu, kein Satz.
+		await rerender({ kopf: { ...kopf(), slug: 'beta' }, aktiv: null, children: inhalt });
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(teile).toHaveBeenCalledTimes(2);
+		// Wieder ein Fehler, dann „neu versuchen“: die Teile zeichnen noch einmal.
+		teile.mockImplementationOnce(werfen);
+		await rerender({ kopf: kopf(), aktiv: null, children: inhalt });
+		expect(screen.getByRole('status')).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		expect(screen.queryByRole('status')).toBeNull();
+		expect(teile).toHaveBeenCalledTimes(4);
+		fehler.mockRestore();
 	});
 
 	it('rot auf einer Unterseite: der Bau-Hinweis bleibt, ohne die vier Teile', () => {

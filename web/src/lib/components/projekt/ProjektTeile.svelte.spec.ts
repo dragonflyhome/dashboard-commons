@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SATZ_NICHT_MEHR_DA, SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
 import { live, type InhaltAenderung } from '#lib/live.svelte.ts';
 import { beispielProjektStand, eintrag, json } from '#lib/anstehend.beispiel.ts';
+import { SATZ_TEIL_FEHLT } from '#lib/projektteile.ts';
 import type { BauLage } from '#lib/bau.svelte.ts';
 import type {
 	AnstehendEintrag,
@@ -38,10 +39,26 @@ vi.mock('#lib/aufgaben.svelte.ts', () => ({
 	}
 }));
 
+// Der Plan wirft auf Wunsch beim Zeichnen (Grenze je Teil); sonst der echte.
+const { planWirft } = vi.hoisted(() => ({ planWirft: { an: false } }));
+vi.mock('$katalog/Plan.svelte', async (echt) => {
+	const { default: Plan } = await echt<{ default: (...a: unknown[]) => unknown }>();
+	return {
+		default: (...a: unknown[]) => {
+			// Auch Daten können ihn zum Werfen bringen (ein Feld `kaputt` im Plan).
+			const daten = (a[1] as { plan?: { kaputt?: boolean } } | undefined)?.plan;
+			if (planWirft.an || daten?.kaputt === true)
+				throw new TypeError("Cannot read properties of undefined (reading 'length')");
+			return Plan(...a);
+		}
+	};
+});
+
 const { default: ProjektTeile } = await import('./ProjektTeile.svelte');
 
 afterEach(() => {
 	cleanup();
+	planWirft.an = false;
 	vi.restoreAllMocks();
 	ort.url = new URL('http://localhost:8787/projects/beispiel');
 });
@@ -347,6 +364,141 @@ function aufrufe(f: ReturnType<typeof netz>, teil: string): number {
 }
 
 const SATZ_LISTE_FEHLT = 'Die Aufgabenliste lässt sich gerade nicht laden.';
+
+/** Eine Antwort, wie eine ältere Fassung des Dienstes sie schickt: ohne `felder`. */
+function ohneFelder(x: object, ...felder: string[]): Record<string, unknown> {
+	return Object.fromEntries(Object.entries(x).filter(([n]) => !felder.includes(n)));
+}
+
+/** Wie `netz`, aber `ersetzt` beantwortet die Wege, deren Adresse einen der Schlüssel enthält. */
+function netzMit(ersetzt: Record<string, () => Promise<Response>>) {
+	const basis = netz();
+	return vi.fn((eingabe: RequestInfo | URL) => {
+		const url = typeof eingabe === 'string' ? eingabe : '';
+		const weg = Object.keys(ersetzt).find((t) => url.includes(t));
+		const antwort = weg === undefined ? undefined : ersetzt[weg];
+		return antwort === undefined ? basis(eingabe) : antwort();
+	});
+}
+
+describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () => {
+	it('404 auf /plan und 405 auf /verlauf: Plan und Zeitleiste sagen es, Stand und Aufgabenliste bleiben', async () => {
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({
+				'/plan': () => Promise.resolve(json({ fehler: 'x' }, 404)),
+				'/verlauf?': () => Promise.resolve(json({ fehler: 'x' }, 405))
+			})
+		});
+		await waitFor(() => {
+			expect(screen.getAllByText(SATZ_TEIL_FEHLT)).toHaveLength(2);
+		});
+		expect(teile()).toEqual(['Stand', 'Aufgabenliste', 'Plan', 'Zeitleiste']);
+		await screen.findByText(/In den letzten 7 Tagen sind 6 fertig geworden/);
+		const dich = await screen.findByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+		expect(screen.queryByText('Der Plan lässt sich gerade nicht laden.')).toBeNull();
+	});
+
+	it('/backlog ohne die Felder der Aufgabenliste (Karten ohne schritte): ein Satz, die Frage bleibt beantwortbar', async () => {
+		const alt = backlog();
+		const ohneSchritte = {
+			...alt,
+			spalten: alt.spalten.map((s) => ({
+				...s,
+				karten: s.karten.map((k) => ohneFelder(k, 'schritte', 'etappe', 'besitzer'))
+			}))
+		};
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({ '/backlog': () => Promise.resolve(json(ohneSchritte)) })
+		});
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+		// Die übrigen Teile stehen ganz da.
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_LISTE_FEHLT)).toBeNull();
+	});
+
+	it('/stand/voll ohne die Felder des Stands: der Stand sagt es, nichts wirft, die anderen Teile bleiben', async () => {
+		render(ProjektTeile, {
+			slug: 'beispiel',
+			fetchFn: netzMit({
+				'/stand/voll': () => Promise.resolve(json({ slug: 'beispiel', sichtbar: false })),
+				'/stand': () => Promise.resolve(json({ slug: 'beispiel' }))
+			})
+		});
+		expect(await screen.findByText('Der Stand lässt sich gerade nicht laden.')).toBeInTheDocument();
+		expect(screen.queryByText('Stand wird geladen …')).toBeNull();
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(await within(dich).findByRole('button', { name: 'Ja' })).toBeInTheDocument();
+	});
+
+	it('wirft ein Teil beim Zeichnen, steht nur an seiner Stelle der Satz; „neu versuchen“ lädt, zeichnet ihn neu und setzt den Fokus auf seine Überschrift', async () => {
+		const fehler = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		planWirft.an = true;
+		const f = netz();
+		const planAbrufe = (): number =>
+			f.mock.calls.filter(([e]) => String(e instanceof Request ? e.url : e).endsWith('/plan'))
+				.length;
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		expect(teile()).toEqual(['Stand', 'Aufgabenliste', 'Plan', 'Zeitleiste']);
+		expect(screen.getAllByText(SATZ_TEIL_FEHLT)).toHaveLength(1);
+		await screen.findByText(/In den letzten 7 Tagen sind 6 fertig geworden/);
+		await screen.findByText('Gästeliste abgeschlossen');
+		expect(document.getElementById('etappe-einladung')).toBeNull();
+		expect(fehler).toHaveBeenCalled();
+		planWirft.an = false;
+		const vorher = planAbrufe();
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+		expect(planAbrufe()).toBeGreaterThan(vorher);
+		await waitFor(() => {
+			expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Plan' }));
+		});
+	});
+
+	it('warfen die Daten, zeichnet „neu versuchen“ erst mit den neu geladenen', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		let abrufe = 0;
+		const f = netzMit({
+			'/plan': () =>
+				Promise.resolve(json(++abrufe === 1 ? { ...projektPlan(), kaputt: true } : projektPlan()))
+		});
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+		expect(abrufe).toBe(2);
+		await waitFor(() => {
+			expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Plan' }));
+		});
+	});
+
+	it('Gegenprobe: mit allen Wegen kein Satz über den Dienst', async () => {
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		await screen.findByText('Gästeliste abgeschlossen');
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+	});
+});
 
 describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)', () => {
 	it('/backlog scheitert (500): die Frage bleibt beantwortbar, ein eigener Satz statt „ohne Anmeldung“', async () => {

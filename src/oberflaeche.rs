@@ -1,5 +1,6 @@
-//! Die Oberfläche: das SvelteKit-Build aus `web/build` (nach einem Bau über
-//! den Boten aus `web/builds/<ordner>`, siehe `app::WebOrt`), ausgeliefert unter `/`.
+//! Die Oberfläche: das SvelteKit-Build, im Dienst aus der Kopie `bin\web`
+//! (Dienst.ps1 -Neustart), sonst aus `web/build`; nach einem Bau über den
+//! Boten aus `web/builds/<ordner>` (siehe `app::WebOrt`). Ausgeliefert unter `/`.
 //! Alles, was keine API-Route ist, landet hier (Fallback).
 
 use axum::extract::State;

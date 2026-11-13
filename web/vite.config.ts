@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+import { grundbauFassung } from './scripts/grundbau.mjs';
 
 /** Der Rust-Server, der Daten liefert und im Betrieb das Build ausliefert. */
 const backend = 'http://127.0.0.1:8787';
@@ -38,7 +39,10 @@ export default defineConfig({
 				fallback: 'index.html',
 				strict: true
 			}),
-			paths: { base: '' }
+			paths: { base: '' },
+			// Grundbau und Bauzeit; der Dienst nimmt einen Bau des Boten nur bei
+			// gleichem Grundbau wie die eingespielte Oberfläche an (scripts/grundbau.mjs).
+			version: { name: grundbauFassung(ordner('./src')) }
 		}),
 		svelteTesting()
 	],

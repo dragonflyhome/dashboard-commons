@@ -239,7 +239,8 @@ export function lageVon(verbunden: boolean | null, baut: boolean, veraltet: bool
  * kennt. Zwei Formen: der Ordner des Boten (`web/builds/<JJJJMMTT-hhmmss>`,
  * bei mehreren in derselben Sekunde mit `-2`, `-3` …; Ortszeit, beim Start
  * des Baus) aus dem Ereignis `fassung`, und SvelteKits `version` des Tabs
- * (Millisekunden, wenn Vite den Bau beginnt, also nach dem Namen des Ordners).
+ * (Millisekunden, wenn Vite den Bau beginnt, also nach dem Namen des Ordners),
+ * mit dem Abdruck des Grundbaus davor (`<16 Hex>-<ms>`, scripts/grundbau.mjs).
  */
 export function kennungZeit(k: string): number | null {
 	const o = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d{1,3}))?$/.exec(k);
@@ -250,7 +251,8 @@ export function kennungZeit(k: string): number | null {
 		// Die Nummer ordnet Ordner derselben Sekunde (höchstens 999, `bote::bau::neuer_name`).
 		return Number.isNaN(ms) ? null : ms + (Number.isNaN(n) ? 0 : (n ?? 1) - 1);
 	}
-	return /^\d{10,}$/.test(k) ? Number(k) : null;
+	const v = /^(?:[0-9a-f]{16}-)?(\d{10,})$/.exec(k);
+	return v === null ? null : Number(v[1]);
 }
 
 /**

@@ -15,7 +15,9 @@
 #   3. Nur bei grünem Wächter: cargo --config <code-repo>\.cargo\config.toml
 #      build --release --locked in dashboard-lokal (dlltool aus dem Code-Repo;
 #      im Inhalt gibt es keine .cargo-Einstellung), dann dashboard-lokal.exe
-#      als dashboard.exe nach <bauordner>\release\zusammenbau.
+#      als dashboard.exe nach <bauordner>\release\zusammenbau. Ohne Kiste wird
+#      ein altes <bauordner>\release\zusammenbau entfernt (Dienst-Einrichten.ps1
+#      nähme es sonst statt der Fassung aus release).
 # Rückgabe: Code (0 gut), Satz, Quelle (Ordner mit dashboard.exe,
 # dashboard-bote.exe und dashboard-herzschlag.exe) und Zusammenbau (ob die Fassung mit Rechenteilen ist).
 
@@ -32,6 +34,9 @@ function Fassung-Bauen([string]$repo, [string]$lokal, [string]$bauordner) {
         if ($code -ne 0) { return [pscustomobject]@{ Code = 1; Satz = 'Bauen mit cargo ist gescheitert. Der Dienst läuft unverändert weiter.'; Quelle = $null; Zusammenbau = $false } }
         $release = Join-Path $bauordner 'release'
         if (-not $lokal) {
+            # Ein altes zusammenbau nähme Dienst-Einrichten.ps1 sonst statt dieser Fassung.
+            $altZusammen = Join-Path $release 'zusammenbau'
+            if (Test-Path -LiteralPath $altZusammen) { Remove-Item -LiteralPath $altZusammen -Recurse -Force }
             return [pscustomobject]@{ Code = 0; Satz = 'Hinweis: Es gibt keine Zusammenbau-Kiste dashboard-lokal neben dem Inhalt. Es läuft das allgemeine dashboard.exe: Die Projektseiten gehen, die Rechenteile der Projekte fehlen.'; Quelle = $release; Zusammenbau = $false }
         }
         Write-Host "Prüfe die Zusammenbau-Kiste in $lokal (Wächter aus dem Repo, vor jedem cargo-Aufruf dort) ..."

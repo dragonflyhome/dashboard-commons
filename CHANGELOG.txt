@@ -158,6 +158,46 @@ Geändert
   untereinander statt Spalten: Wartet auf dich, Läuft, Als Nächstes,
   Wartet auf andere; je Arbeit eine Zeile mit Anker arbeit-<id>, aufklappbar
   zu den Schritten. AufgabenKasten nimmt eine Ebene für seine Überschrift.
+- Der Dienst liefert die Oberfläche aus bin\web neben seinen Programmen,
+  einer Kopie von web\build, die scripts\Dienst.ps1 -Neustart zusammen mit
+  den Programmen einspielt (die vorige bleibt als bin\web.alt). Ein npm run
+  build im Repo ändert die laufende Seite nicht mehr. Der Weg zurück bringt
+  Programm und Oberfläche gemeinsam zurück; scheitert der Austausch, bleiben
+  beide die alten. Ein grüner Bau über den Boten (web\builds\aktuell) gilt
+  sofort, aber nur mit demselben Grundbau wie bin\web (Abdruck von web/src
+  ohne die Bauliste, in _app/version.json); ein Bau aus einem neueren
+  web/src wartet auf den nächsten -Neustart: Bis dahin bleibt der letzte
+  gültige Bau. Der Vorgang bau endet rot mit dem Satz „Ein neuerer Bau der
+  Oberfläche passt nicht zum laufenden Dienst und gilt erst nach Dienst.ps1
+  -Neustart; bis dahin bleibt die zuletzt gültige Oberfläche, auch für
+  geänderte Projektseiten.“ (SATZ_BAU_WARTET in src/app.rs); derselbe Satz
+  steht als Meldung im Bau-Stand und in /api/betrieb unter den Störungen.
+  Das Aufräumen des Boten schont diesen letzten gültigen Bau. -Neustart legt dieselbe Kopie auch neben die
+  Programme im Bauordner; Dienst-Einrichten.ps1 spielt sie von dort nach
+  bin\web ein (ohne sie web\build), wenn der Grundbau in bin\web ein anderer
+  ist, auch nach einem Abbruch im ersten Lauf, nie einen Bau ohne Kennung
+  und nur ohne Verknüpfungen. Sind die Programme dort neuer als die
+  Oberfläche daneben (-Neustart brach dazwischen ab), ändert
+  Dienst-Einrichten.ps1 nichts und verlangt erst -Neustart. Scheitert der erste -Neustart (vorher ohne
+  bin\web), fällt die neue bin\web beim Weg zurück wieder weg. Ohne bin\web
+  (ohne Dienst) wie bisher web\build.
+- Bruch: npm run build im Repo ändert die laufende Seite des Dienstes nicht
+  mehr; die Oberfläche erneuert nur scripts\Dienst.ps1 -Neustart (oder ein
+  grüner Bau des Boten mit demselben Grundbau).
+- Bruch: Ein grüner Bau des Boten nach einer Änderung an web/src gilt erst
+  nach scripts\Dienst.ps1 -Neustart; bis dahin endet er rot mit dem Satz,
+  dass er auf den Neustart wartet.
+- Projektseite: Kennt der laufende Dienst /backlog, /plan oder /verlauf
+  nicht (404, 405) oder fehlen in der Antwort Felder, zeigt nur dieser Teil
+  „Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.“; die
+  übrigen Teile und Seite.svelte bleiben stehen. Geprüft wird jedes
+  Pflichtfeld der Vertragstypen, auch in Schritten, Etappen und Ereignissen.
+  Fehlen dem Stand Felder, sagt der Stand „Der Stand lässt sich gerade nicht
+  laden.“, ohne dass etwas wirft. Wirft ein Teil beim Zeichnen, steht nur an
+  seiner Stelle der Satz mit „neu versuchen“ (lädt die Daten neu und
+  zeichnet erst dann, auch wenn die vorigen Daten den Fehler auslösten; danach
+  steht der Fokus auf der Überschrift des Teils); der Inhalt der Seite
+  bleibt, und ein Fehler gilt nicht für das nächste Projekt.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

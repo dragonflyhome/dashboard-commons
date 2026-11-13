@@ -22,6 +22,9 @@
 //! - grün: der Zeiger im Speicher (`WebOrt::umstellen`) zeigt sofort auf den
 //!   neuen Ordner (der Bote hat `web/builds/aktuell` schon getauscht), Ereignis
 //!   `fassung` im Live-Kanal;
+//! - grün, aber mit anderem Grundbau als die eingespielte Oberfläche
+//!   (`WebOrt::wartender_bau`): gilt als rot mit [`crate::app::SATZ_BAU_WARTET`];
+//!   ausgeliefert wird weiter der letzte gültige Bau, bis Dienst.ps1 -Neustart;
 //! - je Projekt, das rot wurde: Ereignis `bau` mit Zustand `rot` und einem Satz
 //!   in einfachem Deutsch; die Seite bleibt in ihrer letzten grünen Fassung;
 //! - rot: die alte Fassung bleibt, und auf der Startseite steht eine Meldung
@@ -288,6 +291,8 @@ pub fn ereignis_satz(e: &BauErgebnis, frist_um: bool) -> String {
 pub const SATZ_ZU_LANGE: &str = "Der Bau hat zu lange gedauert. Die letzte gute Fassung bleibt.";
 /// Ereignis bei rot: Der Bote ist nicht erreichbar.
 pub const SATZ_BOTE_FEHLT: &str = "Der Bote ist gerade nicht erreichbar. Die letzte gute Fassung bleibt.";
+/// Ereignis, wenn ein grüner Bau auf den Neustart des Dienstes wartet.
+pub const SATZ_WARTET: &str = "Die neue Fassung passt erst nach einem Neustart des Dienstes. Die letzte gute Fassung bleibt.";
 /// Ereignis bei rot aus anderem Grund.
 pub const SATZ_NICHT_GEBAUT: &str = "Die Oberfläche ließ sich nicht bauen. Die letzte gute Fassung bleibt; mehr steht in der Meldung auf der Startseite.";
 /// Ereignis für ein Projekt, das in diesem Bau rot wurde.
@@ -334,7 +339,7 @@ pub async fn eine_runde(state: &AppState, bauen: &Bauen) -> Result<usize, Speich
     bau_melden(state, &slugs, BauZustand::Laeuft, SATZ_LAEUFT, false);
 
     let frist = state.baumeister.frist;
-    let (ergebnis, frist_um) = match tokio::time::timeout(frist, mit_fortschritt(state, bauen(), || fortschritt_fragen(state))).await {
+    let (mut ergebnis, frist_um) = match tokio::time::timeout(frist, mit_fortschritt(state, bauen(), || fortschritt_fragen(state))).await {
         Ok(e) => (e, false),
         Err(_) => (rot(format!("Der Bau hat länger als {} s gedauert und gilt als rot. Die letzte gute Fassung bleibt.", frist.as_secs())), true),
     };
@@ -342,6 +347,7 @@ pub async fn eine_runde(state: &AppState, bauen: &Bauen) -> Result<usize, Speich
     info!("Baumeister: {} ({})", ergebnis.satz, crate::bote::bau::schritte_text(&ergebnis.schritte));
 
     // Grün: Zeiger im Speicher sofort umstellen, Ereignis `fassung`.
+    let mut wartet = false;
     if ergebnis.gruen
         && let Some(name) = ergebnis.ordner.clone()
     {
@@ -350,10 +356,21 @@ pub async fn eine_runde(state: &AppState, bauen: &Bauen) -> Result<usize, Speich
                 info!("Baumeister: neue Fassung {}", ordner.display());
                 let _ = state.fassung_events.send(FassungEreignis { ordner: name, dauer_ms: ergebnis.dauer_ms });
             }
-            // Der Bote hat den Zeiger in der Datei schon umgestellt; gilt der
-            // Ordner hier nicht, liefert `WebOrt` weiter die letzte gültige Fassung.
-            Err(grund) => warn!("Baumeister: Der neue Ordner gilt hier nicht ({grund}); ausgeliefert wird die letzte gültige Fassung."),
+            // Der Bote hat den Zeiger in der Datei schon umgestellt. Passt der
+            // Grundbau nicht zur eingespielten Oberfläche, bleibt der letzte
+            // gültige Bau (`WebOrt::ordner`), und der Bau gilt nicht als grün.
+            Err(grund) if state.web.wartender_bau().is_some() => {
+                warn!("Baumeister: Der neue Ordner wartet auf Dienst.ps1 -Neustart ({grund}).");
+                wartet = true;
+            }
+            // Sonst gilt der Ordner hier nicht; `WebOrt` liefert die eingespielte Oberfläche.
+            Err(grund) => warn!("Baumeister: Der neue Ordner gilt hier nicht ({grund}); ausgeliefert wird die eingespielte Oberfläche."),
         }
+    }
+    if wartet {
+        ergebnis.gruen = false;
+        ergebnis.satz = crate::app::SATZ_BAU_WARTET.to_string();
+        ergebnis.ausgabe_ende = None;
     }
     let zustand = if ergebnis.gruen { BauZustand::Gruen } else { BauZustand::Rot };
     let satz = kuerzen(&ergebnis.satz, NOTIZ_HOECHSTENS);
@@ -361,7 +378,7 @@ pub async fn eine_runde(state: &AppState, bauen: &Bauen) -> Result<usize, Speich
     // Je Projekt, das rot wurde: `bau` mit Zustand rot (Abnahme 4c: fester
     // Satz ohne Pfade; den Fund nennen Vorgang und Meldung).
     let gescheitert = !ergebnis.gruen;
-    let ereignis = ereignis_satz(&ergebnis, frist_um);
+    let ereignis = if wartet { SATZ_WARTET.to_string() } else { ereignis_satz(&ergebnis, frist_um) };
     // Abnahme 4c (Nachbesserung 2): „läuft“ endet, bevor die Ergebnisse
     // hinausgehen. Lädt die Oberfläche danach die Liste (vor den Schritten
     // mit await unten), sagt sie nicht wieder „Baut …“. Was während des Baus
@@ -982,9 +999,53 @@ mod tests {
         eine_runde(&state, &wird_rot).await.unwrap();
         let e = std::iter::from_fn(|| live.try_recv().ok()).find(|e| e.zustand != BauZustand::Laeuft).unwrap();
         assert_eq!((e.zustand, e.gescheitert, e.meldung.as_str()), (BauZustand::Rot, false, SATZ_WIRD_ROT));
-        for s in [SATZ_ZU_LANGE, SATZ_BOTE_FEHLT, SATZ_NICHT_GEBAUT, SATZ_WIRD_ROT, SATZ_NOCH_ROT, SATZ_LAEUFT] {
+        for s in [SATZ_ZU_LANGE, SATZ_BOTE_FEHLT, SATZ_NICHT_GEBAUT, SATZ_WIRD_ROT, SATZ_NOCH_ROT, SATZ_LAEUFT, SATZ_WARTET] {
             assert!(!s.contains('\\') && !s.contains('/') && !s.contains("Dienst.ps1"), "{s}");
         }
+    }
+
+    /// Grün gebaut, aber mit anderem Grundbau als die eingespielte Oberfläche
+    /// (`WebOrt::wartender_bau`): Der Vorgang ist nicht grün, sondern rot mit
+    /// dem Satz, dass der Bau auf Dienst.ps1 -Neustart wartet; das Ereignis
+    /// sagt es ohne Befehl, und es kommt kein Ereignis `fassung`. Gegenprobe:
+    /// Mit demselben Grundbau ist derselbe Bau grün.
+    #[tokio::test]
+    async fn anderer_grundbau_ist_nicht_gruen() {
+        use crate::app::{CspCache, SATZ_BAU_WARTET, WebOrt};
+        let w = std::env::temp_dir().join(format!("dashboard-baumeister-grundbau-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&w);
+        let kopie = w.join("bin-web");
+        let builds = w.join("web").join("builds");
+        let bau = builds.join("20261027-120000");
+        for (o, fassung) in [(&kopie, "abc-1"), (&bau, "def-2")] {
+            std::fs::create_dir_all(o.join("_app")).unwrap();
+            std::fs::write(o.join("index.html"), "<!doctype html><title>x</title>").unwrap();
+            std::fs::write(o.join("_app").join("version.json"), format!("{{\"version\":\"{fassung}\"}}")).unwrap();
+        }
+        crate::bote::bau::zeiger_schreiben(&builds, "20261027-120000").unwrap();
+        let web = Arc::new(WebOrt::neu(w.join("web").join("build")).mit_kopie(Some(kopie)));
+        let mut state = zustand();
+        state.csp = Arc::new(CspCache::neu(web.clone()));
+        state.web = web;
+        let mut live = state.bau_events.subscribe();
+        let mut fassung = state.fassung_events.subscribe();
+        let zaehler = Arc::new(AtomicU64::new(0));
+        let id = anlegen(&state, "bauplan", "Seite neu").await;
+        eine_runde(&state, &zaehlend(zaehler.clone())).await.unwrap();
+        let stand = vorgang(&state, &id).bau.unwrap();
+        assert_eq!((stand.zustand, stand.meldung.as_str()), (BauZustand::Rot, SATZ_BAU_WARTET));
+        let e = std::iter::from_fn(|| live.try_recv().ok()).find(|e| e.zustand != BauZustand::Laeuft).unwrap();
+        assert_eq!((e.zustand, e.gescheitert, e.meldung.as_str()), (BauZustand::Rot, true, SATZ_WARTET));
+        assert!(fassung.try_recv().is_err(), "kein Ereignis fassung");
+        // Gegenprobe: derselbe Grundbau.
+        std::fs::write(bau.join("_app").join("version.json"), r#"{"version":"abc-2"}"#).unwrap();
+        let id = anlegen(&state, "bauplan", "Seite neu").await;
+        eine_runde(&state, &zaehlend(zaehler)).await.unwrap();
+        assert_eq!(vorgang(&state, &id).bau.unwrap().zustand, BauZustand::Gruen);
+        let e = std::iter::from_fn(|| live.try_recv().ok()).find(|e| e.zustand != BauZustand::Laeuft).unwrap();
+        assert_eq!((e.zustand, e.gescheitert), (BauZustand::Gruen, false));
+        assert_eq!(fassung.try_recv().unwrap().ordner, "20261027-120000");
+        let _ = std::fs::remove_dir_all(&w);
     }
 
     /// Ruhe: erst nach 5 s ohne weitere Änderung; der erste Blick baut nie.

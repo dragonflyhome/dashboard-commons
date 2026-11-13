@@ -35,29 +35,159 @@ export interface Ladung<T> {
 	wert: T | null;
 	/** 401 oder 403: nur mit Anmeldung. */
 	anmelden: boolean;
+	/**
+	 * Der laufende Dienst kennt den Weg nicht (404, 405) oder liefert nicht die
+	 * Felder, die diese Oberfläche braucht (etwa eine ältere Fassung des Dienstes).
+	 */
+	fehlt: boolean;
 }
 
-async function holen<T>(pfad: string, fetchFn: typeof fetch): Promise<Ladung<T>> {
+/** Satz eines Teils, wenn `fehlt` gilt; die übrigen Teile bleiben sichtbar. */
+export const SATZ_TEIL_FEHLT = 'Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.';
+
+async function holen<T>(
+	pfad: string,
+	fetchFn: typeof fetch,
+	passt: (x: unknown) => x is T
+): Promise<Ladung<T>> {
 	try {
 		const res = await fetchFn(pfad, {
 			credentials: 'same-origin',
 			headers: { accept: 'application/json' }
 		});
-		if (res.ok) return { wert: (await res.json()) as T, anmelden: false };
-		return { wert: null, anmelden: res.status === 401 || res.status === 403 };
+		if (res.ok) {
+			const roh: unknown = await res.json();
+			return passt(roh)
+				? { wert: roh, anmelden: false, fehlt: false }
+				: { wert: null, anmelden: false, fehlt: true };
+		}
+		return {
+			wert: null,
+			anmelden: res.status === 401 || res.status === 403,
+			fehlt: res.status === 404 || res.status === 405
+		};
 	} catch {
-		return { wert: null, anmelden: false };
+		return { wert: null, anmelden: false, fehlt: false };
 	}
+}
+
+// ----- Prüfen an der Grenze: jedes Pflichtfeld der Vertragstypen ($vertrag) -----
+
+type Roh = Record<string, unknown>;
+const istObjekt = (x: unknown): x is Roh =>
+	typeof x === 'object' && x !== null && !Array.isArray(x);
+const istText = (x: unknown): x is string => typeof x === 'string';
+const istZahl = (x: unknown): x is number => typeof x === 'number';
+const istJaNein = (x: unknown): x is boolean => typeof x === 'boolean';
+const textOderNull = (x: unknown): boolean => x === null || typeof x === 'string';
+const listeAus = (x: unknown, je: (e: unknown) => boolean): boolean =>
+	Array.isArray(x) && x.every(je);
+
+/** `Schritt` */
+function istSchritt(s: unknown): boolean {
+	return (
+		istObjekt(s) &&
+		istZahl(s.nr) &&
+		istText(s.titel) &&
+		istText(s.stand) &&
+		istText(s.seit) &&
+		[s.besitzer, s.wartet_auf, s.verweis, s.angeboten_an, s.fuer, s.notiz, s.vorgang].every(
+			textOderNull
+		)
+	);
+}
+
+/** `BacklogKarte` */
+function istKarte(k: unknown): boolean {
+	return (
+		istObjekt(k) &&
+		[k.id, k.art, k.titel, k.zustand, k.ziel, k.geaendert].every(istText) &&
+		[k.etappe, k.besitzer, k.wartet_auf, k.hinweis, k.frist, k.frist_stufe].every(textOderNull) &&
+		listeAus(k.schritte, istSchritt)
+	);
+}
+
+/** Hat die Antwort von `/backlog` die Form, die die Aufgabenliste liest? */
+export function istBacklog(x: unknown): x is Backlog {
+	return (
+		istObjekt(x) &&
+		istText(x.slug) &&
+		istText(x.heute) &&
+		istZahl(x.fragen_weitere) &&
+		istJaNein(x.kanban_datei) &&
+		istJaNein(x.speicher_fehlt) &&
+		listeAus(
+			x.spalten,
+			(s) =>
+				istObjekt(s) && [s.art, s.titel, s.bedeutung].every(istText) && listeAus(s.karten, istKarte)
+		) &&
+		listeAus(
+			x.wartend,
+			(g) =>
+				istObjekt(g) && [g.rolle, g.wer, g.titel].every(istText) && listeAus(g.karten, istKarte)
+		)
+	);
+}
+
+/** `PlanArbeit` */
+function istPlanArbeit(a: unknown): boolean {
+	return (
+		istObjekt(a) &&
+		[a.id, a.titel, a.stand].every(istText) &&
+		[a.aus, a.etappe, a.fertig].every(textOderNull) &&
+		istJaNein(a.archiviert) &&
+		istJaNein(a.ungefaehr)
+	);
+}
+
+/** `PlanEtappe` */
+function istEtappe(e: unknown): boolean {
+	return (
+		istObjekt(e) &&
+		[e.kennung, e.titel, e.ziel, e.stand].every(istText) &&
+		[e.reihenfolge, e.arbeiten_fertig, e.arbeiten_gesamt, e.dazugekommen].every(istZahl) &&
+		[e.ab, e.begonnen, e.fertig, e.gewachsen_seit].every(textOderNull) &&
+		istJaNein(e.ungefaehr) &&
+		listeAus(e.arbeiten, istPlanArbeit)
+	);
+}
+
+/** Hat die Antwort von `/plan` die Form, die der Plan liest? */
+export function istPlan(x: unknown): x is ProjektPlan {
+	return (
+		istObjekt(x) &&
+		istText(x.projekt) &&
+		listeAus(x.etappen, istEtappe) &&
+		listeAus(x.ohne_etappe, istPlanArbeit) &&
+		listeAus(x.hinweise, istText)
+	);
+}
+
+/** Hat die Antwort von `/verlauf` die Form, die die Zeitleiste liest? */
+export function istVerlauf(x: unknown): x is Verlauf {
+	return (
+		istObjekt(x) &&
+		listeAus(
+			x.ereignisse,
+			(e) =>
+				istObjekt(e) &&
+				[e.kennung, e.zeit, e.genauigkeit, e.titel, e.quelle, e.art].every(istText) &&
+				[e.bis, e.text, e.verweis].every(textOderNull)
+		) &&
+		istText(x.seit) &&
+		istText(x.bis) &&
+		listeAus(x.hinweise, (h) => istObjekt(h) && istText(h.art) && istText(h.text))
+	);
 }
 
 /** `GET /api/projekte/<slug>/backlog` (geschützt), die Aufgabenliste. Wirft nie. */
 export function ladeBacklog(slug: string, fetchFn: typeof fetch): Promise<Ladung<Backlog>> {
-	return holen(`${API}/projekte/${encodeURIComponent(slug)}/backlog`, fetchFn);
+	return holen(`${API}/projekte/${encodeURIComponent(slug)}/backlog`, fetchFn, istBacklog);
 }
 
 /** `GET /api/projekte/<slug>/plan` (geschützt). Wirft nie. */
 export function ladePlan(slug: string, fetchFn: typeof fetch): Promise<Ladung<ProjektPlan>> {
-	return holen(`${API}/projekte/${encodeURIComponent(slug)}/plan`, fetchFn);
+	return holen(`${API}/projekte/${encodeURIComponent(slug)}/plan`, fetchFn, istPlan);
 }
 
 /** Die Zeitleiste zeigt zuerst so viele Tage bis heute. */
@@ -73,7 +203,11 @@ export function ladeProjektVerlauf(
 	jetzt: Date = new Date()
 ): Promise<Ladung<Verlauf>> {
 	const seit = tagPlus(tagText(jetzt), -(tage - 1));
-	return holen(`${API}/projekte/${encodeURIComponent(slug)}/verlauf?seit=${seit}`, fetchFn);
+	return holen(
+		`${API}/projekte/${encodeURIComponent(slug)}/verlauf?seit=${seit}`,
+		fetchFn,
+		istVerlauf
+	);
 }
 
 // ----- Anker -----
