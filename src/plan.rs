@@ -99,9 +99,17 @@ fn etappe_rechnen<'a>(e: &Etappe, arbeiten: &[(&'a Arbeit, bool)], slug: &str) -
     let ist_fertig = stand == EtappenStand::Fertig;
     let beginn = begonnen.as_deref().and_then(zeit);
     // Seit wann eine Arbeit zur Etappe gehört: der letzte Eintrag `etappe` dorthin, sonst `erstellt`.
+    // Begann sie selbst nicht nach der Etappe, ist sie nicht dazugekommen (später zugeordnet, lief schon).
     let ziel = format!("{slug}/{}", e.kennung);
     let zugeordnet = |a: &'a Arbeit| a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel).map_or(&a.erstellt, |v| &v.zeit);
-    let spaeter: Vec<&String> = arbeiten.iter().map(|(a, _)| zugeordnet(a)).filter(|z| beginn.is_some_and(|b| zeit(z).is_some_and(|t| t > b))).collect();
+    let nach_beginn = |z: &String| beginn.is_some_and(|b| zeit(z).is_some_and(|t| t > b));
+    let spaeter: Vec<&String> = arbeiten
+        .iter()
+        .zip(&zeiten)
+        .filter(|(_, z)| z.begonnen.as_ref().is_none_or(nach_beginn))
+        .map(|((a, _), _)| zugeordnet(a))
+        .filter(|z| nach_beginn(z))
+        .collect();
     let dazugekommen = spaeter.len() as u32;
     PlanEtappe {
         kennung: e.kennung.clone(),
@@ -305,5 +313,16 @@ mod tests {
         let p = plan("p", Some(&datei(PLAN)), &[(lauf, false), (alt, false)]);
         let eins = &p.etappen[0];
         assert_eq!((eins.begonnen.clone(), eins.dazugekommen, eins.gewachsen_seit.clone()), (Some(t(2, 9)), 1, Some(t(4, 9))));
+    }
+
+    /// Eine Arbeit, die schon lief, als sie der Etappe zugeordnet wurde, ist
+    /// nicht dazugekommen: die Etappe beginnt mit ihr (Umstellung des Bestands).
+    #[test]
+    fn laufende_arbeit_spaeter_zugeordnet_ist_nicht_dazugekommen() {
+        let mut lauf = arbeit("ar-20261105-0001", "p", ArbeitsStand::Laeuft, Some("p/eins"), t(5, 9), t(14, 9));
+        lauf.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, t(14, 9), "", "p/eins"));
+        let p = plan("p", Some(&datei(PLAN)), &[(lauf, false)]);
+        let eins = &p.etappen[0];
+        assert_eq!((eins.begonnen.clone(), eins.dazugekommen, eins.gewachsen_seit.clone()), (Some(t(5, 9)), 0, None));
     }
 }

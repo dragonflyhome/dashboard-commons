@@ -1051,6 +1051,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         let fertig = neu(&state, &format!(r#"{{{p}, "titel": "Fertig", "stand": "fertig", "etappe": "probe/c1"}}"#)).await;
         let spaeter = neu(&state, &format!(r#"{{{p}, "titel": "Später", "stand": "als-naechstes", "frist": "{}"}}"#, tag(10))).await;
+        let lose = neu(&state, &format!(r#"{{{p}, "titel": "Lose fertig", "stand": "fertig"}}"#)).await;
         let verpasst = neu(&state, &format!(r#"{{{p}, "titel": "Verpasst", "stand": "als-naechstes", "frist": "{}"}}"#, tag(-1))).await;
         neu(&state, r#"{"projekt": "anderes", "von": "chat:anderes", "titel": "Fremd", "stand": "laeuft"}"#).await;
         let s = state.speicher.clone().unwrap();
@@ -1060,6 +1061,9 @@ mod tests {
         let (antwort, _) = s.vorgang_anlegen(VorgangsArt::Antwort, "probe", "Antwort: ja", Some("antwort:probe/frage-1"), "browser").unwrap();
         let (abnahme, _) = s.vorgang_anlegen(VorgangsArt::Abnahme, "probe", "Abnahme", None, "browser").unwrap();
         s.vorgang_anlegen(VorgangsArt::Abnahme, "anderes", "Fremde Abnahme", None, "browser").unwrap();
+        // Doppelt zu Schritt-Einträgen bzw. Klick-Protokoll: keine eigene Zeile.
+        let (schritt_v, _) = s.vorgang_anlegen(VorgangsArt::Schritt, "probe", "Schritt angeboten", None, "chat:probe").unwrap();
+        let (oeffnen_v, _) = s.vorgang_anlegen(VorgangsArt::Oeffnen, "probe", "Ordner öffnen", None, "browser").unwrap();
         let meldung = |projekt: &str| NeueMeldung {
             projekt: projekt.into(),
             art: MeldungsArt::Info,
@@ -1088,11 +1092,18 @@ mod tests {
         let f = finde(&format!("arbeit:{fertig}:fertig"));
         assert_eq!((qa(f), f["text"].is_null()), (paar("arbeit", "erledigt"), true), "fertig angelegt: Zeitpunkt genau");
         assert_eq!(qa(finde("etappe:c1")), paar("arbeit", "erledigt"), "c1 hat nur die fertige Arbeit");
+        // Verweis nur mit Ziel auf der Seite: fertig mit Etappe (Plan), offen (Aufgabenliste); fertig ohne Etappe keiner.
+        assert_eq!(f["verweis"], format!("/projects/probe#arbeit-{fertig}"), "{v}");
+        assert_eq!(finde(&format!("arbeit:{laeuft}:begonnen"))["verweis"], format!("/projects/probe#arbeit-{laeuft}"), "{v}");
+        assert!(finde(&format!("arbeit:{lose}:fertig"))["verweis"].is_null(), "{v}");
         assert!(!e.iter().any(|x| x["kennung"] == "etappe:b8"), "b8 läuft noch: {v}");
         assert!(e.iter().any(|x| x["quelle"] == "schritt" && x["kennung"].as_str().unwrap().starts_with(&format!("schritt:{laeuft}/"))), "{v}");
         assert_eq!(qa(finde(&format!("frage:{}", antwort.id))), paar("frage", "erledigt"));
         assert_eq!(qa(finde(&format!("bau:{}", bau.id))), paar("bau", "problem"));
         assert_eq!(qa(finde(&format!("vorgang:{}", abnahme.id))), paar("vorgang", "begonnen"));
+        for id in [&schritt_v.id, &oeffnen_v.id] {
+            assert!(!v.to_string().contains(id.as_str()), "{id} steht als eigene Zeile: {v}");
+        }
         let frist = finde(&format!("frist:arbeit:{spaeter}"));
         assert_eq!((qa(frist), frist["genauigkeit"].as_str()), (paar("frist", "geplant"), Some("tag")));
         assert_eq!(qa(finde(&format!("frist:arbeit:{verpasst}"))), paar("frist", "problem"), "verstrichen ist nicht geplant");

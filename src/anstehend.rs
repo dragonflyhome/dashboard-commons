@@ -837,14 +837,20 @@ pub fn fertig_7_tage(inhalt: &Inhalt, slug: &str) -> u64 {
 }
 
 /// Etappe B8: seit wann ein Eintrag auf den Inhaber wartet. Aufgaben seit
-/// `erstellt`, Fragen seit `gestellt`; Arbeiten seit dem letzten
-/// Verlaufseintrag `stand` auf wartet, ohne ihn seit `geaendert`.
-/// shortcut: ein Wechsel von `wartet_auf` (etwa vom Chat zum Inhaber) ohne Stand-Wechsel zählt nicht als Beginn; eigener Verlaufseintrag, sobald das falsche Ampeln gibt.
+/// `erstellt`, Fragen seit `gestellt`; Arbeiten mit Schritten seit dem
+/// frühesten `seit` der Schritte, die auf den Inhaber warten; ohne Schritte
+/// seit dem letzten Verlaufseintrag `stand` auf wartet (auch beim Wechsel von
+/// `wartet_auf` geschrieben), ohne ihn seit `geaendert`.
+/// shortcut: `seit` eines Schritts rückt auch bei einer Notiz vor, das Warten wirkt dann kürzer; eigener Zeitpunkt am Schritt, sobald das eine Ampel verschluckt.
 fn wartet_seit(inhalt: &Inhalt, e: &AnstehendEintrag) -> Option<NaiveDate> {
     if e.art != EintragsArt::Arbeit {
         return tag_von(&e.erstellt);
     }
     let a = inhalt.speicher.arbeiten.iter().find(|a| a.id == e.id)?;
+    if !a.schritte.is_empty() {
+        let beim_inhaber = a.schritte.iter().filter(|s| s.stand == ArbeitsStand::Wartet && s.wartet_auf.as_deref() == Some(INHABER));
+        return beim_inhaber.filter_map(|s| tag_von(&s.seit)).min();
+    }
     let wartet = ArbeitsStand::Wartet.wort();
     let seit = a.verlauf.iter().rev().find(|v| v.art == crate::vertrag::anstehend::ArbeitVerlaufArt::Stand && v.neu == wartet);
     tag_von(seit.map_or(&a.geaendert, |v| &v.zeit))
@@ -1561,6 +1567,25 @@ mod tests {
         ];
         let s = stand(&i, "dashboard", true).unwrap();
         assert_eq!((s.gesamt.grund, s.gesamt.tage, s.gesamt.bezug_art), (AmpelGrund::WartetLange, Some(9), Some(EintragsArt::Arbeit)));
+        // Wechsel von wartet_auf (Chat → Inhaber) schreibt einen Eintrag wartet → wartet; ab da zählt es.
+        i.speicher.arbeiten[0]
+            .verlauf
+            .push(crate::vertrag::anstehend::ArbeitVerlauf { alt: "wartet".into(), ..eintrag("2026-10-28T08:00:00+01:00", "wartet") });
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None), "erst seit gestern beim Inhaber");
+        // Mit Schritten: das früheste seit der Schritte, die auf den Inhaber warten, nicht der Stand-Eintrag.
+        let a = &mut i.speicher.arbeiten[0];
+        a.verlauf = vec![eintrag("2026-10-10T08:00:00+01:00", "wartet")];
+        let mut beim_chat = schritt(1, ArbeitsStand::Wartet, Some("chat:dashboard"), Some("extern"), None);
+        beim_chat.seit = "2026-10-01T08:00:00+01:00".into();
+        let mut beim_inhaber = schritt(2, ArbeitsStand::Wartet, Some("chat:dashboard"), Some(INHABER), None);
+        beim_inhaber.seit = "2026-10-28T08:00:00+01:00".into();
+        a.schritte = vec![beim_chat, beim_inhaber.clone()];
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None), "Schritt wartet erst seit gestern auf den Inhaber");
+        beim_inhaber.nr = 3;
+        beim_inhaber.seit = "2026-10-20T08:00:00+01:00".into();
+        i.speicher.arbeiten[0].schritte.push(beim_inhaber);
+        assert_eq!(grund(&i, "dashboard").1, AmpelGrund::WartetLange, "der früheste wartende Schritt zählt");
+        i.speicher.arbeiten[0].schritte.clear();
 
         // Ohne Bewegung: hallo hat nur eine Arbeit als Nächstes.
         let mut i = inhalt();

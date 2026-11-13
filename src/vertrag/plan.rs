@@ -187,9 +187,12 @@ pub struct PlanEtappe {
     /// `fertig` ist ungefähr: mindestens eine Arbeit hat keinen Eintrag dazu
     /// im Verlauf, für sie gilt ihre letzte Änderung.
     pub ungefaehr: bool,
-    /// Gleich `begonnen`, wenn danach Arbeiten dazugekommen sind, sonst leer.
+    /// Ortszeit, RFC 3339: die früheste Zuordnung einer dazugekommenen Arbeit,
+    /// sonst leer.
     pub gewachsen_seit: Option<String>,
-    /// Wie viele Arbeiten nach `begonnen` angelegt wurden.
+    /// Wie viele Arbeiten nach `begonnen` dazukamen: Zuordnung (letzter Eintrag
+    /// `etappe`, sonst `erstellt`) und eigener Beginn liegen beide danach. Eine
+    /// Arbeit, die schon lief, als sie zugeordnet wurde, zählt nicht.
     pub dazugekommen: u32,
     /// Nach Kennung, also nach Anlage.
     pub arbeiten: Vec<PlanArbeit>,

@@ -28,11 +28,14 @@ fertig: string | null,
  */
 ungefaehr: boolean, 
 /**
- * Gleich `begonnen`, wenn danach Arbeiten dazugekommen sind, sonst leer.
+ * Ortszeit, RFC 3339: die früheste Zuordnung einer dazugekommenen Arbeit,
+ * sonst leer.
  */
 gewachsen_seit: string | null, 
 /**
- * Wie viele Arbeiten nach `begonnen` angelegt wurden.
+ * Wie viele Arbeiten nach `begonnen` dazukamen: Zuordnung (letzter Eintrag
+ * `etappe`, sonst `erstellt`) und eigener Beginn liegen beide danach. Eine
+ * Arbeit, die schon lief, als sie zugeordnet wurde, zählt nicht.
  */
 dazugekommen: number, 
 /**

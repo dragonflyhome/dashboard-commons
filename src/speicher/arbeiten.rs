@@ -357,6 +357,7 @@ impl Speicher {
         let alter_stand = a.stand;
         let alter_titel = a.titel.clone();
         let alte_etappe = a.etappe.clone();
+        let altes_warten = a.wartet_auf.clone();
         match aenderung_anwenden(&mut a, aenderung) {
             Err(satz) => return Ok(Fortschreiben::Ungueltig(satz)),
             Ok(false) => return Ok(Fortschreiben::Unveraendert(a)),
@@ -383,6 +384,11 @@ impl Speicher {
             // fertig ↔ als-naechstes ohne Grenze.
             let frei = a.stand == ArbeitsStand::Fertig || (braucht_besitzer(alter_stand) && !braucht_besitzer(a.stand));
             if frei { a.verlauf.push(eintrag) } else { verlauf_anhaengen(&mut a, eintrag)? }
+        } else if a.stand == ArbeitsStand::Wartet && a.wartet_auf != altes_warten {
+            // Wartet jetzt auf jemand anderen: neuer Beginn des Wartens (`anstehend::wartet_seit`).
+            let text = format!("Wartet jetzt auf {}.", a.wartet_auf.as_deref().unwrap_or_default());
+            let eintrag = ArbeitVerlauf { text, ..stand_verlauf(&a.geaendert, von, a.stand, a.stand) };
+            verlauf_anhaengen(&mut a, eintrag)?;
         }
         if a.besitzer.is_none() && a.schritte.is_empty() && braucht_besitzer(a.stand) {
             a.besitzer = Some(von.clone());
@@ -626,6 +632,13 @@ mod tests {
         assert_eq!(staende(&x), [("als-naechstes".into(), "laeuft".into()), ("laeuft".into(), "fertig".into())]);
         let v = x.verlauf.iter().find(|v| v.art == ArbeitVerlaufArt::Stand).unwrap();
         assert_eq!((v.von.as_str(), v.text.as_str()), ("chat:dashboard", "Stand: als-naechstes → laeuft."));
+        // Wartet sie danach auf jemand anderen, beginnt das Warten neu: Eintrag wartet → wartet.
+        let warten = |w: &str| ArbeitAenderung { stand: Some(ArbeitsStand::Wartet), wartet_auf: Some(Some(w.into())), ..von_dash() };
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &warten("extern"), &zeit(30, 9)).unwrap() else { panic!() };
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &warten("inhaber"), &zeit(30, 10)).unwrap() else { panic!() };
+        let v = x.verlauf.last().unwrap();
+        assert_eq!((v.art, v.alt.as_str(), v.neu.as_str(), v.zeit.as_str()), (ArbeitVerlaufArt::Stand, "wartet", "wartet", "2026-10-30T10:00:00+01:00"));
+        assert_eq!(v.text, "Wartet jetzt auf inhaber.");
     }
 
     /// Etappe B8: Die Etappe setzt nur, wer die Arbeit verantwortet: mit
