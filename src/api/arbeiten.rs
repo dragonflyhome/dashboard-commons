@@ -402,6 +402,9 @@ pub async fn fortschreiben(
                 // Etappe A3: Meldung „fertig“ (einmal je Arbeit; war sie schon da, bleibt es dabei).
                 crate::meldungen::arbeit_fertig(&state, &arbeit, jetzt).await;
             }
+            if arbeit.stand != ArbeitsStand::Fertig && war_fertig {
+                crate::meldungen::arbeit_wieder_offen(&state, &arbeit, jetzt).await;
+            }
             Ok(Json(ArbeitGeaendert { arbeit, geaendert: true }))
         }
         Fortschreiben::Unveraendert(arbeit) => Ok(Json(ArbeitGeaendert { arbeit, geaendert: false })),
@@ -442,6 +445,9 @@ async fn schritt_gemeldet(state: &AppState, r: &SchrittErgebnis, jetzt: Zeit) {
     }
     if r.wurde_fertig {
         crate::meldungen::arbeit_fertig(state, &r.arbeit, jetzt).await;
+    }
+    if r.wieder_offen {
+        crate::meldungen::arbeit_wieder_offen(state, &r.arbeit, jetzt).await;
     }
 }
 
@@ -911,6 +917,35 @@ mod tests {
         // Direkt den Stand der Arbeit setzen geht nicht mehr.
         let (status, v) = schicke(&state, post(&a, &format!(r#"{{{DASH}, "stand": "fertig"}}"#))).await;
         assert_eq!((status, v["fehler"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some(crate::speicher::arbeiten::SATZ_STAND_AUS_SCHRITTEN)));
+    }
+
+    /// Meldung „fertig“ als Zustand: Ein neuer Schritt an der fertigen Arbeit
+    /// hebt sie auf (behoben), das nächste Fertig bringt sie ungelesen zurück.
+    #[tokio::test]
+    async fn fertig_meldung_behoben_wenn_neuer_schritt() {
+        let state = zustand();
+        let s = state.speicher().unwrap();
+        let id = neu(&state, &format!(r#"{{"projekt": "dashboard", {DASH}, "titel": "Etappe 7", "stand": "laeuft"}}"#)).await;
+        let a = format!("/api/arbeiten/{id}");
+        let fertig_machen = |nr: u32| {
+            let (state, a) = (state.clone(), a.clone());
+            async move {
+                schicke(&state, post(&format!("{a}/schritte/{nr}/uebernehmen"), &format!("{{{DASH}}}"))).await;
+                let (status, v) = schicke(&state, post(&format!("{a}/schritte/{nr}"), &format!(r#"{{{DASH}, "stand": "fertig"}}"#))).await;
+                assert_eq!(status, StatusCode::OK, "{v}");
+            }
+        };
+        schicke(&state, post(&format!("{a}/schritte"), &format!(r#"{{{DASH}, "titel": "bauen"}}"#))).await;
+        fertig_machen(1).await;
+        fertig_machen(2).await;
+        let fertig = || s.meldungen_lesen(Some("dashboard")).unwrap().into_iter().find(|m| m.art == crate::api::vertrag::MeldungsArt::Fertig).unwrap();
+        assert!(fertig().behoben.is_none(), "Arbeit fertig: Meldung steht");
+        let (status, v) = schicke(&state, post(&format!("{a}/schritte"), &format!(r#"{{{DASH}, "titel": "nachbessern"}}"#))).await;
+        assert_eq!(status, StatusCode::CREATED, "{v}");
+        assert!(fertig().behoben.is_some(), "neuer Schritt: die Arbeit ist nicht mehr fertig");
+        fertig_machen(3).await;
+        let m = fertig();
+        assert_eq!((m.behoben.is_none(), m.gelesen.is_none(), m.anzahl), (true, true, 2), "wieder fertig: Meldung wieder da");
     }
 
     /// Schritt-Wege: aus dem Browser 422, unbekannt 404, Grenze 429, Regeln 422.

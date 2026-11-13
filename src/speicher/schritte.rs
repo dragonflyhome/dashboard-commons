@@ -73,6 +73,8 @@ pub struct SchrittErgebnis {
     pub ereignisse: Vec<Ereignis>,
     /// Die Arbeit ist mit dieser Anfrage fertig geworden (für die Meldung „fertig“).
     pub wurde_fertig: bool,
+    /// Die Arbeit war fertig und ist mit dieser Anfrage wieder offen (Meldung „fertig“ behoben).
+    pub wieder_offen: bool,
 }
 
 /// Änderung an einem Schritt, schon geprüft (Form der Werte). Äußeres
@@ -564,7 +566,15 @@ impl Speicher {
         let vorher = a.clone();
         let (nr, wecken) = f(&mut a)?;
         if a == vorher {
-            return Ok(SchrittErgebnis { arbeit: a, nr, geaendert: false, wecken: Vec::new(), ereignisse: Vec::new(), wurde_fertig: false });
+            return Ok(SchrittErgebnis {
+                arbeit: a,
+                nr,
+                geaendert: false,
+                wecken: Vec::new(),
+                ereignisse: Vec::new(),
+                wurde_fertig: false,
+                wieder_offen: false,
+            });
         }
         stand_ableiten(&mut a);
         if vorher.stand == ArbeitsStand::Fertig
@@ -579,7 +589,8 @@ impl Speicher {
         let bereiche: &[Bereich] = if ereignisse.is_empty() { &[Bereich::Arbeiten] } else { &[Bereich::Arbeiten, Bereich::Vorgaenge] };
         self.festschreiben(txn, bereiche)?;
         let wurde_fertig = a.stand == ArbeitsStand::Fertig && vorher.stand != ArbeitsStand::Fertig;
-        Ok(SchrittErgebnis { arbeit: a, nr, geaendert: true, wecken, ereignisse, wurde_fertig })
+        let wieder_offen = vorher.stand == ArbeitsStand::Fertig && a.stand != ArbeitsStand::Fertig;
+        Ok(SchrittErgebnis { arbeit: a, nr, geaendert: true, wecken, ereignisse, wurde_fertig, wieder_offen })
     }
 
     /// Legt einen Schritt an (frei, `als-naechstes`); `fuer`: nur dieser Chat

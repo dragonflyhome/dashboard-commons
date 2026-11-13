@@ -333,12 +333,21 @@ pub fn projekt_aus_pfad(pfad: &str) -> Option<&str> {
 // ----- Arbeit fertig -----
 
 /// Eine Arbeit steht auf fertig: Meldung „fertig“ (einmal je Arbeit; meldet
-/// der Chat zusätzlich fertig mit Verweis auf sie, ist es dieselbe).
+/// der Chat zusätzlich fertig mit Verweis auf sie, ist es dieselbe). Als
+/// Zustand wie die Fristen: Wurde sie behoben, weil die Arbeit wieder offen
+/// war ([`arbeit_wieder_offen`]), kommt sie beim nächsten Fertig wieder.
 pub async fn arbeit_fertig(state: &AppState, a: &Arbeit, jetzt: Zeit) {
     let mut n = neu(&a.projekt, MeldungsArt::Fertig, &format!("fertig:{}", a.id), format!("Fertig: {}", a.titel));
     n.verweis = Some(a.id.clone());
     n.von = a.von.clone();
-    melden(state, n, Wiederholung::Einmal, jetzt).await;
+    melden(state, n, Wiederholung::Zustand, jetzt).await;
+}
+
+/// Eine fertige Arbeit ist wieder offen (neuer Schritt, Stand zurück): Ihre
+/// Meldung „fertig“ stimmt nicht mehr und ist behoben.
+pub async fn arbeit_wieder_offen(state: &AppState, a: &Arbeit, jetzt: Zeit) {
+    let s = schluessel(&a.projekt, &format!("fertig:{}", a.id));
+    beheben(state, move |m| m.schluessel == s, jetzt).await;
 }
 
 // ----- Fristen -----
