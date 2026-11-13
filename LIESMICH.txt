@@ -34,6 +34,9 @@ main, als Fast-Forward mit Merge-Commits (scripts\Hochladen.ps1), geprüft
 von scripts\Vor-Push.ps1. Commit-Meldungen ohne Anhänge (kein Co-Authored-By,
 kein Generated with), Autor Ranke <ranke2@proton.me>.
 
+Wer mitwirken will, findet den Weg in CONTRIBUTING.md: kein Schreibzugriff
+und keine Pull Requests, sondern ein Issue mit Verweis auf den eigenen Fork.
+
 Der Beispielbenutzer in tests\beispiel heißt ranke, benannt nach dem
 Hauptentwickler Ranke.
 

@@ -670,7 +670,7 @@ $positiv = @(
     '^docs/anleitung/',
     '^projects/_vorlage/',
     '^\.cargo/config\.toml$',
-    '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
+    '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
     # LICENSE in der Wurzel bleibt allein für GitHub.
     '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
@@ -683,7 +683,8 @@ $verboten = [ordered]@{
     'projekte.generated.ts ist erzeugt und privat'             = Rx '^web/src/lib/projekte\.generated\.ts$'
     'erzeugte Typen eines Projekts (vertrag/projekte)'         = Rx '^web/src/lib/vertrag/projekte/'
     # Etappe 6d: kein Markdown mehr im Code-Repo; die Anleitung steht in docs/anleitung.
-    'Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr'    = Rx '\.md$'
+    # Ausnahme: CONTRIBUTING.md in der Wurzel, der Leitfaden für Mitwirkende, den GitHub dort erwartet.
+    'Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr'    = Rx '(?<!^CONTRIBUTING)\.md$'
 }
 $binaerErlaubt = @('^web/static/', '^tests/beispiel[^/]*/(?:.*/)?assets/') | ForEach-Object { Rx $_ }
 $testBeispiel = Rx '^tests/beispiel[^/]*/'
