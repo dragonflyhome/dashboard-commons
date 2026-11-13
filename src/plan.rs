@@ -104,6 +104,7 @@ fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanE
     // Dazugekommen ist eine Arbeit erst nach dem Beginn und nach dem Tag der ersten Zuordnung: was an
     // diesem Tag zugeordnet wurde, ist der Umfang (Umstellung des Bestands, auch Arbeit für Arbeit).
     // shortcut: am selben Tag später Angehängtes zählt nicht; aufrüsten, wenn das stört.
+    // shortcut: nur gelistete Etappe, die erste echte Zuordnung zählt nie als dazugekommen; aufrüsten, wenn alte Etappen wieder Arbeit bekommen.
     let ziel = format!("{slug}/{}", e.kennung);
     let zugeordnet: Vec<&String> = arbeiten
         .iter()
@@ -370,6 +371,21 @@ mod tests {
             vec![(archiv, true), (zugeordnet("ar-20261105-0001", t(5, 9), t(14, 9)), false), (zugeordnet("ar-20261106-0001", t(6, 9), t(14, 10)), false)];
         let eins = &plan("p", Some(&datei(plan_text)), &alle).etappen[0];
         assert_eq!((eins.arbeiten_gesamt, eins.begonnen.clone()), (3, Some(t(1, 9))));
+        assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (0, None));
+    }
+
+    /// Hält die Grenze fest: Etappe nur aus der Liste, später kommt eine
+    /// Arbeit per Eintrag `etappe` dazu. Diese erste echte Zuordnung ist der
+    /// erste Tag und zählt nicht als dazugekommen (siehe shortcut oben).
+    #[test]
+    fn gelistete_etappe_erste_echte_zuordnung_zaehlt_nicht() {
+        let plan_text = "[[etappe]]\nkennung = \"eins\"\ntitel = \"Eins\"\nziel = \"Z.\"\nreihenfolge = 1\narbeiten = [\"ar-20261101-0001\"]\n";
+        let mut alt = arbeit("ar-20261101-0001", "p", ArbeitsStand::Fertig, None, t(1, 9), t(3, 9));
+        alt.verlauf.push(eintrag(ArbeitVerlaufArt::Stand, t(3, 9), "laeuft", "fertig"));
+        let mut neu = arbeit("ar-20261118-0001", "p", ArbeitsStand::AlsNaechstes, Some("p/eins"), t(18, 9), t(20, 9));
+        neu.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, t(20, 9), "", "p/eins"));
+        let eins = &plan("p", Some(&datei(plan_text)), &[(alt, true), (neu, false)]).etappen[0];
+        assert_eq!(eins.arbeiten_gesamt, 2);
         assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (0, None));
     }
 }
