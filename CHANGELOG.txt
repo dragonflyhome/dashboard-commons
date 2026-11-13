@@ -29,6 +29,16 @@ Hinzugefügt
 - Jeder Wechsel des Stands einer Arbeit steht in ihrem Verlauf (art stand,
   alt und neu als Stand-Wort), ob von Hand gesetzt oder aus den Schritten
   abgeleitet; eine geänderte Etappe ebenso (art etappe).
+- GET /api/projekte/<slug>/plan (geschützt wie /backlog): die Etappen aus
+  daten/plan.toml in ihrer Reihenfolge mit Stand (geplant, laeuft, fertig,
+  vor-dem-tracker), x von y Arbeiten fertig, begonnen, fertig,
+  gewachsen_seit und den Arbeiten mit Titel und Stand, auch archivierte und
+  solche aus anderen Projekten (aus); Arbeiten, deren Etappe nicht mehr in
+  plan.toml steht, in ohne_etappe. Ohne Eintrag stand im Verlauf gilt der
+  letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr).
+- Live: Zeigt die Etappe einer Arbeit auf ein anderes Projekt, kommt
+  anstehend/<slug> auch für jenes; ebenso bei einer geänderten
+  daten/plan.toml.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit

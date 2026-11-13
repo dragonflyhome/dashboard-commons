@@ -136,6 +136,82 @@ impl Datei<Plan> {
     }
 }
 
+// ----- GET /api/projekte/<slug>/plan -----
+
+/// Der Plan eines Projekts, wie der Server ihn aus `plan.toml` und dem
+/// Tracker rechnet (`crate::plan`).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct ProjektPlan {
+    pub projekt: String,
+    /// Nach `reihenfolge`.
+    pub etappen: Vec<PlanEtappe>,
+    /// Arbeiten, deren `etappe` auf dieses Projekt zeigt, die Etappe aber
+    /// nicht (mehr) in `plan.toml` steht: die Gruppe „ohne gültige Etappe“.
+    pub ohne_etappe: Vec<PlanArbeit>,
+    /// Sätze, etwa wenn `plan.toml` sich nicht lesen lässt oder der
+    /// Datenspeicher fehlt.
+    pub hinweise: Vec<String>,
+}
+
+/// Der gerechnete Stand einer Etappe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "kebab-case")]
+pub enum EtappenStand {
+    /// Keine Arbeit hat begonnen (oder es gibt noch keine).
+    Geplant,
+    /// Mindestens eine Arbeit hat begonnen, nicht alle sind fertig.
+    Laeuft,
+    /// Alle Arbeiten sind fertig.
+    Fertig,
+    /// `abgeschlossen = true` und keine Arbeit im Tracker: ohne Datum.
+    VorDemTracker,
+}
+
+/// Eine Etappe mit Stand, Zählung und Zeitpunkten aus dem Tracker.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct PlanEtappe {
+    pub kennung: String,
+    pub titel: String,
+    pub ziel: String,
+    pub reihenfolge: u32,
+    /// JJJJ-MM aus `plan.toml`: ein echter Termin.
+    pub ab: Option<String>,
+    pub stand: EtappenStand,
+    pub arbeiten_fertig: u32,
+    /// Jede Arbeit zählt als eine, mit oder ohne Schritte.
+    pub arbeiten_gesamt: u32,
+    /// Ortszeit, RFC 3339: als die erste Arbeit begann.
+    pub begonnen: Option<String>,
+    /// Ortszeit, RFC 3339: als die letzte Arbeit fertig wurde (nur bei `fertig`).
+    pub fertig: Option<String>,
+    /// `fertig` ist ungefähr: mindestens eine Arbeit hat keinen Eintrag dazu
+    /// im Verlauf, für sie gilt ihre letzte Änderung.
+    pub ungefaehr: bool,
+    /// Gleich `begonnen`, wenn danach Arbeiten dazugekommen sind, sonst leer.
+    pub gewachsen_seit: Option<String>,
+    /// Wie viele Arbeiten nach `begonnen` angelegt wurden.
+    pub dazugekommen: u32,
+    /// Nach Kennung, also nach Anlage.
+    pub arbeiten: Vec<PlanArbeit>,
+}
+
+/// Eine Arbeit im Plan: nur Titel und Stand, auch aus dem Archiv.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct PlanArbeit {
+    pub id: String,
+    pub titel: String,
+    pub stand: super::anstehend::ArbeitsStand,
+    /// Das Projekt der Arbeit, wenn es ein anderes ist („aus <Projekt>“).
+    pub aus: Option<String>,
+    pub archiviert: bool,
+    /// `etappe` der Arbeit, wie sie gespeichert ist (leer: über `plan.toml` zugeordnet).
+    pub etappe: Option<String>,
+    /// Ortszeit, RFC 3339: wann sie fertig wurde (nur bei `fertig`).
+    pub fertig: Option<String>,
+    /// `fertig` ist die letzte Änderung, kein Eintrag im Verlauf.
+    pub ungefaehr: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -432,6 +432,19 @@ impl Speicher {
         Ok(liste)
     }
 
+    /// Alle Arbeiten aller Projekte, laufend und im Archiv (`true`), in einer
+    /// Lese-Transaktion, ohne zugesagte Reihenfolge (für den Plan, Etappe B8).
+    pub fn arbeiten_mit_archiv(&self) -> Result<Vec<(Arbeit, bool)>, SpeicherFehler> {
+        let txn = self.db.begin_read()?;
+        let mut liste = Vec::new();
+        for (tabelle, im_archiv) in [(ARBEITEN, false), (ARBEITEN_ARCHIV, true)] {
+            if let Some(t) = tabellen::lesen(tabelle, &txn)? {
+                liste.extend(alle_aus(&t)?.into_iter().map(|a| (a, im_archiv)));
+            }
+        }
+        Ok(liste)
+    }
+
     /// Fertige Arbeiten, deren letzte Änderung `ARCHIVIEREN_NACH_TAGEN` Tage
     /// oder länger her ist, ziehen unverändert nach `arbeiten_archiv` um. Steht
     /// die Kennung dort schon, bleibt die Arbeit, wo sie ist (nie überschreiben).

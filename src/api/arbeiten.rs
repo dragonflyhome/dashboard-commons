@@ -39,7 +39,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
 
 use super::aufgaben::{frist_pruefen, stufe_pruefen};
-use super::vertrag::{ArbeitAngelegt, ArbeitGeaendert, ArbeitenListe, ArbeitsStand, Besetzt, SchrittAngelegt};
+use super::vertrag::{Arbeit, ArbeitAngelegt, ArbeitGeaendert, ArbeitenListe, ArbeitsStand, Besetzt, SchrittAngelegt};
 use super::vorgaenge::{TITEL_HOECHSTENS, VON_HOECHSTENS, abfrage, angegeben, aus_browser, json_kopf_pruefen, slug_pruefen, text_pruefen};
 use crate::app::AppState;
 use crate::fehler::{AppError, FehlerSatz};
@@ -330,7 +330,7 @@ pub async fn archiv_lauf(state: &AppState, jetzt: Zeit) -> Result<usize, AppErro
     let weg = Speicher::im_hintergrund(state.speicher()?, move |s| s.arbeiten_archivieren(&jetzt)).await.map_err(arbeitsfehler)?;
     if !weg.is_empty() {
         tracing::info!("{} fertige Arbeit(en) ins Archiv verschoben", weg.len());
-        let mut projekte: Vec<&str> = weg.iter().map(|a| a.projekt.as_str()).collect();
+        let mut projekte: Vec<&str> = weg.iter().flat_map(betroffene).collect();
         projekte.sort_unstable();
         projekte.dedup();
         for p in projekte {
@@ -338,6 +338,28 @@ pub async fn archiv_lauf(state: &AppState, jetzt: Zeit) -> Result<usize, AppErro
         }
     }
     Ok(weg.len())
+}
+
+/// Die Projekte, deren Seiten eine Arbeit zeigen: ihr eigenes und das ihrer
+/// Etappe (Plan, Etappe B8), ohne doppelte.
+fn betroffene(a: &Arbeit) -> Vec<&str> {
+    let mut projekte = vec![a.projekt.as_str()];
+    projekte.extend(a.etappe.as_deref().and_then(|e| e.split_once('/')).map(|(p, _)| p).filter(|p| *p != a.projekt));
+    projekte
+}
+
+/// `change` (anstehend) für jedes betroffene Projekt der Arbeit, dazu für das
+/// Projekt der Etappe vorher (`vorher`), wenn sie gewechselt hat.
+fn arbeit_gemeldet(state: &AppState, a: &Arbeit, vorher: Option<&str>) {
+    let mut projekte = betroffene(a);
+    if let Some((p, _)) = vorher.and_then(|e| e.split_once('/'))
+        && !projekte.contains(&p)
+    {
+        projekte.push(p);
+    }
+    for p in projekte {
+        super::events::anstehend_geaendert(&state.events, Some(p));
+    }
 }
 
 // ----- Handler -----
@@ -370,7 +392,7 @@ pub async fn anlegen(State(state): State<AppState>, kopf: HeaderMap, koerper: By
     let jetzt = aufgaben::jetzt();
     let a = Speicher::im_hintergrund(state.speicher()?, move |s| s.arbeit_anlegen(n, &jetzt)).await.map_err(arbeitsfehler)?;
     tracing::info!("Arbeit {} für {} angelegt ({})", a.id, a.projekt, a.stand.wort());
-    super::events::anstehend_geaendert(&state.events, Some(&a.projekt));
+    arbeit_gemeldet(&state, &a, None);
     if a.stand == ArbeitsStand::Fertig {
         // Etappe A3: eine fertige Arbeit wird zur Meldung „fertig“.
         crate::meldungen::arbeit_fertig(&state, &a, jetzt).await;
@@ -423,17 +445,17 @@ pub async fn fortschreiben(
     // Der Stand vorher: Die Meldung „fertig“ kommt nur beim Wechsel auf fertig,
     // nicht bei jeder Notiz an einer fertigen Arbeit (sonst käme sie nach dem
     // Archiv der Meldung wieder).
-    let (war_fertig, ergebnis) = Speicher::im_hintergrund(state.speicher()?, move |s| {
-        let war_fertig = s.arbeit(&id)?.is_some_and(|a| a.stand == ArbeitsStand::Fertig);
-        Ok((war_fertig, s.arbeit_fortschreiben(&id, &aenderung, &jetzt)?))
+    let (vorher, ergebnis) = Speicher::im_hintergrund(state.speicher()?, move |s| {
+        let vorher = s.arbeit(&id)?;
+        Ok((vorher, s.arbeit_fortschreiben(&id, &aenderung, &jetzt)?))
     })
     .await
     .map_err(ArbeitsFehler::arbeit)?;
     match ergebnis {
         Fortschreiben::Geaendert(arbeit) => {
             tracing::info!("Arbeit {} fortgeschrieben ({})", arbeit.id, arbeit.stand.wort());
-            super::events::anstehend_geaendert(&state.events, Some(&arbeit.projekt));
-            if arbeit.stand == ArbeitsStand::Fertig && !war_fertig {
+            arbeit_gemeldet(&state, &arbeit, vorher.as_ref().and_then(|a| a.etappe.as_deref()));
+            if arbeit.stand == ArbeitsStand::Fertig && !vorher.is_some_and(|a| a.stand == ArbeitsStand::Fertig) {
                 // Etappe A3: Meldung „fertig“ (einmal je Arbeit; war sie schon da, bleibt es dabei).
                 crate::meldungen::arbeit_fertig(&state, &arbeit, jetzt).await;
             }
@@ -472,7 +494,7 @@ async fn schritt_gemeldet(state: &AppState, r: &SchrittErgebnis, jetzt: Zeit) {
         return;
     }
     tracing::info!("Arbeit {}: Schritt {} geschrieben ({})", r.arbeit.id, r.nr, r.arbeit.stand.wort());
-    super::events::anstehend_geaendert(&state.events, Some(&r.arbeit.projekt));
+    arbeit_gemeldet(state, &r.arbeit, None);
     for e in &r.ereignisse {
         super::vorgaenge::melden(state, e);
     }
@@ -913,6 +935,61 @@ mod tests {
         let (_, v) = schicke(&state, post(&pfad, r#"{"stand": "fertig", "von": "chat:probe"}"#)).await;
         let stand: Vec<&serde_json::Value> = v["arbeit"]["verlauf"].as_array().unwrap().iter().filter(|e| e["art"] == "stand").collect();
         assert_eq!((stand.len(), stand[0]["alt"].as_str(), stand[0]["neu"].as_str()), (1, Some("als-naechstes"), Some("fertig")), "{v}");
+        let _ = std::fs::remove_dir_all(&ordner);
+    }
+
+    /// Etappe B8: GET /api/projekte/<slug>/plan ist geschützt (401), kennt nur
+    /// vorhandene Projekte (404) und zeigt Etappen mit Stand und Zählung, auch
+    /// eine archivierte Arbeit und eine aus einem anderen Projekt. Zeigt etappe
+    /// auf ein anderes Projekt, kommt `change` auch für dieses (vorher und jetzt).
+    #[tokio::test]
+    async fn plan_ueber_die_api() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-test-{}-plan-api", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        for (slug, plan) in [("probe", Some("b8")), ("anderes", Some("c1"))] {
+            let p = ordner.join("projects").join(slug);
+            std::fs::create_dir_all(p.join("daten")).unwrap();
+            std::fs::write(p.join("projekt.toml"), "schema = 3\ntitle = \"Probe\"\nstatus = \"aktiv\"\nsummary = \"Erfunden.\"\n").unwrap();
+            if let Some(k) = plan {
+                let text = format!(
+                    "[[etappe]]\nkennung = \"{k}\"\ntitel = \"T\"\nziel = \"Z\"\nreihenfolge = 2\n[[etappe]]\nkennung = \"alt\"\ntitel = \"A\"\nziel = \"Z\"\nreihenfolge = 1\nabgeschlossen = true\n"
+                );
+                std::fs::write(p.join("daten").join("plan.toml"), text).unwrap();
+            }
+        }
+        let state = AppState::fuer_tests(&ordner);
+        let mut changes = state.events.subscribe();
+        let res = crate::app::router(state.clone()).oneshot(get("/api/projekte/probe/plan")).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        let (status, _) = schicke(&state, get("/api/projekte/gibt-es-nicht/plan")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let eigen = neu(&state, r#"{"projekt": "probe", "von": "chat:probe", "titel": "Eigen", "stand": "laeuft", "etappe": "probe/b8"}"#).await;
+        let fertig = neu(&state, r#"{"projekt": "probe", "von": "chat:probe", "titel": "Fertig", "stand": "fertig", "etappe": "probe/b8"}"#).await;
+        anstehend_changes(&mut changes);
+        let fremd = neu(&state, r#"{"projekt": "anderes", "von": "chat:anderes", "titel": "Fremd", "stand": "als-naechstes", "etappe": "probe/b8"}"#).await;
+        assert_eq!(anstehend_changes(&mut changes), ["anstehend/anderes", "anstehend/probe"], "auch das Projekt der Etappe");
+        // Die Etappe wechselt zurück ins eigene Projekt: auch das Projekt der alten Etappe lädt neu.
+        let (status, _) = schicke(&state, post(&format!("/api/arbeiten/{fremd}"), r#"{"von": "chat:anderes", "etappe": "anderes/c1"}"#)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(anstehend_changes(&mut changes), ["anstehend/anderes", "anstehend/probe"]);
+        let (status, _) = schicke(&state, post(&format!("/api/arbeiten/{fremd}"), r#"{"von": "chat:anderes", "etappe": "probe/b8"}"#)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(archiv_lauf(&state, aufgaben::jetzt() + chrono::Duration::days(8)).await.unwrap(), 1);
+        let (status, p) = schicke(&state, get("/api/projekte/probe/plan")).await;
+        assert_eq!(status, StatusCode::OK, "{p}");
+        let kennungen: Vec<(&str, &str)> =
+            p["etappen"].as_array().unwrap().iter().map(|e| (e["kennung"].as_str().unwrap(), e["stand"].as_str().unwrap())).collect();
+        assert_eq!(kennungen, [("alt", "vor-dem-tracker"), ("b8", "laeuft")], "{p}");
+        let b8 = &p["etappen"][1];
+        assert_eq!((b8["arbeiten_fertig"].as_u64(), b8["arbeiten_gesamt"].as_u64()), (Some(1), Some(3)), "{p}");
+        let arbeiten: Vec<(&str, bool, Option<&str>)> =
+            b8["arbeiten"].as_array().unwrap().iter().map(|a| (a["id"].as_str().unwrap(), a["archiviert"].as_bool().unwrap(), a["aus"].as_str())).collect();
+        assert_eq!(arbeiten, [(eigen.as_str(), false, None), (fertig.as_str(), true, None), (fremd.as_str(), false, Some("anderes"))]);
+        assert!(p["ohne_etappe"].as_array().unwrap().is_empty() && p["hinweise"].as_array().unwrap().is_empty(), "{p}");
+        // Fällt die Etappe aus plan.toml, steht die Arbeit unter „ohne gültige Etappe“ (Live: anstehend/probe).
+        std::fs::write(ordner.join("projects/probe/daten/plan.toml"), "[[etappe]]\nkennung = \"neu\"\ntitel = \"N\"\nziel = \"Z\"\nreihenfolge = 1\n").unwrap();
+        let (_, p) = schicke(&state, get("/api/projekte/probe/plan")).await;
+        assert_eq!(p["ohne_etappe"].as_array().map(Vec::len), Some(3), "{p}");
         let _ = std::fs::remove_dir_all(&ordner);
     }
 

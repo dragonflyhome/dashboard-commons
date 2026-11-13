@@ -152,6 +152,48 @@ pub async fn backlog(State(state): State<AppState>, Path(slug): Path<String>, an
     }
 }
 
+/// `GET /api/projekte/<slug>/plan` (Etappe B8): die Etappen aus `daten/plan.toml`
+/// mit Stand und Zählung aus dem Tracker (`crate::plan`), auch archivierte
+/// Arbeiten. Geschützt wie `/backlog` (nennt Titel), ohne Anmeldung 401.
+/// Schreibt nichts. Ohne Datenspeicher oder lesbare `plan.toml` antwortet er
+/// mit dem, was da ist, und einem Hinweis.
+pub async fn plan(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    let antwort = async {
+        let bestand = state.inhalt.bestand();
+        if !seite::is_valid_slug(&slug) || !bestand.ordner_da(&slug) {
+            return Err(AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")));
+        }
+        let mut hinweise = Vec::new();
+        let datei = match bestand.daten(&slug, "plan") {
+            Ok(Some((DatenInhalt::Plan(p), _))) => Some(p),
+            Ok(_) => None,
+            Err(e) => {
+                hinweise.push(format!("{e} Bis das behoben ist, fehlen die Etappen."));
+                None
+            }
+        };
+        // shortcut: voller Durchlauf durch Arbeiten und Archiv je Abruf, gefiltert nach
+        // etappe und Liste; Index oder Zwischenspeicher, sobald das Archiv einige tausend Arbeiten hat.
+        let arbeiten = match state.speicher.clone() {
+            Some(s) => Speicher::im_hintergrund(s, |s| s.arbeiten_mit_archiv()).await.map_err(speicherfehler)?,
+            None => {
+                hinweise.push(format!("{} Bis dahin fehlen die Arbeiten.", state.speicher_satz()));
+                Vec::new()
+            }
+        };
+        let mut p = crate::plan::plan(&slug, datei.as_ref(), &arbeiten);
+        p.hinweise = hinweise;
+        Ok(p)
+    };
+    match antwort.await {
+        Ok(p) => Json(p).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
 /// `GET /api/fristen` (Etappe B3): die Fristenliste aller sichtbaren Projekte
 /// (ohne archivierte; für die gilt die Sicherheitsregel in Anstehend), nach
 /// Datum, bewegliche ohne Datum am Ende (`crate::fristen::fristenliste`).

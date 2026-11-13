@@ -577,7 +577,8 @@ pub fn ohne_archiv(c: Change, archiviert: impl Fn(&str) -> bool) -> Option<Chang
 
 /// Welches Projekt eine geänderte Datei für „Anstehend“ betrifft: `Some(Some(slug))`
 /// für `projects/<slug>/projekt.toml`, `daten/fragen.toml` und (Etappe
-/// B3: bewegliche Fristen der Aufgaben, nächste Frist, Archiv-Zeile) `daten/fristen.toml`,
+/// B3: bewegliche Fristen der Aufgaben, nächste Frist, Archiv-Zeile) `daten/fristen.toml`
+/// und (Etappe B8: der Plan lädt neu) `daten/plan.toml`,
 /// `Some(None)` für `data/schwerpunkte.toml` und `data/gruppen.toml` (der
 /// Gruppentitel steht an jedem Eintrag), sonst `None`.
 fn anstehend_datei(path: &str) -> Option<Option<&str>> {
@@ -586,7 +587,7 @@ fn anstehend_datei(path: &str) -> Option<Option<&str>> {
     }
     let rest = path.strip_prefix("projects/")?;
     let (slug, datei) = rest.split_once('/')?;
-    matches!(datei, "projekt.toml" | "daten/fragen.toml" | "daten/fristen.toml").then_some(Some(slug))
+    matches!(datei, "projekt.toml" | "daten/fragen.toml" | "daten/fristen.toml" | "daten/plan.toml").then_some(Some(slug))
 }
 
 /// Für den Git-Zwischenspeicher: Geänderte Git-Stände gehen an den
@@ -1111,6 +1112,7 @@ mod tests {
     fn anstehend_dateien() {
         assert_eq!(anstehend_datei("projects/x/daten/fragen.toml"), Some(Some("x")));
         assert_eq!(anstehend_datei("projects/x/daten/fristen.toml"), Some(Some("x")));
+        assert_eq!(anstehend_datei("projects/x/daten/plan.toml"), Some(Some("x")), "der Plan lädt neu");
         assert_eq!(anstehend_datei("projects/x/daten/zeitstrahl.toml"), None, "der Zeitstrahl zählt für keine Frist");
         assert_eq!(anstehend_datei("data/gruppen.toml"), Some(None));
     }

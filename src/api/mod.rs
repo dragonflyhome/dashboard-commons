@@ -99,6 +99,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/projekte/{slug}/stand/voll", get(anstehend::stand_voll))
         // Etappe B2: das Backlog eines Projekts (geschützt wie /stand/voll).
         .route("/api/projekte/{slug}/backlog", get(anstehend::backlog))
+        .route("/api/projekte/{slug}/plan", get(anstehend::plan))
         // Etappe B3: die Fristen aller sichtbaren Projekte (geschützt; die eines Projekts
         // stehen in `abgeleitet.fristen` von /api/projekte/<slug>/daten/fristen).
         .route("/api/fristen", get(anstehend::fristen))
