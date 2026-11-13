@@ -33,7 +33,7 @@ punkte = [
   'Zweig, Commit und Dauer von Bau und Test für die Abnahme stehen in der notiz des eigenen Bau-Schritts, nicht in einer Chat-Nachricht.',
   'Wer wartet, wartet auf einen bestimmten Schritt (wartet_auf = schritt:<nr>). Das Dashboard weckt ihn, sobald dieser Schritt fertig ist.',
   'Funde aus einer Abnahme: Der Abnehmende schreibt die Funde in die notiz seines Abnahme-Schritts, bietet den fertigen Bau-Schritt wieder an und wartet danach an seinem Abnahme-Schritt auf ihn (zwei Aufrufe). Der Bauende wird geweckt, übernimmt, bessert nach und setzt den Bau-Schritt fertig; dann läuft die Abnahme wieder (Beispiel im Abschnitt „9. Vorgänge“ unter „Arbeitsregel für Teilschritte“).',
-  'Stand steht nur im Tracker: Jede Arbeit nennt ihre Etappe (Feld etappe, Etappen in daten/plan.toml); Stand-Dateien (fortschritt, gantt, kanban, Kennzahlen „heute“) wandern bei der Umstellung der Seite ins Archiv.',
+  'Stand steht nur im Tracker: Jede Arbeit nennt ihre Etappe (Feld etappe, Etappen in daten/plan.toml). Bei der Umstellung der Seite fallen nur prozent im Fortschritt, Balken mit farbe = "laeuft" und kanban.toml weg; Kennzahlen bekommen stand oder berechnet, Zeitstrahl-Einträge ihre richtige art. Bis dahin meldet pruefe das als Hinweis.',
 ]
 
 [[block]]
