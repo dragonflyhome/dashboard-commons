@@ -22,6 +22,10 @@ import type {
 	Kennzahlen,
 	ListeAbgeleitet,
 	Orte,
+	PlanArbeit,
+	PlanEtappe,
+	ProjektPlan,
+	Schritt,
 	VerlaufEreignis
 } from '$vertrag';
 import type { Spalte } from '$katalog';
@@ -279,6 +283,23 @@ function karte(
 	};
 }
 
+/** Ein erfundener Schritt einer Arbeit (Zweig teilschritte). */
+function schritt(nr: number, titel: string, stand: Schritt['stand']): Schritt {
+	return {
+		nr,
+		titel,
+		stand,
+		besitzer: 'chat:beispiel',
+		wartet_auf: null,
+		verweis: null,
+		angeboten_an: null,
+		fuer: null,
+		seit: `${tagIso(-1)}T10:00:00+01:00`,
+		notiz: null,
+		vorgang: null
+	};
+}
+
 /** Eine erfundene Zeile der Fristenliste. */
 function fristZeile(
 	quelle: FristZeile['quelle'],
@@ -359,7 +380,17 @@ export function backlog(): Backlog {
 				art: 'laeuft',
 				titel: 'Läuft',
 				bedeutung: 'laeuft',
-				karten: [karte('arbeit', 'ar-20261102-0001', 'Rundmail entwerfen', { zustand: 'laeuft' })]
+				karten: [
+					karte('arbeit', 'ar-20261102-0001', 'Rundmail entwerfen', {
+						zustand: 'laeuft',
+						etappe: 'beispiel/einladung',
+						besitzer: 'chat:beispiel',
+						schritte: [
+							schritt(1, 'Entwurf schreiben', 'fertig'),
+							schritt(2, 'Verteiler prüfen', 'laeuft')
+						]
+					})
+				]
 			},
 			{ art: 'wartet', titel: 'Wartet', bedeutung: 'info', karten: [extern, chat] },
 			{
@@ -382,6 +413,92 @@ export function backlog(): Backlog {
 		fragen_weitere: 1,
 		kanban_datei: false,
 		speicher_fehlt: false
+	};
+}
+
+/** Eine erfundene Etappe, so wie `/plan` sie liefert. */
+function etappe(
+	kennung: string,
+	titel: string,
+	reihenfolge: number,
+	mehr: Partial<PlanEtappe> = {}
+): PlanEtappe {
+	return {
+		kennung,
+		titel,
+		ziel: `Ziel von „${titel}“.`,
+		reihenfolge,
+		ab: null,
+		stand: 'geplant',
+		arbeiten_fertig: 0,
+		arbeiten_gesamt: 0,
+		begonnen: null,
+		fertig: null,
+		ungefaehr: false,
+		gewachsen_seit: null,
+		dazugekommen: 0,
+		arbeiten: [],
+		...mehr
+	};
+}
+
+/** Eine erfundene Arbeit im Plan. */
+function planArbeit(id: string, titel: string, mehr: Partial<PlanArbeit> = {}): PlanArbeit {
+	return {
+		id,
+		titel,
+		stand: 'als-naechstes',
+		aus: null,
+		archiviert: false,
+		etappe: null,
+		fertig: null,
+		ungefaehr: false,
+		...mehr
+	};
+}
+
+/** Ein erfundener Plan (Etappe B8), so wie `/api/projekte/<slug>/plan` ihn liefert. */
+export function projektPlan(heute = new Date()): ProjektPlan {
+	const zeit = (tage: number, uhr: string): string => `${tagIso(tage, heute)}T${uhr}:00+01:00`;
+	return {
+		projekt: 'beispiel',
+		etappen: [
+			etappe('vorbereitung', 'Vorbereitung', 1, {
+				stand: 'fertig',
+				arbeiten_fertig: 2,
+				arbeiten_gesamt: 2,
+				begonnen: zeit(-20, '09:00'),
+				fertig: zeit(-12, '17:00'),
+				ungefaehr: true,
+				arbeiten: [
+					planArbeit('ar-20261020-0001', 'Saal anfragen', {
+						stand: 'fertig',
+						archiviert: true,
+						fertig: zeit(-15, '12:00')
+					}),
+					planArbeit('ar-20261020-0002', 'Liste der Gäste', {
+						stand: 'fertig',
+						fertig: zeit(-12, '17:00'),
+						ungefaehr: true
+					})
+				]
+			}),
+			etappe('einladung', 'Einladung', 2, {
+				stand: 'laeuft',
+				arbeiten_fertig: 0,
+				arbeiten_gesamt: 2,
+				begonnen: zeit(-10, '09:00'),
+				gewachsen_seit: zeit(-10, '09:00'),
+				dazugekommen: 1,
+				arbeiten: [
+					planArbeit('ar-20261102-0001', 'Rundmail entwerfen', { stand: 'laeuft' }),
+					planArbeit('ar-20261102-0007', 'Druck prüfen', { aus: 'druckerei' })
+				]
+			}),
+			etappe('fest', 'Das Fest', 3, { ab: tagIso(40, heute).slice(0, 7) })
+		],
+		ohne_etappe: [],
+		hinweise: []
 	};
 }
 

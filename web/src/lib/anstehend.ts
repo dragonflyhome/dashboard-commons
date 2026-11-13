@@ -948,6 +948,8 @@ export interface StandAnsicht {
 	notizen: string[];
 	/** Etappe B2: wie viele Notizen; ohne Anmeldung ist `notizen` leer, die Zahl bleibt. */
 	notizen_zahl: number;
+	/** Etappe B8: Arbeiten, die in den letzten 7 Tagen fertig wurden (Fakt des Servers). */
+	fertig_7_tage: number;
 	speicher_fehlt: boolean;
 	/** Etappe B3: offene Fristen aus fristen.toml mit Datum; ohne Anmeldung leer. */
 	fristen: FristZeile[];
@@ -1040,6 +1042,7 @@ export function standAnsicht(
 		arbeiten,
 		notizen: stand.notizen,
 		notizen_zahl: stand.notizen_zahl ?? stand.notizen.length,
+		fertig_7_tage: stand.fertig_7_tage ?? stand.zahlen?.fertig_7_tage ?? 0,
 		speicher_fehlt: stand.speicher_fehlt,
 		fristen: stand.fristen ?? []
 	};
