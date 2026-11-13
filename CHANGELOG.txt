@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.2.0 - 2026-11-13
+------------------
+
 Hinzugefügt
 - Anleitung, Abschnitt 15: im Team an einem Projekt-Repo mitarbeiten
   (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
