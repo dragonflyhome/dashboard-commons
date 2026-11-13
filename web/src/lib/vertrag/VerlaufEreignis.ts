@@ -34,7 +34,7 @@ bis: string | null, titel: string,
  */
 text: string | null, quelle: VerlaufQuelle, art: VerlaufArt, 
 /**
- * Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; leer, wenn es
+ * Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; fehlt (null), wenn es
  * kein Ziel gibt (etwa eine Arbeit, die die Projektseite nicht zeigt).
  */
 verweis: string | null, };

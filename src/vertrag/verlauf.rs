@@ -44,7 +44,7 @@ pub struct Ereignis {
     pub text: Option<String>,
     pub quelle: Quelle,
     pub art: Art,
-    /// Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; leer, wenn es
+    /// Adresse im Dashboard, etwa `/vorgaenge` oder `/daten`; fehlt (null), wenn es
     /// kein Ziel gibt (etwa eine Arbeit, die die Projektseite nicht zeigt).
     pub verweis: Option<String>,
 }
