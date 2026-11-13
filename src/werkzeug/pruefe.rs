@@ -519,11 +519,11 @@ mod tests {
         // Zwei Unterseiten ohne Datei, vier Felder, die erst Etappe 3a zeigt,
         // ein Eintrag im Zeitstrahl ohne `kennung` und mit `farbe`. Ohne
         // Svelte-Dateien gibt es keine Stil-Prüfung (Etappe 3b), auch keinen Hinweis.
-        // Seit Etappe B2 dazu: kanban.toml läuft aus.
-        assert_eq!(zeilen.len(), 10, "{text}");
+        // Seit Etappe B2 dazu: kanban.toml läuft aus; seit B8 vier zur Stand-Pflege.
+        assert_eq!(zeilen.len(), 14, "{text}");
         assert!(zeilen[0].starts_with("HINWEIS projects/neu-form/projekt.toml, Zeile "), "{text}");
         assert!(text.contains("HINWEIS projects/neu-form/daten/kanban.toml: `kanban.toml` läuft aus"), "{text}");
-        assert_eq!(zeilen[9], "0 Fehler, 9 Hinweise");
+        assert_eq!(zeilen[13], "0 Fehler, 13 Hinweise");
         assert_eq!(lauf(&beispiel(), &args(&["neu-form", "--ohne-stil"])), (text, 0), "--ohne-stil wird angenommen");
     }
 
