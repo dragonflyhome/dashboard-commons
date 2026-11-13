@@ -970,7 +970,7 @@ function schritteAnlegen() {
   return { ar, aufgabe: aufgabe.id };
 }
 
-/** Wartet, bis der Kasten Arbeiten die Arbeit mit Schritten zeigt, klappt sie auf und liest sie. */
+/** Wartet, bis die Aufgabenliste die Arbeit mit Schritten zeigt, klappt sie auf und liest sie (Zeile aus Backlog.svelte). */
 const SCHRITTE_LESEN = (ar) => `(async () => {
   for (let i = 0; i < 50; i++) {
     const d = document.getElementById(${JSON.stringify(`arbeit-${ar}`)});
@@ -988,7 +988,7 @@ const SCHRITTE_LESEN = (ar) => `(async () => {
         // T5: das Ziel des Links steht auf der Seite (nicht nur das href).
         ziel: ((h) => h !== null && document.getElementById(decodeURIComponent(h.slice(1))) !== null)(d.querySelector('ol a')?.getAttribute('href') ?? null),
         kopf: d.querySelector('summary').textContent.replace(/\\s+/g, ' ').trim(),
-        trenner: d.querySelector('summary .nur-vorlesen')?.textContent ?? null,
+        dreiecke: d.querySelectorAll('summary details, summary summary').length,
         rand,
         knoepfe: d.querySelectorAll('button, [role=progressbar], progress').length,
         rechts: Math.max(...punkte.map((li) => li.getBoundingClientRect().right)),
@@ -1135,8 +1135,8 @@ async function main() {
         pruefe(s.link === `#aufgabe-${t4.aufgabe}`, `${wo}: wartet auf dich führt zur Aufgabe`, String(s.link));
         pruefe(s.ziel, `${wo}: das Ziel des Links (die Aufgabe) steht auf der Seite`, String(s.link));
         pruefe(
-          s.kopf.startsWith("Edge-Probe T4: Arbeit mit Schritten, 1 von 3 fertig") && !s.kopf.includes("▸") && s.trenner === ", ",
-          `${wo}: Zeile ohne zweites Dreieck, mit Komma nur zum Vorlesen`,
+          s.kopf.startsWith("Edge-Probe T4: Arbeit mit Schritten ") && s.kopf.endsWith(s.kurz) && !s.kopf.includes("▸") && s.dreiecke === 0,
+          `${wo}: Zeile mit Titel, Angaben und Schritten in Worten, ohne zweites Dreieck`,
           s.kopf,
         );
         pruefe(s.knoepfe === 0, `${wo}: keine Knöpfe, keine Fortschrittsleiste`, String(s.knoepfe));

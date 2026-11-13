@@ -251,7 +251,11 @@
 		const wissen = ziel.art === 'aufgabe' ? aufgaben.stand === 'da' : angemeldet;
 		const ohneListe = ziel.art === 'arbeit' && liste?.wert === null && !liste.anmelden;
 		// Eine Meldung, deren Sache die Zeitleiste schon zeigt (etwa „Fertig: …“), steht dort.
-		const inZeitleiste = ziel.art === 'meldung' && verlauf?.wert != null;
+		// Nur wenn es sie noch gibt; eine gelesene oder archivierte bekommt den Satz.
+		const inZeitleiste =
+			ziel.art === 'meldung' &&
+			verlauf?.wert != null &&
+			(daten?.eintraege ?? []).some((e) => `meldung-${e.id}` === h);
 		void tick().then(() => {
 			if (ansteuern(h)) ankerSatz = null;
 			else if (inZeitleiste && ansteuern(zeitleisteAnker(slug))) ankerSatz = null;

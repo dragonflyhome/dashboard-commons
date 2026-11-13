@@ -424,6 +424,14 @@ describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)',
 		});
 		expect(document.getElementById('meldung-m-fertig')).toBeNull();
 		expect(document.querySelector('.anker-satz')).toBeNull();
+		// Gegenprobe: eine Meldung, die es nicht mehr gibt, bekommt den Satz statt der Zeitleiste.
+		cleanup();
+		ort.url = new URL('http://localhost:8787/projects/beispiel#meldung-m-weg');
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: basis });
+		await waitFor(() => {
+			expect(document.querySelector('.anker-satz')?.textContent).toBe(SATZ_NICHT_MEHR_DA);
+		});
+		expect(document.activeElement?.id).not.toBe('zeitleiste-beispiel');
 	});
 
 	it('Anker ohne Ziel: angemeldet „nicht mehr da“, ohne Anmeldung der Anmelde-Satz, bei kaputter Liste ihr Satz', async () => {

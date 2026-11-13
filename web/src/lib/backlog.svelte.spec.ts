@@ -25,7 +25,11 @@ function gruppen(): string[] {
 
 describe('Baustein Backlog als Aufgabenliste (Etappe B8)', () => {
 	it('vier Gruppen untereinander mit Zahl; Fragen und Aufgaben führen zu ihrem Eintrag', () => {
-		render(Backlog, { backlog: backlog(), etappen: etappenNamen(projektPlan()) });
+		const daten = backlog();
+		// Eine spätere Frist für die Gegenprobe unten.
+		const naechste = daten.spalten.find((s) => s.art === 'als-naechstes')?.karten[0];
+		if (naechste) Object.assign(naechste, { frist: '2099-01-31', frist_stufe: 'spaeter' });
+		render(Backlog, { backlog: daten, etappen: etappenNamen(projektPlan()) });
 		expect(gruppen()).toEqual([
 			'Wartet auf dich (2)',
 			'Läuft (1)',
@@ -39,7 +43,8 @@ describe('Baustein Backlog als Aufgabenliste (Etappe B8)', () => {
 		expect(within(dich).getByText('heute fällig')).toHaveClass('achtung');
 		expect(within(dich).queryByText(/^bis /)).toBeNull();
 		// Gegenprobe: eine spätere Frist bleibt „bis …“ ohne Hervorhebung.
-		for (const bis of screen.queryAllByText(/^bis d/)) expect(bis).not.toHaveClass('achtung');
+		const bis = screen.getByText('bis 31.01.2099');
+		expect(bis).not.toHaveClass('achtung');
 		expect(within(dich).getByText('noch 1 Frage wartet')).toBeInTheDocument();
 		expect(screen.queryByText('Wie soll die Unterseite heißen?')).toBeNull();
 		expect(screen.getByText(/eine steht oben; noch 1 Frage wartet/)).toBeInTheDocument();
