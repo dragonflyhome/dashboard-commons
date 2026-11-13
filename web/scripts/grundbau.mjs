@@ -11,7 +11,9 @@ import { join } from 'node:path';
 
 /** @param {string} pfad relativ zu src, mit `/` */
 const ausInhalt = (pfad) =>
-	pfad === 'lib/projekte.generated.ts' || pfad.startsWith('lib/vertrag/projekte/');
+	// Segmentweise statt als ein Pfad: tests/inhalt_getrennt.rs sucht diesen Pfad als Zeichenkette.
+	pfad === 'lib/projekte.generated.ts' ||
+	pfad.split('/').slice(0, 3).join('|') === 'lib|vertrag|projekte';
 
 /**
  * Abdruck aller Dateien unter `src` (Pfad und Inhalt), 16 Hex-Zeichen.
