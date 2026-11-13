@@ -1121,8 +1121,9 @@ fn kanban_hinweis(daten: &ProjektDaten, datei: &str, befunde: &mut Vec<Befund>) 
 
 // ----- Stand-Pflege (Etappe B8) -----
 
-/// Was jeder Stand-Pflege-Hinweis dazu sagt, wo der Stand jetzt herkommt.
-pub const SATZ_STAND_AUS_DEM_TRACKER: &str = "Stand pflegt niemand mehr von Hand: Plan, Stand und Zeitleiste der Projektseite rechnet der Server aus den Arbeiten (mit `etappe`, Absicht in `daten/plan.toml`). Bei der Umstellung der Seite gehört das in Arbeiten, die Zeile fällt weg. Bis alle Seiten umgestellt sind, ein Hinweis.";
+/// Was jeder Stand-Pflege-Hinweis am Ende sagt, wo der Stand jetzt herkommt;
+/// die Abhilfe steht davor, je nach Art des Funds.
+pub const SATZ_STAND_AUS_DEM_TRACKER: &str = "Stand pflegt niemand mehr von Hand: Plan, Stand und Zeitleiste der Projektseite rechnet der Server aus den Arbeiten (mit `etappe`, Absicht in `daten/plan.toml`). Bis alle Seiten umgestellt sind, ein Hinweis.";
 
 /// Wörter, die in `summary` Stand statt Absicht sagen (ganze Wörter, klein).
 const STAND_WOERTER: &[&str] = &["läuft", "laufend", "fertig", "erledigt", "abgeschlossen", "begonnen", "wartet", "stand", "prozent"];
@@ -1131,7 +1132,8 @@ const STAND_WOERTER: &[&str] = &["läuft", "laufend", "fertig", "erledigt", "abg
 /// worum es geht. Ein Stand-Wort darin ist ein Hinweis (einmal, mit dem ersten Wort).
 fn summary_stand_hinweis(summary: &str, quelle: &str, datei: &str, befunde: &mut Vec<Befund>) {
     let klein = summary.to_lowercase();
-    let woerter: Vec<&str> = klein.split(|c: char| !c.is_alphanumeric()).collect();
+    // Mit Bindestrich ein Wort: „Stand-by“ ist kein Stand.
+    let woerter: Vec<&str> = klein.split(|c: char| !c.is_alphanumeric() && c != '-').collect();
     let Some(wort) = STAND_WOERTER.iter().copied().find(|w| woerter.contains(w)).or(klein.contains('%').then_some("%")) else { return };
     befunde.push(Befund::hinweis(
         datei,
@@ -1150,18 +1152,20 @@ fn stand_pflege_hinweise(daten: &ProjektDaten, quelle: &str, datei: &str, heute:
     use crate::vertrag::bedeutung::Bedeutung;
     use crate::vertrag::verlauf::{Art, Genauigkeit, art_aus_farbe, datum_lesen};
     use chrono::Datelike;
+    // Stand einer Arbeit (prozent, laufender Balken) wandert in den Tracker; Inhalt bleibt.
+    const IN_DEN_TRACKER: &str = "Bei der Umstellung der Seite gehört das in Arbeiten (Etappe in `daten/plan.toml`), die Zeile fällt weg.";
     let mut melden = |titel: &str, feld: &str, was: String| {
         let zeile = zeile_mit(quelle, "titel", titel).or_else(|| zeile_mit(quelle, "name", titel));
         befunde.push(Befund::hinweis(datei, zeile.map(|z| feld_im_eintrag(quelle, z, feld).unwrap_or(z)), format!("{was} {SATZ_STAND_AUS_DEM_TRACKER}")));
     };
     for z in daten.fortschritt.iter().flat_map(|d| d.inhalte()).flat_map(|f| &f.zeile) {
         if let Some(p) = z.prozent {
-            melden(&z.titel, "prozent", format!("„{}“ hat `prozent = {p}` von Hand.", z.titel));
+            melden(&z.titel, "prozent", format!("„{}“ hat `prozent = {p}` von Hand. {IN_DEN_TRACKER}", z.titel));
         }
     }
     for b in daten.gantt.iter().flat_map(|d| d.inhalte()).flat_map(|g| &g.balken) {
         if b.farbe == Some(Bedeutung::Laeuft) {
-            melden(&b.name, "farbe", format!("Der Balken „{}“ ist von Hand als laufend markiert.", b.name));
+            melden(&b.name, "farbe", format!("Der Balken „{}“ ist von Hand als laufend markiert. {IN_DEN_TRACKER}", b.name));
         }
     }
     for e in daten.zeitstrahl.iter().flat_map(|d| d.inhalte()).flat_map(|z| &z.eintrag) {
@@ -1180,12 +1184,26 @@ fn stand_pflege_hinweise(daten: &ProjektDaten, quelle: &str, datei: &str, heute:
             _ => ende < heute,
         };
         if vorbei {
-            melden(&e.titel, "datum", format!("Der Eintrag „{}“ steht auf {wort}, sein Datum {} ist vorbei.", e.titel, e.datum));
+            melden(
+                &e.titel,
+                "datum",
+                format!(
+                    "Der Eintrag „{}“ steht auf {wort}, sein Datum {} ist vorbei. `art` auf erledigt oder abgebrochen setzen oder das Datum anpassen; war die Zeile nur Stand, fällt sie weg.",
+                    e.titel, e.datum
+                ),
+            );
         }
     }
     for k in daten.kennzahlen.iter().flat_map(|d| d.inhalte()).flat_map(|k| &k.kennzahl) {
         if k.berechnet.is_none() && k.stand.is_none() {
-            melden(&k.titel, "wert", format!("Die Kennzahl „{}“ hat weder `berechnet` noch `stand` (von wann der Wert ist).", k.titel));
+            melden(
+                &k.titel,
+                "wert",
+                format!(
+                    "Die Kennzahl „{}“ hat weder `berechnet` noch `stand` (von wann der Wert ist). `stand = \"JJJJ-MM-TT\"` setzen oder `berechnet` nutzen; nur ein Stand der Arbeit gehört in den Tracker.",
+                    k.titel
+                ),
+            );
         }
     }
 }
@@ -2315,5 +2333,27 @@ summary = \"S\"
         assert!(hinweis("Stand: Etappe 3").unwrap().contains("„stand“"));
         assert!(hinweis("Zu 70% umgezogen").unwrap().contains("„%“"));
         assert_eq!(hinweis("Das Dashboard des Hauses: Bestand, Fertigung und Absicht."), None, "nur ganze Wörter");
+        assert_eq!(hinweis("Stand-by-Verbrauch senken."), None, "Wort mit Bindestrich");
+    }
+
+    /// Die Abhilfe passt zur Art des Funds: Kennzahl und Zeitstrahl sind Inhalt
+    /// und bleiben (stand setzen, art setzen); nur prozent und der laufende
+    /// Balken wandern in den Tracker.
+    #[test]
+    fn stand_pflege_abhilfe_je_art() {
+        let heute = chrono::NaiveDate::from_ymd_opt(2026, 11, 13).unwrap();
+        let texte = |name: &str, text: &str| -> Vec<String> {
+            let mut d = ProjektDaten::default();
+            d.datei_einlesen(name, name, text).unwrap();
+            let mut b = Vec::new();
+            stand_pflege_hinweise(&d, text, name, heute, &mut b);
+            b.into_iter().map(|b| b.text).collect()
+        };
+        let k = texte("kennzahlen.toml", "[[kennzahl]]\ntitel = \"Fläche\"\nwert = \"120\"\n");
+        assert!(k.len() == 1 && k[0].contains("`stand = \"JJJJ-MM-TT\"` setzen") && !k[0].contains("die Zeile fällt weg"), "{k:?}");
+        let z = texte("zeitstrahl.toml", "[[eintrag]]\nkennung = \"a\"\ndatum = \"2026-11-01\"\ntitel = \"A\"\nart = \"geplant\"\n");
+        assert!(z.len() == 1 && z[0].contains("`art` auf erledigt oder abgebrochen") && !z[0].contains("gehört das in Arbeiten"), "{z:?}");
+        let f = texte("fortschritt.toml", "[[zeile]]\ntitel = \"A\"\nprozent = 70\n");
+        assert!(f.len() == 1 && f[0].contains("gehört das in Arbeiten"), "{f:?}");
     }
 }
