@@ -98,14 +98,19 @@ fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanE
     };
     let ist_fertig = stand == EtappenStand::Fertig;
     let beginn = begonnen.as_deref().and_then(zeit);
-    // Seit wann eine Arbeit zur Etappe gehört: der letzte Eintrag `etappe` dorthin, sonst `erstellt`.
-    // Dazugekommen ist sie erst nach dem Beginn und nach dem Tag der ersten Zuordnung: was an diesem
-    // Tag zugeordnet wurde, ist der Umfang (Umstellung des Bestands, auch Arbeit für Arbeit über die API).
+    // Seit wann eine Arbeit zur Etappe gehört: der letzte Eintrag `etappe` dorthin, sonst (mit Feld
+    // `etappe` angelegt) `erstellt`. Arbeiten nur aus der Liste `arbeiten` haben keine Zuordnungszeit:
+    // ihr `erstellt` sagt nichts über die Etappe, sie zählen weder als dazugekommen noch beim ersten Tag.
+    // Dazugekommen ist eine Arbeit erst nach dem Beginn und nach dem Tag der ersten Zuordnung: was an
+    // diesem Tag zugeordnet wurde, ist der Umfang (Umstellung des Bestands, auch Arbeit für Arbeit).
     // shortcut: am selben Tag später Angehängtes zählt nicht; aufrüsten, wenn das stört.
     let ziel = format!("{slug}/{}", e.kennung);
     let zugeordnet: Vec<&String> = arbeiten
         .iter()
-        .map(|(a, _)| a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel).map_or(&a.erstellt, |v| &v.zeit))
+        .filter_map(|(a, _)| match a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel) {
+            Some(v) => Some(&v.zeit),
+            None => a.etappe.as_ref().map(|_| &a.erstellt),
+        })
         .collect();
     let erster_tag = zugeordnet.iter().filter_map(|z| zeit(z)).min().map(|t| t.date_naive());
     let spaeter: Vec<&String> =
@@ -345,5 +350,26 @@ mod tests {
         mit_neuer.push((zugeordnet("ar-20261102-0001", ArbeitsStand::AlsNaechstes, t(2, 9), t(15, 9)), false));
         let eins = &plan("p", Some(&datei(PLAN)), &mit_neuer).etappen[0];
         assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (1, Some(t(15, 9))));
+    }
+
+    /// Mischfall der Umstellung: eine archivierte Arbeit nur über die Liste
+    /// `arbeiten` (ohne Eintrag `etappe`) und zwei laufende, die erst später
+    /// ihr Feld `etappe` bekommen. Das `erstellt` der gelisteten Arbeit ist
+    /// keine Zuordnung; der erste Tag ist der 14., nichts ist dazugekommen.
+    #[test]
+    fn umstellung_mit_gelisteter_arbeit_ist_nicht_gewachsen() {
+        let plan_text = "[[etappe]]\nkennung = \"eins\"\ntitel = \"Eins\"\nziel = \"Z.\"\nreihenfolge = 1\narbeiten = [\"ar-20261101-0001\"]\n";
+        let mut archiv = arbeit("ar-20261101-0001", "p", ArbeitsStand::Fertig, None, t(1, 9), t(3, 9));
+        archiv.verlauf.push(eintrag(ArbeitVerlaufArt::Stand, t(3, 9), "laeuft", "fertig"));
+        let zugeordnet = |id: &str, erstellt: String, um: String| {
+            let mut a = arbeit(id, "p", ArbeitsStand::Laeuft, Some("p/eins"), erstellt, um.clone());
+            a.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, um, "", "p/eins"));
+            a
+        };
+        let alle =
+            vec![(archiv, true), (zugeordnet("ar-20261105-0001", t(5, 9), t(14, 9)), false), (zugeordnet("ar-20261106-0001", t(6, 9), t(14, 10)), false)];
+        let eins = &plan("p", Some(&datei(plan_text)), &alle).etappen[0];
+        assert_eq!((eins.arbeiten_gesamt, eins.begonnen.clone()), (3, Some(t(1, 9))));
+        assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (0, None));
     }
 }

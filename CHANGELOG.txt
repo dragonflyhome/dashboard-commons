@@ -38,7 +38,8 @@ Hinzugefügt
   vor-dem-tracker), x von y Arbeiten fertig, begonnen, fertig,
   gewachsen_seit (seit wann und wie viele Arbeiten nach dem Beginn dazukamen,
   auch durch eine spätere Zuordnung; was am Tag der ersten Zuordnung
-  dazukam, etwa bei der Umstellung des Bestands, zählt nicht) und den Arbeiten mit Titel und Stand, auch archivierte und
+  dazukam, etwa bei der Umstellung des Bestands, und was nur in der Liste
+  arbeiten steht, zählt nicht) und den Arbeiten mit Titel und Stand, auch archivierte und
   solche aus anderen Projekten (aus); Arbeiten, deren Etappe nicht mehr in
   plan.toml steht, in ohne_etappe. Ohne Eintrag stand im Verlauf gilt der
   letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr); lief die

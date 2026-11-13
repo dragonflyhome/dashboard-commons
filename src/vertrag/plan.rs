@@ -193,7 +193,9 @@ pub struct PlanEtappe {
     /// Wie viele Arbeiten nach `begonnen` dazukamen: ihre Zuordnung (letzter
     /// Eintrag `etappe`, sonst `erstellt`) liegt danach und nach dem Tag der
     /// ersten Zuordnung. Was an diesem Tag zugeordnet wurde, etwa bei der
-    /// Umstellung des Bestands, zählt nicht.
+    /// Umstellung des Bestands, zählt nicht. Arbeiten nur aus der Liste
+    /// `arbeiten` in `plan.toml` haben keine Zuordnungszeit: sie zählen nie
+    /// und bestimmen den Tag der ersten Zuordnung nicht mit.
     pub dazugekommen: u32,
     /// Nach Kennung, also nach Anlage.
     pub arbeiten: Vec<PlanArbeit>,
