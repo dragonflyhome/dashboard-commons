@@ -11,5 +11,5 @@ spalten = ['Befehl', 'Was er tut']
 zeilen = [
   ['npm run dev', 'startet die Oberfläche zum Ausprobieren (vite dev, Port 5173). Jede Änderung zeigt sich sofort. Die Daten (/api, /schluessel, /projects) holt sie vom laufenden Dashboard.'],
   ['npm run verify', 'alles, was vor einem Commit grün sein muss, nacheinander: lint (prettier, eslint, stylelint), check (svelte-check), test (vitest) und build. Es bricht beim ersten Fehler ab.'],
-  ['npm run build', 'baut die fertige Oberfläche nach web/build (vite build). Diesen Ordner liefert das Dashboard aus; scripts/Dienst.ps1 -Neustart baut ihn selbst.'],
+  ['npm run build', 'baut die fertige Oberfläche nach web/build (vite build). Diesen Ordner liefert das Dashboard ohne Dienst aus; der Dienst liefert eine Kopie in bin/web aus, die nur scripts/Dienst.ps1 -Neustart erneuert (es baut web/build dafür selbst).'],
 ]

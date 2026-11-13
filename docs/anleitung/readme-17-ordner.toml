@@ -32,7 +32,7 @@ src/                Rust-Code des Servers und des Boten
                     anbindung.rs (Kontext für das SDK), waechter.rs (Wächter-Tests)
   start.rs          die einzige Anmeldestelle der Module: dashboard::starten(module)
   fehler.rs         der eine Fehlertyp AppError mit {"fehler","art"}
-  oberflaeche.rs    liefert das fertige SvelteKit-Build aus web/build aus
+  oberflaeche.rs    liefert das fertige SvelteKit-Build aus (im Dienst bin/web, sonst web/build)
   sicherheit.rs     die acht Schleusen (Adresse, Herkunft, Zeit, Größe, Kopfzeilen …) und die Fehlerform
   schleusen_test.rs Tests der Schleusen (nur beim Testen gebaut)
   schluessel.rs     Windows-Tresor: Schlüssel schreiben, Anforderungen lesen

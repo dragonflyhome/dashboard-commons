@@ -115,7 +115,8 @@ pub fn fassung_name(state: &AppState) -> String {
 }
 
 fn fassung_name_von(state: &AppState, ordner: &std::path::Path) -> String {
-    if ordner == state.web.build() {
+    // Die eingespielte Kopie ist derselbe Grundbau wie web/build, nur von Dienst.ps1 -Neustart kopiert.
+    if ordner == state.web.build() || Some(ordner) == state.web.kopie() {
         "build".to_string()
     } else {
         ordner.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "build".to_string())

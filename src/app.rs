@@ -150,6 +150,7 @@ impl AppState {
             entscheidungen: entscheidungen_dir(&projekte),
             projekte,
             web: web_dir(),
+            web_kopie: None,
             einstellungen: None,
             modus: Modus::Umgebung,
         })
@@ -172,6 +173,7 @@ impl AppState {
             quellen,
             projekte,
             web: e.pfade.web.clone(),
+            web_kopie: web_kopie_neben_programm(),
             einstellungen: Some(Arc::new(e.clone())),
             modus: Modus::Konsole,
         })
@@ -195,6 +197,7 @@ impl AppState {
             projekte: dir,
             quellen: quellen_pfade,
             web,
+            web_kopie,
             einstellungen,
             modus,
         } = q;
@@ -248,7 +251,7 @@ impl AppState {
         }
         info!("PC-Eckdaten aus {}", data_file.display());
         info!("Schlüssel-Anforderungen aus {}", keys_file.display());
-        let web = Arc::new(WebOrt::neu(web));
+        let web = Arc::new(WebOrt::neu(web).mit_kopie(web_kopie));
         let web_jetzt = web.ordner();
         if web_jetzt.join("index.html").is_file() {
             info!("Oberfläche aus {}", web_jetzt.display());
@@ -622,6 +625,8 @@ struct Quellen {
     /// Alle Inhaltsquellen (Etappe 4b); mit einer Quelle nur `projekte`.
     quellen: Vec<PathBuf>,
     web: PathBuf,
+    /// Die eingespielte Kopie der Oberfläche (im Dienst \bin\\web), sonst None.
+    web_kopie: Option<PathBuf>,
     einstellungen: Option<Arc<Einstellungen>>,
     modus: Modus,
 }
@@ -636,11 +641,19 @@ struct Quellen {
 /// `aktuell` ändert (Änderungszeit und Größe, so wie `CspCache` es mit
 /// index.html macht); sonst kostet eine Anfrage nur einen Blick auf ihre
 /// Eckdaten. So gilt ein grüner Bau sofort, ohne Neustart des Dienstes.
+///
+/// Ohne gültigen Zeiger kommt die Oberfläche aus der Kopie (`kopie`, im Dienst
+/// `bin\web` neben dem Programm, siehe [`web_kopie_neben_programm`]), die
+/// Dienst.ps1 -Neustart zusammen mit den Programmen einspielt; nur wenn sie
+/// fehlt, aus `web/build`. So ändert ein `npm run build` im Repo die laufende
+/// Seite nicht.
 pub struct WebOrt {
-    /// `web/build`: Rückfall, und das, was Dienst.ps1 -Neustart baut.
+    /// `web/build`: Rückfall ohne Kopie; daneben liegen `builds` und die grünen Kopien.
     build: PathBuf,
     /// `web/builds`: Bau-Ordner und Zeiger.
     builds: PathBuf,
+    /// Die eingespielte Kopie der Oberfläche (`None`: keine, etwa beim Start aus dem Repo).
+    kopie: Option<PathBuf>,
     stand: std::sync::RwLock<Option<ZeigerStand>>,
 }
 
@@ -662,12 +675,34 @@ impl WebOrt {
     }
 
     pub fn mit_builds(build: PathBuf, builds: PathBuf) -> Self {
-        Self { build, builds, stand: std::sync::RwLock::new(None) }
+        Self { build, builds, kopie: None, stand: std::sync::RwLock::new(None) }
+    }
+
+    /// Derselbe Ort mit der eingespielten Kopie `kopie` (ohne gültigen Zeiger
+    /// wird aus ihr ausgeliefert, solange sie index.html hat).
+    pub fn mit_kopie(self, kopie: Option<PathBuf>) -> Self {
+        Self { kopie, ..self }
     }
 
     /// `web/build`.
     pub fn build(&self) -> &Path {
         &self.build
+    }
+
+    /// Die eingespielte Kopie, wenn sie gesetzt ist und index.html hat.
+    pub fn kopie(&self) -> Option<&Path> {
+        self.kopie.as_deref().filter(|k| k.join("index.html").is_file())
+    }
+
+    /// Ohne gültigen Zeiger: die Kopie, sonst `web/build`.
+    fn ruheort(&self) -> PathBuf {
+        if let Some(k) = self.kopie() {
+            return k.to_path_buf();
+        }
+        if let Some(k) = &self.kopie {
+            warn!("Die Kopie der Oberfläche fehlt ({}); die Oberfläche kommt aus {}", k.display(), self.build.display());
+        }
+        self.build.clone()
     }
 
     /// Der Inhalt der Datei `aktuell` (höchstens `ZEIGER_HOECHSTENS` + 1 Bytes
@@ -709,10 +744,11 @@ impl WebOrt {
         }
         let ordner = match stempel {
             Some(_) => zeiger_ordner(&self.builds).unwrap_or_else(|grund| {
-                warn!("web\\builds\\aktuell gilt nicht ({grund}); die Oberfläche kommt aus {}", self.build.display());
-                self.build.clone()
+                let ort = self.ruheort();
+                warn!("web\\builds\\aktuell gilt nicht ({grund}); die Oberfläche kommt aus {}", ort.display());
+                ort
             }),
-            None => self.build.clone(),
+            None => self.ruheort(),
         };
         if let Ok(mut s) = self.stand.write() {
             if s.as_ref().is_some_and(|alt| alt.ordner != ordner) {
@@ -797,6 +833,15 @@ impl CspCache {
         csp
     }
 }
+
+/// Die Kopie der Oberfläche neben dem laufenden Programm (`bin\web`): Dorthin
+/// legt scripts\Dienst.ps1 -Neustart `web\build` zusammen mit den Programmen.
+pub fn web_kopie_neben_programm() -> Option<PathBuf> {
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join(WEB_KOPIE)))
+}
+
+/// Name des Ordners der Oberfläche neben den Programmen (Dienst.ps1: `bin\web`).
+pub const WEB_KOPIE: &str = "web";
 
 /// `web/build`: Umgebungsvariable, sonst im Repo.
 pub fn web_dir() -> PathBuf {
@@ -1636,9 +1681,54 @@ mod tests {
         }
 
         fn state(&self) -> AppState {
-            let web = Arc::new(WebOrt::neu(self.0.join("build")));
+            self.state_mit_kopie(None)
+        }
+
+        fn state_mit_kopie(&self, kopie: Option<PathBuf>) -> AppState {
+            let web = Arc::new(WebOrt::neu(self.0.join("build")).mit_kopie(kopie));
             AppState { csp: Arc::new(CspCache::neu(web.clone())), web, ..AppState::fuer_tests(&beispiel()) }
         }
+    }
+
+    /// Mit eingespielter Kopie (im Dienst `bin\web`) kommt die Oberfläche aus
+    /// ihr, nicht aus web/build: Ein `npm run build` im Repo ändert die
+    /// laufende Seite nicht. Ein Bau über den Boten (Zeiger) gilt weiter
+    /// sofort; ohne Zeiger wieder die Kopie. Gegenprobe: Ohne Kopie (nicht
+    /// gesetzt oder ohne index.html) folgt die Seite web/build wie bisher.
+    #[tokio::test]
+    async fn auslieferung_aus_der_kopie_nicht_aus_web_build() {
+        let w = WebProbe::neu("kopie");
+        let kopie = w.0.join("bin-web");
+        std::fs::create_dir_all(kopie.join("_app")).unwrap();
+        std::fs::write(kopie.join("index.html"), "<!doctype html><title>kopie</title><script>start('kopie')</script>").unwrap();
+        std::fs::write(kopie.join("_app").join("teil.js"), "// kopie").unwrap();
+        let state = w.state_mit_kopie(Some(kopie.clone()));
+        let app = router_angemeldet(state.clone());
+        let (seite, teil, csp) = ausgeliefert(&app).await;
+        assert!(seite.contains("kopie") && teil.contains("kopie"), "aus der Kopie: {seite} {teil}");
+        assert_eq!(csp, csp_von("kopie"));
+        assert_eq!(crate::dienst::betrieb::fassung_name(&state), "build", "die Kopie ist der Grundbau");
+        // Ein Bau im Repo (npm run build schreibt web/build neu) ändert nichts.
+        std::fs::write(w.0.join("build").join("index.html"), "<!doctype html><title>neu-im-repo</title>").unwrap();
+        std::fs::write(w.0.join("build").join("_app").join("teil.js"), "// neu-im-repo").unwrap();
+        let (seite, teil, _) = ausgeliefert(&app).await;
+        assert!(seite.contains("kopie") && teil.contains("kopie") && !seite.contains("neu-im-repo"), "{seite} {teil}");
+        // Ein grüner Bau über den Boten gilt sofort, ohne Zeiger wieder die Kopie.
+        w.zeiger("20261027-110000");
+        assert!(ausgeliefert(&app).await.0.contains("bau-2"));
+        std::fs::remove_file(w.0.join("builds").join("aktuell")).unwrap();
+        assert!(ausgeliefert(&app).await.0.contains("kopie"));
+        // Gegenprobe: ohne Kopie web/build (auch wenn sie gesetzt ist, aber index.html fehlt).
+        for ohne in [None, Some(w.0.join("gibt-es-nicht"))] {
+            let app = router_angemeldet(w.state_mit_kopie(ohne.clone()));
+            assert!(ausgeliefert_seite(&app).await.contains("neu-im-repo"), "{ohne:?}");
+        }
+    }
+
+    /// Nur die Seite (ohne CSP-Vergleich, für eine index.html ohne Skript).
+    async fn ausgeliefert_seite(app: &Router) -> String {
+        let res = app.clone().oneshot(get("/projects/dashboard")).await.unwrap();
+        String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
     }
 
     impl Drop for WebProbe {

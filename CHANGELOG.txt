@@ -158,6 +158,14 @@ Geändert
   untereinander statt Spalten: Wartet auf dich, Läuft, Als Nächstes,
   Wartet auf andere; je Arbeit eine Zeile mit Anker arbeit-<id>, aufklappbar
   zu den Schritten. AufgabenKasten nimmt eine Ebene für seine Überschrift.
+- Der Dienst liefert die Oberfläche aus bin\web neben seinen Programmen,
+  einer Kopie von web\build, die scripts\Dienst.ps1 -Neustart zusammen mit
+  den Programmen einspielt (die vorige bleibt als bin\web.alt). Ein npm run
+  build im Repo ändert die laufende Seite nicht mehr. Der Weg zurück bringt
+  Programm und Oberfläche gemeinsam zurück; scheitert der Austausch, bleiben
+  beide die alten. Ein grüner Bau über den Boten (web\builds\aktuell) gilt
+  weiter sofort; ohne bin\web (vor dem ersten -Neustart, ohne Dienst) wie
+  bisher web\build.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig

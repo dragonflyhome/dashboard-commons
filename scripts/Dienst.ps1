@@ -53,13 +53,19 @@
                npm run build (bricht
                ein Projekt den Bau, einmal neu ohne Projektseiten;
                web\build erbt das Lese-Recht des Dienstkontos
-               von web, es ist nichts neu zu setzen); dann den Dienst
+               von web, es ist nichts neu zu setzen) und web\build als Kopie
+               nach bin\web.neu (der Dienst liefert die Oberfläche aus bin\web,
+               nie aus web\build: ein Bau im Repo ändert die laufende Seite
+               nicht); dann den Dienst
                anhalten, web\builds\aktuell löschen (der Zeiger auf den letzten
                Bau über den Boten; danach gilt sicher die frische Fassung aus
-               web\build), die Programme (dashboard.exe, dashboard-bote.exe und
-               dashboard-herzschlag.exe) nach bin (die vorige Fassung bleibt als *.alt.exe), Dienst und
+               bin\web), die Programme (dashboard.exe, dashboard-bote.exe und
+               dashboard-herzschlag.exe) nach bin (die vorige Fassung bleibt als *.alt.exe)
+               und die Oberfläche nach bin\web (die vorige bleibt als bin\web.alt;
+               scheitert ein Schritt, kommt beides zurück), Dienst und
                Boten starten und / und /api/daten (mit Windows-Anmeldung) binnen
                60 s prüfen. Antworten sie nicht, kommt die vorige Fassung
+               (Programme und Oberfläche gemeinsam)
                zurück und startet wieder; auch dieser Rückweg startet Dienst
                und Boten in einem try/finally wieder, sofern sie nicht laufen
                (auch nach einem Abbruch im Skript oder einer Ausnahme; Strg+C
@@ -456,11 +462,35 @@ function BoteStarten {
     }
 }
 
-# Neue Programme nach bin, die vorigen als *.alt.exe. Scheitert ein Schritt,
-# kommen die schon verschobenen Fassungen zurück; gibt dann einen Satz zurück
-# (sonst $null). So bleibt bin nie ohne dashboard.exe.
-function TauscheProgramme([string]$quelle) {
+# Die Oberfläche des Dienstes ist eine Kopie in bin\web, neben den Programmen
+# (der Dienst liest sie dort, app::WebOrt); ein npm run build im Repo ändert
+# die laufende Seite also nicht. Legt web\build als bin\web.neu bereit (ein
+# liegen gebliebenes web.neu fällt vorher weg). Gibt $null zurück, sonst einen Satz.
+function OberflaecheBereitlegen([string]$build) {
+    $neu = Join-Path $script:bin 'web.neu'
+    try {
+        if (Test-Path -LiteralPath $neu) { Remove-Item -LiteralPath $neu -Recurse -Force }
+        if (-not (Test-Path -LiteralPath (Join-Path $build 'index.html') -PathType Leaf)) { return "in $build fehlt index.html" }
+        Copy-Item -LiteralPath $build -Destination $neu -Recurse
+        if (-not (Test-Path -LiteralPath (Join-Path $neu 'index.html') -PathType Leaf)) { return "in $neu fehlt nach dem Kopieren index.html" }
+        return $null
+    } catch {
+        return $_.Exception.Message
+    }
+}
+
+# Neue Programme nach bin, die vorigen als *.alt.exe; mit $oberflaeche (bin\web.neu)
+# auch die Oberfläche: bin\web wird bin\web.alt, web.neu wird web. Scheitert ein
+# Schritt, kommen die schon verschobenen Fassungen zurück (Programme und
+# Oberfläche); gibt dann einen Satz zurück (sonst $null). So bleibt bin nie ohne
+# dashboard.exe und nie halb eingespielt. $script:oberflaecheGetauscht sagt dem
+# Rückweg, ob bin\web.alt zu dieser Fassung gehört.
+function TauscheProgramme([string]$quelle, [string]$oberflaeche) {
     $verschoben = @()
+    $web = Join-Path $script:bin 'web'
+    $webAlt = Join-Path $script:bin 'web.alt'
+    $webVerschoben = $false
+    $script:oberflaecheGetauscht = $false
     try {
         foreach ($n in $programme) {
             $z = Join-Path $script:bin $n
@@ -471,9 +501,22 @@ function TauscheProgramme([string]$quelle) {
             }
             Copy-Item -LiteralPath (Join-Path $quelle $n) -Destination $z -Force
         }
+        if ($oberflaeche) {
+            if (Test-Path -LiteralPath $webAlt) { Remove-Item -LiteralPath $webAlt -Recurse -Force }
+            if (Test-Path -LiteralPath $web) {
+                Move-Item -LiteralPath $web -Destination $webAlt
+                $webVerschoben = $true
+            }
+            Move-Item -LiteralPath $oberflaeche -Destination $web
+            $script:oberflaecheGetauscht = $true
+        }
         return $null
     } catch {
         $grund = $_.Exception.Message
+        if ($webVerschoben) {
+            try { Move-Item -LiteralPath $webAlt -Destination $web -ErrorAction Stop }
+            catch { Write-Host "Achtung: $webAlt ließ sich nicht nach web zurückholen ($($_.Exception.Message))." }
+        }
         foreach ($n in $verschoben) {
             $z = Join-Path $script:bin $n
             $alt = Join-Path $script:bin ($n -replace '\.exe$', '.alt.exe')
@@ -482,6 +525,29 @@ function TauscheProgramme([string]$quelle) {
         }
         return "Der Austausch der Programme ist gescheitert ($grund); die vorige Fassung liegt wieder in $($script:bin)."
     }
+}
+
+# Rückweg der Oberfläche: bin\web.alt wird wieder bin\web (die neue geht über
+# bin\web.verworfen und wird danach gelöscht). Scheitert das Zurückholen, bleibt
+# die neue in bin\web. Gibt $null zurück, sonst einen Satz.
+function OberflaecheZurueck {
+    $web = Join-Path $script:bin 'web'
+    $webAlt = Join-Path $script:bin 'web.alt'
+    $weg = Join-Path $script:bin 'web.verworfen'
+    if (-not (Test-Path -LiteralPath $webAlt)) { return "$webAlt fehlt; die Oberfläche bleibt die neue." }
+    try {
+        if (Test-Path -LiteralPath $weg) { Remove-Item -LiteralPath $weg -Recurse -Force }
+        if (Test-Path -LiteralPath $web) { Move-Item -LiteralPath $web -Destination $weg }
+        try { Move-Item -LiteralPath $webAlt -Destination $web }
+        catch {
+            if (Test-Path -LiteralPath $weg) { Move-Item -LiteralPath $weg -Destination $web }
+            throw
+        }
+    } catch {
+        return "$webAlt ließ sich nicht zurückholen ($($_.Exception.Message)); die Oberfläche bleibt die neue."
+    }
+    Remove-Item -LiteralPath $weg -Recurse -Force -ErrorAction SilentlyContinue
+    return $null
 }
 
 # Hat das Dienstkonto sein Lese-Recht (vererbt) auf projects, data, web,
@@ -687,6 +753,7 @@ try {
         if ($nochDa) { Ende 1 "Der Bote ließ sich nicht anhalten, nichts eingespielt ($nochDa). Der Dienst läuft unverändert weiter." }
 
         $web = Join-Path $repo 'web'
+        $oberflaeche = $null
         if (Test-Path -LiteralPath (Join-Path $web 'package.json')) {
             if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Ende 1 'npm wurde nicht gefunden (Node.js unter C:\Program Files\nodejs?). Der Dienst läuft unverändert weiter.' }
             # Bauliste: dasselbe Urteil wie im Boten (bote::bau::bauliste_einspielen,
@@ -769,6 +836,10 @@ try {
                 if ($code -eq 0) { Write-Host 'Hinweis: Gebaut ohne Projektseiten. Erst wenn das Projekt repariert ist, kommen die Seiten mit dem nächsten Bau zurück.' }
             }
             if ($code -ne 0) { Ende 1 'npm run build ist gescheitert. Der Dienst läuft unverändert weiter.' }
+            # Die Kopie für den Dienst, noch bei laufendem Dienst (er liest bin\web, nicht web.neu).
+            $f = OberflaecheBereitlegen (Join-Path $web 'build')
+            if ($f) { Ende 1 "Die Oberfläche ließ sich nicht nach $($script:bin)\web.neu kopieren ($f). Der Dienst läuft unverändert weiter." }
+            $oberflaeche = Join-Path $script:bin 'web.neu'
         }
 
         # $quelle: <bauordner>\release oder (mit Zusammenbau) <bauordner>\release\zusammenbau.
@@ -783,20 +854,20 @@ try {
         if ($fehler) { Ende 1 "$fehler Es wurde nichts ausgetauscht." }
 
         # Den Zeiger auf den letzten Bau über den Boten entfernen: nach dem Neustart
-        # liefert der Dienst sicher die eben gebaute Fassung aus web\build aus.
+        # liefert der Dienst sicher die eben gebaute Fassung aus bin\web aus.
         $zeiger = Join-Path $repo 'web\builds\aktuell'
         if (Test-Path -LiteralPath $zeiger -PathType Leaf) {
             try {
                 Remove-Item -LiteralPath $zeiger -Force -ErrorAction Stop
-                Write-Host 'web\builds\aktuell entfernt: die Oberfläche kommt jetzt aus web\build.'
+                Write-Host 'web\builds\aktuell entfernt: die Oberfläche kommt jetzt aus bin\web.'
             } catch {
                 Write-Host "Hinweis: web\builds\aktuell ließ sich nicht entfernen ($($_.Exception.Message)); der Dienst nimmt dann weiter den letzten Bau des Boten."
             }
         }
 
-        $fehler = TauscheProgramme $quelle
+        $fehler = TauscheProgramme $quelle $oberflaeche
         if ($fehler) { Ende 1 "$fehler Dienst und Bote laufen mit der vorigen Fassung weiter (sofern sie starten; scripts\Dienst.ps1 -Status zeigt es)." }
-        Write-Host "Neue Programme liegen in $($script:bin) (vorige als *.alt.exe)"
+        Write-Host "Neue Programme liegen in $($script:bin) (vorige als *.alt.exe)$(if ($script:oberflaecheGetauscht) { ', die Oberfläche in bin\web (vorige in bin\web.alt)' })"
 
         $dienstAus = $false
         $fehler = DienstStarten
@@ -849,6 +920,12 @@ try {
                 $neuGeblieben += $n
             }
         }
+    }
+    # Die Oberfläche gehört zur Fassung: nur zurück, wenn dieser Lauf sie getauscht
+    # hat und dashboard.exe wieder die vorige ist (sonst passten sie nicht zusammen).
+    if ($script:oberflaecheGetauscht -and -not ($neuGeblieben -contains 'dashboard.exe')) {
+        $f = OberflaecheZurueck
+        if ($f) { Write-Host "Achtung: $f" } else { Write-Host 'Die vorige Oberfläche liegt wieder in bin\web.' }
     }
 } finally {
     $fehler2 = $null
