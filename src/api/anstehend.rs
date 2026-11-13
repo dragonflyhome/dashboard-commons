@@ -194,6 +194,24 @@ pub async fn plan(State(state): State<AppState>, Path(slug): Path<String>, angem
     }
 }
 
+/// `GET /api/projekte/<slug>/verlauf?seit=&bis=` (Etappe B8): die Zeitleiste
+/// eines Projekts in derselben Form wie `/api/pc/verlauf`, gebaut von
+/// `pc::verlauf_bauen` (ohne `bis`: bis 90 Tage nach heute, für Fristen).
+/// Geschützt wie `/plan`, ohne Anmeldung 401; unbekanntes Projekt 404. Schreibt nichts.
+pub async fn verlauf(State(state): State<AppState>, Path(slug): Path<String>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    if !seite::is_valid_slug(&slug) || !state.inhalt.bestand().ordner_da(&slug) {
+        return AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")).into_response();
+    }
+    match super::pc::verlauf_bauen(&state, &uri, super::pc::Umfang::Projekt(&slug)).await {
+        // Meldungstexte und Hinweise ohne Profil und Namen (`datenschutz`).
+        Ok(v) => crate::datenschutz::als_json(&v).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
 /// `GET /api/fristen` (Etappe B3): die Fristenliste aller sichtbaren Projekte
 /// (ohne archivierte; für die gilt die Sicherheitsregel in Anstehend), nach
 /// Datum, bewegliche ohne Datum am Ende (`crate::fristen::fristenliste`).

@@ -33,14 +33,15 @@ fn grenzwert<'a>(zeiten: impl Iterator<Item = &'a String>, spaeteste: bool) -> O
     beste.map(|(_, z)| z.clone())
 }
 
-/// Beginn und Ende einer Arbeit aus ihrem Verlauf.
-struct Zeiten {
-    begonnen: Option<String>,
-    fertig: Option<String>,
-    ungefaehr: bool,
+/// Beginn und Ende einer Arbeit aus ihrem Verlauf (auch für den Verlauf des
+/// Projekts, `projektverlauf`).
+pub(crate) struct Zeiten {
+    pub begonnen: Option<String>,
+    pub fertig: Option<String>,
+    pub ungefaehr: bool,
 }
 
-fn zeiten(a: &Arbeit) -> Zeiten {
+pub(crate) fn zeiten(a: &Arbeit) -> Zeiten {
     let mut begonnen = None;
     let (mut fertig_stand, mut fertig_schritt) = (None, None);
     for e in &a.verlauf {

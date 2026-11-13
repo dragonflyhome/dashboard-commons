@@ -67,7 +67,13 @@ export const QUELLEN_NAME: Record<VerlaufQuelle, string> = {
 	start: 'Starts',
 	meldung: 'Meldungen',
 	sicherung: 'Sicherungen',
-	vorgang: 'Vorgänge'
+	vorgang: 'Vorgänge',
+	arbeit: 'Arbeiten',
+	schritt: 'Schritte',
+	frage: 'Fragen',
+	entscheidung: 'Entscheidungen',
+	bau: 'Bauten',
+	frist: 'Fristen'
 };
 
 /** Kurz für die kleine Angabe rechts in der Zeile. */
@@ -78,7 +84,13 @@ export const QUELLE_KURZ: Record<VerlaufQuelle, string> = {
 	start: 'Start',
 	meldung: 'Meldung',
 	sicherung: 'Sicherung',
-	vorgang: 'Vorgang'
+	vorgang: 'Vorgang',
+	arbeit: 'Arbeit',
+	schritt: 'Schritt',
+	frage: 'Frage',
+	entscheidung: 'Entscheidung',
+	bau: 'Bau',
+	frist: 'Frist'
 };
 
 // ----- Einträge -----
@@ -255,6 +267,12 @@ export function routineTitel(quelle: VerlaufQuelle, n: number): string {
 		case 'hand':
 		case 'vorgang':
 		case 'windows-installiert':
+		case 'arbeit':
+		case 'schritt':
+		case 'frage':
+		case 'entscheidung':
+		case 'bau':
+		case 'frist':
 			return `${String(n)} Routine-Einträge`;
 	}
 }

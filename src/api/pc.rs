@@ -149,7 +149,7 @@ pub(crate) fn schluessel_stand_aus(v: &[crate::schluessel::KeyView], bote_fehlt:
 /// `seit` fällt dann auf den Tagesanfang vor 90 Tagen, die Grenze auf jetzt
 /// minus 90 Tage; das Archiv trägt also die Stunden dazwischen bei.
 pub async fn verlauf(State(state): State<AppState>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<serde_json::Value>, AppError> {
-    verlauf_bauen(&state, &uri, angemeldet.is_some()).await.map(|v| crate::datenschutz::als_json(&v))
+    verlauf_bauen(&state, &uri, Umfang::Pc { mit_anmeldung: angemeldet.is_some() }).await.map(|v| crate::datenschutz::als_json(&v))
 }
 
 /// `GET /api/pc/verlauf/voll?seit=…&bis=…`: wie [`verlauf`], aber geschützt
@@ -160,29 +160,61 @@ pub async fn verlauf_voll(State(state): State<AppState>, uri: Uri, angemeldet: O
     if angemeldet.is_none() {
         return super::anmeldung::bitte_anmelden(None);
     }
-    match verlauf_bauen(&state, &uri, true).await {
+    match verlauf_bauen(&state, &uri, Umfang::Pc { mit_anmeldung: true }).await {
         // Meldungstexte und Hinweise ohne Profil und Namen (`datenschutz`).
         Ok(v) => crate::datenschutz::als_json(&v).into_response(),
         Err(e) => e.into_response(),
     }
 }
 
-/// Der Verlauf für beide Wege; `mit_anmeldung` entscheidet über Starts,
-/// Systemmeldungen und Vorgänge.
-async fn verlauf_bauen(state: &AppState, uri: &Uri, mit_anmeldung: bool) -> Result<Verlauf, AppError> {
+/// Wessen Verlauf [`verlauf_bauen`] baut.
+#[derive(Debug, Clone, Copy)]
+pub enum Umfang<'a> {
+    /// Der PC (`/api/pc/verlauf`); `mit_anmeldung` entscheidet über Starts,
+    /// Systemmeldungen und Vorgänge.
+    Pc { mit_anmeldung: bool },
+    /// Ein Projekt (`/api/projekte/<slug>/verlauf`, Etappe B8, immer angemeldet).
+    Projekt(&'a str),
+}
+
+/// Der Verlauf für alle Wege: Zeitraum, Quellen und Hinweise. Ohne `bis`
+/// endet er beim PC jetzt, bei einem Projekt [`VERLAUF_TAGE`] Tage nach heute
+/// (Fristen und Geplantes von Hand stehen in der Zukunft).
+pub async fn verlauf_bauen(state: &AppState, uri: &Uri, umfang: Umfang<'_>) -> Result<Verlauf, AppError> {
     let jetzt = Local::now().fixed_offset();
-    let (seit, bis) = zeitraum(uri, &jetzt)?;
+    let vorschau = match umfang {
+        Umfang::Pc { .. } => 0,
+        Umfang::Projekt(_) => VERLAUF_TAGE,
+    };
+    let (seit, bis) = zeitraum(uri, &jetzt, vorschau)?;
     let heute = abgeleitet::heute();
     let mut ereignisse = Vec::new();
     let mut hinweise = Vec::new();
+    match umfang {
+        Umfang::Pc { mit_anmeldung } => pc_quellen(state, (&seit, &jetzt, heute), mit_anmeldung, &mut ereignisse, &mut hinweise).await?,
+        Umfang::Projekt(slug) => projekt_quellen(state, slug, heute, &mut ereignisse, &mut hinweise).await?,
+    }
+    ereignisse.retain(|e| verlauf::im_zeitraum(e, &seit, &bis));
+    Ok(Verlauf { ereignisse, seit: verlauf::zeit_text(&seit), bis: verlauf::zeit_text(&bis), hinweise })
+}
+
+/// Die Quellen des PCs (siehe [`verlauf`]); `zeit` ist `seit`, jetzt und heute.
+async fn pc_quellen(
+    state: &AppState,
+    zeit: (&DateTime<FixedOffset>, &DateTime<FixedOffset>, NaiveDate),
+    mit_anmeldung: bool,
+    ereignisse: &mut Vec<Ereignis>,
+    hinweise: &mut Vec<VerlaufHinweis>,
+) -> Result<(), AppError> {
+    let (seit, jetzt, heute) = (*zeit.0, zeit.1, zeit.2);
     match &state.inhalt.bestand().pc {
-        Ok(d) => ereignisse.extend(aus_pc_toml(d, heute, &mut hinweise)),
+        Ok(d) => ereignisse.extend(aus_pc_toml(d, heute, hinweise)),
         Err(satz) => hinweise.push(VerlaufHinweis::neu(HinweisArt::HandFehlt, format!("Einträge von Hand fehlen: {satz}"))),
     }
     for f in &state.sysapps.read().await.lokal_fehler {
         hinweise.push(VerlaufHinweis::neu(HinweisArt::SammlerUnvollstaendig, format!("Windows-Ereignisse, letzter Lauf des Sammlers unvollständig: {f}")));
     }
-    let mit_archiv = seit < pc_ereignisse::archiv_grenze(&jetzt);
+    let mit_archiv = seit < pc_ereignisse::archiv_grenze(jetzt);
     match state.speicher.clone() {
         None => hinweise.push(VerlaufHinweis::neu(HinweisArt::OhneSpeicher, SATZ_OHNE_SPEICHER)),
         Some(s) => {
@@ -235,9 +267,65 @@ async fn verlauf_bauen(state: &AppState, uri: &Uri, mit_anmeldung: bool) -> Resu
     if !mit_anmeldung {
         hinweise.push(VerlaufHinweis::neu(HinweisArt::OhneAnmeldung, SATZ_OHNE_ANMELDUNG));
     }
-    ereignisse.retain(|e| verlauf::im_zeitraum(e, &seit, &bis));
-    Ok(Verlauf { ereignisse, seit: verlauf::zeit_text(&seit), bis: verlauf::zeit_text(&bis), hinweise })
+    Ok(())
 }
+
+/// Die Quellen eines Projekts (Etappe B8, Übersetzung in `projektverlauf`):
+/// `daten/zeitstrahl.toml` als `hand`, Arbeiten, Schritte und fertige
+/// Etappen, die Vorgänge des Slugs (Bauten, Antworten auf Fragen, andere),
+/// seine Meldungen, die offenen Fristen und die Entscheidungen mit dem Slug
+/// in `projekte`. Ohne Datenspeicher fehlt sein Teil, mit Hinweis.
+async fn projekt_quellen(
+    state: &AppState,
+    slug: &str,
+    heute: NaiveDate,
+    ereignisse: &mut Vec<Ereignis>,
+    hinweise: &mut Vec<VerlaufHinweis>,
+) -> Result<(), AppError> {
+    use crate::projektverlauf as pv;
+    use crate::vertrag::daten::DatenInhalt;
+    let bestand = state.inhalt.bestand();
+    match bestand.daten(slug, "zeitstrahl") {
+        Ok(Some((DatenInhalt::Zeitstrahl(z), _))) => ereignisse.extend(verlauf::aus_zeitstrahl(&z, heute)),
+        Ok(_) => {}
+        Err(e) => hinweise.push(VerlaufHinweis::neu(HinweisArt::HandFehlt, format!("{e} Bis das behoben ist, fehlen die Einträge von Hand."))),
+    }
+    // Eine unlesbare plan.toml meldet /plan; hier fehlen dann nur die fertigen Etappen.
+    let plan = match bestand.daten(slug, "plan") {
+        Ok(Some((DatenInhalt::Plan(p), _))) => Some(p),
+        _ => None,
+    };
+    match state.speicher.clone() {
+        None => hinweise.push(VerlaufHinweis::neu(HinweisArt::OhneSpeicher, SATZ_PROJEKT_OHNE_SPEICHER)),
+        Some(s) => {
+            // shortcut: voller Durchlauf durch Arbeiten, Vorgänge und Meldungen samt Archiv je Abruf;
+            // Index nach Projekt, sobald das Archiv einige tausend Einträge hat.
+            let (arbeiten, vorgaenge, meldungen) =
+                Speicher::im_hintergrund(s, |s| Ok((s.arbeiten_mit_archiv()?, s.vorgaenge_alle()?, s.meldungen_mit_archiv()?))).await.map_err(|e| {
+                    tracing::error!("Verlauf: Datenspeicher: {e} ({})", e.einzelheiten());
+                    AppError::intern(format!("{e} Einzelheiten stehen im Protokoll."))
+                })?;
+            ereignisse.extend(pv::aus_arbeiten(slug, plan.as_ref(), &arbeiten));
+            ereignisse.extend(pv::aus_vorgaengen(slug, &vorgaenge));
+            ereignisse.extend(meldungen.iter().filter(|m| m.projekt == slug).map(aus_meldung));
+        }
+    }
+    let inhalt = super::anstehend::inhalt_sammeln(state).await?;
+    ereignisse.extend(pv::aus_fristen(&crate::fristen::fristenliste(&inhalt, Some(slug))));
+    let ordner = state.entscheidungen_dir.to_path_buf();
+    let liste = tokio::task::spawn_blocking(move || super::system_seiten::entscheidungen_lesen(&ordner))
+        .await
+        .map_err(|e| AppError::intern(format!("Die Entscheidungen ließen sich nicht lesen ({e}).")))?;
+    if let Some(w) = &liste.warnung {
+        hinweise.push(VerlaufHinweis::neu(HinweisArt::EntscheidungenFehlen, format!("Die Entscheidungen fehlen: {w}")));
+    }
+    ereignisse.extend(pv::aus_entscheidungen(slug, &liste));
+    Ok(())
+}
+
+/// Hinweis im Verlauf eines Projekts ohne Datenspeicher.
+pub const SATZ_PROJEKT_OHNE_SPEICHER: &str =
+    "Der Datenspeicher ist nicht offen: Arbeiten, Schritte, Antworten, Bauten, Vorgänge und Meldungen fehlen, ebenso Fristen aus Aufgaben und Arbeiten.";
 
 /// Hinweis ohne Anmeldung.
 pub const SATZ_OHNE_ANMELDUNG: &str = "Ohne Anmeldung fehlen die Starts, Meldungen und Vorgänge.";
@@ -253,15 +341,16 @@ pub const VERLAUF_TAGE: i64 = 90;
 /// Eine Abfrage bleibt so klein, auch wenn das Archiv über Jahre wächst.
 pub const VERLAUF_HOECHSTENS_TAGE: i64 = 400;
 
-/// `seit` und `bis` aus der Abfrage (siehe [`verlauf`]).
-fn zeitraum(uri: &Uri, jetzt: &DateTime<FixedOffset>) -> Result<(DateTime<FixedOffset>, DateTime<FixedOffset>), AppError> {
+/// `seit` und `bis` aus der Abfrage (siehe [`verlauf`]); ohne `bis` jetzt
+/// plus `vorschau` Tage.
+fn zeitraum(uri: &Uri, jetzt: &DateTime<FixedOffset>, vorschau: i64) -> Result<(DateTime<FixedOffset>, DateTime<FixedOffset>), AppError> {
     let seit = match angegeben(abfrage(uri, "seit")) {
         Some(t) => zeit_aus_abfrage("seit", &t, false)?,
         None => verlauf::tagesanfang(jetzt.date_naive() - chrono::Duration::days(VERLAUF_TAGE)).fixed_offset(),
     };
     let bis = match angegeben(abfrage(uri, "bis")) {
         Some(t) => zeit_aus_abfrage("bis", &t, true)?,
-        None => *jetzt,
+        None => *jetzt + chrono::Duration::days(vorschau),
     };
     if seit > bis {
         return Err(AppError::unlesbar("„seit“ liegt nach „bis“. Bitte einen Zeitraum angeben, der vorwärts läuft."));

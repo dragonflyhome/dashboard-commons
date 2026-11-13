@@ -25,7 +25,11 @@ use super::daten::{Datei, Zeitstrahl};
 pub struct Ereignis {
     /// Stabil, aus der Quelle: `hand:<kennung>`, `update:<KB>:<datum>`,
     /// `start:<zeit>`, `windows-installiert:<datum>`, `meldung:<id>`,
-    /// `sicherung:<datei>`, `vorgang:<id>`.
+    /// `sicherung:<datei>`, `vorgang:<id>`; im Verlauf eines Projekts dazu
+    /// `arbeit:<id>:begonnen`, `arbeit:<id>:fertig`, `etappe:<kennung>`
+    /// (Etappe fertig), `schritt:<id>/<nr>:<n>` (n-ter Eintrag im Verlauf der
+    /// Arbeit), `frage:<vorgang>`, `bau:<vorgang>`, `entscheidung:<datei>`
+    /// und `frist:<quelle>:<id>`.
     pub kennung: String,
     /// Beginn, RFC 3339 mit Zone (Ortszeit). Bei `tag`, `monat` und `jahr`
     /// der Anfang des Tages, Monats oder Jahres.
@@ -73,6 +77,19 @@ pub enum Quelle {
     Sicherung,
     /// Vorgang des Dashboards (nur mit Anmeldung).
     Vorgang,
+    /// Eine Arbeit des Projekts hat begonnen oder ist fertig, oder eine
+    /// Etappe aus `daten/plan.toml` ist fertig (Verlauf eines Projekts).
+    Arbeit,
+    /// Ein Eintrag zu einem Schritt im Verlauf einer Arbeit.
+    Schritt,
+    /// Der Inhaber hat eine Frage aus `daten/fragen.toml` beantwortet.
+    Frage,
+    /// Eine Entscheidung mit diesem Projekt in `projekte`.
+    Entscheidung,
+    /// Ein Bau der Seite (grün `routine`, rot `problem`).
+    Bau,
+    /// Eine offene Frist mit Datum (immer `geplant`).
+    Frist,
 }
 
 /// Was das Ereignis fachlich ist; die Farbe macht die Oberfläche daraus.
@@ -102,8 +119,9 @@ pub fn art_wort(a: Art) -> &'static str {
     }
 }
 
-/// `GET /api/pc/verlauf`: die Ereignisse im Zeitraum, ohne zugesagte
-/// Reihenfolge, und Hinweise zur Vollständigkeit.
+/// `GET /api/pc/verlauf` und `GET /api/projekte/<slug>/verlauf`: die
+/// Ereignisse im Zeitraum, ohne zugesagte Reihenfolge, und Hinweise zur
+/// Vollständigkeit.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct Verlauf {
     /// Ohne zugesagte Reihenfolge und ohne Gruppen.
@@ -154,6 +172,8 @@ pub enum VerlaufHinweisArt {
     OhneKennung,
     /// Eine `kennung` steht doppelt da.
     KennungDoppelt,
+    /// Der Ordner mit den Entscheidungen ließ sich nicht lesen.
+    EntscheidungenFehlen,
 }
 
 // ----- Zeit -----

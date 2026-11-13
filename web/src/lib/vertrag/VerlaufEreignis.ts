@@ -11,7 +11,11 @@ export type VerlaufEreignis = {
 /**
  * Stabil, aus der Quelle: `hand:<kennung>`, `update:<KB>:<datum>`,
  * `start:<zeit>`, `windows-installiert:<datum>`, `meldung:<id>`,
- * `sicherung:<datei>`, `vorgang:<id>`.
+ * `sicherung:<datei>`, `vorgang:<id>`; im Verlauf eines Projekts dazu
+ * `arbeit:<id>:begonnen`, `arbeit:<id>:fertig`, `etappe:<kennung>`
+ * (Etappe fertig), `schritt:<id>/<nr>:<n>` (n-ter Eintrag im Verlauf der
+ * Arbeit), `frage:<vorgang>`, `bau:<vorgang>`, `entscheidung:<datei>`
+ * und `frist:<quelle>:<id>`.
  */
 kennung: string, 
 /**

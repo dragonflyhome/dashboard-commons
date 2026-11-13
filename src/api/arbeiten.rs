@@ -993,6 +993,112 @@ mod tests {
         let _ = std::fs::remove_dir_all(&ordner);
     }
 
+    /// Etappe B8: GET /api/projekte/<slug>/verlauf ist geschützt (401), kennt
+    /// nur vorhandene Projekte (404) und liefert die Form von /api/pc/verlauf
+    /// aus allen Quellen des Projekts: zeitstrahl.toml (hand), Arbeiten und
+    /// fertige Etappe (arbeit), Schritte, Antwort auf eine Frage (frage), roter
+    /// Bau (bau, problem), anderer Vorgang, Meldung, Frist (geplant, in der
+    /// Zukunft) und eine Entscheidung mit `projekte`. Nichts aus dem anderen
+    /// Projekt. Gegenprobe: mit `bis` heute fehlt die Frist; ohne Datenspeicher
+    /// bleibt der Eintrag von Hand, mit Hinweis.
+    #[tokio::test]
+    async fn verlauf_eines_projekts_ueber_die_api() {
+        use crate::speicher::meldungen::{NeueMeldung, Wiederholung};
+        use crate::vertrag::api::{BauStand, BauZustand, MeldungsArt, VorgangsArt};
+        let ordner = std::env::temp_dir().join(format!("dashboard-test-{}-projekt-verlauf", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        let heute = aufgaben::jetzt().date_naive();
+        let tag = |d: i64| (heute + chrono::Duration::days(d)).format("%Y-%m-%d").to_string();
+        for slug in ["probe", "anderes"] {
+            let p = ordner.join("projects").join(slug);
+            std::fs::create_dir_all(p.join("daten")).unwrap();
+            std::fs::write(p.join("projekt.toml"), "schema = 3\ntitle = \"Probe\"\nstatus = \"aktiv\"\nsummary = \"Erfunden.\"\n").unwrap();
+        }
+        let daten = ordner.join("projects/probe/daten");
+        let etappe = |k: &str, n: u32| format!("[[etappe]]\nkennung = \"{k}\"\ntitel = \"Etappe {k}\"\nziel = \"Z\"\nreihenfolge = {n}\n");
+        std::fs::write(daten.join("plan.toml"), format!("{}{}", etappe("b8", 1), etappe("c1", 2))).unwrap();
+        std::fs::write(
+            daten.join("zeitstrahl.toml"),
+            format!("[[eintrag]]\nkennung = \"start\"\ndatum = \"{}\"\ntitel = \"Start\"\nart = \"erledigt\"\n", tag(-1)),
+        )
+        .unwrap();
+        let entscheidungen = ordner.join("docs/entscheidungen");
+        std::fs::create_dir_all(&entscheidungen).unwrap();
+        std::fs::write(entscheidungen.join("e-probe.toml"), format!("datum = \"{}\"\nthema = \"Für probe\"\nprojekte = [\"probe\"]\n", tag(-2))).unwrap();
+        std::fs::write(entscheidungen.join("e-anderes.toml"), format!("datum = \"{}\"\nthema = \"Für anderes\"\nprojekte = [\"anderes\"]\n", tag(-2))).unwrap();
+        std::fs::write(entscheidungen.join("e-ohne.toml"), format!("datum = \"{}\"\nthema = \"Ohne Feld\"\n", tag(-2))).unwrap();
+        let state = AppState::fuer_tests(&ordner);
+        let res = crate::app::router(state.clone()).oneshot(get("/api/projekte/probe/verlauf")).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+        let (status, _) = schicke(&state, get("/api/projekte/gibt-es-nicht/verlauf")).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let p = r#""projekt": "probe", "von": "chat:probe""#;
+        let laeuft = neu(&state, &format!(r#"{{{p}, "titel": "Läuft", "stand": "laeuft", "etappe": "probe/b8"}}"#)).await;
+        let (status, _) = schicke(&state, post(&format!("/api/arbeiten/{laeuft}/schritte"), r#"{"von": "chat:probe", "titel": "Teil"}"#)).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let fertig = neu(&state, &format!(r#"{{{p}, "titel": "Fertig", "stand": "fertig", "etappe": "probe/c1"}}"#)).await;
+        let spaeter = neu(&state, &format!(r#"{{{p}, "titel": "Später", "stand": "als-naechstes", "frist": "{}"}}"#, tag(10))).await;
+        neu(&state, r#"{"projekt": "anderes", "von": "chat:anderes", "titel": "Fremd", "stand": "laeuft"}"#).await;
+        let s = state.speicher.clone().unwrap();
+        let (bau, _) = s.vorgang_anlegen(VorgangsArt::Bau, "probe", "Bau der Seite", None, "baumeister").unwrap();
+        let rot = BauStand { zustand: BauZustand::Rot, meldung: "Bau rot.".into(), rote: vec!["probe".into()] };
+        s.bau_setzen(std::slice::from_ref(&bau.id), &rot, "baumeister", "rot").unwrap();
+        let (antwort, _) = s.vorgang_anlegen(VorgangsArt::Antwort, "probe", "Antwort: ja", Some("antwort:probe/frage-1"), "browser").unwrap();
+        let (abnahme, _) = s.vorgang_anlegen(VorgangsArt::Abnahme, "probe", "Abnahme", None, "browser").unwrap();
+        s.vorgang_anlegen(VorgangsArt::Abnahme, "anderes", "Fremde Abnahme", None, "browser").unwrap();
+        let meldung = |projekt: &str| NeueMeldung {
+            projekt: projekt.into(),
+            art: MeldungsArt::Info,
+            schluessel: format!("{projekt}/hinweis"),
+            titel: "Hinweis".into(),
+            text: None,
+            verweis: None,
+            system: false,
+            geschuetzt: false,
+            von: "server".into(),
+        };
+        for projekt in ["probe", "anderes"] {
+            s.meldung_melden(meldung(projekt), Wiederholung::Zustand, &aufgaben::jetzt()).unwrap();
+        }
+        let (status, v) = schicke(&state, get("/api/projekte/probe/verlauf")).await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        let e = v["ereignisse"].as_array().unwrap();
+        let finde = |k: &str| e.iter().find(|x| x["kennung"] == k).unwrap_or_else(|| panic!("{k} fehlt: {v}"));
+        let qa = |x: &serde_json::Value| (x["quelle"].as_str().unwrap().to_string(), x["art"].as_str().unwrap().to_string());
+        let paar = |q: &str, a: &str| (q.to_string(), a.to_string());
+        assert_eq!(qa(finde("hand:start")), paar("hand", "erledigt"));
+        assert_eq!(qa(finde(&format!("arbeit:{laeuft}:begonnen"))), paar("arbeit", "begonnen"));
+        assert_eq!(qa(finde(&format!("arbeit:{fertig}:fertig"))), paar("arbeit", "erledigt"));
+        assert_eq!(qa(finde("etappe:c1")), paar("arbeit", "erledigt"), "c1 hat nur die fertige Arbeit");
+        assert!(!e.iter().any(|x| x["kennung"] == "etappe:b8"), "b8 läuft noch: {v}");
+        assert!(e.iter().any(|x| x["quelle"] == "schritt" && x["kennung"].as_str().unwrap().starts_with(&format!("schritt:{laeuft}/"))), "{v}");
+        assert_eq!(qa(finde(&format!("frage:{}", antwort.id))), paar("frage", "erledigt"));
+        assert_eq!(qa(finde(&format!("bau:{}", bau.id))), paar("bau", "problem"));
+        assert_eq!(qa(finde(&format!("vorgang:{}", abnahme.id))), paar("vorgang", "begonnen"));
+        let frist = finde(&format!("frist:arbeit:{spaeter}"));
+        assert_eq!((qa(frist), frist["genauigkeit"].as_str()), (paar("frist", "geplant"), Some("tag")));
+        assert_eq!(qa(finde("entscheidung:e-probe.toml")), paar("entscheidung", "erledigt"));
+        // Dazu kommt die Meldung „Fertig: …“ des Servers zur fertigen Arbeit.
+        assert_eq!(e.iter().filter(|x| x["quelle"] == "meldung" && x["titel"] == "Hinweis").count(), 1, "nur die Meldung des Projekts: {v}");
+        assert!(!v.to_string().contains("Fremd") && !v.to_string().contains("Für anderes") && !v.to_string().contains("Ohne Feld"), "{v}");
+        assert!(v["hinweise"].as_array().unwrap().is_empty(), "{v}");
+        // Gegenprobe zum Ende: mit bis = heute fehlt die Frist in zehn Tagen.
+        let (_, v) = schicke(&state, get(&format!("/api/projekte/probe/verlauf?bis={}", tag(0)))).await;
+        assert!(!v.to_string().contains(&format!("frist:arbeit:{spaeter}")) && v.to_string().contains("hand:start"), "{v}");
+        let (status, _) = schicke(&state, get("/api/projekte/probe/verlauf?seit=gestern")).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        // Ohne Datenspeicher: der Eintrag von Hand bleibt, dazu der Hinweis.
+        let ohne = AppState::fuer_tests_ohne_speicher(&ordner, "kaputt");
+        let (status, v) = schicke(&ohne, get("/api/projekte/probe/verlauf")).await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        assert!(v.to_string().contains("hand:start") && !v.to_string().contains("arbeit:"), "{v}");
+        assert!(
+            v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-speicher" && h["text"] == super::super::pc::SATZ_PROJEKT_OHNE_SPEICHER),
+            "{v}"
+        );
+        let _ = std::fs::remove_dir_all(&ordner);
+    }
+
     /// Grenze: die 31. offene Arbeit eines Projekts gibt 429 mit Satz.
     #[tokio::test]
     async fn grenze_gibt_429() {

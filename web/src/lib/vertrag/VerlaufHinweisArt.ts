@@ -3,4 +3,4 @@
 /**
  * Was an einem Verlauf fehlt, als Kennung in kebab-case.
  */
-export type VerlaufHinweisArt = "ohne-anmeldung" | "beginnt-ab" | "ohne-speicher" | "sammler-unvollstaendig" | "sicherungen-fehlen" | "hand-fehlt" | "datum-unlesbar" | "ohne-kennung" | "kennung-doppelt";
+export type VerlaufHinweisArt = "ohne-anmeldung" | "beginnt-ab" | "ohne-speicher" | "sammler-unvollstaendig" | "sicherungen-fehlen" | "hand-fehlt" | "datum-unlesbar" | "ohne-kennung" | "kennung-doppelt" | "entscheidungen-fehlen";

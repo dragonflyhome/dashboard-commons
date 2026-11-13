@@ -39,6 +39,16 @@ Hinzugefügt
 - Live: Zeigt die Etappe einer Arbeit auf ein anderes Projekt, kommt
   anstehend/<slug> auch für jenes; ebenso bei einer geänderten
   daten/plan.toml.
+- GET /api/projekte/<slug>/verlauf?seit=&bis= (geschützt wie /plan): die
+  Zeitleiste eines Projekts in derselben Form wie /api/pc/verlauf, mit den
+  neuen Quellen arbeit (Beginn, Ende, fertige Etappe), schritt, frage
+  (beantwortet), entscheidung, bau (rot problem, sonst routine) und frist
+  (offene Fristen mit Datum, art geplant), dazu daten/zeitstrahl.toml als
+  hand sowie Vorgänge und Meldungen des Projekts. Ohne bis reicht der
+  Zeitraum 90 Tage über heute hinaus.
+- Entscheidungsdateien können projekte = ["slug"] nennen; nur dann
+  erscheinen sie in der Zeitleiste dieser Projekte. pruefe --alle meldet
+  unbekannte Slugs und eine andere Form als eine Liste als Fehler.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
