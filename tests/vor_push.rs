@@ -2943,3 +2943,244 @@ fn overlay_hooks_und_hochladen() {
     assert_eq!(c, 1, "{text}");
     assert!(text.contains("Das Projekt-Repo hat kein Remote origin"), "{text}");
 }
+
+/// Eine erfundene GitHub-noreply-Adresse; das „§“ vor dem @ fällt weg (`beitrag`),
+/// so steht hier keine Adresse wörtlich, die der Prüfer im Text meldete.
+const NOREPLY: &str = "12345+beitrag§@users.noreply.github.com";
+
+/// Autor und Committer Beitrag mit dieser Adresse.
+fn als_beitrag(mail: &str) -> [(&'static str, &str); 4] {
+    [("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", mail), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", mail)]
+}
+
+/// Ein Beitrag aus einem Fork: `aendern` auf dem Zweig, ein Commit mit fremdem
+/// Autor und Committer (`name`, `mail`; ein „§“ fällt weg), dann ein Merge-Commit
+/// (Ranke) nach main. Der Beitrag liegt so außerhalb der First-Parent-Linie.
+fn beitrag(o: &Ort, nachricht: &str, name: &str, mail: &str, aendern: impl FnOnce(&Ort)) {
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    aendern(o);
+    let mail = mail.replace('§', "");
+    o.commit(
+        &nachricht.replace('§', ""),
+        &[("GIT_AUTHOR_NAME", name), ("GIT_AUTHOR_EMAIL", &mail), ("GIT_COMMITTER_NAME", name), ("GIT_COMMITTER_EMAIL", &mail)],
+    );
+    zusammenfuehren(o);
+}
+
+/// Wie `abgewiesen`, nur dass der Fall durchgehen muss.
+fn frei(name: &str, vorbereiten: impl FnOnce(&Ort)) {
+    let o = Ort::neu();
+    vorbereiten(&o);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 0, "{name}: muss durchgehen:\n{text}");
+}
+
+/// Beiträge aus Forks: Außerhalb der First-Parent-Linie von main darf Autor und
+/// Committer eine GitHub-noreply-Adresse oder eine Adresse auf .invalid oder
+/// .example haben (verankert, nur ASCII, Groß/Klein egal); auf der Linie bleibt es
+/// genau Ranke. Gegenproben: dieselben Adressen auf der Linie, echte und
+/// verlängerte Adressen, das breite ＠.
+#[test]
+fn beitraege_aus_forks_adressen() {
+    if !bereit() {
+        return;
+    }
+    for mail in [NOREPLY, "beitrag§@users.noreply.github.com", "12345+BEI-trag§@USERS.NOREPLY.GITHUB.COM", "beitrag@beispiel.invalid", "beitrag@team.example"]
+    {
+        frei(mail, |o| beitrag(o, "feat: Beitrag", "Beitrag", mail, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    for (fall, mail) in [
+        ("echte Adresse", "beitrag§@posteo.de"),
+        ("verlängert", "x§@users.noreply.github.com.evil.de"),
+        ("breites ＠", "x\u{FF20}users.noreply.github.com"),
+        // Das Kelvin-Zeichen gilt ohne Groß/Klein-Unterschied als k: nur ASCII.
+        ("Kelvin-Zeichen", "\u{212A}x§@users.noreply.github.com"),
+        ("Strich am Anfang des Logins", "-x§@users.noreply.github.com"),
+        ("doppelter Strich", "a--b§@users.noreply.github.com"),
+        ("Adresse von GitHub selbst", "noreply§@github.com"),
+        ("invalid nur als Wortteil", "x§@beispiel.invalidx"),
+    ] {
+        abgewiesen(fall, "und hat keine Beitragsadresse", |o| beitrag(o, "feat: Beitrag", "Beitrag", mail, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    // Nur der Committer fremd und ohne Beitragsadresse: auch ein Fund.
+    abgewiesen("Committer", "Committer ist nicht Ranke", |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[("GIT_COMMITTER_EMAIL", &"beitrag§@posteo.de".replace('§', ""))]);
+        zusammenfuehren(o);
+    });
+    // Auf der Linie bleibt es genau Ranke: ein Merge-Commit mit Beitragsadresse.
+    let mail = NOREPLY.replace('§', "");
+    abgewiesen("fremder Autor auf der Linie", "Autor ist nicht Ranke", |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        o.git(&["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}"), "merge", "-q", "--no-ff", "zweig", "-m", "chore(merge): zweig"]);
+    });
+    abgewiesen("fremder Commit direkt auf main", "Autor ist nicht Ranke", |o| {
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &mail)]);
+    });
+}
+
+/// Was für jeden Commit gilt, gilt auch für Beiträge: Name durch die Textprüfung,
+/// Nachricht ohne KI-Namen und Listenwerte, keine Signatur, jeder Zwischenstand
+/// geprüft, eine Wurzel. Gegenprobe: derselbe handgebaute Commit ohne Signatur geht durch.
+#[test]
+fn beitraege_aus_forks_wie_jeder_commit() {
+    if !bereit() {
+        return;
+    }
+    for name in ["Vorname Nachname", "Geheimprojekt"] {
+        abgewiesen(name, "(Autor), Zeile 1: sensibler Name", |o| beitrag(o, "feat: b", name, NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    abgewiesen("KI-Name im Namen", "im Namen", |o| beitrag(o, "feat: b", &"Ge§mini Helfer".replace('§', ""), NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    abgewiesen("KI-Name in der Nachricht", "Anhang (Trailer) oder KI-Name", |o| {
+        beitrag(o, "feat: mit Cl§aude", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"))
+    });
+    abgewiesen("Listenwert in der Nachricht", "sensibler Name", |o| beitrag(o, "feat: Gruenkohlfest", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    abgewiesen("Signed-off-by", "Anhang (Trailer)", |o| {
+        beitrag(o, "feat: b\n\nSigned-off-by: Beitrag <beitrag@beispiel.invalid>", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"))
+    });
+    // Signatur: ein handgebauter Commit mit gpgsig auf dem Zweig.
+    let mail = NOREPLY.replace('§', "");
+    let signiert = |mit: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            let baum = o.git(&["rev-parse", "HEAD^{tree}"]);
+            let eltern = o.git(&["rev-parse", "HEAD"]);
+            let wer = format!("Beitrag <{mail}> 1700000000 +0100");
+            let sig = if mit { "gpgsig -----BEGIN SSH SIGNATURE-----\n x\n -----END SSH SIGNATURE-----\n" } else { "" };
+            let sha = roh_objekt(o, "commit", format!("tree {baum}\nparent {eltern}\nauthor {wer}\ncommitter {wer}\n{sig}\nfeat: signiert\n").as_bytes());
+            o.git(&["branch", "-f", "zweig", &sha]);
+            zusammenfuehren(o);
+        }
+    };
+    abgewiesen("Signatur", "Kopfzeile außer tree", signiert(true));
+    frei("ohne Signatur", signiert(false));
+    // Ein verbotener Blob nur in einem Zwischencommit des Beitrags, an der Spitze wieder weg.
+    abgewiesen("Zwischenstand", "src/kurz.rs", |o| {
+        beitrag(o, "feat: wieder weg", "Beitrag", NOREPLY, |o| {
+            o.datei("src/kurz.rs", b"// geheim\xc2\xa7projekt\n");
+            o.commit("feat: kurz da", &als_beitrag(&NOREPLY.replace('§', "")));
+            std::fs::remove_file(o.repo().join("src/kurz.rs")).unwrap();
+        });
+    });
+    // Ein Beitrag mit eigener Wurzel.
+    abgewiesen("eigene Wurzel", "Commit ohne Eltern", |o| {
+        o.git(&["checkout", "-q", "--orphan", "zweig"]);
+        o.datei("src/x.rs", b"// x\n");
+        o.commit("feat: fremde Wurzel", &als_beitrag(&NOREPLY.replace('§', "")));
+        o.git(&["checkout", "-q", "main"]);
+        o.git(&[
+            "-c",
+            "user.name=Ranke",
+            "-c",
+            "user.email=ranke2@proton.me",
+            "merge",
+            "-q",
+            "--no-ff",
+            "--allow-unrelated-histories",
+            "zweig",
+            "-m",
+            "chore(merge): zweig",
+        ]);
+    });
+}
+
+/// M1: Ein fremder Commit ändert keinen Prüfpfad (scripts/**, tests/vor_push.rs).
+/// Gezählt wird, was er gegen jeden Elternteil ändert: Ein Merge von main in den
+/// Fork übernimmt eine Änderung des Betreuers an scripts/ ohne Fund, ein Merge, der
+/// dort selbst etwas ändert, ist ein Fund. Gegenprobe: dieselbe Änderung von Ranke.
+#[test]
+fn beitraege_aus_forks_ohne_pruefer() {
+    if !bereit() {
+        return;
+    }
+    let satz = "Änderungen am Prüfer übernimmt der Betreuer als eigenen Commit";
+    for pfad in ["scripts/Vor-Push.ps1", "scripts/hooks/pre-push", "scripts/Hochladen.ps1", "tests/vor_push.rs"] {
+        abgewiesen(pfad, satz, |o| beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(pfad, b"# anders\n")));
+        frei(pfad, |o| o.ueber_merge(|o| o.datei(pfad, b"# anders\n")));
+    }
+    // Der Fork holt main (mit einer Änderung des Betreuers an scripts/) in seinen Zweig.
+    let mail = NOREPLY.replace('§', "");
+    let fork_merge = |boese: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            o.git(&["checkout", "-q", "-b", "zweig"]);
+            o.datei("src/a.rs", b"// a\n");
+            o.commit("feat: a", &als_beitrag(&mail));
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["checkout", "-q", "-b", "pflege"]);
+            o.datei("scripts/p.ps1", b"# p\n");
+            o.commit("fix: p", &[]);
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "pflege", "-m", "chore(merge): pflege"]);
+            o.git(&["checkout", "-q", "zweig"]);
+            let wer = ["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}")];
+            o.git(&[&wer[..], &["merge", "-q", "--no-ff", "--no-commit", "main"]].concat());
+            if boese {
+                o.datei("scripts/p.ps1", b"# p, im Merge geaendert\n");
+                o.git(&["add", "-A"]);
+            }
+            o.git(&[&wer[..], &["commit", "-q", "-m", "chore(merge): main"]].concat());
+            zusammenfuehren(o);
+        }
+    };
+    frei("Fork holt main", fork_merge(false));
+    abgewiesen("Merge im Fork ändert scripts/", satz, fork_merge(true));
+}
+
+/// Hook, Hochladen (-Commits fern..main), -Pruefen und -Bundle bestimmen die Linie
+/// gleich: ein Beitrag im Seitenzweig geht überall durch, derselbe Beitrag als
+/// Fast-Forward auf main (auf der Linie) nirgends.
+#[test]
+fn beitraege_aus_forks_alle_wege() {
+    if !bereit() {
+        return;
+    }
+    for auf_linie in [false, true] {
+        let o = Ort::neu();
+        let wurzel = o.git(&["rev-parse", "HEAD"]);
+        let mail = NOREPLY.replace('§', "");
+        if auf_linie {
+            o.datei("src/b.rs", b"// b\n");
+            o.commit("feat: b", &als_beitrag(&mail));
+        } else {
+            beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        }
+        let kopf = o.git(&["rev-parse", "HEAD"]);
+        let p = o.wurzel.join("b.bundle").to_string_lossy().to_string();
+        o.git(&["bundle", "create", "-q", &p, "refs/heads/main"]);
+        for (weg, (code, text)) in [
+            ("Hook", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {wurzel}\n")))),
+            ("Hook erster Push", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {NULL}\n")))),
+            ("Hochladen", o.lauf(&["-Baum", "main", "-Commits", &format!("{wurzel}..main"), "-AufMain"], None)),
+            ("-Pruefen", o.lauf(&["-Pruefen"], None)),
+            ("-Bundle", o.lauf(&["-Bundle", &p], None)),
+        ] {
+            if auf_linie {
+                assert!(code == 1 && text.contains("Autor ist nicht Ranke"), "{weg} auf der Linie: {text}");
+            } else {
+                assert_eq!(code, 0, "{weg} im Seitenzweig: {text}");
+            }
+        }
+    }
+}
+
+/// Positivliste: genau die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml; der Rest
+/// von .github (Workflows) bleibt ein Fund, ebenso ein Leitfaden als .txt.
+#[test]
+fn mitwirken_dateien_in_der_positivliste() {
+    if !bereit() {
+        return;
+    }
+    frei("Formular", |o| o.ueber_merge(|o| o.datei(".github/ISSUE_TEMPLATE/x.yml", b"name: x\n")));
+    for pfad in [".github/workflows/x.yml", ".github/ISSUE_TEMPLATE/x.yaml", ".github/ISSUE_TEMPLATE/a/x.yml", ".github/x.yml", "CONTRIBUTING.txt"] {
+        abgewiesen(pfad, "Positivliste", |o| {
+            o.datei(pfad, b"x\n");
+            o.commit("x", &[]);
+        });
+    }
+}
