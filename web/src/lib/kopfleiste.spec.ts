@@ -121,6 +121,12 @@ describe('Kopfleiste, Fassung 3: Route zu Brotkrumen und Markierung der Seitenle
 		expect(k.glieder[0]?.ziel).toEqual({ art: 'katalog' });
 	});
 
+	it('Fassungen: eigener Name, nicht in der Leiste', () => {
+		const k = kopfleiste('/fassungen', {}, {});
+		expect(weg(k)).toEqual(['Fassungen']);
+		expect(k.markiert.seite).toBeNull();
+	});
+
 	it('Anmelden und unbekannte Adresse: nichts markiert, kein Ring', () => {
 		expect(weg(kopfleiste('/anmelden', {}, {}))).toEqual(['Anmelden']);
 		const k = kopfleiste(null, {}, {});

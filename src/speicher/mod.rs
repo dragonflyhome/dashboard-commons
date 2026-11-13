@@ -228,6 +228,14 @@ impl Speicher {
         meta_aus(&txn, schluessel)
     }
 
+    /// Merkt, dass die Oberfläche „Neu in `version`“ gezeigt hat. Ohne
+    /// Ereignis: Nur die Meldung „Neu in …“ hängt daran, und die fragt beim Laden.
+    pub fn neu_in_gezeigt(&self, version: &str) -> Result<(), SpeicherFehler> {
+        let txn = self.db.begin_write()?;
+        txn.open_table(META)?.insert(tabellen::META_NEU_IN_GEZEIGT, version)?;
+        self.festschreiben(txn, &[])
+    }
+
     /// Schema-Fassung der Datei (0, wenn noch keine eingetragen ist).
     pub fn schema(&self) -> Result<u32, SpeicherFehler> {
         Ok(migration::schema_lesen(&*self.db)?.unwrap_or(0))

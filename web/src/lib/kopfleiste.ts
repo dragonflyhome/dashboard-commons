@@ -60,6 +60,7 @@ const NAMEN: Record<string, string> = {
 	pc: 'PC',
 	anmelden: 'Anmelden',
 	katalog: 'Katalog',
+	fassungen: 'Fassungen',
 	...Object.fromEntries(SEITEN.map((s) => [s.schluessel, s.label]))
 };
 

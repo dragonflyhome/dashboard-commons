@@ -16,7 +16,8 @@
 //! mehrere Inhaltsquellen (`DASHBOARD_PROJECTS_DIR` als Liste, Etappe 4b) in `quellen.rs`,
 //! Ereignisse mit Bereich (Datenspeicher, PC-Benutzerdaten, docs/; Live-Lücken) in `aenderungen.rs`,
 //! das Verbergen von Profilpfad und Benutzername in allem, was hinausgeht, in `datenschutz.rs`,
-//! der Stop-Hook der Chats (`dashboard herzschlag`) in `herzschlag/`.
+//! der Stop-Hook der Chats (`dashboard herzschlag`) in `herzschlag/`,
+//! die Fassungen aus dem beim Bau eingebetteten Changelog in `fassungen.rs`.
 //!
 //! Für eine Zusammenbau-Kiste genügen [`starten`] und [`eintrag`]:
 //! `std::process::exit(dashboard::starten(vec![dashboard::eintrag(projekt_x::X)]))`.
@@ -34,6 +35,7 @@ pub mod baustand;
 pub mod bote;
 pub mod datenschutz;
 pub mod dienst;
+pub mod fassungen;
 pub mod fehler;
 #[cfg(test)]
 mod frei_test;

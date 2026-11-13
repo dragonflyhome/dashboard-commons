@@ -20,6 +20,16 @@ modus: "dienst" | "konsole" | "umgebung",
  */
 version: string, 
 /**
+ * Datum dieser Fassung aus dem eingebetteten Changelog (`JJJJ-MM-TT`);
+ * `null`, wenn das Changelog sie nicht nennt.
+ */
+version_datum: string | null, 
+/**
+ * `true`, wenn Unreleased im eingebetteten Changelog Einträge hat: Es
+ * läuft ein Bau zwischen zwei Fassungen.
+ */
+unveroeffentlicht: boolean, 
+/**
  * Commit, wenn beim Bauen `DASHBOARD_COMMIT` gesetzt war; sonst `null`.
  */
 commit: string | null, 

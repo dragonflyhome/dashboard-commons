@@ -32,9 +32,9 @@ pub fn mime_for(path: &std::path::Path) -> &'static str {
 /// Übersicht). Muss zu `web/src/routes` passen; der Test
 /// `jede_route_der_oberflaeche_ist_eine_seite` prüft das.
 /// Seit Etappe 4d dazu die System-Seiten anleitung, zielbild und entscheidungen
-/// (ihre Unteradressen sind 404).
+/// (ihre Unteradressen sind 404), seit der Freigabe in einem Schritt fassungen.
 pub const SEITEN: &[&str] =
-    &["", "anstehend", "pc", "schluessel", "hallo", "vorgaenge", "daten", "anmelden", "katalog", "anleitung", "zielbild", "entscheidungen"];
+    &["", "anstehend", "pc", "schluessel", "hallo", "vorgaenge", "daten", "anmelden", "katalog", "anleitung", "zielbild", "entscheidungen", "fassungen"];
 
 /// Die Unterseiten von `/katalog` (Adresse nach `katalog/`). Etappe 3b-2
 /// (Auflage aus der Abnahme 3b): Vorher galt unter `/katalog/…` jede Adresse

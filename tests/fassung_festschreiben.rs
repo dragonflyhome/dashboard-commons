@@ -147,6 +147,8 @@ fn changelog_zaehlregel() {
             "sie zählt nur bei reiner Pflege (kein feat, fix, perf oder !), ausgelöst von „perf: schneller“",
         ),
         ("docs: x", "Hinzugefügt\n- Pflege ohne sichtbare Änderung.\n", "Unreleased in CHANGELOG.txt ist leer"),
+        ("fix: Lücke zu", "Behoben\n- Lücke.\n\nSicherheit\n- Lücke.\n", "hat den Unterabschnitt „Sicherheit“; es gibt nur"),
+        ("feat: alt", "Hinzugefügt\n- Neu.\n\nVeraltet\n- Alt.\n", "hat den Unterabschnitt „Veraltet“; es gibt nur"),
     ] {
         let o = Ort::neu();
         o.changelog(unreleased);

@@ -4,6 +4,7 @@ import type {
 	ArchivListe,
 	DatenBericht,
 	EntscheidungsListe,
+	FassungenAntwort,
 	KeyList,
 	PcBenutzer,
 	PcReport,
@@ -196,7 +197,9 @@ export const api = {
 	/** System-Seite /zielbild (Etappe 4d): docs/zielbild/*.toml; leer, solange nichts da ist. */
 	zielbild: (f?: typeof fetch) => getJson<ZielbildAntwort>(`${API}/zielbild`, f),
 	/** System-Seite /anleitung (Etappe 6b): docs/anleitung/*.toml im Code-Repo, geschützt. */
-	anleitung: (f?: typeof fetch) => getJson<AnleitungAntwort>(`${API}/anleitung`, f)
+	anleitung: (f?: typeof fetch) => getJson<AnleitungAntwort>(`${API}/anleitung`, f),
+	/** Seite /fassungen: die Fassungen aus dem eingebetteten Changelog, frei. */
+	fassungen: (f?: typeof fetch) => getJson<FassungenAntwort>(`${API}/fassungen`, f)
 };
 
 /**

@@ -22,6 +22,8 @@
 	import Schloss from '#lib/components/Schloss.svelte';
 	import ThemaSchalter from '#lib/components/ThemaSchalter.svelte';
 	import FassungWache from '#lib/components/FassungWache.svelte';
+	import FassungFuss from '#lib/components/FassungFuss.svelte';
+	import NeuIn from '#lib/components/NeuIn.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
@@ -179,6 +181,8 @@
 	</div>
 	<!-- tabindex -1: Fokusziel (etwa nach „gelesen“, wenn nichts mehr dasteht). -->
 	<main id="inhalt" tabindex="-1">
+		<!-- Einmal nach einer neuen Fassung: was sie bringt (Freigabe in einem Schritt). -->
+		<NeuIn />
 		{@render children()}
 	</main>
 </div>
@@ -187,6 +191,8 @@
 	<!-- Etappe 3b: Thema je Browser (System, Hell, Dunkel), hier unten statt in der Kopfleiste. -->
 	<ThemaSchalter />
 	<p>Dein Dashboard läuft nur hier auf diesem PC.</p>
+	<!-- Die laufende Fassung, Link auf den Änderungsverlauf. -->
+	<FassungFuss />
 </footer>
 
 <!-- Neue Fassung nach einem Bau: Hinweis am Live-Punkt, lädt nach 30 s von selbst (Etappe 4b, Wunsch). -->

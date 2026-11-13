@@ -126,11 +126,14 @@ try {
     $u = UnreleasedZeile $zeilen
     if ($u -lt 0) { Write-Host 'Abbruch: CHANGELOG.txt hat keinen Abschnitt Unreleased (Zeile Unreleased, darunter ----------). Es wurde nichts geändert.'; exit 1 }
     $eintraege = @()
+    $fremd = @()
     $unter = ''
     for ($i = $u + 2; $i -lt $zeilen.Count; $i++) {
         if ($i + 1 -lt $zeilen.Count -and $zeilen[$i].Trim() -and $zeilen[$i + 1].TrimEnd() -match '^-{3,}$') { break }
         $z = $zeilen[$i].TrimEnd()
-        if (@('Hinzugefügt', 'Geändert', 'Veraltet', 'Entfernt', 'Behoben', 'Sicherheit') -ccontains $z) { $unter = $z; continue }
+        if (@('Hinzugefügt', 'Geändert', 'Entfernt', 'Behoben') -ccontains $z) { $unter = $z; continue }
+        # Der Dienst (src/fassungen.rs) liest nur diese vier; Veraltet und Sicherheit fielen dort heraus.
+        if (@('Veraltet', 'Sicherheit') -ccontains $z) { $fremd += $z; $unter = $z; continue }
         if ($z.StartsWith('- ')) { $eintraege += [pscustomobject]@{ Unter = $unter; Text = $z } }
     }
     # Die Pflege-Zeile zählt nur bei reiner Pflege und nur unter Geändert.
@@ -138,6 +141,7 @@ try {
     $eintraege = @($eintraege | Where-Object { $_.Text -cne $PFLEGE -or (-not $sichtbar.Count -and $_.Unter -ceq 'Geändert') })
     $funde = @()
     $liste = { param($c) ($c | ForEach-Object { '„' + $_ + '“' }) -join ', ' }
+    if ($fremd.Count) { $funde += "Unreleased in CHANGELOG.txt hat den Unterabschnitt $(& $liste $fremd); es gibt nur Hinzugefügt, Geändert, Entfernt und Behoben." }
     if ($eintraege.Count -eq 0 -and $mitPflegeZeile -and $sichtbar.Count) {
         $funde += 'Unreleased in CHANGELOG.txt hat nur die Zeile „' + $PFLEGE + '“; sie zählt nur bei reiner Pflege (kein feat, fix, perf oder !), ausgelöst von ' + (& $liste $sichtbar) + '.'
     } elseif ($eintraege.Count -eq 0) { $funde += 'Unreleased in CHANGELOG.txt ist leer (bei reiner Pflege genügt unter Geändert die eine Zeile „- Pflege ohne sichtbare Änderung.“).' }

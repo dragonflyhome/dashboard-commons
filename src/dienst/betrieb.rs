@@ -48,9 +48,12 @@ pub async fn bericht(state: &AppState, voll: bool) -> Betrieb {
     let s2 = state.clone();
     let ((fassung, fassung_gebaut), ordner) =
         tokio::task::spawn_blocking(move || (fassung_stand(&s2), ordner_stand(&s2))).await.unwrap_or_else(|_| (("build".to_string(), None), Vec::new()));
+    let (version_datum, unveroeffentlicht) = crate::fassungen::betrieb_angaben();
     Betrieb {
         modus: state.lauf.modus.wort().to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: crate::fassungen::LAUFEND.to_string(),
+        version_datum,
+        unveroeffentlicht,
         // Zur Bauzeit gesetzt (`DASHBOARD_COMMIT`), sonst null.
         commit: option_env!("DASHBOARD_COMMIT").filter(|c| !c.is_empty()).map(String::from),
         gestartet: state.lauf.gestartet.to_rfc3339(),

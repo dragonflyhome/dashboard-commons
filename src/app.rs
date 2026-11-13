@@ -2012,6 +2012,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(v["modus"], "umgebung");
         assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
+        // Freigabe in einem Schritt: Datum und Unreleased aus dem eingebetteten Changelog.
+        let (datum, offen) = crate::fassungen::betrieb_angaben();
+        assert!(datum.is_some(), "die laufende Version steht im Changelog");
+        assert_eq!((v["version_datum"].as_str(), v["unveroeffentlicht"].as_bool()), (datum.as_deref(), Some(offen)), "{body}");
         assert_eq!(v["einstellungen"], serde_json::Value::Null);
         assert_eq!(v["bote"], "nicht vorgesehen");
         assert_eq!(v["bote_seit"], serde_json::Value::Null);

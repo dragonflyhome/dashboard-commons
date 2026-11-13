@@ -319,7 +319,7 @@ pub fn pfad_dekodiert(roh: &str) -> Option<String> {
 /// Etappe B3 auch `/api/projekte/<slug>/daten/fristen` und `/api/fristen`, seit
 /// Etappe B8 `/api/projekte/<slug>/plan` und `/api/projekte/<slug>/verlauf`.
 pub fn geschuetzt(pfad: &str) -> bool {
-    const WURZELN: [&str; 24] = [
+    const WURZELN: [&str; 25] = [
         "/schluessel",
         "/api/schluessel",
         "/vorgaenge",
@@ -358,6 +358,8 @@ pub fn geschuetzt(pfad: &str) -> bool {
         "/api/fristen",
         // Herzschlag: welcher Chat zu einer Sitzung gehört und was ihn aufhält.
         "/api/sitzungen",
+        // „Neu in …“: liest und schreibt den Datenspeicher; /api/fassungen selbst bleibt frei.
+        "/api/fassungen/gezeigt",
     ];
     let pfad = pfad.to_ascii_lowercase();
     // Kopfleiste, Fassung 2: der freie Kanal, genau dieser Pfad (nichts darunter, kein

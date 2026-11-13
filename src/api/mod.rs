@@ -19,6 +19,7 @@ pub mod aufgaben;
 pub mod bauen;
 pub mod daten;
 pub mod events;
+pub mod fassungen;
 pub mod frei;
 pub mod meldungen;
 pub mod neue_form;
@@ -63,6 +64,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/zielbild", get(system_seiten::zielbild))
         // Etappe 6b: /anleitung aus docs/anleitung im Code-Repo, geschützt wie /api/zielbild.
         .route("/api/anleitung", get(system_seiten::anleitung))
+        // Freigabe in einem Schritt: die Fassungen aus dem eingebetteten Changelog (frei).
+        .route("/api/fassungen", get(fassungen::liste))
+        // „Neu in …“ (geschützt): ob die Oberfläche die laufende Fassung schon gezeigt hat.
+        .route("/api/fassungen/gezeigt", get(fassungen::neu_in).post(fassungen::gezeigt))
         .route("/api/pc", get(pc::bericht))
         .route("/api/pc/benutzer", get(pc::benutzer))
         .route("/api/pc/verlauf", get(pc::verlauf))

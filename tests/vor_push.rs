@@ -349,7 +349,8 @@ fn fassung(t: &str) -> Option<[u64; 3]> {
 /// Teil 4 (Versionsregel 0.x, Anleitung „5. Committen“): eine Version in
 /// Cargo.toml, Cargo.lock, web/package.json und web/package-lock.json, erste Zahl
 /// 0; CHANGELOG.txt beginnt mit Unreleased, danach „x.y.z - JJJJ-MM-TT“
-/// absteigend, die oberste genau die Cargo-Version (vor der ersten Fassung keine).
+/// absteigend, die oberste genau die Cargo-Version. Das Changelog liest der
+/// Leser des Dienstes (`dashboard::fassungen::lesen`), jeder Hinweis ist ein Fehler.
 #[test]
 fn versionen_gleich_und_changelog_geordnet() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -383,31 +384,12 @@ fn versionen_gleich_und_changelog_geordnet() {
         fehler.push(format!("Cargo.lock: Eintrag {} nicht mit Version {cargo}; cargo check schreibt ihn nach", env!("CARGO_PKG_NAME")));
     }
 
-    // Überschrift ist jede Zeile, unter der nur Striche stehen (wie unter Unreleased).
-    let text = lesen("CHANGELOG.txt");
-    let zeilen: Vec<&str> = text.trim_start_matches('\u{feff}').lines().collect();
-    let titel: Vec<&str> =
-        zeilen.windows(2).filter(|w| !w[0].trim().is_empty() && w[1].len() >= 3 && w[1].bytes().all(|b| b == b'-')).map(|w| w[0].trim_end()).collect();
-    if titel.first() != Some(&"Unreleased") {
-        fehler.push("CHANGELOG.txt: der erste Abschnitt nach dem Kopf muss Unreleased sein (Zeile Unreleased, darunter ----------)".into());
-    }
-    let mut vorige: Option<[u64; 3]> = None;
-    for t in titel.iter().skip(1) {
-        let v = t.split_once(" - ").and_then(|(v, d)| {
-            let datum = d.len() == 10 && chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok();
-            fassung(v).filter(|_| datum)
-        });
-        let Some(v) = v else {
-            fehler.push(format!("CHANGELOG.txt: Überschrift „{t}“ nicht in der Form x.y.z - JJJJ-MM-TT (etwa 0.2.0 - 2026-11-20)"));
-            continue;
-        };
-        if vorige.is_none() && Some(v) != soll {
-            fehler.push(format!("CHANGELOG.txt: oberste Fassung {t}, Cargo.toml hat {cargo}; Fassung und Version im selben Commit setzen"));
-        }
-        if vorige.is_some_and(|w| v >= w) {
-            fehler.push(format!("CHANGELOG.txt: „{t}“ steht nicht absteigend; neueste Fassung oben"));
-        }
-        vorige = Some(v);
+    // Derselbe Leser wie im Dienst: Unreleased zuerst, Form der Überschriften,
+    // absteigend, nur die vier Unterabschnitte; jeder Hinweis ist ein Fehler.
+    let a = dashboard::fassungen::lesen(&lesen("CHANGELOG.txt"), cargo);
+    fehler.extend(a.hinweise.iter().map(|h| format!("CHANGELOG.txt: {h}")));
+    if let Some(oben) = a.fassungen.first().filter(|f| f.version != cargo) {
+        fehler.push(format!("CHANGELOG.txt: oberste Fassung {}, Cargo.toml hat {cargo}; Fassung und Version im selben Commit setzen", oben.version));
     }
     assert!(fehler.is_empty(), "Versionsregel 0.x:\n{}", fehler.join("\n"));
 }
