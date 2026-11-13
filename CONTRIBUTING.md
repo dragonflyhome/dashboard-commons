@@ -34,6 +34,14 @@ In diesem Repo gilt „Merge-Only“:
 - Kein Squash, kein Rebase durch die Betreuer, kein Force-Push.
 - Die Geschichte deines Zweigs bleibt erhalten. Halte sie deshalb lesbar: wenige, in sich stimmige Commits.
 
+## Zweige mit mehreren Übernahmen
+
+Ein Zweig, aus dem die Betreuer mehrmals übernehmen, wächst nur nach vorn:
+
+- `main` holst du nur per Merge herein, mit einer Meldung nach Conventional Commits, etwa `chore(merge): main nach <zweig>`.
+- Schon übernommene Commits schreibst du nie um: kein Rebase, kein Amend, kein Force-Push über sie. Bereinigen und unsigniert neu schreiben gilt nur für Commits, die noch nicht angeboten sind.
+- Jeder Commit und jeder Merge hat als Autor und Committer deine noreply-Adresse und keine Signatur. Commits und Merges über die Weboberfläche von GitHub, auch „Sync fork“, sind signiert und werden abgewiesen; hol `main` lokal herein.
+
 ## Was ein Beitrag einhalten muss
 
 Vor jedem Hochladen prüft ein Werkzeug die ganze Geschichte, die hinausgeht. Es weist den ganzen Stand ab, wenn ein einziger Commit eine dieser Regeln verletzt. Ein Beitrag wird darum erst angenommen, wenn der Zweig im Fork diese Prüfung besteht.
@@ -88,7 +96,7 @@ Ein Teil der Tests braucht Windows mit Git und PowerShell; fehlt etwas, überspr
 - `main` nachziehen per Merge ist in Ordnung, mit einer Meldung nach Conventional Commits (`git pull` und `git merge` ohne `-m` schreiben eine, die das Werkzeug abweist):
 
   ```
-  git merge --no-ff -m "chore(merge): main nachgezogen" upstream/main
+  git merge --no-ff -m "chore(merge): main nach <zweig>" upstream/main
   ```
 
 - Ein Test, der ohne die Änderung scheitert und mit ihr besteht, ist der beste Beleg.

@@ -430,6 +430,14 @@ fn benutzerpfade_in_allen_schreibformen() {
         "C:%2FU§sers%2Frealname",
         r"c:\u§sers\REALNAME",
         r"C:\U§sers\REALNA§~1\dev",
+        // macOS und Linux, auch als URL und kodiert.
+        "/U§sers/realname/dev",
+        "/h§ome/realname/.ssh",
+        "file:///U§sers/realname/dev",
+        "file:///h§ome/realname",
+        "%2FU§sers%2Frealname",
+        "%2Fh§ome%2Frealname",
+        "\"/U§sers/REALNAME\"",
     ]
     .iter()
     .enumerate()
@@ -439,6 +447,13 @@ fn benutzerpfade_in_allen_schreibformen() {
             o.commit("Pfad", &[]);
         });
     }
+    // Platzhalter gehen durch wie bei Windows; Systemorte ohne Heimatordner auch.
+    let o = Ort::neu();
+    o.ueber_merge(|o| {
+        o.datei("src/posix.rs", "// /U§sers/<name>/dev, /h§ome/jemand, /h§ome/$USER, file:///U§sers/name, /usr/bin/git, /var/lib/x\n".as_bytes())
+    });
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 0, "Platzhalter in POSIX-Form: {text}");
     // UTF-16 (wie PowerShell es leicht schreibt) ist kein UTF-8, keine zweite Lesart.
     abgewiesen("UTF-16", "scripts/notiz.txt, Zeile 1: kein UTF-8", |o| {
         let mut b = vec![0xFF, 0xFE];

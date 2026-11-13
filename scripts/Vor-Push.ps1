@@ -119,7 +119,8 @@
                  oder Stelle, nie dem Inhalt. Es gibt keine zweite Lesart.
       Text       Benutzerpfade in allen
                  Schreibformen (\, \\, /, /c/Users, /mnt/c/Users (WSL),
-                 /cygdrive/c/Users, \\rechner\c$\Users, file:///, %5C, %2F,
+                 /cygdrive/c/Users, \\rechner\c$\Users, /Users/<name> (macOS),
+                 /home/<name> (Linux), file:///, %5C, %2F,
                  auch doppelt kodiert und c%3A, 8.3-Kurznamen); der
                  Benutzername auch ohne Pfad (Liste benutzer); E-Mail-Adressen außer ranke2@proton.me
                  und erfundenen (.invalid, .example,
@@ -632,8 +633,10 @@ $muster = [ordered]@{
     'Benutzerpfad'                       = Rx ('(?<![a-z0-9])[a-z](?::|\$|%3a)(?:\\\\|\\|/)+[u]sers(?:\\\\|\\|/)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # /c/Users/<name>/… (Git Bash), auch /mnt/c/Users/<name>/… (WSL) und /cygdrive/c/Users/<name>/… (Cygwin).
     'Benutzerpfad (Git-Bash-Form)'       = Rx ('(?<![a-z0-9])(?:/mnt|/cygdrive)?/[a-z]/[u]sers/(?!' + $platzhalter + ')[^/\s"''<>*|:]+')
+    # /Users/<name>/… (macOS) und /home/<name>/… (Linux), auch file:///Users/<name>; nicht nach Laufwerk oder Buchstabe (das sind die Formen oben).
+    'Benutzerpfad (macOS/Linux)'         = Rx ('(?<![a-z0-9.:$~_-])/(?:[u]sers|[h]ome)/(?!' + $platzhalter + ')[^/\s"''<>*|:]+')
     # Der Name ganz (bis zum nächsten %, Trenner oder Leerraum), damit Maskiert ihn ganz ersetzt.
-    'Benutzerpfad (URL-kodiert)'         = Rx ('users(?:%5c|%2f|%255c|%252f)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:%]+')
+    'Benutzerpfad (URL-kodiert)'         = Rx ('(?:users|(?:(?<![a-z0-9])|(?<=%2f|%5c|%252f|%255c))home)(?:%5c|%2f|%255c|%252f)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:%]+')
     # Ausnahme: PROGRA~1 ist der Kurzname von Program Files, kein Konto.
     'Benutzerpfad (8.3-Kurzname)'        = Rx '(?:\\|/)(?!progra~)[a-z0-9]{1,6}~[0-9](?:\\|/|$)'
     'E-Mail-Adresse'                     = Rx '[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}'
