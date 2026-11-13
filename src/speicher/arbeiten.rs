@@ -386,9 +386,16 @@ impl Speicher {
             if frei { a.verlauf.push(eintrag) } else { verlauf_anhaengen(&mut a, eintrag)? }
         } else if a.stand == ArbeitsStand::Wartet && a.wartet_auf != altes_warten {
             // Wartet jetzt auf jemand anderen: neuer Beginn des Wartens (`anstehend::wartet_seit`).
-            let text = format!("Wartet jetzt auf {}.", a.wartet_auf.as_deref().unwrap_or_default());
-            let eintrag = ArbeitVerlauf { text, ..stand_verlauf(&a.geaendert, von, a.stand, a.stand) };
-            verlauf_anhaengen(&mut a, eintrag)?;
+            // Nur für die Ampel: bei vollem Verlauf entfällt der Eintrag, die Änderung geht durch.
+            let wer = match a.wartet_auf.as_deref().unwrap_or_default() {
+                "inhaber" => "den Inhaber".to_string(),
+                "extern" => "jemand anderen".to_string(),
+                w => w.strip_prefix("chat:").map_or_else(|| w.to_string(), |c| format!("Chat {c}")),
+            };
+            let eintrag = ArbeitVerlauf { text: format!("Wartet jetzt auf {wer}."), ..stand_verlauf(&a.geaendert, von, a.stand, a.stand) };
+            if a.verlauf.len() < VERLAUF_HOECHSTENS {
+                a.verlauf.push(eintrag);
+            }
         }
         if a.besitzer.is_none() && a.schritte.is_empty() && braucht_besitzer(a.stand) {
             a.besitzer = Some(von.clone());
@@ -638,7 +645,23 @@ mod tests {
         let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &warten("inhaber"), &zeit(30, 10)).unwrap() else { panic!() };
         let v = x.verlauf.last().unwrap();
         assert_eq!((v.art, v.alt.as_str(), v.neu.as_str(), v.zeit.as_str()), (ArbeitVerlaufArt::Stand, "wartet", "wartet", "2026-10-30T10:00:00+01:00"));
-        assert_eq!(v.text, "Wartet jetzt auf inhaber.");
+        assert_eq!(v.text, "Wartet jetzt auf den Inhaber.");
+    }
+
+    /// Bei vollem Verlauf geht ein Wechsel von `wartet_auf` trotzdem durch;
+    /// nur der Eintrag für die Ampel entfällt.
+    #[test]
+    fn wartet_auf_wechsel_bei_vollem_verlauf() {
+        let s = Speicher::temporaer();
+        let a = s.arbeit_anlegen(neu("dashboard", "voll", ArbeitsStand::Laeuft), &zeit(29, 10)).unwrap();
+        let warten = |w: &str| ArbeitAenderung { stand: Some(ArbeitsStand::Wartet), wartet_auf: Some(Some(w.into())), ..von_dash() };
+        let Fortschreiben::Geaendert(mut voll) = s.arbeit_fortschreiben(&a.id, &warten("extern"), &zeit(29, 11)).unwrap() else { panic!() };
+        voll.verlauf = vec![titel_verlauf("2026-10-29T10:00:00+01:00", "chat:dashboard".into(), "a", "b"); VERLAUF_HOECHSTENS];
+        let txn = s.db.begin_write().unwrap();
+        txn.open_table(ARBEITEN).unwrap().insert(a.id.as_str(), serde_json::to_vec(&voll).unwrap().as_slice()).unwrap();
+        txn.commit().unwrap();
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&a.id, &warten("chat:hallo"), &zeit(29, 12)).unwrap() else { panic!() };
+        assert_eq!((x.wartet_auf.as_deref(), x.verlauf.len()), (Some("chat:hallo"), VERLAUF_HOECHSTENS));
     }
 
     /// Etappe B8: Die Etappe setzt nur, wer die Arbeit verantwortet: mit

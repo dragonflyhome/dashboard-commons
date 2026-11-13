@@ -84,7 +84,7 @@ fn plan_arbeit(a: &Arbeit, archiviert: bool, slug: &str, z: &Zeiten) -> PlanArbe
     }
 }
 
-fn etappe_rechnen<'a>(e: &Etappe, arbeiten: &[(&'a Arbeit, bool)], slug: &str) -> PlanEtappe {
+fn etappe_rechnen(e: &Etappe, arbeiten: &[(&Arbeit, bool)], slug: &str) -> PlanEtappe {
     let zeiten: Vec<Zeiten> = arbeiten.iter().map(|(a, _)| zeiten(a)).collect();
     let gesamt = arbeiten.len() as u32;
     let fertig_n = arbeiten.iter().filter(|(a, _)| a.stand == ArbeitsStand::Fertig).count() as u32;
@@ -99,17 +99,17 @@ fn etappe_rechnen<'a>(e: &Etappe, arbeiten: &[(&'a Arbeit, bool)], slug: &str) -
     let ist_fertig = stand == EtappenStand::Fertig;
     let beginn = begonnen.as_deref().and_then(zeit);
     // Seit wann eine Arbeit zur Etappe gehört: der letzte Eintrag `etappe` dorthin, sonst `erstellt`.
-    // Begann sie selbst nicht nach der Etappe, ist sie nicht dazugekommen (später zugeordnet, lief schon).
+    // Dazugekommen ist sie erst nach dem Beginn und nach dem Tag der ersten Zuordnung: was an diesem
+    // Tag zugeordnet wurde, ist der Umfang (Umstellung des Bestands, auch Arbeit für Arbeit über die API).
+    // shortcut: am selben Tag später Angehängtes zählt nicht; aufrüsten, wenn das stört.
     let ziel = format!("{slug}/{}", e.kennung);
-    let zugeordnet = |a: &'a Arbeit| a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel).map_or(&a.erstellt, |v| &v.zeit);
-    let nach_beginn = |z: &String| beginn.is_some_and(|b| zeit(z).is_some_and(|t| t > b));
-    let spaeter: Vec<&String> = arbeiten
+    let zugeordnet: Vec<&String> = arbeiten
         .iter()
-        .zip(&zeiten)
-        .filter(|(_, z)| z.begonnen.as_ref().is_none_or(nach_beginn))
-        .map(|((a, _), _)| zugeordnet(a))
-        .filter(|z| nach_beginn(z))
+        .map(|(a, _)| a.verlauf.iter().rev().find(|v| v.art == ArbeitVerlaufArt::Etappe && v.neu == ziel).map_or(&a.erstellt, |v| &v.zeit))
         .collect();
+    let erster_tag = zugeordnet.iter().filter_map(|z| zeit(z)).min().map(|t| t.date_naive());
+    let spaeter: Vec<&String> =
+        zugeordnet.into_iter().filter(|z| zeit(z).is_some_and(|t| beginn.is_some_and(|b| t > b) && erster_tag.is_some_and(|d| t.date_naive() > d))).collect();
     let dazugekommen = spaeter.len() as u32;
     PlanEtappe {
         kennung: e.kennung.clone(),
@@ -324,5 +324,26 @@ mod tests {
         let p = plan("p", Some(&datei(PLAN)), &[(lauf, false)]);
         let eins = &p.etappen[0];
         assert_eq!((eins.begonnen.clone(), eins.dazugekommen, eins.gewachsen_seit.clone()), (Some(t(5, 9)), 0, None));
+    }
+
+    /// Umstellung mit mehreren Arbeiten, Arbeit für Arbeit am selben Tag
+    /// zugeordnet: nichts ist dazugekommen. Eine am nächsten Tag angehängte zählt.
+    #[test]
+    fn umstellung_mehrerer_arbeiten_ist_nicht_gewachsen() {
+        let zugeordnet = |id: &str, stand, erstellt: String, um: String| {
+            let mut a = arbeit(id, "p", stand, Some("p/eins"), erstellt, um.clone());
+            a.verlauf.push(eintrag(ArbeitVerlaufArt::Etappe, um, "", "p/eins"));
+            a
+        };
+        let a = zugeordnet("ar-20261105-0001", ArbeitsStand::Laeuft, t(5, 9), t(14, 9));
+        let b = zugeordnet("ar-20261101-0001", ArbeitsStand::Laeuft, t(1, 9), t(14, 10));
+        let c = zugeordnet("ar-20261103-0001", ArbeitsStand::AlsNaechstes, t(3, 9), t(14, 11));
+        let alle = vec![(a, false), (b, false), (c, false)];
+        let eins = &plan("p", Some(&datei(PLAN)), &alle).etappen[0];
+        assert_eq!((eins.begonnen.clone(), eins.dazugekommen, eins.gewachsen_seit.clone()), (Some(t(1, 9)), 0, None));
+        let mut mit_neuer = alle;
+        mit_neuer.push((zugeordnet("ar-20261102-0001", ArbeitsStand::AlsNaechstes, t(2, 9), t(15, 9)), false));
+        let eins = &plan("p", Some(&datei(PLAN)), &mit_neuer).etappen[0];
+        assert_eq!((eins.dazugekommen, eins.gewachsen_seit.clone()), (1, Some(t(15, 9))));
     }
 }
