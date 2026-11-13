@@ -26,7 +26,8 @@ Hinzugefügt
   Herkunft in src/herzschlag/HERKUNFT.toml). Anleitung, Abschnitt 16.
 - API: GET /api/sitzungen/<id>/offen nennt den Chat einer Sitzung und
   seine offenen Schritte. scripts/Api.ps1 schickt die Sitzungskennung als
-  Kopfzeile X-Dashboard-Sitzung; der Dienst merkt sich die Zuordnung bei
+  Kopfzeile X-Dashboard-Sitzung, gelesen aus der Umgebungsvariable, die
+  DASHBOARD_SITZUNG_VARIABLE nennt (ohne sie keine Kennung); der Dienst merkt sich die Zuordnung bei
   jedem gelungenen, als Inhaber angemeldeten schreibenden Aufruf mit
   "von": "chat:<name>".
 

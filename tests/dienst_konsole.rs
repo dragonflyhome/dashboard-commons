@@ -245,12 +245,6 @@ const POWERSHELL: &str = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell
 /// HTTP-Status ('000' ohne Verbindung) und den Körper zurück.
 #[cfg(windows)]
 fn anfrage(url: &str, anmelden: bool, json: Option<&str>) -> (String, String) {
-    anfrage_mit_sitzung(url, anmelden, json, None)
-}
-
-/// Wie `anfrage`, mit der Kopfzeile der Sitzung (wie `scripts\Api.ps1`).
-#[cfg(windows)]
-fn anfrage_mit_sitzung(url: &str, anmelden: bool, json: Option<&str>, sitzung: Option<&str>) -> (String, String) {
     let skript = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Anfrage.ps1");
     let befehl = format!(
         "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); \
@@ -258,7 +252,6 @@ fn anfrage_mit_sitzung(url: &str, anmelden: bool, json: Option<&str>, sitzung: O
          $p = @{{ Url = $env:ANFRAGE_URL; Sekunden = 40 }}; \
          if ($env:ANFRAGE_JSON) {{ $p.Methode = 'POST'; $p.Json = $env:ANFRAGE_JSON }}; \
          if ($env:ANFRAGE_OHNE) {{ $p.OhneAnmeldung = $true }}; \
-         if ($env:ANFRAGE_SITZUNG) {{ $p.Sitzung = $env:ANFRAGE_SITZUNG }}; \
          $r = WindowsAnfrage @p; \
          [Console]::Out.Write($r.Text + \"`n\" + $r.Code)",
         skript.display()
@@ -267,11 +260,7 @@ fn anfrage_mit_sitzung(url: &str, anmelden: bool, json: Option<&str>, sitzung: O
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &befehl])
         .env("ANFRAGE_URL", url)
         .env_remove("ANFRAGE_JSON")
-        .env_remove("ANFRAGE_OHNE")
-        .env_remove("ANFRAGE_SITZUNG");
-    if let Some(s) = sitzung {
-        cmd.env("ANFRAGE_SITZUNG", s);
-    }
+        .env_remove("ANFRAGE_OHNE");
     if let Some(j) = json {
         cmd.env("ANFRAGE_JSON", j);
     }
@@ -282,6 +271,29 @@ fn anfrage_mit_sitzung(url: &str, anmelden: bool, json: Option<&str>, sitzung: O
     let text = String::from_utf8_lossy(&aus.stdout).to_string();
     let (koerper, status) = text.rsplit_once('\n').unwrap_or(("", &text));
     (status.trim().to_string(), format!("{koerper}{}", String::from_utf8_lossy(&aus.stderr)))
+}
+
+/// Neutraler Name der Variable mit der Sitzungskennung, nur für diese Probe.
+#[cfg(windows)]
+const PROBE_VARIABLE: &str = "DASHBOARD_PROBE_SITZUNGSKENNUNG";
+
+/// Ein POST wie ein Chat: `scripts\Api.ps1` mit `-Json` (Windows PowerShell 5.1).
+/// Die Kennung `kennung` steht immer in [`PROBE_VARIABLE`]; nur mit `benannt`
+/// zeigt DASHBOARD_SITZUNG_VARIABLE darauf. Gibt Exit-Code und Ausgabe zurück.
+#[cfg(windows)]
+fn wie_ein_chat(port: u16, weg: &str, json: &str, kennung: &str, benannt: bool) -> (Option<i32>, String) {
+    let skript = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Api.ps1");
+    let mut cmd = eigener_befehl(POWERSHELL);
+    cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&skript)
+        .args([weg, "-Json", json, "-Server", &format!("127.0.0.1:{port}"), "-Sekunden", "40"])
+        .env(PROBE_VARIABLE, kennung)
+        .env_remove("DASHBOARD_SITZUNG_VARIABLE");
+    if benannt {
+        cmd.env("DASHBOARD_SITZUNG_VARIABLE", PROBE_VARIABLE);
+    }
+    let aus = cmd.output().expect("powershell.exe startet");
+    (aus.status.code(), format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr)))
 }
 
 /// Windows-Anmeldung als Pflicht (7b), Ende zu Ende mit der echten
@@ -328,15 +340,22 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
     let dauer = geweckt.saturating_duration_since(angelegt);
     assert!(dauer < Duration::from_secs(2), "geweckt {dauer:?} nach dem Anlegen");
 
-    // Herzschlag: ein POST mit der Kopfzeile der Sitzung ordnet sie dem Chat zu;
-    // dashboard.exe herzschlag hält den Stop dieser Sitzung dann auf (Exit 2).
-    let (status, koerper) = anfrage_mit_sitzung(
-        &format!("{basis}/api/arbeiten"),
-        true,
-        Some(r#"{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Probe Herzschlag", "stand": "laeuft"}"#),
-        Some("s-konsole"),
-    );
-    assert_eq!(status, "201", "Arbeit anlegen: {koerper}");
+    // Herzschlag: Api.ps1 schickt die Kennung aus der Variable, die
+    // DASHBOARD_SITZUNG_VARIABLE nennt; ein POST damit ordnet die Sitzung dem Chat
+    // zu, und dashboard.exe herzschlag hält ihren Stop dann auf (Exit 2).
+    let arbeit = r#"{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Probe Herzschlag", "stand": "laeuft"}"#;
+    let zugeordnet = || {
+        let (status, koerper) = anfrage(&format!("{basis}/api/sitzungen/s-konsole/offen"), true, None);
+        assert_eq!(status, "200", "{koerper}");
+        serde_json::from_str::<serde_json::Value>(&koerper).unwrap()["von"].clone()
+    };
+    // Gegenprobe: dieselbe Kennung in der Variable, aber DASHBOARD_SITZUNG_VARIABLE fehlt.
+    let (code, aus) = wie_ein_chat(port, "api/arbeiten", arbeit, "s-konsole", false);
+    assert_eq!(code, Some(0), "Arbeit ohne Kennung anlegen: {aus}");
+    assert_eq!(zugeordnet(), serde_json::Value::Null, "ohne DASHBOARD_SITZUNG_VARIABLE keine Kopfzeile");
+    let (code, aus) = wie_ein_chat(port, "api/arbeiten", arbeit, "s-konsole", true);
+    assert_eq!(code, Some(0), "Arbeit mit Kennung anlegen: {aus}");
+    assert_eq!(zugeordnet(), serde_json::json!("chat:dashboard"), "mit DASHBOARD_SITZUNG_VARIABLE geht die Kopfzeile mit");
     let transkript = ort.ordner.join("transkript.jsonl");
     std::fs::write(&transkript, "{\"type\":\"user\",\"message\":{\"content\":\"frage\"}}\n").unwrap();
     let eingabe = serde_json::json!({"hook_event_name": "Stop", "session_id": "s-konsole", "transcript_path": transkript, "stop_hook_active": false});

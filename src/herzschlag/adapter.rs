@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) The Orchestration helpers authors (coraxloop/superloop-tools)
-// Geändert für dieses Repo; was und wie: src/herzschlag/HERKUNFT.toml.
+// Copyright (C) Orchestration helpers authors
+// Gegenüber der Quelle geändert (Repo und Commit in src/herzschlag/HERKUNFT.toml, was geändert ist
+// dort unter geaendert); Zeitpunkt und Inhalt jeder Änderung stehen in der Git-Geschichte dieser Datei.
 
 //! Die Seite zum Hook: liest die Eingabe eines Stops (JSON auf stdin), das
 //! Transkript (JSON Lines) und gibt das Urteil in der Form des Hooks zurück:

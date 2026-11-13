@@ -1,10 +1,15 @@
 # Herkunft der übernommenen Teile des Herzschlags (Stop-Hook `dashboard herzschlag`).
 # Die übernommenen und geänderten Dateien bleiben unter GPL-3.0-or-later
-# (Text: LICENSES/GPL-3.0-or-later.txt) und tragen Kopf und Urheberhinweis.
-# Die Dateien sind gegenüber der Quelle geändert; was geändert ist, steht je Datei unter geaendert.
+# (Text: LICENSES/GPL-3.0-or-later.txt); die .rs-Dateien tragen Kopf, Urheberhinweis
+# und den Hinweis auf die Änderung.
+# Die .rs-Dateien sind gegenüber der Quelle (quelle, commit) geändert; was geändert ist, steht je
+# Datei unter geaendert. Zeitpunkt und Inhalt jeder Änderung stehen in der Git-Geschichte der
+# jeweiligen Datei in diesem Repo.
 quelle = "https://github.com/coraxloop/superloop-tools"
 commit = "6b36ea4460d3d0dfcfe81d11d461bc4cd953bf21"
 lizenz = "GPL-3.0-or-later"
+# Wörtlich authors aus Cargo.toml der Quelle; LICENSE-CODE dort ist der GPL-Text ohne eigenen
+# Urheberhinweis, und die übernommenen Quelldateien tragen keinen Kopf.
 urheber = "Orchestration helpers authors"
 # <Hook-Paket> steht für das Paket des Stop-Hooks unter packages/ der Quelle
 # (das einzige mit src/heartbeat/); sein Name nennt einen Werkzeugnamen.
