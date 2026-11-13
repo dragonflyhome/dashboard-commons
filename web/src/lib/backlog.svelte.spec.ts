@@ -1,60 +1,104 @@
 /**
- * Etappe B2, Modul Backlog: der Baustein `Backlog` (Spalten nach Stand, Wer
- * ist dran), sein Rahmen auf jeder Projektseite (lädt, ohne Anmeldung
- * nichts), die Fragen-Warteschlange in `auswaehlen` und im Baustein `Fragen`.
- * Alle Daten erfunden.
+ * Etappe B2, Modul Backlog, seit B8 die Aufgabenliste der Projektseite: der
+ * Baustein `Backlog` (Gruppen untereinander, Zeilen mit Etappe, wer dran ist,
+ * Frist und Schritten), das Laden, die Fragen-Warteschlange in `auswaehlen`
+ * und im Baustein `Fragen`. Alle Daten erfunden.
  */
-import { cleanup, render, screen, waitFor, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { AnstehendEintrag, Backlog as BacklogDaten, Frage } from '$vertrag';
 import { Backlog, Fragen } from '$katalog';
-import BacklogRahmen from '#lib/components/projekt/BacklogRahmen.svelte';
 import FragenListe from '#lib/components/projekt/FragenListe.svelte';
 import { auswaehlen } from '#lib/anstehend.ts';
-import { eintrag } from '#lib/anstehend.beispiel.ts';
+import { eintrag, json } from '#lib/anstehend.beispiel.ts';
 import { ladeBacklog } from '#lib/backlog.ts';
-import { backlog, fragen, fragenAbgeleitet } from '../routes/katalog/beispiele.ts';
+import { etappenNamen } from '#lib/projektteile.ts';
+import { backlog, fragen, fragenAbgeleitet, projektPlan } from '../routes/katalog/beispiele.ts';
 
 afterEach(cleanup);
 
-function antwort(status: number, koerper: unknown): Response {
-	return new Response(JSON.stringify(koerper), {
-		status,
-		headers: { 'content-type': 'application/json' }
-	});
+function gruppen(): string[] {
+	return screen
+		.getAllByRole('heading', { level: 3 })
+		.map((h) => h.textContent.replace(/\s+/g, ' ').trim());
 }
 
-describe('Baustein Backlog', () => {
-	it('zeigt vier Spalten mit Zahl (Etappe B8: ohne Fertig), Karten als Links zum Eintrag und Wer ist dran', () => {
-		render(Backlog, { backlog: backlog() });
-		const spalten = screen
-			.getAllByRole('heading', { level: 3 })
-			.map((h) => h.textContent.replace(/\s+/g, ' ').trim());
-		expect(spalten).toEqual([
-			'Für dich 2',
-			'Läuft 1',
-			'Wartet 2',
-			'Als Nächstes 1',
-			'Wer ist dran'
+describe('Baustein Backlog als Aufgabenliste (Etappe B8)', () => {
+	it('vier Gruppen untereinander mit Zahl; Fragen und Aufgaben führen zu ihrem Eintrag', () => {
+		render(Backlog, { backlog: backlog(), etappen: etappenNamen(projektPlan()) });
+		expect(gruppen()).toEqual([
+			'Wartet auf dich (2)',
+			'Läuft (1)',
+			'Als Nächstes (1)',
+			'Wartet auf andere (2)'
 		]);
-		const fuerDich = screen.getByRole('region', { name: /Für dich/ });
-		const link = within(fuerDich).getByRole('link', { name: 'Beim Beispielportal anmelden' });
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		const link = within(dich).getByRole('link', { name: 'Beim Beispielportal anmelden' });
 		expect(link.getAttribute('href')).toMatch(/\/projects\/beispiel#aufgabe-a-20261103-0001$/);
-		// Die eine Frage mit dem Satz zu den übrigen, ohne deren Text.
-		expect(within(fuerDich).getByText('noch 1 Frage wartet')).toBeInTheDocument();
+		// Frist heute ist hervorgehoben (Farbe nur zusätzlich zum Wort „bis …“).
+		expect(within(dich).getByText(/^bis /)).toHaveClass('achtung');
+		expect(within(dich).getByText('noch 1 Frage wartet')).toBeInTheDocument();
 		expect(screen.queryByText('Wie soll die Unterseite heißen?')).toBeNull();
-		// Frist heute ist hervorgehoben.
-		expect(within(fuerDich).getByText(/^bis /)).toHaveClass('achtung');
-		// Wer ist dran: du, ein Chat, jemand draußen.
-		expect(screen.getByText('Wartet auf dich')).toBeInTheDocument();
-		expect(screen.getByText('Wartet auf den Chat „nachbar“')).toBeInTheDocument();
-		expect(screen.getByText('Wartet auf jemanden draußen')).toBeInTheDocument();
 		expect(screen.getByText(/eine steht oben; noch 1 Frage wartet/)).toBeInTheDocument();
-		// Keine Klick-Antworten im Backlog: geantwortet wird beim Eintrag.
+		// Wer dran ist, in Worten.
+		const andere = screen.getByRole('region', { name: /Wartet auf andere/ });
+		expect(within(andere).getByText('wartet auf Chat nachbar')).toBeInTheDocument();
+		expect(within(andere).getByText('wartet auf jemand anderen')).toBeInTheDocument();
+		// Keine Knöpfe: geantwortet wird beim Eintrag.
 		expect(screen.queryByRole('button')).toBeNull();
 	});
 
-	it('leer: ein Satz statt Spalten; ohne Datenspeicher ein Hinweis', () => {
+	it('eine Arbeit mit Schritten: Anker, Etappe, Kurzzeile, per Tastatur aufklappbar zu den Schritten', async () => {
+		render(Backlog, { backlog: backlog(), etappen: etappenNamen(projektPlan()) });
+		const zeile = document.getElementById('arbeit-ar-20261102-0001');
+		expect(zeile?.tagName).toBe('DETAILS');
+		expect(zeile).toHaveTextContent('Etappe: Einladung');
+		expect(zeile).toHaveTextContent('1 von 2 fertig · dran: Chat beispiel');
+		expect(zeile).not.toHaveAttribute('open');
+		const summary = zeile?.querySelector('summary');
+		if (!summary) throw new Error('keine Zeile');
+		await fireEvent.click(summary);
+		expect(zeile).toHaveAttribute('open');
+		const liste = screen.getByRole('list', { name: 'Schritte von „Rundmail entwerfen“' });
+		expect(within(liste).getAllByRole('listitem')).toHaveLength(2);
+		// Gegenprobe: eine Arbeit ohne Schritte ist eine einfache Zeile mit Anker, ohne Aufklappen.
+		const ohne = document.getElementById('arbeit-ar-20261102-0004');
+		expect(ohne?.tagName).toBe('DIV');
+	});
+
+	it('mit Kasten der Seite: „Wartet auf dich“ trägt ihn und die Zahl des Stands', () => {
+		const kasten = createRawSnippet(() => ({ render: () => '<p>Kasten der Seite</p>' }));
+		render(Backlog, { backlog: backlog(), fuerDich: kasten, fuerDichZahl: 3 });
+		expect(gruppen()[0]).toBe('Wartet auf dich (3)');
+		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
+		expect(within(dich).getByText('Kasten der Seite')).toBeInTheDocument();
+		// Frage und Aufgabe stehen dann nur im Kasten, nicht noch einmal als Zeile.
+		expect(within(dich).queryByRole('link')).toBeNull();
+		expect(screen.queryByText(/eine steht oben/)).toBeNull();
+	});
+
+	it('Als Nächstes zeigt fünf, der Rest klappt auf; leere Gruppen sagen es in einem Satz', () => {
+		const b: BacklogDaten = backlog();
+		const vorlage = b.spalten[3]?.karten[0];
+		if (!vorlage) throw new Error('Beispiel fehlt');
+		const naechstes = b.spalten[3];
+		if (naechstes)
+			naechstes.karten = Array.from({ length: 7 }, (_, i) => ({
+				...vorlage,
+				id: `ar-20261102-01${String(i)}`,
+				titel: `Schritt ${String(i + 1)}`
+			}));
+		const laeuft = b.spalten[1];
+		if (laeuft) laeuft.karten = [];
+		render(Backlog, { backlog: b });
+		const region = screen.getByRole('region', { name: /Als Nächstes/ });
+		expect(within(region).getByText('und 2 weitere')).toBeInTheDocument();
+		expect(within(region).getByText('Schritt 7').closest('details:not(.zeile)')).not.toBeNull();
+		expect(screen.getByText('Gerade läuft nichts.')).toBeInTheDocument();
+	});
+
+	it('ohne Datenspeicher ein Hinweis', () => {
 		const b: BacklogDaten = {
 			...backlog(),
 			spalten: backlog().spalten.map((s) => ({ ...s, karten: [] })),
@@ -63,31 +107,16 @@ describe('Baustein Backlog', () => {
 			speicher_fehlt: true
 		};
 		render(Backlog, { backlog: b });
-		expect(screen.getByText(/Nichts offen/)).toBeInTheDocument();
 		expect(screen.getByText(/Der Datenspeicher fehlt gerade/)).toBeInTheDocument();
-		expect(screen.queryByText('Wer ist dran')).toBeNull();
-	});
-});
-
-describe('BacklogRahmen auf jeder Projektseite', () => {
-	it('lädt /api/projekte/<slug>/backlog und zeigt den Abschnitt', async () => {
-		const fetchFn = vi.fn(() => Promise.resolve(antwort(200, backlog())));
-		render(BacklogRahmen, { slug: 'beispiel', fetchFn });
-		expect(await screen.findByRole('heading', { name: 'Backlog', level: 2 })).toBeInTheDocument();
-		expect(fetchFn).toHaveBeenCalledWith('/api/projekte/beispiel/backlog', expect.anything());
+		expect(screen.getByText('Nichts wartet auf dich.')).toBeInTheDocument();
 	});
 
-	it('ohne Anmeldung (401) oder ohne Projekt (404) fehlt der Abschnitt', async () => {
+	it('ladeBacklog: ohne Anmeldung, ohne Projekt oder bei Netzfehler null', async () => {
 		for (const status of [401, 404]) {
-			const fetchFn = vi.fn(() => Promise.resolve(antwort(status, { fehler: 'x' })));
-			const r = render(BacklogRahmen, { slug: 'beispiel', fetchFn });
-			await waitFor(() => {
-				expect(fetchFn).toHaveBeenCalled();
-			});
-			expect(screen.queryByRole('heading', { name: 'Backlog' })).toBeNull();
-			r.unmount();
+			expect(await ladeBacklog('beispiel', () => Promise.resolve(json({}, status)))).toBeNull();
 		}
 		expect(await ladeBacklog('beispiel', () => Promise.reject(new Error('Netz')))).toBeNull();
+		expect(await ladeBacklog('beispiel', () => Promise.resolve(json(backlog())))).not.toBeNull();
 	});
 });
 

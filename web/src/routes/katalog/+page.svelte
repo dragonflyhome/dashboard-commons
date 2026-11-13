@@ -554,7 +554,7 @@
 			<Beispiel
 				id="backlog"
 				name="Backlog"
-				beschreibung="Etappe B2: Aufgaben, Arbeiten und die eine sichtbare Frage nach Stand (Für dich, Läuft, Wartet, Als Nächstes, Fertig) und „Wer ist dran“ je Verantwortlichem, alles vom Server aus dem Datenspeicher. Steht von selbst auf jeder Projektseite; die Karten führen zum Eintrag, geantwortet wird dort."
+				beschreibung="Die Aufgabenliste der Projektseite: Aufgaben, Arbeiten und die eine sichtbare Frage in Gruppen untereinander (Wartet auf dich, Läuft, Als Nächstes, Wartet auf andere), je Arbeit eine Zeile mit Etappe, wer dran ist und Frist, aufklappbar zu den Schritten; alles vom Server aus dem Datenspeicher. Steht von selbst auf jeder Projektseite, dort mit Frage und Aufgaben zum Beantworten."
 				code={SCHNIPSEL.backlog}
 			>
 				<Backlog backlog={backlog()} />

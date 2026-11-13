@@ -61,6 +61,12 @@
 		 * Aufklappen (Startseite); ohne Angabe alle.
 		 */
 		hoechstens?: number;
+		/**
+		 * Ebene der Überschrift; 2 (Standard) als eigene Karte. Auf der
+		 * Projektseite (Etappe B8) steht der Kasten in der Gruppe „Wartet auf
+		 * dich“ der Aufgabenliste, dort mit 4 und ohne Karte.
+		 */
+		ebene?: 2 | 4;
 	}
 	let {
 		stand,
@@ -72,10 +78,13 @@
 		titel = 'Für dich',
 		mitProjekt = true,
 		leerVerbergen = false,
-		hoechstens = Infinity
+		hoechstens = Infinity,
+		ebene = 2
 	}: Props = $props();
 
 	const kennung = $props.id();
+	const h = $derived(`h${String(ebene)}`);
+	const hUnter = $derived(`h${String(ebene + 1)}`);
 	/** Je Aufgabe: ist „Etwas anderes …“ offen? Dann nimmt die Reihe der Knöpfe die ganze Breite. */
 	const breit = $state<Record<string, boolean>>({});
 	/** Mit eigenen Worten beantwortet: liegt beim Chat, wartet nicht auf dich. */
@@ -166,13 +175,18 @@
 {/snippet}
 
 {#if sichtbar}
-	<section class="card fuer-dich" id="aufgaben-fuer-dich" aria-labelledby="{kennung}-titel">
-		<h2 id="{kennung}-titel">
+	<section
+		class="fuer-dich"
+		class:card={ebene === 2}
+		id="aufgaben-fuer-dich"
+		aria-labelledby="{kennung}-titel"
+	>
+		<svelte:element this={h} id="{kennung}-titel">
 			{titel}
 			{#if stand === 'da' && fuerDich.length > 0}
 				<span class="count">{aufgabenZahlWort(fuerDich.length)}</span>
 			{/if}
-		</h2>
+		</svelte:element>
 		{#if stand === 'laedt'}
 			<p class="muted">Aufgaben werden geladen …</p>
 		{:else if stand !== 'da'}
@@ -207,7 +221,7 @@
 				{/if}
 			{/if}
 			{#if beimChat.length > 0}
-				<h3 class="beim-chat-titel">Beim Chat</h3>
+				<svelte:element this={hUnter} class="beim-chat-titel">Beim Chat</svelte:element>
 				<p class="muted small">
 					Hier hast du mit eigenen Worten geantwortet. Der Chat ist dran; die Aufgabe bleibt stehen,
 					bis er sie abschließt oder neu stellt.
