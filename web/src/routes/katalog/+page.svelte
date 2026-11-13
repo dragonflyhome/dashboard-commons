@@ -31,6 +31,7 @@
 		Liste,
 		Marke,
 		Orte,
+		Plan,
 		Klappfeld,
 		Menue,
 		Minilinie,
@@ -90,6 +91,8 @@
 		SCHNIPSEL,
 		ZEITRAUM,
 		backlog,
+		projektPlan,
+		projektPlanOhneDaten,
 		fragen,
 		fragenAbgeleitet,
 		fristenListe,
@@ -558,6 +561,27 @@
 				code={SCHNIPSEL.backlog}
 			>
 				<Backlog backlog={backlog()} />
+				<p class="muted small">Auf der Projektseite: „Wartet auf dich“ mit Frage und Aufgaben.</p>
+				<Backlog
+					backlog={{ ...backlog(), slug: 'beispiel-seite' }}
+					fuerDich={fuerDichBeispiel}
+					fuerDichZahl={2}
+				/>
+			</Beispiel>
+			{#snippet fuerDichBeispiel()}
+				<p class="muted small">Hier stehen die Frage mit Antwort und der Kasten der Aufgaben.</p>
+			{/snippet}
+			<Beispiel
+				id="plan"
+				name="Plan"
+				beschreibung="Etappe B8, der Plan der Projektseite: die Etappen aus daten/plan.toml mit Stand-Wort und „x von y Arbeiten fertig“, aufgeklappt Ziel und Arbeiten; darüber ein Zeitstreifen nur aus Ist-Daten (Bild, die Liste ist seine Textfassung). Stand, Zählung und Zeitpunkte rechnet der Server. Steht von selbst auf jeder Projektseite."
+				code={SCHNIPSEL.plan}
+			>
+				<Plan plan={projektPlan()} />
+				<p class="muted small">
+					Ohne Ist-Daten (kein Streifen), mit einer Arbeit ohne gültige Etappe:
+				</p>
+				<Plan plan={projektPlanOhneDaten()} />
 			</Beispiel>
 			<Beispiel
 				id="fristenliste"
@@ -821,6 +845,20 @@
 					<StandEntwurf form="zeile" stand={w.stand} />
 				</Entwurf>
 			</div>
+		</Beispiel>
+
+		<Beispiel
+			id="widget-stand-teil"
+			name="Stand (Teil der Projektseite)"
+			beschreibung="Etappe B8: der Stand oben auf jeder Projektseite. Ein Satz, vier Zahlen als Sprung zu ihrer Gruppe der Aufgabenliste, die Ampel des Servers als Wort mit Grund-Satz und Link; darunter klein Bau und Notizen. Ohne Ziel auf der Seite (etwa ohne Anmeldung) stehen Zahlen und Grund als Text."
+			code={SCHNIPSEL.standTeil}
+		>
+			<Stand
+				gesamt={w.stand.gesamt}
+				schwerpunkt={w.stand.schwerpunkt}
+				kurz={w.stand.kurz}
+				teil={{ slug: 'beispiel', fertig7: 3, springen: true }}
+			/>
 		</Beispiel>
 
 		<Beispiel

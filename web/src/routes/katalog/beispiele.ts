@@ -502,6 +502,19 @@ export function projektPlan(heute = new Date()): ProjektPlan {
 	};
 }
 
+/** Ein Plan ohne ein einziges Datum (kein Zeitstreifen), mit einer Arbeit ohne gültige Etappe. */
+export function projektPlanOhneDaten(): ProjektPlan {
+	const p = projektPlan();
+	return {
+		...p,
+		// Ohne Arbeiten: deren Anker stehen schon im ersten Plan des Katalogs.
+		etappen: p.etappen.map((e) => ({ ...e, begonnen: null, fertig: null, ab: null, arbeiten: [] })),
+		ohne_etappe: [
+			planArbeit('ar-20261105-0001', 'Plakat entwerfen', { etappe: 'beispiel/werbung' })
+		]
+	};
+}
+
 export function gantt(): Gantt {
 	return {
 		start: null,
@@ -794,6 +807,10 @@ einheit = "GB"              # „0,2 von 1,5 GB“`,
 	fragen: `<Fragen daten={ladeDaten<Fragen>(slug, 'fragen')} />
 <!-- Zeigt nur die eine sichtbare Frage der Warteschlange (Etappe B2), dahinter
      „noch N Fragen warten“. Reihenfolge: Stufe, dann Frist, dann die Datei. -->`,
+	plan: `<!-- Steht schon auf jeder Projektseite (nicht in Seite.svelte einbauen). -->
+<Plan plan={p} />   <!-- p: GET /api/projekte/<slug>/plan -->`,
+	standTeil: `<Stand gesamt={stand.gesamt} schwerpunkt={stand.schwerpunkt} kurz={stand.kurz}
+  teil={{ slug, fertig7: stand.fertig_7_tage, springen: true }} />`,
 	backlog: `<!-- Steht schon oben auf jeder Projektseite (nicht in Seite.svelte einbauen). -->
 <Backlog backlog={b} />   <!-- b: GET /api/projekte/<slug>/backlog -->`,
 	fristenliste: `<!-- In Seite.svelte; die Liste rechnet der Server aus daten/fristen.toml und den Aufgaben. -->
