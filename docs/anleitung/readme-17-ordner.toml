@@ -101,7 +101,10 @@ projects/           je Projekt ein Ordner; nach dem Umzug des Inhalts hier nur n
                     Projekte liegen in dashboard-inhalt/projects (Anleitung, Abschnitt 14)
 vorlagen/           dashboard-lokal: Vorlage der Zusammenbau-Kiste (Bibliothek plus geprüfte Rechenteile)
 scripts/            Inhalt-Umziehen.ps1 (Umzug des Inhalts), Vor-Push.ps1 und hooks/pre-push (Pre-Push-Prüfer), hooks/pre-commit (Format, clippy), hooks/commit-msg (Conventional Commits),
-                    Hochladen.ps1 (der einzige Weg nach draußen: main nach main), Inhalt-Orte.ps1 (die Orte
+                    Hochladen.ps1 (der einzige Weg nach draußen: main nach main), Freigeben.ps1 (gibt eine
+                    Fassung heraus: prüfen, festschreiben, Hochladen.ps1 mit main und Tag, Dienst),
+                    Fassung-Festschreiben.ps1 (Version und Changelog; festschreiben nur aus Freigeben.ps1),
+                    Inhalt-Orte.ps1 (die Orte
                     des Inhalts für den Umzug und das Einrichten),
                     Start-Dashboard.ps1, Schluessel-Lesen.ps1, Warten.ps1 (ein Chat wartet auf Vorgänge),
                     Vendor-Pruefen.ps1 und Vendor-Holen.ps1 (Toolkit-Kopie prüfen, neue Fassung zur Durchsicht holen),

@@ -6,10 +6,10 @@ Format folgt Keep a Changelog 1.1.0 (https://keepachangelog.com/de/1.1.0/),
 in Klartext statt Markdown; die Versionen folgen Semantic Versioning
 (https://semver.org/lang/de/), vorerst nur 0.x.
 
-Regel 0.x: Ein Bruch oder etwas Neues hebt die mittlere Zahl (0.2.0), eine
-reine Behebung die letzte (0.2.1); alte Formen fallen ohne Übergang weg. Jeder
-Bruch steht als eigene Zeile „- Bruch: …“ unter Geändert oder Entfernt. Eine
-Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
+Regel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere Zahl (0.2.0 wird
+0.3.0), alles andere die letzte (0.2.1); alte Formen fallen ohne Übergang weg.
+Jeder Bruch steht als eigene Zeile „- Bruch: …“ unter Geändert oder Entfernt.
+Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 
 Unreleased
 ----------
@@ -123,6 +123,30 @@ Hinzugefügt
   Stand-Wörter in summary; kanban.toml wie bisher. Die Abhilfe passt zum
   Fund: Kennzahlen bekommen stand oder berechnet, Zeitstrahl-Einträge ihre
   art; nur prozent und laufende Balken wandern in Arbeiten.
+- scripts/Fassung-Festschreiben.ps1 leitet die nächste Fassung aus den
+  Commits seit dem letzten Tag ab, prüft Unreleased nach der Zählregel (die
+  auslösenden Commits stehen im Abbruchsatz) und schreibt die Fassung lokal
+  fest: Commit chore(release) auf einem Zweig in einem vorübergehenden
+  Worktree, Merge-Commit auf main, leichter Tag. Festgeschrieben wird nur
+  der geprüfte Stand: Bewegt sich main oder wechselt der Arbeitsbaum den
+  Zweig, bricht es ab und nimmt alles zurück. -Pruefen sagt nur, welche
+  Fassung es würde. Festschreiben geht nur mit -Basis, also aus
+  Freigeben.ps1 nach allen Prüfungen. Hinaus geht nichts.
+- scripts/Freigeben.ps1 gibt eine Fassung in einem Aufruf heraus:
+  Vorbedingungen (git fetch, main, sauber, nur Fast-Forward), Version und
+  Changelog, alle Prüfungen (cargo fmt, clippy, cargo test, npm run
+  verify, pruefe --system, Prüfer), Festschreiben, Lock-Datei der
+  Zusammenbau-Kiste im Inhalt als eigener Commit, Hochladen von main und
+  Tag, Dienst.ps1 -Neustart (nur bei sauberem Arbeitsbaum auf dem Tag) und
+  die laufende Fassung aus /api/betrieb. Ein Tag, den es auf origin schon
+  gibt, wird vor jeder Wirkung abgewiesen, ebenso ein letzter Tag auf main,
+  der auf origin fehlt; -Inhalt gilt auch für die Hooks beim Push. Jeder
+  rote Schritt bricht vor jeder Wirkung nach außen ab; ein zweiter Aufruf
+  setzt nach dem Festschreiben wieder an, prüft erneut, solange main nicht
+  draußen ist, und seine Sätze nennen, was schon draußen ist. Hat sich
+  main seit den Prüfungen bewegt, geht nichts hinaus. -Pruefen sagt nur,
+  welche Fassung hinausginge, oder dass eine fertige Fassung auf das
+  Hochladen wartet.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
@@ -134,6 +158,10 @@ Geändert
 - Ein Wechsel des Stands zählt bei vollem Verlauf einer Arbeit gegen die
   Grenze von 500 Einträgen, auch Wiederöffnen aus fertig; auf fertig und
   das Abgeben aus laeuft oder wartet gehen weiterhin immer.
+- Versionsregel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere
+  Zahl, alles andere die letzte, auch reine Pflege (docs, chore, refactor
+  und andere). Eine Fassung nur aus Pflege trägt unter Geändert die eine
+  Zeile „- Pflege ohne sichtbare Änderung.“.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
 - Bruch: scripts/Hochladen.ps1 lädt refs/heads/main nach refs/heads/main
