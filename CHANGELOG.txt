@@ -15,6 +15,11 @@ Unreleased
 ----------
 
 Hinzugefügt
+- Öffentlicher PGP-Schlüssel der Betreuer (KONTAKT-PGP.asc, ohne
+  Ablaufdatum); Sicherheitslücken und andere vertrauliche Anliegen gehen
+  verschlüsselt per E-Mail statt als Issue. Der Prüfer lässt genau diese Datei
+  in der Wurzel zu und meldet einen privaten Schlüssel in jedem Text, jeder
+  Commit-Nachricht und jedem Stand der Geschichte.
 - Projekt-Repos dürfen einen Leitfaden CONTRIBUTING.md in der Wurzel haben;
   jede andere Markdown-Datei bleibt dort ein Fund.
 

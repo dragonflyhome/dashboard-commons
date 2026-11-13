@@ -49,4 +49,4 @@ Mit dem Angebot stellst du deinen Beitrag unter dieselbe Lizenz wie die Datei, d
 
 ## Sicherheitslücken
 
-Bitte beschreibe eine Sicherheitslücke nicht in einem öffentlichen Issue. Eröffne ein Issue, das nur um einen vertraulichen Kontakt bittet.
+Bitte beschreibe eine Sicherheitslücke nicht in einem öffentlichen Issue. Schreibe stattdessen eine E-Mail an ranke2@proton.me, verschlüsselt mit dem öffentlichen Schlüssel in `KONTAKT-PGP.asc` im Wurzelordner (Fingerabdruck `75E3 9C35 3011 E6DD 78AD B7E0 2919 8C6D 0B67 9E0E`). Auf demselben Weg gehen auch andere vertrauliche Anliegen.

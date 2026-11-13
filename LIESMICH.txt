@@ -36,6 +36,7 @@ kein Generated with), Autor Ranke <ranke2@proton.me>.
 
 Wer mitwirken will, findet den Weg in CONTRIBUTING.md: kein Schreibzugriff
 und keine Pull Requests, sondern ein Issue mit Verweis auf den eigenen Fork.
+Vertrauliches per E-Mail, verschlüsselt mit KONTAKT-PGP.asc (ohne Ablaufdatum).
 
 Der Beispielbenutzer in tests\beispiel heißt ranke, benannt nach dem
 Hauptentwickler Ranke.
