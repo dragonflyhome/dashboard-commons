@@ -18,6 +18,62 @@ Hinzugefügt
 - Anleitung, Abschnitt 15: im Team an einem Projekt-Repo mitarbeiten
   (lokal mit nur dieser Quelle starten, Issue statt Pull-Request, Hooks
   und was der Prüfer ohne Namenslisten tut).
+- daten/plan.toml: die Etappen eines Projekts (kennung, titel, ziel,
+  reihenfolge; freiwillig ab, arbeiten, abgeschlossen), nur Absicht ohne
+  Stand; pruefe meldet fehlende Felder, doppelte Kennungen und doppelte
+  Reihenfolgen.
+- Arbeiten haben ein freiwilliges Feld etappe (<projekt>/<kennung>). Der
+  Server prüft es beim Anlegen und Fortschreiben gegen daten/plan.toml jenes
+  Projekts (sonst 422); setzen und ändern darf nur, wer die Arbeit
+  verantwortet (sonst 409).
+- Jeder Wechsel des Stands einer Arbeit steht in ihrem Verlauf (art stand,
+  alt und neu als Stand-Wort), ob von Hand gesetzt oder aus den Schritten
+  abgeleitet; eine geänderte Etappe ebenso (art etappe). Wird eine Arbeit
+  gleich mit laeuft, wartet oder fertig angelegt, steht das als Eintrag
+  stand mit leerem alt da. Wartet eine Arbeit ohne Schritte danach auf
+  jemand anderen (wartet_auf ändert sich), steht ein Eintrag stand von
+  wartet nach wartet da (bei vollem Verlauf ohne Eintrag).
+- GET /api/projekte/<slug>/plan (geschützt wie /backlog): die Etappen aus
+  daten/plan.toml in ihrer Reihenfolge mit Stand (geplant, laeuft, fertig,
+  vor-dem-tracker), x von y Arbeiten fertig, begonnen, fertig,
+  gewachsen_seit (seit wann und wie viele Arbeiten nach dem Beginn dazukamen,
+  auch durch eine spätere Zuordnung; was am Tag der ersten Zuordnung
+  dazukam, etwa bei der Umstellung des Bestands, was vor seiner Zuordnung
+  schon begonnen hatte (Umsortieren, kein neuer Umfang) und was aus der
+  Liste arbeiten ohne etappe-Eintrag kommt, zählt nicht) und den Arbeiten mit Titel und Stand, auch archivierte und
+  solche aus anderen Projekten (aus); Arbeiten, deren Etappe nicht mehr in
+  plan.toml steht, in ohne_etappe. Ohne Eintrag stand im Verlauf gilt der
+  letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr); lief die
+  Arbeit vor ihrem ersten Eintrag schon, beginnt sie bei erstellt.
+- Live: Zeigt die Etappe einer Arbeit auf ein anderes Projekt, kommt
+  anstehend/<slug> auch für jenes; ebenso bei einer geänderten
+  daten/plan.toml.
+- GET /api/projekte/<slug>/verlauf?seit=&bis= (geschützt wie /plan): die
+  Zeitleiste eines Projekts in derselben Form wie /api/pc/verlauf, mit den
+  neuen Quellen arbeit (Beginn, Ende, fertige Etappe), schritt, frage
+  (beantwortet), entscheidung, bau (rot problem, sonst routine) und frist
+  (offene Fristen mit Datum, art geplant, verstrichene problem), dazu
+  daten/zeitstrahl.toml als hand sowie Vorgänge und Meldungen des Projekts;
+  Meldungen „Fertig: …“ und bau-rot fehlen dort, weil sie als Arbeit und Bau
+  schon dastehen, ebenso Vorgänge der Art schritt (stehen als Schritt) und
+  oeffnen. Der Verweis #arbeit-<id> steht nur, wo die Seite die Arbeit
+  zeigt (offen in der Aufgabenliste, fertig mit Etappe im Plan). Ohne bis reicht der Zeitraum 90 Tage über heute hinaus;
+  diese Vorschau zählt nicht gegen die Höchstlänge.
+- Entscheidungsdateien können projekte = ["slug"] nennen; nur dann
+  erscheinen sie in der Zeitleiste dieser Projekte. pruefe --alle meldet
+  unbekannte Slugs und eine andere Form als eine Liste als Fehler.
+- GET /api/projekte/<slug>/stand: fertig_7_tage (Arbeiten, die heute oder in
+  den sechs Tagen davor fertig wurden) in zahlen und, nur als Zahl, auch mit
+  Anmeldung; zwei neue Ampel-Gründe mit tage: wartet-lange (ein Eintrag
+  wartet seit über drei Tagen auf den Inhaber, rot; eine Arbeit mit
+  Schritten seit dem frühesten Schritt, der auf ihn wartet, ohne Schritte
+  seit ihrem letzten Eintrag stand auf wartet) und ohne-bewegung (eine
+  Arbeit ist offen, aber seit sieben Tagen hat sich an keiner Arbeit des
+  Projekts etwas geändert, gelb).
+- GET /api/projekte/<slug>/backlog: Karten von Arbeiten tragen etappe,
+  besitzer und schritte; „Als Nächstes“ steht zuerst nach der Reihenfolge
+  der Etappe, ohne Etappe zuletzt.
+- Eine Etappe mit abgeschlossen = true nimmt keine Arbeit an (422).
 - Herzschlag: dashboard-herzschlag.exe (ohne Fenster; dasselbe als
   dashboard.exe herzschlag) ist ein Stop-Hook für Chats. Er
   hält den Stop an, solange dem Chat der Sitzung ein laufender oder
@@ -42,8 +98,42 @@ Hinzugefügt
   DASHBOARD_SITZUNG_VARIABLE nennt (ohne sie keine Kennung); der Dienst merkt sich die Zuordnung bei
   jedem gelungenen, als Inhaber angemeldeten schreibenden Aufruf mit
   "von": "chat:<name>".
+- Projektseite in vier Teilen über dem Inhalt, je ein Abschnitt mit
+  Überschrift im Inhaltsverzeichnis: Stand (ein Satz, vier Zahlen als
+  Sprung zu ihrer Gruppe, die Ampel als Wort mit Grund-Satz und Link, der
+  Bau nur wenn rot oder während er läuft, Notizen klein), Aufgabenliste
+  (das Backlog in Gruppen untereinander: Wartet auf dich mit Frage samt
+  Antwort und Kasten der Aufgaben, Läuft, Als Nächstes, Wartet auf andere;
+  je Arbeit eine Zeile mit Etappe, wer dran ist und Frist, aufklappbar zu
+  den Schritten), Plan (Etappen aus /plan mit Stand-Wort, x von y Arbeiten
+  fertig und den Arbeiten, darüber ein Zeitstreifen nur aus Ist-Daten) und
+  Zeitleiste (/verlauf: Kommendes oben, die letzten 14 Tage, „Ältere
+  anzeigen“ bis 400 Tage, ungelesene Meldungen mit „gelesen“). Die Teile
+  laden neu bei Änderungen am Projekt, nach dem Nachholen, bei Vorgängen
+  und um Mitternacht, der Plan auch bei geändertem Inhalt. Ein echter
+  Termin einer Etappe steht im Stand-Wort („geplant · ab 03/2027“), eine
+  Frist heute oder vorbei in der Aufgabenliste als Wort („heute fällig“,
+  „überfällig seit …“). Anker #etappe-<kennung> klappen die Etappe im Plan
+  auf; ein Anker auf eine Meldung wartet auf die Zeitleiste und landet
+  dort, wenn ihre Sache schon als Zeile dasteht; gibt es sie nicht mehr, steht der Satz dazu.
+- pruefe meldet Stand von Hand auf Projektseiten als Hinweis (nach der
+  Umstellung aller Seiten als Fehler): prozent im Fortschritt, farbe laeuft
+  im Balkenplan, Zeitstrahl-Einträge begonnen oder geplant mit
+  verstrichenem Datum, Kennzahlen ohne berechnet und ohne stand und
+  Stand-Wörter in summary; kanban.toml wie bisher. Die Abhilfe passt zum
+  Fund: Kennzahlen bekommen stand oder berechnet, Zeitstrahl-Einträge ihre
+  art; nur prozent und laufende Balken wandern in Arbeiten.
 
 Geändert
+- Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
+  Schema 10 wird beim Start nach einer Sicherung umgestellt, ohne dass sich
+  eine Arbeit ändert; ältere Programme öffnen sie danach nicht mehr.
+- Das Beispiel-Backend der Vorlage (projects/_vorlage/server) liest
+  daten/plan.toml: Endpunkt /x/etappen und Tabelle etappen statt
+  /x/fortschritt und stand; ein Modul pflegt keinen eigenen Stand.
+- Ein Wechsel des Stands zählt bei vollem Verlauf einer Arbeit gegen die
+  Grenze von 500 Einträgen, auch Wiederöffnen aus fertig; auf fertig und
+  das Abgeben aus laeuft oder wartet gehen weiterhin immer.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
 - Bruch: scripts/Hochladen.ps1 lädt refs/heads/main nach refs/heads/main
@@ -53,11 +143,33 @@ Geändert
   refs/heads/main; lokal geht nur noch main nach main hinaus. Ein Commit
   ohne Eltern auf main ist ein Fund, außer der einen Wurzel beim ersten
   Push (keine zweite Wurzel, auch nicht über einen Merge).
+- Bruch: Projektseite: Das Status-Wort steht einmal in der Überschrift,
+  die Zeile „Status: …“ entfällt; der Chat steht klein darunter. Die vier
+  Teile stehen auf der Übersicht; Unterseiten zeigen ihren Inhalt ohne
+  Kasten der Aufgaben, den Bau nur, wenn er rot ist oder gerade läuft.
+- Zeitleiste und Verlauf: Schritte werden je Arbeit und Tag zu einer Zeile
+  verdichtet („3 Schritte bei „…““), Bauten zu „3 Bauten“; Einträge von
+  Hand heißen rechts „von Hand“, auch auf der Startseite und unter /pc.
+- Bruch: Der einfache Aufbau (Projekt ohne eigene Seite) zeigt fristen.toml und
+  plan.toml nicht mehr als eigene Abschnitte: Fristen stehen in der
+  Zeitleiste, die Etappen im Plan.
+- Der Hinweis von pruefe zu kanban.toml nennt die Aufgabenliste.
+- Bruch: Der Katalog-Baustein Backlog (weiter exportiert) zeigt Gruppen
+  untereinander statt Spalten: Wartet auf dich, Läuft, Als Nächstes,
+  Wartet auf andere; je Arbeit eine Zeile mit Anker arbeit-<id>, aufklappbar
+  zu den Schritten. AufgabenKasten nimmt eine Ebene für seine Überschrift.
 
 Entfernt
 - Bruch: Hochladen.ps1 -Wurzel (mit -Datum und -Nachricht) und der Zweig
   refs/heads/oeffentlich; ein Aufruf mit -Wurzel bricht mit einem Satz ab.
 - scripts/Wurzel-Entwurf.ps1 (Entwurf eines frischen Wurzel-Commits).
+- Bruch: Das Backlog hat keine Spalte fertig mehr; fertige Arbeiten zeigt
+  der Plan, ihre Zahl der Stand. Abgeschlossene Aufgaben erscheinen dort
+  nicht mehr.
+- Bruch: Auf Projektseiten das Unter-Dashboard (Kästen Stand, Wartet auf dich,
+  Arbeiten, Fristen, Zuletzt, Notizen) und der eigene Kasten des Backlogs;
+  der Kasten „Aufgaben für dich“ und der Bau-Stand haben keinen eigenen
+  Platz mehr.
 
 0.1.0 - 2026-11-06
 ------------------

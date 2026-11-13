@@ -3,8 +3,9 @@ import type { VerlaufEreignis } from "./VerlaufEreignis";
 import type { VerlaufHinweis } from "./VerlaufHinweis";
 
 /**
- * `GET /api/pc/verlauf`: die Ereignisse im Zeitraum, ohne zugesagte
- * Reihenfolge, und Hinweise zur Vollständigkeit.
+ * `GET /api/pc/verlauf` und `GET /api/projekte/<slug>/verlauf`: die
+ * Ereignisse im Zeitraum, ohne zugesagte Reihenfolge, und Hinweise zur
+ * Vollständigkeit.
  */
 export type Verlauf = { 
 /**

@@ -22,6 +22,10 @@ import type {
 	Kennzahlen,
 	ListeAbgeleitet,
 	Orte,
+	PlanArbeit,
+	PlanEtappe,
+	ProjektPlan,
+	Schritt,
 	VerlaufEreignis
 } from '$vertrag';
 import type { Spalte } from '$katalog';
@@ -272,7 +276,27 @@ function karte(
 		hinweis: null,
 		ziel: `/projects/beispiel#${art}-${id}`,
 		geaendert: `${tagIso(-1)}T09:00:00+01:00`,
+		etappe: null,
+		besitzer: null,
+		schritte: [],
 		...mehr
+	};
+}
+
+/** Ein erfundener Schritt einer Arbeit (Zweig teilschritte). */
+function schritt(nr: number, titel: string, stand: Schritt['stand']): Schritt {
+	return {
+		nr,
+		titel,
+		stand,
+		besitzer: 'chat:beispiel',
+		wartet_auf: null,
+		verweis: null,
+		angeboten_an: null,
+		fuer: null,
+		seit: `${tagIso(-1)}T10:00:00+01:00`,
+		notiz: null,
+		vorgang: null
 	};
 }
 
@@ -356,7 +380,17 @@ export function backlog(): Backlog {
 				art: 'laeuft',
 				titel: 'Läuft',
 				bedeutung: 'laeuft',
-				karten: [karte('arbeit', 'ar-20261102-0001', 'Rundmail entwerfen', { zustand: 'laeuft' })]
+				karten: [
+					karte('arbeit', 'ar-20261102-0001', 'Rundmail entwerfen', {
+						zustand: 'laeuft',
+						etappe: 'beispiel/einladung',
+						besitzer: 'chat:beispiel',
+						schritte: [
+							schritt(1, 'Entwurf schreiben', 'fertig'),
+							schritt(2, 'Verteiler prüfen', 'laeuft')
+						]
+					})
+				]
 			},
 			{ art: 'wartet', titel: 'Wartet', bedeutung: 'info', karten: [extern, chat] },
 			{
@@ -364,17 +398,6 @@ export function backlog(): Backlog {
 				titel: 'Als Nächstes',
 				bedeutung: 'neutral',
 				karten: [karte('arbeit', 'ar-20261102-0004', 'Fotos sichten', { zustand: 'als-naechstes' })]
-			},
-			{
-				art: 'fertig',
-				titel: 'Fertig',
-				bedeutung: 'ok',
-				karten: [
-					karte('aufgabe', 'a-20261101-0001', 'Entwurf freigeben', {
-						zustand: 'erledigt',
-						hinweis: 'Antwort: „ja“'
-					})
-				]
 			}
 		],
 		wartend: [
@@ -390,6 +413,105 @@ export function backlog(): Backlog {
 		fragen_weitere: 1,
 		kanban_datei: false,
 		speicher_fehlt: false
+	};
+}
+
+/** Eine erfundene Etappe, so wie `/plan` sie liefert. */
+function etappe(
+	kennung: string,
+	titel: string,
+	reihenfolge: number,
+	mehr: Partial<PlanEtappe> = {}
+): PlanEtappe {
+	return {
+		kennung,
+		titel,
+		ziel: `Ziel von „${titel}“.`,
+		reihenfolge,
+		ab: null,
+		stand: 'geplant',
+		arbeiten_fertig: 0,
+		arbeiten_gesamt: 0,
+		begonnen: null,
+		fertig: null,
+		ungefaehr: false,
+		gewachsen_seit: null,
+		dazugekommen: 0,
+		arbeiten: [],
+		...mehr
+	};
+}
+
+/** Eine erfundene Arbeit im Plan. */
+function planArbeit(id: string, titel: string, mehr: Partial<PlanArbeit> = {}): PlanArbeit {
+	return {
+		id,
+		titel,
+		stand: 'als-naechstes',
+		aus: null,
+		archiviert: false,
+		etappe: null,
+		fertig: null,
+		ungefaehr: false,
+		...mehr
+	};
+}
+
+/** Ein erfundener Plan (Etappe B8), so wie `/api/projekte/<slug>/plan` ihn liefert. */
+export function projektPlan(heute = new Date()): ProjektPlan {
+	const zeit = (tage: number, uhr: string): string => `${tagIso(tage, heute)}T${uhr}:00+01:00`;
+	return {
+		projekt: 'beispiel',
+		etappen: [
+			etappe('vorbereitung', 'Vorbereitung', 1, {
+				stand: 'fertig',
+				arbeiten_fertig: 2,
+				arbeiten_gesamt: 2,
+				begonnen: zeit(-20, '09:00'),
+				fertig: zeit(-12, '17:00'),
+				ungefaehr: true,
+				arbeiten: [
+					planArbeit('ar-20261020-0001', 'Saal anfragen', {
+						stand: 'fertig',
+						archiviert: true,
+						fertig: zeit(-15, '12:00')
+					}),
+					planArbeit('ar-20261020-0002', 'Liste der Gäste', {
+						stand: 'fertig',
+						fertig: zeit(-12, '17:00'),
+						ungefaehr: true
+					})
+				]
+			}),
+			etappe('einladung', 'Einladung', 2, {
+				stand: 'laeuft',
+				arbeiten_fertig: 0,
+				arbeiten_gesamt: 2,
+				begonnen: zeit(-10, '09:00'),
+				gewachsen_seit: zeit(-10, '09:00'),
+				dazugekommen: 1,
+				arbeiten: [
+					planArbeit('ar-20261102-0001', 'Rundmail entwerfen', { stand: 'laeuft' }),
+					planArbeit('ar-20261102-0007', 'Druck prüfen', { aus: 'druckerei' })
+				]
+			}),
+			etappe('fest', 'Das Fest', 3, { ab: tagIso(40, heute).slice(0, 7) })
+		],
+		ohne_etappe: [],
+		hinweise: []
+	};
+}
+
+/** Ein Plan ohne ein einziges Datum (kein Zeitstreifen), mit einer Arbeit ohne gültige Etappe. */
+export function projektPlanOhneDaten(): ProjektPlan {
+	const p = projektPlan();
+	return {
+		...p,
+		// Ohne Arbeiten: deren Anker stehen schon im ersten Plan des Katalogs.
+		etappen: p.etappen.map((e) => ({ ...e, begonnen: null, fertig: null, ab: null, arbeiten: [] })),
+		ohne_etappe: [
+			planArbeit('ar-20261105-0001', 'Plakat entwerfen', { etappe: 'beispiel/werbung' })
+		]
 	};
 }
 
@@ -685,6 +807,10 @@ einheit = "GB"              # „0,2 von 1,5 GB“`,
 	fragen: `<Fragen daten={ladeDaten<Fragen>(slug, 'fragen')} />
 <!-- Zeigt nur die eine sichtbare Frage der Warteschlange (Etappe B2), dahinter
      „noch N Fragen warten“. Reihenfolge: Stufe, dann Frist, dann die Datei. -->`,
+	plan: `<!-- Steht schon auf jeder Projektseite (nicht in Seite.svelte einbauen). -->
+<Plan plan={p} />   <!-- p: GET /api/projekte/<slug>/plan -->`,
+	standTeil: `<Stand gesamt={stand.gesamt} schwerpunkt={stand.schwerpunkt} kurz={stand.kurz}
+  teil={{ slug, fertig7: stand.fertig_7_tage, springen: true }} />`,
 	backlog: `<!-- Steht schon oben auf jeder Projektseite (nicht in Seite.svelte einbauen). -->
 <Backlog backlog={b} />   <!-- b: GET /api/projekte/<slug>/backlog -->`,
 	fristenliste: `<!-- In Seite.svelte; die Liste rechnet der Server aus daten/fristen.toml und den Aufgaben. -->

@@ -1,20 +1,19 @@
-# Kennzahlen (Baustein Kennzahlen). Zwei Formen nebeneinander:
-# - wert: von Hand eingetippt (als Text, damit „40–60“ geht).
+# Kennzahlen (Baustein Kennzahlen), nur Inhalt, kein Stand. Zwei Formen:
+# - wert: von Hand eingetippt (als Text, damit „40–60“ geht), immer mit
+#   stand = "JJJJ-MM-TT" (von wann der Wert ist; die Seite zeigt „Stand vom …“).
 # - berechnet: der Server rechnet aus einer anderen Datei in daten/,
 #   bei jeder Anfrage neu. Arten: anzahl, anteil, summe, tage_seit, tage_bis
 #   (summe und tage_* brauchen feld). Nie ein Ergebnis von Hand eintragen.
+# Wie weit das Projekt ist (Arbeiten fertig, was läuft), steht im Teil „Stand“
+# oben auf der Seite und kommt aus dem Tracker; dafür keine Kennzahl.
 
 [[kennzahl]]
 titel = "Saatgut"
 wert = "8–10"
 einheit = "Tüten"
-hinweis = "Schätzung von Hand"
+hinweis = "gezählt im Vorratsschrank"
+stand = "2026-11-01"
 
 [[kennzahl]]
-titel = "Phasen fertig"
-hinweis = "aus dem Balkenplan"
-berechnet = { quelle = "gantt", liste = "balken", art = "anteil" }
-
-[[kennzahl]]
-titel = "Bis zum nächsten Phasenende"
-berechnet = { quelle = "gantt", liste = "balken", art = "tage_bis", feld = "bis" }
+titel = "Etappen im Plan"
+berechnet = { quelle = "plan", liste = "etappe", art = "anzahl" }

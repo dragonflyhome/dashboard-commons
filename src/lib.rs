@@ -49,7 +49,9 @@ pub mod oberflaeche;
 pub mod oeffnen;
 pub mod passkey;
 pub mod pc;
+pub mod plan;
 pub mod projekte;
+pub mod projektverlauf;
 pub mod quellen;
 #[cfg(test)]
 mod schleusen_test;

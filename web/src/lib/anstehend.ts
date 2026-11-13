@@ -846,12 +846,15 @@ function fruehesteDateiFrist(zeilen: readonly FristZeile[]): FristZeile | null {
  * (`zahlen`), aus den Einträgen und Aktualisierungen mit Anmeldung. Ein
  * vitest-Fall hält beide gleich. Etappe B3: die nächste Frist auch aus den
  * Fristen aus fristen.toml (`stand.fristen`), wenn sie früher ist (bei
- * gleichem Datum bleibt der Eintrag); nie aus zeitstrahl.toml.
+ * gleichem Datum bleibt der Eintrag); nie aus zeitstrahl.toml. Etappe B8:
+ * Fertige Arbeiten stehen nicht in den Einträgen; ihre Zahl kommt als Fakt
+ * (`stand.fertig_7_tage`).
  */
 export function standZahlen(
 	eintraege: readonly AnstehendEintrag[],
 	aktualisierungen: readonly Aktualisierung[],
-	dateiFristen: readonly FristZeile[] = []
+	dateiFristen: readonly FristZeile[] = [],
+	fertig7Tage = 0
 ): StandZahlen {
 	const auswahl = ordnen(auswaehlen(eintraege));
 	const arbeiten = (z: string): number =>
@@ -869,6 +872,7 @@ export function standZahlen(
 		laeuft: arbeiten('laeuft'),
 		wartet: arbeiten('wartet'),
 		als_naechstes: arbeiten('als-naechstes'),
+		fertig_7_tage: fertig7Tage,
 		meldungen: meldungsZahlen(aktualisierungen),
 		naechste_frist: naechste?.frist ?? null,
 		tage_bis: naechste?.tage_bis ?? null,
@@ -878,7 +882,7 @@ export function standZahlen(
 
 /** Der Satz zur Ampel (Etappe 3a+: der Server schickt nur den Grund als Kennung). */
 export function ampelSatz(
-	g: Pick<GesamtStand, 'grund' | 'bezug' | 'bezug_art'>,
+	g: Pick<GesamtStand, 'grund' | 'bezug' | 'bezug_art' | 'tage'>,
 	wartet: number
 ): string {
 	const satz: Record<AmpelGrund, () => string> = {
@@ -894,7 +898,16 @@ export function ampelSatz(
 		wartet: () =>
 			wartet === 1 ? 'Ein Eintrag wartet auf dich.' : `${String(wartet)} Einträge warten auf dich.`,
 		'nichts-wartet': () => 'Nichts wartet auf dich.',
-		'speicher-fehlt': () => SATZ_AMPEL_UNBEKANNT
+		'speicher-fehlt': () => SATZ_AMPEL_UNBEKANNT,
+		// Etappe B8: Der Server schickt die Tage mit.
+		'wartet-lange': () => {
+			const seit = `seit ${String(g.tage ?? 0)} Tagen`;
+			return g.bezug === null
+				? `Ein Eintrag wartet ${seit} auf dich.`
+				: `„${g.bezug}“ wartet ${seit} auf dich.`;
+		},
+		'ohne-bewegung': () =>
+			`Seit ${String(g.tage ?? 0)} Tagen hat sich an keiner offenen Arbeit etwas bewegt.`
 	};
 	return satz[g.grund]();
 }
@@ -935,6 +948,8 @@ export interface StandAnsicht {
 	notizen: string[];
 	/** Etappe B2: wie viele Notizen; ohne Anmeldung ist `notizen` leer, die Zahl bleibt. */
 	notizen_zahl: number;
+	/** Etappe B8: Arbeiten, die in den letzten 7 Tagen fertig wurden (Fakt des Servers). */
+	fertig_7_tage: number;
 	speicher_fehlt: boolean;
 	/** Etappe B3: offene Fristen aus fristen.toml mit Datum; ohne Anmeldung leer. */
 	fristen: FristZeile[];
@@ -967,7 +982,7 @@ export function standAnsicht(
 	let arbeiten: StandAnsicht['arbeiten'];
 	let meldungen: MeldungsZahlen;
 	if (roh !== null) {
-		const z = standZahlen(roh, akt ?? [], stand.fristen ?? []);
+		const z = standZahlen(roh, akt ?? [], stand.fristen ?? [], stand.fertig_7_tage ?? 0);
 		const auswahl = ordnen(auswaehlen(roh));
 		const art = (a: EintragsArt): AnstehendEintrag[] => auswahl.filter((e) => e.art === a);
 		const zustand = (w: string): AnstehendEintrag[] =>
@@ -996,6 +1011,7 @@ export function standAnsicht(
 			laeuft: 0,
 			wartet: 0,
 			als_naechstes: 0,
+			fertig_7_tage: 0,
 			meldungen: { neu: 0, gesamt: 0 },
 			naechste_frist: null,
 			tage_bis: null,
@@ -1026,6 +1042,7 @@ export function standAnsicht(
 		arbeiten,
 		notizen: stand.notizen,
 		notizen_zahl: stand.notizen_zahl ?? stand.notizen.length,
+		fertig_7_tage: stand.fertig_7_tage ?? stand.zahlen?.fertig_7_tage ?? 0,
 		speicher_fehlt: stand.speicher_fehlt,
 		fristen: stand.fristen ?? []
 	};

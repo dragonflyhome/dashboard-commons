@@ -1345,6 +1345,10 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
         "/api/projekte/neu-form/stand/voll",
         // Etappe B2: das Backlog nennt Titel.
         "/api/projekte/neu-form/backlog",
+        // Etappe B8: der Plan nennt Titel.
+        "/api/projekte/neu-form/plan",
+        // Etappe B8: die Zeitleiste eines Projekts nennt Titel.
+        "/api/projekte/neu-form/verlauf",
         "/api/antworten",
     ] {
         let res = schicke(&app, hole(pfad)).await;
@@ -1681,6 +1685,12 @@ fn liste_der_geschuetzten_wege() {
         // Etappe B2: das Backlog eines Projekts.
         "/api/projekte/dashboard/backlog",
         "/API/Projekte/Dashboard/Backlog",
+        // Etappe B8: der Plan eines Projekts.
+        "/api/projekte/dashboard/plan",
+        "/API/Projekte/Dashboard/Plan",
+        // Etappe B8: die Zeitleiste eines Projekts.
+        "/api/projekte/dashboard/verlauf",
+        "/API/Projekte/Dashboard/Verlauf",
         // Etappe B2: die Fragen an den Inhaber (persönlicher Inhalt).
         "/api/projekte/dashboard/daten/fragen",
         "/API/Projekte/Dashboard/Daten/Fragen",
@@ -1743,6 +1753,9 @@ fn liste_der_geschuetzten_wege() {
         "/api/projekte/dashboard/stand/vollx",
         "/api/projekte/dashboard/standx/voll",
         "/api/projekte/dashboard/backlogx",
+        "/api/projekte/dashboard/planx",
+        "/api/projekte/dashboard/verlaufx",
+        "/api/projekte/dashboard/daten/plan",
         "/api/projekte/dashboard/daten/kanban",
         "/api/projekte/dashboard/daten/fragenx",
         "/anmelden",

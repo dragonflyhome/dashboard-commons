@@ -24,6 +24,7 @@ const leer: ProjektDaten = {
 	fragen: null,
 	orte: null,
 	fristen: null,
+	plan: null,
 	eigen: {}
 };
 

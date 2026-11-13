@@ -1,0 +1,28 @@
+# Etappen des Projekts (Plan der Projektseite). Von Hand steht nur Absicht:
+# was entstehen soll, in welcher Reihenfolge, warum. Kein Stand, keine Prozente,
+# keine geschätzten Daten: ob eine Etappe läuft oder fertig ist und wie viele
+# Arbeiten dazugehören, rechnet der Server aus dem Tracker. Eine Arbeit nennt
+# ihre Etappe im Feld etappe = "<slug>/<kennung>".
+# Freiwillig: ab = "JJJJ-MM" (ein echter Termin), arbeiten = [...] (Kennungen
+# von Arbeiten im Archiv), abgeschlossen = true (nur für Etappen, die vor dem
+# Tracker fertig waren und keine Arbeit haben).
+
+[[etappe]]
+kennung = "boden"
+titel = "Boden vorbereiten"
+ziel = "Die Beete sind gelockert und gedüngt."
+reihenfolge = 1
+abgeschlossen = true
+
+[[etappe]]
+kennung = "aussaat"
+titel = "Aussaat"
+ziel = "Alles Saatgut ist in der Erde."
+reihenfolge = 2
+
+[[etappe]]
+kennung = "ernte"
+titel = "Ernte"
+ziel = "Die Ernte ist eingebracht und verteilt."
+reihenfolge = 3
+ab = "2027-06"

@@ -1111,6 +1111,7 @@ mod tests {
             prioritaet: Stufe::Bald,
             frist: Some(frist),
             notiz: None,
+            etappe: None,
         };
         let morgen = s.arbeit_anlegen(neu_arbeit("Morgen fällig", tag(1)), &jetzt).unwrap();
         let vorbei = s.arbeit_anlegen(neu_arbeit("Schon vorbei", tag(-2)), &jetzt).unwrap();

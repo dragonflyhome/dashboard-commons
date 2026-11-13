@@ -24,11 +24,21 @@
 		slug: string;
 		/** Nur für Tests: ein eigener Stand statt des gemeinsamen. */
 		lage?: BauLage;
+		/**
+		 * Etappe B8, im Stand-Kopf der Projektseite: nur, wenn der Bau rot ist
+		 * oder gerade läuft; sonst steht nichts da.
+		 */
+		nurAuffaellig?: boolean;
 	}
-	let { slug, lage = bauLage }: Props = $props();
+	let { slug, lage = bauLage, nurAuffaellig = false }: Props = $props();
 
 	// Mit dem Stand des Projekts: kein „Seite in Ordnung“ neben einer roten Karte.
-	const anzeige = $derived(lage.kopf(slug));
+	const alle = $derived(lage.kopf(slug));
+	const anzeige = $derived(
+		nurAuffaellig && alle !== null && alle.zustand !== 'rot' && alle.zustand !== 'laeuft'
+			? null
+			: alle
+	);
 	const schritt = $derived(anzeige?.zustand === 'laeuft' ? lage.schritt : null);
 </script>
 

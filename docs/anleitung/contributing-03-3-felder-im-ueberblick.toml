@@ -13,7 +13,7 @@ zeilen = [
   ['repos', 'nein', 'Git-Stand auf der Kachel (alles gesichert, ungesicherte Dateien, Alter des Stands)'],
   ['links', 'nein', 'Abschnitt „Links“ im Standardaufbau; eine eigene Seite.svelte zeigt sie nicht von selbst'],
   ['checks, processes', 'nein', 'auf keiner Seite; nur in /api/projects/<slug> (checks, processes)'],
-  ['open', 'nein', 'Karte „Notizen“ im Unter-Dashboard oben auf der Projektseite (im Standardaufbau dazu „Offene Punkte“), Zahl auf der Kachel'],
+  ['open', 'nein', '„Notizen“ klein im Teil „Stand“ oben auf der Projektseite (im Standardaufbau dazu „Offene Punkte“), Zahl auf der Kachel'],
   ['chat', 'ja', '„verwaltet von Chat …“ oben auf der Seite, Feld auf der Kachel'],
   ['backup, backup_note', 'ja', '„Backup: rot/gelb/grün“ auf der Kachel (backup_note als Kurzinfo), auf der PC-Seite unter „Backup je Projekt“'],
   ['vorschau', 'nein', 'Eintrag „Vorschau“ in der Seitenleiste unter dem Projekt, Unterseite /projects/<slug>/vorschau, Hinweis auf der Kachel'],
@@ -25,7 +25,7 @@ chat = "Haus und Garten": Jedes Projekt hat seinen eigenen Chat; der Name steht 
 
 vorschau = "assets/vorschau.html": ein fertiger Entwurf (Website, Flyer, Fahrplan) als eine HTML-Datei in assets/. Das Dashboard zeigt ihn auf der Unterseite /projects/<slug>/vorschau in einem abgeschirmten Rahmen mit Vollbild-Knopf; Regeln dazu in Abschnitt 6 unter „Vorschau einer Website“.
 
-Die Seite eines Projekts zeigt oben immer Titel, summary, Status, Chat, den Bau-Stand und das Unter-Dashboard; darunter steht seine Seite.svelte. Fehlt sie im Bau (keine Seite.svelte, oder pruefe hat sie wegen Fehlern ausgelassen), zeigt das Dashboard den Standardaufbau: einen Hinweis mit dem Grund, die offenen Punkte, jede Datei aus daten/ mit dem passenden Baustein und zuletzt die Links. Lebenszeichen (checks, processes) zeigt keine Seite; pruefe prüft ihre Adressen trotzdem.
+Die Seite eines Projekts zeigt oben immer den Titel mit dem Status-Wort, summary (nur Absicht: worum es geht, kein Stand), den Chat und vier Teile, die das Dashboard aus dem Tracker rechnet: Stand, Aufgabenliste, Plan und Zeitleiste (Abschnitt 11, „Projektseite in vier Teilen“); darunter steht seine Seite.svelte. Fehlt sie im Bau (keine Seite.svelte, oder pruefe hat sie wegen Fehlern ausgelassen), zeigt das Dashboard den Standardaufbau: einen Hinweis mit dem Grund, die offenen Punkte, jede Datei aus daten/ mit dem passenden Baustein und zuletzt die Links. Lebenszeichen (checks, processes) zeigt keine Seite; pruefe prüft ihre Adressen trotzdem.
 
 Farben der Status-Punkte (seit Etappe 2c Bedeutungen, siehe Abschnitt „Projekte in neuer Form (schema = 3)“): türkis aktiv (läuft), gelb pausiert, grau geplant, grün fertig (in Ordnung), rot problem, ohne Farbe archiviert (ruhig). Ein anderes Wort bei status ist ein FEHLER in pruefe („Bei status steht „…“. Erlaubt sind: aktiv, pausiert, geplant, fertig, problem, archiviert.“).'''
 

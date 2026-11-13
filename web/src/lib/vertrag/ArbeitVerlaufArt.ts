@@ -3,4 +3,4 @@
 /**
  * Was ein Eintrag im Verlauf einer Arbeit festhält.
  */
-export type ArbeitVerlaufArt = "titel" | "besitzer" | "schritt-angelegt" | "schritt-uebernommen" | "schritt-geaendert" | "schritt-geweckt";
+export type ArbeitVerlaufArt = "titel" | "besitzer" | "schritt-angelegt" | "schritt-uebernommen" | "schritt-geaendert" | "schritt-geweckt" | "stand" | "etappe";

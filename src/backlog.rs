@@ -17,18 +17,22 @@
 //! - **Läuft** und **Als Nächstes:** Arbeiten mit diesem Stand.
 //! - **Wartet:** Arbeiten mit `wartet` (auf einen Chat, extern oder auf den
 //!   Inhaber mit Verweis) und Aufgaben beim Chat (eigene Worte geschickt).
-//! - **Fertig:** fertige Arbeiten und nicht mehr offene Aufgaben, solange sie
-//!   nicht im Archiv sind (sieben Tage).
 //!
-//! In einer Spalte stehen die Karten wie in „Anstehend“: wirksame Stufe,
-//! Frist (ohne Frist zuletzt), Alter, Kennung; in „Fertig“ die zuletzt
-//! geänderte zuerst. Wartende Einträge stehen zusätzlich je Verantwortlichem
-//! ([`WartendGruppe`]): Inhaber, dann die Chats nach Name, dann extern.
+//! Etappe B8: Die Spalte „Fertig“ entfällt; fertige Arbeiten zeigt der Plan
+//! (`/api/projekte/<slug>/plan`), ihre Zahl der Stand (`fertig_7_tage`).
+//! Karten von Arbeiten tragen Etappe, Besitzer und Schritte.
+//!
+//! In einer Spalte stehen die Karten wie in „Anstehend“ (in „Als Nächstes“
+//! zuerst nach der Reihenfolge der Etappe): wirksame Stufe,
+//! Frist (ohne Frist zuletzt), Alter, Kennung. Wartende Einträge stehen
+//! zusätzlich je Verantwortlichem ([`WartendGruppe`]): Inhaber, dann die
+//! Chats nach Name, dann extern.
 
 use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::anstehend::{INHABER, Inhalt, ZUSTAND_BEIM_CHAT, alle_eintraege, fragen_auswahl, ist_sichtbar};
-use crate::vertrag::api::{AnstehendEintrag, Arbeit, ArbeitsStand, Aufgabe, AufgabenZustand, EintragsArt};
+use crate::vertrag::api::{AnstehendEintrag, ArbeitsStand, EintragsArt};
 use crate::vertrag::backlog::{Backlog, BacklogKarte, BacklogSpalte, BacklogSpaltenArt, Verantwortlich, WartendGruppe};
 
 /// „noch 1 Frage wartet“, „noch 3 Fragen warten“ (derselbe Satz wie in der Oberfläche).
@@ -68,14 +72,16 @@ fn spalte_von(e: &AnstehendEintrag) -> Option<BacklogSpaltenArt> {
             ArbeitsStand::AlsNaechstes => Some(BacklogSpaltenArt::AlsNaechstes),
             ArbeitsStand::Wartet if e.wartet_auf_dich => Some(BacklogSpaltenArt::FuerDich),
             ArbeitsStand::Wartet => Some(BacklogSpaltenArt::Wartet),
-            ArbeitsStand::Fertig => Some(BacklogSpaltenArt::Fertig),
+            ArbeitsStand::Fertig => None,
         },
         EintragsArt::Meldung => None,
     }
 }
 
-/// Eine Karte aus einem offenen Eintrag.
-fn karte(e: &AnstehendEintrag, spalte: BacklogSpaltenArt) -> BacklogKarte {
+/// Eine Karte aus einem offenen Eintrag; bei Arbeiten mit Etappe und
+/// Besitzer aus dem Datenspeicher.
+fn karte(inhalt: &Inhalt, e: &AnstehendEintrag, spalte: BacklogSpaltenArt) -> BacklogKarte {
+    let arbeit = (e.art == EintragsArt::Arbeit).then(|| inhalt.speicher.arbeiten.iter().find(|a| a.id == e.id)).flatten();
     let wartet_auf = match spalte {
         BacklogSpaltenArt::FuerDich | BacklogSpaltenArt::Wartet => e.wartet_auf.clone(),
         _ => None,
@@ -95,6 +101,9 @@ fn karte(e: &AnstehendEintrag, spalte: BacklogSpaltenArt) -> BacklogKarte {
         hinweis,
         ziel: e.ziel.clone(),
         geaendert: e.erstellt.clone(),
+        etappe: arbeit.and_then(|a| a.etappe.clone()),
+        besitzer: arbeit.and_then(|a| a.besitzer.clone()),
+        schritte: e.schritte.clone(),
     }
 }
 
@@ -110,42 +119,10 @@ fn vergleich(a: &AnstehendEintrag, b: &AnstehendEintrag) -> Ordering {
         .then_with(|| a.id.cmp(&b.id))
 }
 
-/// Eine fertige Arbeit als Karte.
-fn karte_arbeit(a: &Arbeit, slug: &str) -> BacklogKarte {
-    BacklogKarte {
-        art: EintragsArt::Arbeit,
-        id: a.id.clone(),
-        titel: a.titel.clone(),
-        zustand: a.stand.wort().to_string(),
-        wartet_auf: None,
-        frist: a.frist.clone(),
-        frist_stufe: None,
-        hinweis: None,
-        ziel: crate::anstehend::ziel(slug, EintragsArt::Arbeit, &a.id),
-        geaendert: a.geaendert.clone(),
-    }
-}
-
-/// Eine abgeschlossene Aufgabe als Karte (ohne Link, wie im Datenspeicher).
-fn karte_aufgabe(a: &Aufgabe, slug: &str) -> BacklogKarte {
-    let (zustand, hinweis) = match a.zustand {
-        AufgabenZustand::Erledigt => ("erledigt", a.antwort.as_ref().map(|x| format!("Antwort: „{x}“"))),
-        AufgabenZustand::Zurueckgezogen => ("zurueckgezogen", Some("zurückgezogen".to_string())),
-        AufgabenZustand::Abgelaufen => ("abgelaufen", Some("abgelaufen".to_string())),
-        AufgabenZustand::Offen => ("offen", None),
-    };
-    BacklogKarte {
-        art: EintragsArt::Aufgabe,
-        id: a.id.clone(),
-        titel: a.titel.clone(),
-        zustand: zustand.to_string(),
-        wartet_auf: None,
-        frist: a.frist.clone(),
-        frist_stufe: None,
-        hinweis,
-        ziel: crate::anstehend::ziel(slug, EintragsArt::Aufgabe, &a.id),
-        geaendert: a.geaendert.clone(),
-    }
+/// Die Projekte, auf deren Etappen Arbeiten von `slug` zeigen (deren
+/// `plan.toml` braucht `backlog` für die Reihenfolge).
+pub fn etappen_projekte<'a>(inhalt: &'a Inhalt, slug: &str) -> BTreeSet<&'a str> {
+    inhalt.speicher.arbeiten.iter().filter(|a| a.projekt == slug).filter_map(|a| a.etappe.as_deref()?.split_once('/').map(|(p, _)| p)).collect()
 }
 
 /// Die wartenden Karten je Verantwortlichem: Inhaber, Chats nach Name, extern.
@@ -163,8 +140,10 @@ pub fn wartend_gruppen(karten: &[BacklogKarte]) -> Vec<WartendGruppe> {
 }
 
 /// Das Backlog eines Projekts; `None`, wenn es das Projekt nicht gibt.
-/// `kanban_datei`: Das Projekt hat noch `daten/kanban.toml`.
-pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool) -> Option<Backlog> {
+/// `kanban_datei`: Das Projekt hat noch `daten/kanban.toml`. `reihenfolge`:
+/// `<projekt>/<kennung>` einer Etappe → ihre Reihenfolge in `plan.toml`
+/// ([`etappen_projekte`]); „Als Nächstes“ steht zuerst danach, ohne Etappe zuletzt.
+pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool, reihenfolge: &BTreeMap<String, u32>) -> Option<Backlog> {
     inhalt.projekte.iter().find(|p| p.slug == slug)?;
     let mut offen: Vec<AnstehendEintrag> = alle_eintraege(inhalt).into_iter().filter(|e| e.projekt == slug).collect();
     offen.sort_by(vergleich);
@@ -179,21 +158,13 @@ pub fn backlog(inhalt: &Inhalt, slug: &str, kanban_datei: bool) -> Option<Backlo
     };
     for e in &offen {
         if let Some(art) = spalte_von(e) {
-            in_spalte(art, karte(e, art));
+            in_spalte(art, karte(inhalt, e, art));
         }
     }
-    // Fertig: Arbeiten (außerhalb des Archivs) und abgeschlossene Aufgaben, zuletzt geänderte zuerst.
-    let mut fertig: Vec<BacklogKarte> = inhalt
-        .speicher
-        .arbeiten
-        .iter()
-        .filter(|a| a.projekt == slug && a.stand == ArbeitsStand::Fertig)
-        .map(|a| karte_arbeit(a, slug))
-        .chain(inhalt.speicher.aufgaben_abgeschlossen.iter().filter(|a| a.projekt == slug).map(|a| karte_aufgabe(a, slug)))
-        .collect();
-    fertig.sort_by(|a, b| b.geaendert.cmp(&a.geaendert).then_with(|| b.id.cmp(&a.id)));
-    for k in fertig {
-        in_spalte(BacklogSpaltenArt::Fertig, k);
+    if let Some(s) = spalten.iter_mut().find(|s| s.art == BacklogSpaltenArt::AlsNaechstes) {
+        // Stabil: innerhalb einer Etappe bleibt die Folge aus `vergleich`.
+        // shortcut: Etappen anderer Projekte zählen nach ihrer eigenen Nummer; eigene Regel, wenn das stört.
+        s.karten.sort_by_key(|k| k.etappe.as_ref().and_then(|e| reihenfolge.get(e)).map_or((true, 0), |r| (false, *r)));
     }
     let wartende: Vec<BacklogKarte> =
         spalten.iter().filter(|s| matches!(s.art, BacklogSpaltenArt::FuerDich | BacklogSpaltenArt::Wartet)).flat_map(|s| s.karten.iter().cloned()).collect();
@@ -213,7 +184,7 @@ mod tests {
     use super::*;
     use crate::anstehend::{FragenDatei, Lesefehler, ProjektKopf};
     use crate::speicher::arbeiten::AusDemSpeicher;
-    use crate::vertrag::api::{Einstufung, Stufe};
+    use crate::vertrag::api::{Arbeit, Aufgabe, AufgabenZustand, Einstufung, Stufe};
     use crate::vertrag::daten::{Frage, FrageArt};
     use chrono::NaiveDate;
 
@@ -282,6 +253,7 @@ mod tests {
             verlauf: Vec::new(),
             besitzer: None,
             schritte: Vec::new(),
+            etappe: None,
         }
     }
 
@@ -301,10 +273,6 @@ mod tests {
                 aufgaben: vec![
                     aufgabe("a-20261102-0001", AufgabenZustand::Offen, None, "2026-11-02T09:00:00+01:00"),
                     aufgabe("a-20261102-0002", AufgabenZustand::Offen, Some(crate::vertrag::daten::ETWAS_ANDERES), "2026-11-02T10:00:00+01:00"),
-                ],
-                aufgaben_abgeschlossen: vec![
-                    aufgabe("a-20261101-0001", AufgabenZustand::Erledigt, Some("ja"), "2026-11-01T12:00:00+01:00"),
-                    aufgabe("a-20261101-0002", AufgabenZustand::Zurueckgezogen, None, "2026-11-02T12:00:00+01:00"),
                 ],
                 arbeiten: vec![
                     arbeit("ar-20261102-0001", ArbeitsStand::Laeuft, None, None),
@@ -334,36 +302,111 @@ mod tests {
     /// Fragen-Warteschlange zeigt nur eine Frage mit dem Satz zu den übrigen.
     #[test]
     fn spalten_aus_stand_und_status() {
-        let b = backlog(&inhalt(), "beispiel", true).unwrap();
+        let b = backlog(&inhalt(), "beispiel", true, &BTreeMap::new()).unwrap();
         let arten: Vec<BacklogSpaltenArt> = b.spalten.iter().map(|s| s.art).collect();
-        assert_eq!(arten, BacklogSpaltenArt::ALLE, "alle fünf, auch leere, in fester Folge");
+        assert_eq!(arten, BacklogSpaltenArt::ALLE, "alle vier, auch leere, in fester Folge");
+        assert_eq!(arten.len(), 4, "Etappe B8: ohne „Fertig“");
         let s = |a: BacklogSpaltenArt| b.spalten.iter().find(|s| s.art == a).unwrap();
         // Gleiche Stufe: nach Alter (die Frage ist am ältesten, Arbeiten um 8, Aufgaben um 9 Uhr).
         assert_eq!(ids(s(BacklogSpaltenArt::FuerDich)), ["farbe", "ar-20261102-0005", "a-20261102-0001"]);
         assert_eq!(ids(s(BacklogSpaltenArt::Laeuft)), ["ar-20261102-0001"]);
         assert_eq!(ids(s(BacklogSpaltenArt::Wartet)), ["ar-20261102-0002", "ar-20261102-0003", "ar-20261102-0004", "ar-20261102-0008", "a-20261102-0002"]);
         assert_eq!(ids(s(BacklogSpaltenArt::AlsNaechstes)), ["ar-20261102-0006"]);
-        assert_eq!(ids(s(BacklogSpaltenArt::Fertig)), ["a-20261101-0002", "ar-20261102-0007", "a-20261101-0001"], "zuletzt geändert zuerst");
+        assert!(!b.spalten.iter().flat_map(|s| &s.karten).any(|k| k.id == "ar-20261102-0007"), "fertige Arbeiten nur im Plan");
         let frage = &s(BacklogSpaltenArt::FuerDich).karten[0];
         assert_eq!(frage.hinweis.as_deref(), Some("noch 2 Fragen warten"));
         assert_eq!(frage.ziel, "/projects/beispiel#frage-farbe");
         assert!(!b.spalten.iter().flat_map(|s| &s.karten).any(|k| k.id == "name" || k.id == "termin"), "wartende Fragen ohne Text");
         assert_eq!(b.fragen_weitere, 2);
         assert!(b.kanban_datei);
-        let erledigt = s(BacklogSpaltenArt::Fertig).karten.iter().find(|k| k.id == "a-20261101-0001").unwrap();
-        assert_eq!((erledigt.zustand.as_str(), erledigt.hinweis.as_deref()), ("erledigt", Some("Antwort: „ja“")));
         let beim_chat = &s(BacklogSpaltenArt::Wartet).karten[4];
         assert_eq!((beim_chat.zustand.as_str(), beim_chat.wartet_auf.as_deref()), ("beim-chat", Some("chat:beispiel")));
         // Ein anderes Projekt ist leer, ein unbekanntes `None`.
-        assert!(backlog(&inhalt(), "anderes", false).unwrap().spalten.iter().all(|s| s.karten.is_empty()));
-        assert!(backlog(&inhalt(), "gibt-es-nicht", false).is_none());
+        assert!(backlog(&inhalt(), "anderes", false, &BTreeMap::new()).unwrap().spalten.iter().all(|s| s.karten.is_empty()));
+        assert!(backlog(&inhalt(), "gibt-es-nicht", false, &BTreeMap::new()).is_none());
+    }
+
+    /// Etappe B8: Karten von Arbeiten tragen Etappe, Besitzer und Schritte;
+    /// andere Karten nicht.
+    #[test]
+    fn karten_mit_etappe_besitzer_schritten() {
+        let mut i = inhalt();
+        let a = &mut i.speicher.arbeiten[0];
+        a.etappe = Some("beispiel/b8".into());
+        a.besitzer = Some("chat:beispiel".into());
+        a.schritte = vec![crate::vertrag::api::Schritt {
+            nr: 1,
+            titel: "Vertrag".into(),
+            stand: ArbeitsStand::Laeuft,
+            besitzer: Some("chat:beispiel".into()),
+            wartet_auf: None,
+            verweis: None,
+            angeboten_an: None,
+            fuer: None,
+            seit: "2026-11-02T08:00:00+01:00".into(),
+            notiz: None,
+            vorgang: None,
+        }];
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
+        let k = &b.spalten[1].karten[0];
+        assert_eq!((k.id.as_str(), k.etappe.as_deref(), k.besitzer.as_deref()), ("ar-20261102-0001", Some("beispiel/b8"), Some("chat:beispiel")));
+        assert_eq!(k.schritte.iter().map(|s| s.titel.as_str()).collect::<Vec<_>>(), ["Vertrag"]);
+        let andere: Vec<&BacklogKarte> = b.spalten.iter().flat_map(|s| &s.karten).filter(|k| k.id != "ar-20261102-0001").collect();
+        assert!(andere.iter().all(|k| k.etappe.is_none() && k.besitzer.is_none() && k.schritte.is_empty()));
+    }
+
+    /// Etappe B8: „Als Nächstes“ zuerst nach der Reihenfolge der Etappe, auch
+    /// gegen die Stufe; ohne (bekannte) Etappe zuletzt, dort weiter nach Stufe.
+    #[test]
+    fn als_naechstes_nach_etappen_reihenfolge() {
+        let mut i = inhalt();
+        let mut neu = |id: &str, stufe: Stufe, etappe: Option<&str>| {
+            let mut a = arbeit(id, ArbeitsStand::AlsNaechstes, None, None);
+            a.prioritaet = stufe;
+            a.etappe = etappe.map(str::to_string);
+            i.speicher.arbeiten.push(a);
+        };
+        neu("ar-20261102-0101", Stufe::Jetzt, Some("beispiel/spaet"));
+        neu("ar-20261102-0102", Stufe::Irgendwann, Some("beispiel/frueh"));
+        neu("ar-20261102-0103", Stufe::Jetzt, Some("beispiel/unbekannt"));
+        assert_eq!(etappen_projekte(&i, "beispiel").into_iter().collect::<Vec<_>>(), ["beispiel"]);
+        let reihenfolge = BTreeMap::from([("beispiel/frueh".to_string(), 1), ("beispiel/spaet".to_string(), 2)]);
+        let b = backlog(&i, "beispiel", false, &reihenfolge).unwrap();
+        let s = b.spalten.iter().find(|s| s.art == BacklogSpaltenArt::AlsNaechstes).unwrap();
+        let ids: Vec<&str> = s.karten.iter().map(|k| k.id.as_str()).collect();
+        assert_eq!(ids, ["ar-20261102-0102", "ar-20261102-0101", "ar-20261102-0103", "ar-20261102-0006"]);
+    }
+
+    /// Etappe B8, Gleichheit von Stand und Backlog: Die Zahlen des Stands
+    /// sind die Größen der Gruppen im Backlog (läuft, als Nächstes, wartet auf
+    /// dich); `fertig_7_tage` zählt die fertigen Arbeiten, die das Backlog nicht
+    /// mehr zeigt (heute bis sechs Tage zurück, nicht sieben).
+    #[test]
+    fn stand_zahlen_gleich_backlog() {
+        let mut i = inhalt();
+        // Ohne Verlauf gilt `geaendert` als Fertig-Zeitpunkt (ungefähr).
+        i.speicher.arbeiten[6].geaendert = "2026-10-28T08:00:00+01:00".into();
+        let mut alt = arbeit("ar-20261027-0001", ArbeitsStand::Fertig, None, None);
+        alt.geaendert = "2026-10-27T23:00:00+01:00".into();
+        i.speicher.arbeiten.push(alt);
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
+        let groesse = |a: BacklogSpaltenArt| b.spalten.iter().find(|s| s.art == a).unwrap().karten.len() as u64;
+        for sichtbar in [false, true] {
+            let s = crate::anstehend::stand(&i, "beispiel", sichtbar).unwrap();
+            assert_eq!(s.fertig_7_tage, 1, "sichtbar {sichtbar}");
+        }
+        let z = crate::anstehend::stand(&i, "beispiel", false).unwrap().zahlen.unwrap();
+        assert_eq!(
+            (z.laeuft, z.als_naechstes, z.wartet_auf_dich, z.fertig_7_tage),
+            (groesse(BacklogSpaltenArt::Laeuft), groesse(BacklogSpaltenArt::AlsNaechstes), groesse(BacklogSpaltenArt::FuerDich), 1)
+        );
     }
 
     /// Wartende je Verantwortlichem: Inhaber zuerst (auch die Frage und die
     /// Arbeit mit Verweis), dann die Chats nach Name, dann extern.
     #[test]
     fn wartende_je_verantwortlichem() {
-        let b = backlog(&inhalt(), "beispiel", false).unwrap();
+        let b = backlog(&inhalt(), "beispiel", false, &BTreeMap::new()).unwrap();
         let gruppen: Vec<(&str, Vec<&str>)> = b.wartend.iter().map(|g| (g.wer.as_str(), g.karten.iter().map(|k| k.id.as_str()).collect())).collect();
         assert_eq!(
             gruppen,
@@ -396,7 +439,7 @@ mod tests {
     fn warteschlange_rueckt_nach() {
         let mut i = inhalt();
         i.speicher.beantwortet.insert(crate::speicher::antworten::antwort_schluessel("beispiel", "farbe", "2026-11-01"));
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         let fuer_dich = &b.spalten[0];
         assert!(fuer_dich.karten.iter().any(|k| k.id == "name" && k.hinweis.as_deref() == Some("noch 1 Frage wartet")));
         assert_eq!(b.fragen_weitere, 1);
@@ -408,7 +451,7 @@ mod tests {
             stufe: Some(Stufe::Jetzt),
             zeit: "2026-11-03T08:00:00+01:00".into(),
         });
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         assert!(b.spalten[0].karten.iter().any(|k| k.id == "termin"));
         assert!(!b.spalten[0].karten.iter().any(|k| k.id == "name"));
     }
@@ -419,7 +462,7 @@ mod tests {
         let mut i = inhalt();
         i.speicher = AusDemSpeicher::default();
         i.speicher_fehlt = true;
-        let b = backlog(&i, "beispiel", false).unwrap();
+        let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         assert!(b.speicher_fehlt);
         let alle: Vec<&str> = b.spalten.iter().flat_map(|s| s.karten.iter().map(|k| k.id.as_str())).collect();
         assert_eq!(alle, ["farbe"]);

@@ -462,7 +462,7 @@ fn vorlagenmodul_tabellen_im_datenspeicher() {
     reg.tabellen_einrichten(s.speicher.as_ref().unwrap());
     assert!(reg.stoerungen().alle().is_empty(), "{:?}", reg.stoerungen().alle());
     let info = s.speicher().unwrap().tabellen_info().unwrap();
-    assert!(info.iter().any(|(n, _, _)| n == "projekt/vorlage/stand"), "{info:?}");
+    assert!(info.iter().any(|(n, _, _)| n == "projekt/vorlage/etappen"), "{info:?}");
 }
 
 /// Ein neutrales Beispielmodul, als stamme es aus der Kiste

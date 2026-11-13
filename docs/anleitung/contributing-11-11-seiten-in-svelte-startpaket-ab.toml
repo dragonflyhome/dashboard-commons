@@ -137,13 +137,26 @@ art = "geplant"'''
 text = 'farbe und Einträge ohne kennung gehen bis Schritt 6 noch (pruefe gibt je einen Hinweis); aus farbe wird problem zu problem, wartet und aktiv zu begonnen, plan (geplant, grau) zu geplant, wenn das Datum noch kommt, sonst erledigt. Der Server liefert die Einträge zusätzlich als Ereignisse in abgeleitet.ereignisse (/api/projekte/<slug>/daten/zeitstrahl).'
 
 [[block]]
+titel = 'Projektseite in vier Teilen (Etappe B8)'
+text = '''
+Kurz für dich (Inhaber): Oben auf der Übersicht jeder Projektseite stehen vier Teile, jeder mit einer Frage und im Inhaltsverzeichnis. Stand: Wie geht es dem Projekt? Ein Satz, vier Zahlen (laufen, warten auf dich, als Nächstes, fertig in 7 Tagen; die ersten drei springen zu ihrer Gruppe in der Aufgabenliste, „fertig in 7 Tagen“ zur Zeitleiste) und die Ampel als Wort mit Grund (wartet etwas länger als drei Tage auf dich: „Problem: … wartet seit 9 Tagen auf dich.“; kürzer: „Wartet“). Aufgabenliste: Was ist jetzt zu tun, und von wem? Dort beantwortest du Fragen und Aufgaben. Plan: Wo stehen wir im Ganzen? Die Etappen mit Stand-Wort (mit echtem Termin etwa „geplant · ab 03/2027“) und „x von y Arbeiten fertig“, darüber ein Zeitstreifen nur aus echten Daten. Zeitleiste: Was ist geschehen, was kommt? Oben das Kommende, darunter die letzten 14 Tage nach Tagen, neue Meldungen mit „gelesen“; „Ältere anzeigen“ holt mehr.
+
+Stand wird nie von Hand gepflegt. Alles in den vier Teilen rechnet der Server aus dem Tracker (/api/projekte/<slug>/stand, /backlog, /plan, /verlauf); die Seite lädt sie neu, sobald sich etwas am Projekt ändert. Von Hand steht nur Absicht: summary sagt, worum es geht, daten/plan.toml nennt die Etappen in ihrer Reihenfolge. Eine Arbeit nennt ihre Etappe im Feld etappe.
+
+Was entfällt: das Unter-Dashboard mit den Kästen Arbeiten, Fristen und Zuletzt, der eigene Kasten „Aufgaben für dich“ (er steht jetzt in „Wartet auf dich“), der Bau-Stand als eigene Zeile (er steht im Stand, nur wenn der Bau rot ist oder gerade läuft) und die Status-Zeile unter der Überschrift (das Status-Wort steht in der Überschrift). Fristen stehen in der Zeitleiste oben und als Angabe der Zeilen in der Aufgabenliste; die Fristenliste über alle Projekte bleibt auf der Startseite. Auch der einfache Aufbau (Projekt ohne eigene Seite) zeigt fristen.toml und plan.toml nicht als eigene Abschnitte. Eine Meldung „Fertig: …“ oder „Bau rot“ steht nicht unter „Neue Meldungen“, solange die Zeitleiste die fertige Arbeit oder den roten Bau als eigene Zeile zeigt. Ohne Anmeldung stehen die vier Zahlen als Text da, weil die Aufgabenliste dann fehlt; lässt sich die Liste nicht laden, bleiben Fragen und Aufgaben in „Wartet auf dich“ beantwortbar.
+
+Für Seite.svelte heißt das: nur Inhalt (Fluss, Tabellen, Texte, inhaltliche Zeiträume), kein Stand. Fortschritt in Prozent, Kanban und Gantt-Balken mit farbe = "laeuft" fallen weg, Kennzahlen bekommen stand oder berechnet, sobald die Seite umgestellt ist; die vier Teile zeigen dasselbe aus dem Tracker. Die Unterseiten zeigen ihren Inhalt, die vier Teile stehen auf der Übersicht; ist der Bau rot oder läuft er, steht er auch auf Unterseiten oben.
+
+pruefe meldet Stand von Hand als Hinweis (nach der Umstellung aller Seiten als Fehler), je Fund mit Zeile: prozent in fortschritt.toml, farbe = "laeuft" im Balkenplan, ein Zeitstrahl-Eintrag begonnen oder geplant (auch über farbe), dessen Datum vorbei ist (ein Monat erst nach seinem Ende), eine Kennzahl ohne berechnet und ohne stand, kanban.toml und Stand-Wörter in summary (läuft, laufend, fertig, erledigt, abgeschlossen, begonnen, wartet, Stand, Prozent oder ein %). Erreicht und gesamt im Fortschritt, Gantt und Zeitstrahl für inhaltliche Zeiträume und Kennzahlen mit stand oder berechnet bleiben ohne Hinweis.'''
+
+[[block]]
 titel = 'Gemeinsame Bausteine, Etappe B2: Modul Backlog'
 text = '''
 Alle Beispiele sind erfunden. Der Server liest und rechnet; er schreibt nichts in den Inhalt. Was in TOML steht, schreibst du und committest es.
 
-Kurz für dich (Inhaber): Auf jeder Projektseite steht unter „Aufgaben für dich“ das Backlog: fünf Spalten „Für dich“, „Läuft“, „Wartet“, „Als Nächstes“ und „Fertig“ (die letzten sieben Tage), darunter „Wer ist dran“: was auf dich wartet, was auf einen Chat und was auf jemanden draußen. Jede Karte führt zu ihrem Eintrag oben auf der Seite; dort antwortest du wie bisher (mit „Etwas anderes …“). Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
+Kurz für dich (Inhaber): Auf jeder Projektseite ist das Backlog die Aufgabenliste: vier Gruppen untereinander, „Wartet auf dich“, „Läuft“, „Als Nächstes“ und „Wartet auf andere“ (fertige Arbeiten zeigt der Plan). In „Wartet auf dich“ antwortest du direkt (Frage mit „Etwas anderes …“, Aufgaben mit ihren Knöpfen); jede Arbeit ist eine Zeile mit Etappe, wer dran ist und Frist und klappt zu ihren Schritten auf. Von den Fragen eines Projekts siehst du immer nur eine; die nächste kommt nach deiner Antwort.
 
-Backlog auf jeder Projektseite. Das Dashboard setzt es selbst in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
+Backlog auf jeder Projektseite. Das Dashboard setzt es selbst als Aufgabenliste in den Rahmen der Seite (auch im einfachen Aufbau); in Seite.svelte nicht noch einmal einbauen. Es zeigt nur, was schon da ist: Aufgaben (/api/aufgaben), Arbeiten (/api/arbeiten) und die sichtbare Frage aus daten/fragen.toml. Die Spalte ergibt sich allein aus Stand und Status:'''
 
 [[block]]
 [block.tabelle]
@@ -152,8 +165,7 @@ zeilen = [
   ['Für dich', 'offene Aufgaben, die eine sichtbare Frage, Arbeiten mit "wartet_auf": "inhaber" ohne verweis'],
   ['Läuft', 'Arbeiten mit "stand": "laeuft"'],
   ['Wartet', 'Arbeiten mit "stand": "wartet" (auf einen Chat, extern oder auf den Inhaber mit verweis), Aufgaben beim Chat (eigene Worte des Inhabers)'],
-  ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes"'],
-  ['Fertig', 'fertige Arbeiten, erledigte, abgelaufene und zurückgezogene Aufgaben, bis sie ins Archiv ziehen (sieben Tage)'],
+  ['Als Nächstes', 'Arbeiten mit "stand": "als-naechstes", zuerst nach der Reihenfolge ihrer Etappe in daten/plan.toml, ohne Etappe zuletzt'],
 ]
 
 [[block]]
@@ -165,7 +177,7 @@ pwsh -NoProfile -File %USERPROFILE%/dev/dashboard/scripts/Api.ps1 "api/projekte/
 
 [[block]]
 text = '''
-Die Antwort hat spalten (alle fünf, je mit karten), wartend (je Verantwortlichem), fragen_weitere, kanban_datei und speicher_fehlt.
+Die Antwort hat spalten (alle vier: fuer-dich, laeuft, wartet, als-naechstes, je mit karten), wartend (je Verantwortlichem), fragen_weitere, kanban_datei und speicher_fehlt. Fertige Arbeiten stehen nicht im Backlog; sie liefert /api/projekte/<slug>/plan.
 
 Wer ist dran (wartende Arbeiten je Verantwortlichem). wartend fasst alles zusammen, was wartet, nach wartet_auf: zuerst inhaber („Wartet auf dich“), dann jeder Chat für sich (chat:<name>, nach Name), zuletzt extern („Wartet auf jemanden draußen“). Es gibt keine neuen Rollen; es sind die Werte, die du bei einer Arbeit schon setzt:'''
 
@@ -209,7 +221,7 @@ prioritaet = "irgendwann"'''
 
 [[block]]
 text = '''
-Nach der Antwort auf „farbe“ rückt „name“ nach, sofort, auch bevor du „farbe“ herausnimmst. Die Seite zeigt „noch 2 Fragen warten“ ohne deren Text. Dieselbe Rechnung gilt überall: Startseite, „Anstehend“, Glocke (Frist-Meldungen), Unter-Dashboard, Backlog und der Baustein Fragen (der in deiner Seite.svelte jetzt auch nur die sichtbare Frage zeigt). Technisch: jede offene Frage hat in /api/anstehend und /stand/voll das Feld warteschlange = { platz, offen }; /api/projekte/<slug>/daten/fragen hat abgeleitet.warteschlange = { sichtbar, gestellt, weitere }.
+Nach der Antwort auf „farbe“ rückt „name“ nach, sofort, auch bevor du „farbe“ herausnimmst. Die Seite zeigt „noch 2 Fragen warten“ ohne deren Text. Dieselbe Rechnung gilt überall: Startseite, „Anstehend“, Glocke (Frist-Meldungen), Aufgabenliste der Projektseite und der Baustein Fragen (der in deiner Seite.svelte jetzt auch nur die sichtbare Frage zeigt). Technisch: jede offene Frage hat in /api/anstehend und /stand/voll das Feld warteschlange = { platz, offen }; /api/projekte/<slug>/daten/fragen hat abgeleitet.warteschlange = { sichtbar, gestellt, weitere }.
 
 Fragen sind nicht frei lesbar. Fragen an den Inhaber sind persönlicher Inhalt. /api/projekte/<slug>/daten/fragen verlangt darum die Windows-Anmeldung (wie /stand/voll), und /api/projects/<slug> lässt daten.fragen ohne Anmeldung weg. Die anderen Dateien in daten/ bleiben frei wie die Seite. Ohne Anmeldung gibt kein Weg Fragentexte, Titel oder Notizen von Aufgaben und Arbeiten oder Texte von Meldungen heraus, nur Zahlen (/stand); ein Test geht dafür jeden freien Weg des Routers durch (src/frei_test.rs). Der Baustein Fragen zeigt ohne Anmeldung nur „Anmelden, um die Fragen an dich zu sehen“.
 
@@ -217,7 +229,7 @@ Ohne Anmeldung nur Zahlen (Entscheidung der Architektur). Dasselbe gilt für:'''
 
 [[block]]
 punkte = [
-  'Offene Punkte (open = [...] in projekt.toml): In /api/projects, /api/projects/<slug> und /api/projekte/<slug> steht ohne Anmeldung nur open_zahl, in /stand nur notizen_zahl. Karte, Unter-Dashboard und einfacher Aufbau zeigen dann nur die Zahl.',
+  'Offene Punkte (open = [...] in projekt.toml): In /api/projects, /api/projects/<slug> und /api/projekte/<slug> steht ohne Anmeldung nur open_zahl, in /stand nur notizen_zahl. Karte, Teil „Stand“ und einfacher Aufbau zeigen dann nur die Zahl.',
   'Befunde der Prüfung: /api/pruefung und /api/pruefung/<slug> geben ohne Anmeldung nur die Zahlen (gesamt und je Projekt fehler, hinweise), die Sätze nur mit Anmeldung. Auch eine kaputte Seite oder Datei nennt ohne Anmeldung nur einen neutralen Satz statt des Fehlers (/api/projects, /api/projects/<slug>, /api/projekte/<slug> und …/daten/<name>); Datei und Zeile bleiben.',
   'Wege der Backend-Module: geschützt, siehe Abschnitt 12.',
 ]
@@ -344,7 +356,7 @@ punkte = [
 
 [[block]]
 text = '''
-Nächste Frist je Projekt (Unter-Dashboard, /api/projekte/<slug>/stand): die früheste aus den offenen Aufgaben, der sichtbaren Frage, den Arbeiten mit Frist und den offenen Fristen aus fristen.toml mit Datum. Eine Frist aus der Datei, die vorbei ist, macht die Ampel rot („Eine Frist ist vorbei.“, mit Anmeldung mit Titel). zeitstrahl.toml zählt nie; eine Kennzahl „Nächste Frist“ von Hand braucht es nicht mehr. Ohne Anmeldung steht nur das Datum da.
+Nächste Frist je Projekt (/api/projekte/<slug>/stand): die früheste aus den offenen Aufgaben, der sichtbaren Frage, den Arbeiten mit Frist und den offenen Fristen aus fristen.toml mit Datum. Eine Frist aus der Datei, die vorbei ist, macht die Ampel rot („Eine Frist ist vorbei.“, mit Anmeldung mit Titel). zeitstrahl.toml zählt nie; eine Kennzahl „Nächste Frist“ von Hand braucht es nicht mehr. Ohne Anmeldung steht nur das Datum da.
 
 Fristenliste. In Seite.svelte:'''
 
@@ -439,7 +451,7 @@ beispiel = '''
 text = '''
 beschriftung ist der Name der Tabelle für Vorlese-Programme (sichtbar mit beschriftungZeigen); mindestbreite (in rem) sagt, ab wann sie rollt, statt die Spalten zu quetschen. Ohne eigene Zellen geht es auch mit Daten: spalten={[{ schluessel: 'thema', titel: 'Thema' }]} zeilen={ablage.eintrag}.
 
-Die Widgets oben auf jeder Projektseite (Stand, Frage, Arbeiten, Fristen, Zuletzt) setzt das Dashboard selbst ins Unter-Dashboard, darunter seit Etappe B2 das Backlog; der Katalog zeigt ihre Entwürfe und warum das Designteam welchen gewählt hat. In Seite.svelte nicht noch einmal einbauen.'''
+Die vier Teile oben auf der Übersicht jeder Projektseite (Stand, Aufgabenliste, Plan, Zeitleiste) setzt das Dashboard selbst in den Rahmen; in Seite.svelte nicht noch einmal einbauen. Der Katalog zeigt Plan, Stand als Teil und die Aufgabenliste mit „Wartet auf dich“, dazu die früheren Widgets (Stand, Frage, Arbeiten, Fristen, Zuletzt) mit ihren Entwürfen.'''
 
 [[block]]
 titel = 'Orte: Dateien und Ordner öffnen'

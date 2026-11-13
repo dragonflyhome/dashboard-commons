@@ -161,6 +161,7 @@ const detailNeu: ProjectDetail = {
 		},
 		orte: { ort: [{ kennung: 'bauplan', titel: 'Bauplan', hinweis: null }] },
 		fristen: null,
+		plan: null,
 		eigen: { rezept: { menge: 3 } }
 	}
 };

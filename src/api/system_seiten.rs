@@ -303,6 +303,19 @@ fn entscheidung(g: Gelesen) -> Entscheidung {
     e
 }
 
+/// Die Slugs aus dem freiwilligen Feld `projekte = ["slug"]` einer
+/// Entscheidung (Etappe B8); ohne Feld oder in anderer Form keine. Nur so
+/// erscheint sie in der Zeitleiste eines Projekts (`/api/projekte/<slug>/verlauf`).
+pub fn projekte_der(e: &Entscheidung) -> Vec<&str> {
+    let mut slugs = Vec::new();
+    for f in e.weitere.iter().filter(|f| f.name == "projekte") {
+        if let FeldWert::Liste(l) = &f.wert {
+            slugs.extend(l.iter().filter_map(|w| if let FeldWert::Text(t) = w { Some(t.as_str()) } else { None }));
+        }
+    }
+    slugs
+}
+
 /// Alle Entscheidungen in `ordner`, neueste zuerst.
 pub fn entscheidungen_lesen(ordner: &Path) -> EntscheidungsListe {
     entscheidungen_aus(toml_dateien(ordner))

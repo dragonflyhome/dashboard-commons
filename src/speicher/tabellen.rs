@@ -186,9 +186,10 @@ pub const FASSUNG_AUFGABEN: u32 = 1;
 pub const FASSUNG_AUFGABEN_LINKS: u32 = 1;
 pub const FASSUNG_AUFGABEN_ARCHIV: u32 = 1;
 /// Fassungen der Tabellen aus Etappe A1 (`Arbeit`, `Einstufung`). `Arbeit`
-/// in Fassung 2 (Schema 10): dazu `besitzer` und `schritte`.
-pub const FASSUNG_ARBEITEN: u32 = 2;
-pub const FASSUNG_ARBEITEN_ARCHIV: u32 = 2;
+/// in Fassung 2 (Schema 10): dazu `besitzer` und `schritte`; Fassung 3
+/// (Schema 11): dazu `etappe` und die Verlaufsarten `stand` und `etappe`.
+pub const FASSUNG_ARBEITEN: u32 = 3;
+pub const FASSUNG_ARBEITEN_ARCHIV: u32 = 3;
 pub const FASSUNG_EINSTUFUNGEN: u32 = 1;
 /// Fassungen der Tabellen aus Etappe A2 (`Antwort`).
 pub const FASSUNG_ANTWORTEN: u32 = 1;

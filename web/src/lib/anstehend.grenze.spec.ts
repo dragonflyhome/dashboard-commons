@@ -57,7 +57,7 @@ describe('Anstehend wird nur in anstehend.ts geordnet (Etappe 3a+)', () => {
 	it('der Wächter sieht genug: Seiten, Komponenten und Widgets sind dabei', () => {
 		const q = quellen();
 		expect(q).toContain('routes/anstehend/+page.svelte');
-		expect(q).toContain('lib/components/projekt/UnterDashboard.svelte');
+		expect(q).toContain('lib/components/projekt/ProjektTeile.svelte');
 		expect(q).toContain('lib/components/anstehend/JetztFuerDich.svelte');
 		expect(q).toContain('lib/katalog/widgets/worte.ts');
 		expect(q.length).toBeGreaterThan(40);

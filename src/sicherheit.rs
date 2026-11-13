@@ -316,7 +316,8 @@ pub fn pfad_dekodiert(roh: &str) -> Option<String> {
 /// der Pflicht vorbeiführt. Seit Etappe B2 auch `/api/projekte/<slug>/backlog`
 /// und `/api/projekte/<slug>/daten/fragen` (Fragen an den Inhaber sind
 /// persönlicher Inhalt); die anderen Dateien in `daten/` bleiben frei. Seit
-/// Etappe B3 auch `/api/projekte/<slug>/daten/fristen` und `/api/fristen`.
+/// Etappe B3 auch `/api/projekte/<slug>/daten/fristen` und `/api/fristen`, seit
+/// Etappe B8 `/api/projekte/<slug>/plan` und `/api/projekte/<slug>/verlauf`.
 pub fn geschuetzt(pfad: &str) -> bool {
     const WURZELN: [&str; 24] = [
         "/schluessel",
@@ -371,7 +372,8 @@ pub fn geschuetzt(pfad: &str) -> bool {
     // Inhalt; die anderen Dateien in daten/ bleiben frei wie die Seite).
     let teile: Vec<&str> = pfad.split('/').collect();
     let stand_voll = matches!(teile.as_slice(), ["", "api", "projekte", _, "stand", "voll", ..]);
-    let backlog = matches!(teile.as_slice(), ["", "api", "projekte", _, "backlog", ..]);
+    // Etappe B8: Plan und Verlauf eines Projekts nennen Titel wie das Backlog.
+    let backlog = matches!(teile.as_slice(), ["", "api", "projekte", _, "backlog" | "plan" | "verlauf", ..]);
     // Die geschützten Dateien aus der einen Liste `GESCHUETZTE_DATEIEN`.
     let datei = matches!(teile.as_slice(), ["", "api", "projekte", _, "daten", name, ..] if datei_geschuetzt(name));
     stand_voll || backlog || datei || WURZELN.iter().any(|w| pfad.strip_prefix(w).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')))

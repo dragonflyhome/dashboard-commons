@@ -134,4 +134,17 @@ describe('Standardaufbau: Prüfbericht', () => {
 			expect(pruefung).toHaveBeenCalledTimes(4);
 		});
 	});
+
+	it('Etappe B8: fristen.toml und plan.toml stehen im Rahmen (Zeitleiste, Plan), nicht noch einmal hier', () => {
+		abfangen<(a: InhaltAenderung) => void>(live, 'onInhalt');
+		abfangen<(a: InhaltAenderung) => void>(freierKanal, 'onInhalt');
+		abfangen<() => void>(freierKanal, 'onFassung');
+		abfangen<() => void>(live, 'onNachholen');
+		vi.spyOn(api, 'pruefung').mockResolvedValue(bericht(null));
+		// Ohne Projektseite drumherum lädt StandardDatei nichts; darum nur diese beiden Namen.
+		render(Standardaufbau, { kopf: { ...kopf, daten: ['fristen', 'plan'] } });
+		expect(screen.getByText(/hat noch keine eigene Seite/)).toBeInTheDocument();
+		expect(screen.queryByRole('heading', { name: 'Fristen' })).toBeNull();
+		expect(screen.queryByRole('heading', { name: /plan/ })).toBeNull();
+	});
 });

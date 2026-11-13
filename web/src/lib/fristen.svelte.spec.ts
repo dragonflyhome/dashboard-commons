@@ -79,6 +79,18 @@ describe('Fristen: Worte', () => {
 			ampelSatz({ grund: 'frist-vorbei', bezug: 'Plakate bestellen', bezug_art: null }, 0)
 		).toBe('Die Frist von „Plakate bestellen“ ist vorbei.');
 	});
+
+	it('Ampel (Etappe B8): wartet lange und ohne Bewegung mit den Tagen des Servers', () => {
+		expect(
+			ampelSatz({ grund: 'wartet-lange', bezug: 'Logo wählen', bezug_art: 'frage', tage: 9 }, 1)
+		).toBe('„Logo wählen“ wartet seit 9 Tagen auf dich.');
+		expect(ampelSatz({ grund: 'wartet-lange', bezug: null, bezug_art: 'frage', tage: 4 }, 1)).toBe(
+			'Ein Eintrag wartet seit 4 Tagen auf dich.'
+		);
+		expect(ampelSatz({ grund: 'ohne-bewegung', bezug: null, bezug_art: null, tage: 7 }, 0)).toBe(
+			'Seit 7 Tagen hat sich an keiner offenen Arbeit etwas bewegt.'
+		);
+	});
 });
 
 describe('Fristen: nächste Frist (wie der Server)', () => {

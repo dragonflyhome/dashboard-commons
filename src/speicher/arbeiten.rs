@@ -48,6 +48,8 @@ pub struct NeueArbeit {
     pub prioritaet: Stufe,
     pub frist: Option<String>,
     pub notiz: Option<String>,
+    /// `<projekt>/<kennung>`, schon gegen `daten/plan.toml` geprüft.
+    pub etappe: Option<String>,
 }
 
 /// Teiländerung einer Arbeit, schon geprüft. Äußeres `None`: bleibt, wie es
@@ -64,6 +66,8 @@ pub struct ArbeitAenderung {
     pub prioritaet: Option<Stufe>,
     pub frist: Option<Option<String>>,
     pub notiz: Option<Option<String>>,
+    /// `<projekt>/<kennung>`, schon gegen `daten/plan.toml` geprüft; kommt in den Verlauf.
+    pub etappe: Option<Option<String>>,
 }
 
 /// Ergebnis von `arbeit_fortschreiben`.
@@ -78,6 +82,8 @@ pub enum Fortschreiben {
     Ungueltig(String),
     /// Den Titel einer Arbeit ohne Besitzer ändert nur der Chat ihres Projekts; nichts geschrieben.
     FremderTitel,
+    /// Die Etappe einer Arbeit ohne Besitzer setzt nur der Chat ihres Projekts; nichts geschrieben.
+    FremdeEtappe,
 }
 
 /// Satz, wenn `wartet` ohne `wartet_auf` kommt.
@@ -120,6 +126,9 @@ pub fn aenderung_anwenden(a: &mut Arbeit, aenderung: &ArbeitAenderung) -> Result
     if let Some(n) = &aenderung.notiz {
         a.notiz = n.clone();
     }
+    if let Some(e) = &aenderung.etappe {
+        a.etappe = e.clone();
+    }
     if a.stand == ArbeitsStand::Wartet {
         if a.wartet_auf.is_none() {
             return Err(SATZ_WARTET_AUF_FEHLT.to_string());
@@ -142,6 +151,19 @@ fn titel_verlauf(zeit: &str, von: String, alt: &str, neu: &str) -> ArbeitVerlauf
         alt: alt.to_string(),
         neu: neu.to_string(),
         text: format!("Titel geändert: „{alt}“ → „{neu}“"),
+    }
+}
+
+/// Der Eintrag im Verlauf für einen Wechsel des Arbeitsstands (Schema 11).
+pub(super) fn stand_verlauf(zeit: &str, von: &str, alt: ArbeitsStand, neu: ArbeitsStand) -> ArbeitVerlauf {
+    ArbeitVerlauf {
+        zeit: zeit.to_string(),
+        von: von.to_string(),
+        art: ArbeitVerlaufArt::Stand,
+        schritt: None,
+        alt: alt.wort().to_string(),
+        neu: neu.wort().to_string(),
+        text: format!("Stand: {} → {}.", alt.wort(), neu.wort()),
     }
 }
 
@@ -258,10 +280,6 @@ pub struct AusDemSpeicher {
     pub meldungen: Vec<Meldung>,
     /// Vorgänge der letzten sieben Tage, neueste zuerst (für „Zuletzt passiert“).
     pub vorgaenge: Vec<Vorgang>,
-    /// Etappe B2 (Spalte „Fertig“ im Backlog): nicht mehr offene Aufgaben
-    /// außerhalb des Archivs (erledigt, zurückgezogen, abgelaufen; eine offene
-    /// mit erreichtem Ablauf zählt hier als abgelaufen), ohne Links.
-    pub aufgaben_abgeschlossen: Vec<Aufgabe>,
 }
 
 impl Speicher {
@@ -273,6 +291,17 @@ impl Speicher {
         }
         let id = neue_kennung(&txn, jetzt)?;
         let zeit = zeit_text(jetzt);
+        // Etappe B8: Anlegen mit begonnenem Stand steht im Verlauf (alt leer), sonst
+        // gälte ein späterer Wechsel als Beginn und `geaendert` als Fertig-Zeitpunkt.
+        let verlauf = if neu.stand == ArbeitsStand::AlsNaechstes {
+            Vec::new()
+        } else {
+            vec![ArbeitVerlauf {
+                alt: String::new(),
+                text: format!("Angelegt mit Stand {}.", neu.stand.wort()),
+                ..stand_verlauf(&zeit, &neu.von, neu.stand, neu.stand)
+            }]
+        };
         let a = Arbeit {
             id,
             projekt: neu.projekt,
@@ -287,8 +316,9 @@ impl Speicher {
             notiz: neu.notiz,
             erstellt: zeit.clone(),
             geaendert: zeit,
-            verlauf: Vec::new(),
+            verlauf,
             schritte: Vec::new(),
+            etappe: neu.etappe,
         };
         txn.open_table(ARBEITEN)?.insert(a.id.as_str(), serde_json::to_vec(&a)?.as_slice())?;
         self.festschreiben(txn, &[super::Bereich::Arbeiten])?;
@@ -312,15 +342,22 @@ impl Speicher {
             };
         };
         let von = &aenderung.von;
+        let fremd = *von != format!("chat:{}", a.projekt);
         match &a.besitzer {
             Some(besitzer) if besitzer != von => return Err(SpeicherFehler::Besetzt { besitzer: besitzer.clone(), seit: a.geaendert.clone() }),
-            None if aenderung.titel.is_some() && *von != format!("chat:{}", a.projekt) => {
+            None if aenderung.titel.is_some() && fremd => {
                 return Ok(Fortschreiben::FremderTitel);
+            }
+            None if aenderung.etappe.as_ref().is_some_and(|e| *e != a.etappe) && fremd => {
+                return Ok(Fortschreiben::FremdeEtappe);
             }
             _ => {}
         }
         let war_fertig = a.stand == ArbeitsStand::Fertig;
+        let alter_stand = a.stand;
         let alter_titel = a.titel.clone();
+        let alte_etappe = a.etappe.clone();
+        let altes_warten = a.wartet_auf.clone();
         match aenderung_anwenden(&mut a, aenderung) {
             Err(satz) => return Ok(Fortschreiben::Ungueltig(satz)),
             Ok(false) => return Ok(Fortschreiben::Unveraendert(a)),
@@ -333,6 +370,33 @@ impl Speicher {
         if a.titel != alter_titel {
             let eintrag = titel_verlauf(&a.geaendert, von.clone(), &alter_titel, &a.titel);
             verlauf_anhaengen(&mut a, eintrag)?;
+        }
+        if a.etappe != alte_etappe {
+            let (alt, neu) = (alte_etappe.unwrap_or_default(), a.etappe.clone().unwrap_or_default());
+            let text = format!("Etappe geändert: „{alt}“ → „{neu}“");
+            let eintrag = ArbeitVerlauf { zeit: a.geaendert.clone(), von: von.clone(), art: ArbeitVerlaufArt::Etappe, schritt: None, alt, neu, text };
+            verlauf_anhaengen(&mut a, eintrag)?;
+        }
+        if a.stand != alter_stand {
+            let eintrag = stand_verlauf(&a.geaendert, von, alter_stand, a.stand);
+            // Schließen (fertig) und Abgeben (aus laeuft oder wartet) gehen auch bei vollem
+            // Verlauf; jeder andere Wechsel zählt, sonst wüchse der Verlauf im Wechsel
+            // fertig ↔ als-naechstes ohne Grenze.
+            let frei = a.stand == ArbeitsStand::Fertig || (braucht_besitzer(alter_stand) && !braucht_besitzer(a.stand));
+            if frei { a.verlauf.push(eintrag) } else { verlauf_anhaengen(&mut a, eintrag)? }
+        } else if a.stand == ArbeitsStand::Wartet && a.wartet_auf != altes_warten {
+            // Wartet jetzt auf jemand anderen: neuer Beginn des Wartens (`anstehend::wartet_seit`).
+            // Nur für die Ampel: bei vollem Verlauf entfällt der Eintrag, die Änderung geht durch.
+            // shortcut: dann zählt wartet-lange ab dem alten Warten, zu früh rot; aufrüsten, wenn es vorkommt.
+            let wer = match a.wartet_auf.as_deref().unwrap_or_default() {
+                "inhaber" => "den Inhaber".to_string(),
+                "extern" => "jemand anderen".to_string(),
+                w => w.strip_prefix("chat:").map_or_else(|| w.to_string(), |c| format!("Chat {c}")),
+            };
+            let eintrag = ArbeitVerlauf { text: format!("Wartet jetzt auf {wer}."), ..stand_verlauf(&a.geaendert, von, a.stand, a.stand) };
+            if a.verlauf.len() < VERLAUF_HOECHSTENS {
+                a.verlauf.push(eintrag);
+            }
         }
         if a.besitzer.is_none() && a.schritte.is_empty() && braucht_besitzer(a.stand) {
             a.besitzer = Some(von.clone());
@@ -351,8 +415,8 @@ impl Speicher {
         if let Some(alt) = a.besitzer.clone().filter(|_| a.schritte.is_empty() && !braucht_besitzer(a.stand)) {
             a.besitzer = None;
             // Zählt nicht gegen die Grenze (Auflage teilschritte_1_runde_2): sonst ließe sich
-            // eine Arbeit mit vollem Verlauf nicht schließen. Höchstens einer über der Grenze,
-            // denn Besitzer wird nur, wer über verlauf_anhaengen schreibt.
+            // eine Arbeit mit vollem Verlauf nicht schließen. Nur wenige über der Grenze (Stand,
+            // Besitzer, danach fertig): Jeder Weg zurück geht über verlauf_anhaengen.
             a.verlauf.push(ArbeitVerlauf {
                 zeit: a.geaendert.clone(),
                 von: von.clone(),
@@ -388,6 +452,19 @@ impl Speicher {
         let Some(t) = tabellen::lesen(ARBEITEN, &txn)? else { return Ok(Vec::new()) };
         let mut liste: Vec<Arbeit> = alle_aus(&t)?.into_iter().filter(|a| projekt.is_none_or(|p| p == a.projekt)).collect();
         sortieren(&mut liste);
+        Ok(liste)
+    }
+
+    /// Alle Arbeiten aller Projekte, laufend und im Archiv (`true`), in einer
+    /// Lese-Transaktion, ohne zugesagte Reihenfolge (für den Plan, Etappe B8).
+    pub fn arbeiten_mit_archiv(&self) -> Result<Vec<(Arbeit, bool)>, SpeicherFehler> {
+        let txn = self.db.begin_read()?;
+        let mut liste = Vec::new();
+        for (tabelle, im_archiv) in [(ARBEITEN, false), (ARBEITEN_ARCHIV, true)] {
+            if let Some(t) = tabellen::lesen(tabelle, &txn)? {
+                liste.extend(alle_aus(&t)?.into_iter().map(|a| (a, im_archiv)));
+            }
+        }
         Ok(liste)
     }
 
@@ -460,19 +537,12 @@ impl Speicher {
     pub fn anstehend_lesen(&self, jetzt: &Zeit) -> Result<AusDemSpeicher, SpeicherFehler> {
         let txn = self.db.begin_read()?;
         let mut aufgaben = Vec::new();
-        let mut aufgaben_abgeschlossen = Vec::new();
         if let Some(t) = tabellen::lesen(AUFGABEN, &txn)? {
             for eintrag in t.iter()? {
                 let (k, w) = eintrag?;
                 match json_lesen::<Aufgabe>(w.value(), &format!("aufgaben/{}", k.value())) {
                     Ok(a) if a.zustand == AufgabenZustand::Offen && !abgelaufen(&a, jetzt) => aufgaben.push(a),
-                    Ok(mut a) => {
-                        // Offen, aber der Ablauf ist erreicht: wie die API sie zeigt.
-                        if a.zustand == AufgabenZustand::Offen {
-                            a.zustand = AufgabenZustand::Abgelaufen;
-                        }
-                        aufgaben_abgeschlossen.push(a);
-                    }
+                    Ok(_) => {}
                     Err(e) => warn!("aufgaben: {} ({})", e, e.einzelheiten()),
                 }
             }
@@ -488,7 +558,6 @@ impl Speicher {
             beantwortet: super::antworten::beantwortet_aus(&txn)?,
             meldungen: super::meldungen::meldungen_aus(&txn)?,
             vorgaenge: super::meldungen::zuletzt_vorgaenge_aus(&txn, jetzt)?,
-            aufgaben_abgeschlossen,
         })
     }
 
@@ -534,6 +603,7 @@ mod tests {
             prioritaet: Stufe::Bald,
             frist: None,
             notiz: None,
+            etappe: None,
         }
     }
 
@@ -542,8 +612,88 @@ mod tests {
         ArbeitAenderung { von: "chat:dashboard".into(), ..Default::default() }
     }
 
+    /// Etappe B8: Jeder Wechsel des Stands von Hand steht im Verlauf (alt und
+    /// neu als Stand-Wort); eine Änderung ohne Wechsel schreibt keinen.
+    #[test]
+    fn stand_wechsel_von_hand_im_verlauf() {
+        let s = Speicher::temporaer();
+        let a = s.arbeit_anlegen(neu("dashboard", "x", ArbeitsStand::AlsNaechstes), &zeit(29, 10)).unwrap();
+        assert!(a.verlauf.is_empty(), "als-naechstes anlegen ist kein Wechsel");
+        // Mit begonnenem Stand angelegt: ein Eintrag mit leerem alt (Beginn genau).
+        for st in [ArbeitsStand::Laeuft, ArbeitsStand::Fertig] {
+            let b = s.arbeit_anlegen(neu("dashboard", "y", st), &zeit(29, 9)).unwrap();
+            let e: Vec<(&str, &str, &str)> = b.verlauf.iter().map(|v| (v.alt.as_str(), v.neu.as_str(), v.zeit.as_str())).collect();
+            assert_eq!(e, [("", st.wort(), "2026-10-29T09:00:00+01:00")]);
+        }
+        let staende = |a: &Arbeit| -> Vec<(String, String)> {
+            a.verlauf.iter().filter(|v| v.art == ArbeitVerlaufArt::Stand).map(|v| (v.alt.clone(), v.neu.clone())).collect()
+        };
+        let mut x = a;
+        for st in [ArbeitsStand::Laeuft, ArbeitsStand::Fertig] {
+            let Fortschreiben::Geaendert(y) = s.arbeit_fortschreiben(&x.id, &ArbeitAenderung { stand: Some(st), ..von_dash() }, &zeit(29, 11)).unwrap() else {
+                panic!()
+            };
+            x = y;
+        }
+        let notiz = ArbeitAenderung { notiz: Some(Some("n".into())), ..von_dash() };
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &notiz, &zeit(29, 12)).unwrap() else { panic!() };
+        assert_eq!(staende(&x), [("als-naechstes".into(), "laeuft".into()), ("laeuft".into(), "fertig".into())]);
+        let v = x.verlauf.iter().find(|v| v.art == ArbeitVerlaufArt::Stand).unwrap();
+        assert_eq!((v.von.as_str(), v.text.as_str()), ("chat:dashboard", "Stand: als-naechstes → laeuft."));
+        // Wartet sie danach auf jemand anderen, beginnt das Warten neu: Eintrag wartet → wartet.
+        let warten = |w: &str| ArbeitAenderung { stand: Some(ArbeitsStand::Wartet), wartet_auf: Some(Some(w.into())), ..von_dash() };
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &warten("extern"), &zeit(30, 9)).unwrap() else { panic!() };
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&x.id, &warten("inhaber"), &zeit(30, 10)).unwrap() else { panic!() };
+        let v = x.verlauf.last().unwrap();
+        assert_eq!((v.art, v.alt.as_str(), v.neu.as_str(), v.zeit.as_str()), (ArbeitVerlaufArt::Stand, "wartet", "wartet", "2026-10-30T10:00:00+01:00"));
+        assert_eq!(v.text, "Wartet jetzt auf den Inhaber.");
+    }
+
+    /// Bei vollem Verlauf geht ein Wechsel von `wartet_auf` trotzdem durch;
+    /// nur der Eintrag für die Ampel entfällt.
+    #[test]
+    fn wartet_auf_wechsel_bei_vollem_verlauf() {
+        let s = Speicher::temporaer();
+        let a = s.arbeit_anlegen(neu("dashboard", "voll", ArbeitsStand::Laeuft), &zeit(29, 10)).unwrap();
+        let warten = |w: &str| ArbeitAenderung { stand: Some(ArbeitsStand::Wartet), wartet_auf: Some(Some(w.into())), ..von_dash() };
+        let Fortschreiben::Geaendert(mut voll) = s.arbeit_fortschreiben(&a.id, &warten("extern"), &zeit(29, 11)).unwrap() else { panic!() };
+        voll.verlauf = vec![titel_verlauf("2026-10-29T10:00:00+01:00", "chat:dashboard".into(), "a", "b"); VERLAUF_HOECHSTENS];
+        let txn = s.db.begin_write().unwrap();
+        txn.open_table(ARBEITEN).unwrap().insert(a.id.as_str(), serde_json::to_vec(&voll).unwrap().as_slice()).unwrap();
+        txn.commit().unwrap();
+        let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&a.id, &warten("chat:hallo"), &zeit(29, 12)).unwrap() else { panic!() };
+        assert_eq!((x.wartet_auf.as_deref(), x.verlauf.len()), (Some("chat:hallo"), VERLAUF_HOECHSTENS));
+    }
+
+    /// Etappe B8: Die Etappe setzt nur, wer die Arbeit verantwortet: mit
+    /// Besitzer nur er (sonst `Besetzt`), ohne Besitzer der Chat des Projekts
+    /// (sonst `FremdeEtappe`); nichts geschrieben. Gesetzt und geleert steht im Verlauf.
+    #[test]
+    fn etappe_nur_wer_verantwortet() {
+        let s = Speicher::temporaer();
+        let etappe = |e: Option<&str>, von: &str| ArbeitAenderung { etappe: Some(e.map(String::from)), von: von.into(), ..Default::default() };
+        let mit = s.arbeit_anlegen(neu("dashboard", "mit", ArbeitsStand::Laeuft), &zeit(29, 10)).unwrap();
+        let ohne = s.arbeit_anlegen(neu("dashboard", "ohne", ArbeitsStand::AlsNaechstes), &zeit(29, 10)).unwrap();
+        assert!(matches!(s.arbeit_fortschreiben(&mit.id, &etappe(Some("dashboard/b8"), "chat:pruefung"), &zeit(29, 11)), Err(SpeicherFehler::Besetzt { .. })));
+        assert!(matches!(
+            s.arbeit_fortschreiben(&ohne.id, &etappe(Some("dashboard/b8"), "chat:pruefung"), &zeit(29, 11)).unwrap(),
+            Fortschreiben::FremdeEtappe
+        ));
+        assert_eq!(s.arbeit(&ohne.id).unwrap().unwrap(), ohne, "nichts geschrieben");
+        for (id, wer) in [(&mit.id, "chat:dashboard"), (&ohne.id, "chat:dashboard")] {
+            let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(id, &etappe(Some("architektur/b8"), wer), &zeit(29, 11)).unwrap() else { panic!() };
+            assert_eq!(x.etappe.as_deref(), Some("architektur/b8"));
+            let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(id, &etappe(None, wer), &zeit(29, 12)).unwrap() else { panic!() };
+            assert_eq!(x.etappe, None);
+            let e: Vec<(&str, &str)> = x.verlauf.iter().filter(|v| v.art == ArbeitVerlaufArt::Etappe).map(|v| (v.alt.as_str(), v.neu.as_str())).collect();
+            assert_eq!(e, [("", "architektur/b8"), ("architektur/b8", "")]);
+        }
+        // Dieselbe Etappe noch einmal ändert nichts, auch nicht für einen fremden Chat.
+        assert!(matches!(s.arbeit_fortschreiben(&ohne.id, &etappe(None, "chat:pruefung"), &zeit(29, 13)).unwrap(), Fortschreiben::Unveraendert(_)));
+    }
+
     /// Auflage teilschritte_1_runde_2: Bei vollem Verlauf (500) geht fertig noch,
-    /// der Eintrag „nicht mehr dran“ zählt nicht; Besitzer werden geht danach nicht mehr (429).
+    /// die Einträge „Stand“ und „nicht mehr dran“ zählen nicht; Besitzer werden geht danach nicht mehr (429).
     #[test]
     fn fertig_bei_vollem_verlauf() {
         let s = Speicher::temporaer();
@@ -555,9 +705,44 @@ mod tests {
         txn.commit().unwrap();
         let zu = ArbeitAenderung { stand: Some(ArbeitsStand::Fertig), ..von_dash() };
         let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&a.id, &zu, &zeit(29, 11)).unwrap() else { panic!() };
-        assert_eq!((x.stand, x.besitzer, x.verlauf.len()), (ArbeitsStand::Fertig, None, VERLAUF_HOECHSTENS + 1));
+        assert_eq!((x.stand, x.besitzer, x.verlauf.len()), (ArbeitsStand::Fertig, None, VERLAUF_HOECHSTENS + 2), "Stand und nicht mehr dran");
         let auf = ArbeitAenderung { stand: Some(ArbeitsStand::Laeuft), ..von_dash() };
         assert!(matches!(s.arbeit_fortschreiben(&a.id, &auf, &zeit(29, 12)), Err(SpeicherFehler::Grenze(_))));
+    }
+
+    /// Etappe B8: Gleich begonnen oder fertig angelegt, sind Beginn und Fertig
+    /// genau (`plan::zeiten`); eine spätere Notiz verschiebt nichts.
+    #[test]
+    fn zeiten_genau_ab_dem_anlegen() {
+        let s = Speicher::temporaer();
+        let notiz = ArbeitAenderung { notiz: Some(Some("n".into())), ..von_dash() };
+        let a = s.arbeit_anlegen(neu("dashboard", "lauf", ArbeitsStand::Laeuft), &zeit(1, 9)).unwrap();
+        s.arbeit_fortschreiben(&a.id, &ArbeitAenderung { stand: Some(ArbeitsStand::Fertig), ..von_dash() }, &zeit(5, 9)).unwrap();
+        let b = s.arbeit_anlegen(neu("dashboard", "fertig", ArbeitsStand::Fertig), &zeit(1, 9)).unwrap();
+        for id in [&a.id, &b.id] {
+            s.arbeit_fortschreiben(id, &notiz, &zeit(20, 9)).unwrap();
+        }
+        let z = crate::plan::zeiten(&s.arbeit(&a.id).unwrap().unwrap());
+        assert_eq!((z.begonnen, z.fertig, z.ungefaehr), (Some(zeit_text(&zeit(1, 9))), Some(zeit_text(&zeit(5, 9))), false));
+        let z = crate::plan::zeiten(&s.arbeit(&b.id).unwrap().unwrap());
+        assert_eq!((z.begonnen, z.fertig, z.ungefaehr), (Some(zeit_text(&zeit(1, 9))), Some(zeit_text(&zeit(1, 9))), false));
+    }
+
+    /// Bei vollem Verlauf wächst er nicht im Wechsel fertig ↔ als-naechstes:
+    /// Schließen geht, Wiederöffnen zählt gegen die Grenze (429).
+    #[test]
+    fn kein_wechsel_ohne_grenze() {
+        let s = Speicher::temporaer();
+        let a = s.arbeit_anlegen(neu("dashboard", "voll", ArbeitsStand::AlsNaechstes), &zeit(29, 10)).unwrap();
+        let mut voll = a.clone();
+        voll.verlauf = vec![titel_verlauf("2026-10-29T10:00:00+01:00", "chat:dashboard".into(), "a", "b"); VERLAUF_HOECHSTENS];
+        let txn = s.db.begin_write().unwrap();
+        txn.open_table(ARBEITEN).unwrap().insert(a.id.as_str(), serde_json::to_vec(&voll).unwrap().as_slice()).unwrap();
+        txn.commit().unwrap();
+        let st = |st| ArbeitAenderung { stand: Some(st), von: "chat:pruefung".into(), ..Default::default() };
+        assert!(matches!(s.arbeit_fortschreiben(&a.id, &st(ArbeitsStand::Fertig), &zeit(29, 11)).unwrap(), Fortschreiben::Geaendert(_)));
+        assert!(matches!(s.arbeit_fortschreiben(&a.id, &st(ArbeitsStand::AlsNaechstes), &zeit(29, 12)), Err(SpeicherFehler::Grenze(_))));
+        assert_eq!(s.arbeit(&a.id).unwrap().unwrap().verlauf.len(), VERLAUF_HOECHSTENS + 1);
     }
 
     #[test]
@@ -602,12 +787,12 @@ mod tests {
     fn titel_aendern_schreibt_den_verlauf() {
         let s = Speicher::temporaer();
         let a = s.arbeit_anlegen(neu("dashboard", "alt", ArbeitsStand::Laeuft), &zeit(29, 10)).unwrap();
-        assert!(a.verlauf.is_empty());
+        assert_eq!(a.verlauf.len(), 1, "angelegt mit laeuft");
         let t = |titel: &str| ArbeitAenderung { titel: Some(titel.into()), ..von_dash() };
         let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&a.id, &t("neu"), &zeit(29, 11)).unwrap() else { panic!() };
         assert_eq!(x.titel, "neu");
         assert_eq!(
-            x.verlauf,
+            x.verlauf[1..],
             [ArbeitVerlauf {
                 zeit: "2026-10-29T11:00:00+01:00".into(),
                 von: "chat:dashboard".into(),
@@ -619,17 +804,21 @@ mod tests {
             }]
         );
         assert!(matches!(s.arbeit_fortschreiben(&a.id, &t("neu"), &zeit(29, 12)).unwrap(), Fortschreiben::Unveraendert(_)));
-        // Nur der Stand: kein Titel-Eintrag, nur der frei gewordene Besitzer.
+        // Nur der Stand: kein Titel-Eintrag, der Wechsel des Stands und der frei gewordene Besitzer.
         let l = ArbeitAenderung { stand: Some(ArbeitsStand::AlsNaechstes), ..von_dash() };
         let Fortschreiben::Geaendert(x) = s.arbeit_fortschreiben(&a.id, &l, &zeit(29, 12)).unwrap() else { panic!() };
-        assert_eq!(x.verlauf.iter().map(|v| v.art).collect::<Vec<_>>(), [ArbeitVerlaufArt::Titel, ArbeitVerlaufArt::Besitzer]);
+        assert_eq!(
+            x.verlauf.iter().map(|v| v.art).collect::<Vec<_>>(),
+            [ArbeitVerlaufArt::Stand, ArbeitVerlaufArt::Titel, ArbeitVerlaufArt::Stand, ArbeitVerlaufArt::Besitzer]
+        );
         for i in 0..60 {
             s.arbeit_fortschreiben(&a.id, &t(&format!("t{i}")), &zeit(29, 13)).unwrap();
         }
         let x = s.arbeit(&a.id).unwrap().unwrap();
-        assert_eq!(x.verlauf.len(), 62, "kein Eintrag fällt weg");
-        assert_eq!((x.verlauf[2].alt.as_str(), x.verlauf[2].neu.as_str()), ("neu", "t0"));
+        assert_eq!(x.verlauf.len(), 64, "kein Eintrag fällt weg");
+        assert_eq!((x.verlauf[4].alt.as_str(), x.verlauf[4].neu.as_str()), ("neu", "t0"));
         // Ältere Arbeiten ohne `verlauf` bleiben lesbar.
+        let a = s.arbeit_anlegen(neu("dashboard", "neu", ArbeitsStand::AlsNaechstes), &zeit(29, 14)).unwrap();
         let roh = serde_json::to_value(&a).unwrap();
         assert!(roh.get("verlauf").is_none(), "leer wird nicht geschrieben: {roh}");
         assert_eq!(serde_json::from_value::<Arbeit>(roh).unwrap(), a);

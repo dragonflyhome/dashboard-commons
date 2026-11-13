@@ -3,4 +3,4 @@
 /**
  * Woher ein Ereignis kommt.
  */
-export type VerlaufQuelle = "hand" | "windows-installiert" | "update" | "start" | "meldung" | "sicherung" | "vorgang";
+export type VerlaufQuelle = "hand" | "windows-installiert" | "update" | "start" | "meldung" | "sicherung" | "vorgang" | "arbeit" | "schritt" | "frage" | "entscheidung" | "bau" | "frist";

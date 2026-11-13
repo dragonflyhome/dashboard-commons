@@ -144,10 +144,77 @@ pub async fn backlog(State(state): State<AppState>, Path(slug): Path<String>, an
         // Läuft noch eine kanban.toml von Hand? (läuft aus, Etappe B2)
         let kanban_datei = state.inhalt.bestand().projekt(&slug).is_some_and(|p| p.namen.as_ref().is_ok_and(|n| n.iter().any(|x| x == "kanban")));
         let inhalt = inhalt_sammeln(&state).await?;
-        crate::backlog::backlog(&inhalt, &slug, kanban_datei).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
+        // Reihenfolge der Etappen für „Als Nächstes“; eine unlesbare plan.toml meldet /plan.
+        let mut reihenfolge = std::collections::BTreeMap::new();
+        for p in crate::backlog::etappen_projekte(&inhalt, &slug) {
+            if let Ok(Some((DatenInhalt::Plan(d), _))) = state.inhalt.bestand().daten(p, "plan") {
+                reihenfolge.extend(d.inhalte().into_iter().flat_map(|t| &t.etappe).map(|e| (format!("{p}/{}", e.kennung), e.reihenfolge)));
+            }
+        }
+        crate::backlog::backlog(&inhalt, &slug, kanban_datei, &reihenfolge).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
     };
     match antwort.await {
         Ok(b) => Json(b).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// `GET /api/projekte/<slug>/plan` (Etappe B8): die Etappen aus `daten/plan.toml`
+/// mit Stand und Zählung aus dem Tracker (`crate::plan`), auch archivierte
+/// Arbeiten. Geschützt wie `/backlog` (nennt Titel), ohne Anmeldung 401.
+/// Schreibt nichts. Ohne Datenspeicher oder lesbare `plan.toml` antwortet er
+/// mit dem, was da ist, und einem Hinweis.
+pub async fn plan(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    let antwort = async {
+        let bestand = state.inhalt.bestand();
+        if !seite::is_valid_slug(&slug) || !bestand.ordner_da(&slug) {
+            return Err(AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")));
+        }
+        let mut hinweise = Vec::new();
+        let datei = match bestand.daten(&slug, "plan") {
+            Ok(Some((DatenInhalt::Plan(p), _))) => Some(p),
+            Ok(_) => None,
+            Err(e) => {
+                hinweise.push(format!("{e} Bis das behoben ist, fehlen die Etappen."));
+                None
+            }
+        };
+        // shortcut: voller Durchlauf durch Arbeiten und Archiv je Abruf, gefiltert nach
+        // etappe und Liste; Index oder Zwischenspeicher, sobald das Archiv einige tausend Arbeiten hat.
+        let arbeiten = match state.speicher.clone() {
+            Some(s) => Speicher::im_hintergrund(s, |s| s.arbeiten_mit_archiv()).await.map_err(speicherfehler)?,
+            None => {
+                hinweise.push(format!("{} Bis dahin fehlen die Arbeiten.", state.speicher_satz()));
+                Vec::new()
+            }
+        };
+        let mut p = crate::plan::plan(&slug, datei.as_ref(), &arbeiten);
+        p.hinweise = hinweise;
+        Ok(p)
+    };
+    match antwort.await {
+        Ok(p) => Json(p).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+/// `GET /api/projekte/<slug>/verlauf?seit=&bis=` (Etappe B8): die Zeitleiste
+/// eines Projekts in derselben Form wie `/api/pc/verlauf`, gebaut von
+/// `pc::verlauf_bauen` (ohne `bis`: bis 90 Tage nach heute, für Fristen).
+/// Geschützt wie `/plan`, ohne Anmeldung 401; unbekanntes Projekt 404. Schreibt nichts.
+pub async fn verlauf(State(state): State<AppState>, Path(slug): Path<String>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    if !seite::is_valid_slug(&slug) || !state.inhalt.bestand().ordner_da(&slug) {
+        return AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")).into_response();
+    }
+    match super::pc::verlauf_bauen(&state, &uri, super::pc::Umfang::Projekt(&slug)).await {
+        // Meldungstexte und Hinweise ohne Profil und Namen (`datenschutz`).
+        Ok(v) => crate::datenschutz::als_json(&v).into_response(),
         Err(e) => e.into_response(),
     }
 }
@@ -622,8 +689,12 @@ mod tests {
         let (status, _) = roh_mit(router(state.clone()), get("/api/projekte/gibt-es-nicht/stand/voll")).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         // Neue Form: eine Frage wartet auf den Inhaber (eine auf einmal), die Frage selbst kommt mit A2.
+        // Etappe B8: Sie ist von 2026-10-25, wartet also seit über drei Tagen: rot.
         let (_, v) = schicke(&state, get("/api/projekte/neu-form/stand")).await;
-        assert_eq!((v["gesamt"]["ampel"].as_str(), v["eintraege"].as_array().unwrap().len()), (Some("gelb"), 2));
+        assert_eq!(
+            (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["eintraege"].as_array().unwrap().len()),
+            (Some("rot"), Some("wartet-lange"), 2)
+        );
         let (_, frei) = roh_mit(crate::app::router(state.clone()), get("/api/projekte/neu-form/stand")).await;
         let frei: Value = serde_json::from_str(&frei).unwrap();
         assert_eq!((frei["zahlen"]["fragen"].as_u64(), frei["zahlen"]["wartet_auf_dich"].as_u64()), (Some(2), Some(1)), "je Projekt zählt eine Frage");
@@ -670,7 +741,8 @@ mod tests {
         // Neue Form: die Frage aus fragen.toml zählt weiter.
         let (status, v) = schicke(&ohne, get("/api/projekte/neu-form/stand")).await;
         assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!((v["speicher_fehlt"].as_bool(), v["eintraege"].as_array().unwrap().len(), v["gesamt"]["ampel"].as_str()), (Some(true), 2, Some("gelb")));
+        // Etappe B8: Die Frage wartet seit über drei Tagen (rot), auch ohne Datenspeicher.
+        assert_eq!((v["speicher_fehlt"].as_bool(), v["eintraege"].as_array().unwrap().len(), v["gesamt"]["ampel"].as_str()), (Some(true), 2, Some("rot")));
         assert_eq!(v["notizen"], serde_json::json!(["Erster offener Punkt"]));
         // Die Liste: nur die Fragen, mit Hinweis vorn.
         let (status, l) = schicke(&ohne, get("/api/anstehend")).await;

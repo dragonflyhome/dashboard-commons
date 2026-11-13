@@ -145,6 +145,7 @@ export function beispielStand(teil: Partial<StandAnsicht> = {}): StandAnsicht {
 		arbeiten: { laufen: leereGruppe, wartet: leereGruppe, als_naechstes: leereGruppe },
 		notizen: [],
 		notizen_zahl: teil.notizen?.length ?? 0,
+		fertig_7_tage: 0,
 		speicher_fehlt: false,
 		fristen: [],
 		...teil
@@ -188,6 +189,7 @@ export function beispielZahlen(
 		laeuft: 0,
 		wartet: 0,
 		als_naechstes: 0,
+		fertig_7_tage: 0,
 		meldungen: { neu: 0, gesamt: 0 },
 		naechste_frist: null,
 		tage_bis: null,

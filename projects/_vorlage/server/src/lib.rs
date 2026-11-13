@@ -2,10 +2,13 @@
 //! Vorlage für ein Backend-Modul (Etappe 4b). Hier in einfachen Worten
 //! hinschreiben, was das Modul tut. Etwa so:
 //!
-//! - Endpunkt `GET /api/projekte/<slug>/x/fortschritt`: Durchschnitt der
-//!   Zeilen aus `daten/fortschritt.toml`.
-//! - Hook `zeitplan` (jede Stunde): schreibt den Durchschnitt in die eigene
-//!   Tabelle `stand` (Schlüssel: Datum).
+//! - Endpunkt `GET /api/projekte/<slug>/x/etappen`: wie viele Etappen
+//!   `daten/plan.toml` vorsieht und welche einen Termin (`ab`) haben.
+//! - Hook `zeitplan` (jede Stunde): schreibt die Zahl der Etappen in die
+//!   eigene Tabelle `etappen` (Schlüssel: Datum).
+//!
+//! Das Modul liest nur Inhalt (Absicht). Stand einer Arbeit rechnet der Server
+//! aus dem Tracker; ein Modul pflegt keinen eigenen.
 //!
 //! Regeln (prüft `cargo test` im Dashboard, Wächter-Tests; sie schützen vor
 //! Versehen, vor Absicht schützt die Prüfung des Merge-Requests):
@@ -32,59 +35,45 @@ use ts_rs::TS;
 /// Register `src/projekte/mod.rs` ein.
 pub struct Vorlage;
 
-/// Die eigene Tabelle (`projekt/<slug>/stand` im Datenspeicher).
-pub const STAND: &str = "stand";
+/// Die eigene Tabelle (`projekt/<slug>/etappen` im Datenspeicher).
+pub const ETAPPEN: &str = "etappen";
 
 #[derive(Debug, Clone, Default, Deserialize)]
-struct Fortschritt {
+struct Plan {
     #[serde(default)]
-    zeile: Vec<Zeile>,
+    etappe: Vec<Etappe>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct Zeile {
+struct Etappe {
+    titel: String,
     #[serde(default)]
-    prozent: Option<f64>,
-    #[serde(default)]
-    erreicht: Option<f64>,
-    #[serde(default)]
-    gesamt: Option<f64>,
+    ab: Option<String>,
 }
 
-impl Zeile {
-    fn prozent(&self) -> f64 {
-        match (self.prozent, self.erreicht, self.gesamt) {
-            (Some(p), _, _) => p,
-            (None, Some(e), Some(g)) if g > 0.0 => e / g * 100.0,
-            _ => 0.0,
-        }
-    }
-}
-
-/// Antwort von `GET …/x/fortschritt` (Vertragstyp, geht nach TypeScript).
+/// Antwort von `GET …/x/etappen` (Vertragstyp, geht nach TypeScript).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(rename = "VorlageFortschritt")]
-pub struct FortschrittAntwort {
-    pub zeilen: u32,
-    /// Durchschnitt in Prozent, auf eine Stelle gerundet.
-    pub durchschnitt: f64,
+#[ts(rename = "VorlageEtappen")]
+pub struct EtappenAntwort {
+    pub etappen: u32,
+    /// Titel der Etappen mit Termin, in der Reihenfolge der Datei.
+    pub mit_termin: Vec<String>,
 }
 
-fn rechnen(k: &ProjektKontext) -> Result<FortschrittAntwort, Fehler> {
-    let f: Fortschritt = k.daten_als("fortschritt")?.ok_or_else(|| Fehler::nicht_gefunden("Es gibt keine daten/fortschritt.toml."))?;
-    let summe: f64 = f.zeile.iter().map(Zeile::prozent).sum();
-    let durchschnitt = if f.zeile.is_empty() { 0.0 } else { (summe / f.zeile.len() as f64 * 10.0).round() / 10.0 };
-    Ok(FortschrittAntwort { zeilen: f.zeile.len() as u32, durchschnitt })
+fn rechnen(k: &ProjektKontext) -> Result<EtappenAntwort, Fehler> {
+    let p: Plan = k.daten_als("plan")?.ok_or_else(|| Fehler::nicht_gefunden("Es gibt keine daten/plan.toml."))?;
+    let mit_termin = p.etappe.iter().filter(|e| e.ab.is_some()).map(|e| e.titel.clone()).collect();
+    Ok(EtappenAntwort { etappen: p.etappe.len() as u32, mit_termin })
 }
 
-async fn fortschritt(State(k): State<ProjektKontext>) -> Result<Json<FortschrittAntwort>, Fehler> {
+async fn etappen(State(k): State<ProjektKontext>) -> Result<Json<EtappenAntwort>, Fehler> {
     k.im_hintergrund(rechnen).await.map(Json)
 }
 
 fn zeitplan(k: &ProjektKontext) -> Result<(), Fehler> {
     let a = rechnen(k)?;
     let tag = k.jetzt().format("%Y-%m-%d").to_string();
-    k.tabelle(STAND)?.schreiben(&tag, &a.durchschnitt)
+    k.tabelle(ETAPPEN)?.schreiben(&tag, &a.etappen)
 }
 
 impl Modul for Vorlage {
@@ -99,14 +88,14 @@ impl Modul for Vorlage {
     }
 
     fn router(&self) -> Router<ProjektKontext> {
-        Router::new().route("/fortschritt", get(fortschritt))
+        Router::new().route("/etappen", get(etappen))
     }
 
     /// Eine neue Fassung so: `TabellenDef::neu(…).mit_fassung(2, umbau)`, wobei
     /// `fn umbau(von: u32, wert: serde_json::Value) -> Result<Value, String>`
     /// einen Eintrag von `von` auf `von + 1` hebt. Dazu ein Migrationstest.
     fn tabellen(&self) -> Vec<TabellenDef> {
-        vec![TabellenDef::neu(STAND, "Vorlage: Durchschnitt je Tag")]
+        vec![TabellenDef::neu(ETAPPEN, "Vorlage: Zahl der Etappen je Tag")]
     }
 
     /// Weitere Hooks: nach_lesen, nach_daten_geaendert, taeglich,
@@ -116,7 +105,7 @@ impl Modul for Vorlage {
     }
 
     fn vertrag(&self, v: &mut Vertrag) {
-        v.typ::<FortschrittAntwort>();
+        v.typ::<EtappenAntwort>();
     }
 }
 
@@ -127,34 +116,43 @@ mod tests {
 
     use super::*;
 
-    const DATEN: &str = "[[zeile]]\ntitel = \"A\"\nprozent = 40\n\n[[zeile]]\ntitel = \"B\"\nerreicht = 3\ngesamt = 5\n";
+    const DATEN: &str = "[[etappe]]\nkennung = \"a\"\ntitel = \"Aussaat\"\nreihenfolge = 1\n\n\
+                         [[etappe]]\nkennung = \"b\"\ntitel = \"Ernte\"\nreihenfolge = 2\nab = \"2027-06\"\n";
 
     #[tokio::test]
     async fn endpunkt_gut() {
-        let p = Pruefstand::neu(&Vorlage).datei("fortschritt", DATEN);
-        let (status, v) = p.get("/fortschritt").await;
+        let p = Pruefstand::neu(&Vorlage).datei("plan", DATEN);
+        let (status, v) = p.get("/etappen").await;
         assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!((v["zeilen"].as_u64(), v["durchschnitt"].as_f64()), (Some(2), Some(50.0)));
+        assert_eq!((v["etappen"].as_u64(), v["mit_termin"].clone()), (Some(2), serde_json::json!(["Ernte"])));
     }
 
     #[tokio::test]
     async fn endpunkt_fehler() {
-        let (status, v) = Pruefstand::neu(&Vorlage).get("/fortschritt").await;
+        let (status, v) = Pruefstand::neu(&Vorlage).get("/etappen").await;
         assert_eq!((status, v["art"].as_str()), (StatusCode::NOT_FOUND, Some("nicht-gefunden")));
+    }
+
+    /// Die Vorlage passt zu ihrem eigenen Inhalt: daten/plan.toml liegt bei.
+    #[tokio::test]
+    async fn vorlage_mit_eigenem_inhalt() {
+        let ordner = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let (status, v) = Pruefstand::neu(&Vorlage).ordner(&ordner).get("/etappen").await;
+        assert_eq!((status, v["etappen"].as_u64()), (StatusCode::OK, Some(3)), "{v}");
     }
 
     #[test]
     fn hook_zeitplan() {
-        let p = Pruefstand::neu(&Vorlage).datei("fortschritt", DATEN);
+        let p = Pruefstand::neu(&Vorlage).datei("plan", DATEN);
         p.zeitplan().unwrap();
-        assert_eq!(p.kontext().tabelle(STAND).unwrap().anzahl().unwrap(), 1);
+        assert_eq!(p.kontext().tabelle(ETAPPEN).unwrap().anzahl().unwrap(), 1);
     }
 
     #[test]
     fn tabelle_eingerichtet() {
         let p = Pruefstand::neu(&Vorlage);
         assert!(p.befunde().is_empty(), "{:?}", p.befunde());
-        assert_eq!(p.kontext().tabelle(STAND).unwrap().anzahl().unwrap(), 0);
+        assert_eq!(p.kontext().tabelle(ETAPPEN).unwrap().anzahl().unwrap(), 0);
     }
 
     // Nach dem Kopieren einschalten: schreibt die TypeScript-Typen nach

@@ -591,11 +591,11 @@ mod tests {
 
     #[test]
     fn fehler_saetze_ohne_technik() {
-        let e = SpeicherFehler::ZuNeu { datei: PathBuf::from("x.redb"), schema: 10 };
+        let e = SpeicherFehler::ZuNeu { datei: PathBuf::from("x.redb"), schema: 12 };
         assert_eq!(
             e.to_string(),
-            "Die Datenbank wurde von einer neueren Fassung des Dashboards geschrieben (Schema 10, dieses Programm \
-             kennt 10). Bitte das neuere Programm starten; die Datei bleibt unverändert."
+            "Die Datenbank wurde von einer neueren Fassung des Dashboards geschrieben (Schema 12, dieses Programm \
+             kennt 11). Bitte das neuere Programm starten; die Datei bleibt unverändert."
         );
         let e = SpeicherFehler::NichtGefunden("v-20261026-0007".into());
         assert_eq!(e.to_string(), "Diesen Vorgang gibt es nicht.");

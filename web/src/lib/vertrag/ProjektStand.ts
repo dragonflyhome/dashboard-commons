@@ -46,6 +46,13 @@ notizen: Array<string>,
  */
 notizen_zahl?: number, 
 /**
+ * Etappe B8: wie `zahlen.fertig_7_tage`, auf beiden Wegen (nur eine
+ * Zahl): Mit Anmeldung stehen fertige Arbeiten nicht in `eintraege`,
+ * die Oberfläche kann sie also nicht selbst zählen. In TypeScript
+ * optional (ältere Beispiele).
+ */
+fertig_7_tage?: number, 
+/**
  * Der Datenspeicher fehlt gerade: Aufgaben und Arbeiten sind leer, die
  * Notizen und Fragen aus den Dateien stehen trotzdem da.
  */

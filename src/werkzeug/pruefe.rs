@@ -165,6 +165,7 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
     befunde.extend(pruefung::pruefe_schwerpunkte(&daten.join("schwerpunkte.toml"), &q.wurzeln()));
     befunde.extend(pruefung::pruefe_gruppen(&daten.join("gruppen.toml"), &q.wurzeln()));
     befunde.extend(pruefung::pruefe_pc(&daten.join("pc.toml")));
+    befunde.extend(pruefe_entscheidungen(&crate::app::entscheidungen_dir(&erste), &q.wurzeln()));
     if args.iter().any(|a| a == "--svelte") {
         befunde.extend(scanner::svelte_check(repo, None));
     }
@@ -181,6 +182,39 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
     zeilen(&mut text, &befunde);
     let f = summe(&mut text, &befunde, Some(projekt_zahlen));
     (text, if f > 0 { 1 } else { 0 })
+}
+
+/// Etappe B8: das freiwillige Feld `projekte = ["slug"]` der Entscheidungen
+/// in `ordner` gegen die Projekte aller Quellen; eine andere Form und
+/// unbekannte Slugs sind Fehler (die Entscheidung fehlte sonst still in der
+/// Zeitleiste). Dateien ohne das Feld oder unlesbare meldet hier nichts (das
+/// tut `pruefe --system`); fehlt der Ordner, nichts.
+fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> {
+    use crate::api::system_seiten as sys;
+    let Ok((namen, _)) = sys::toml_namen(ordner) else { return Vec::new() };
+    let q = crate::quellen::Quellen::aus_liste(quellen.to_vec());
+    let ist_da = |slug: &str| q.eltern(slug).is_some_and(|e| pruefung::ist_projekt(e, slug));
+    let mut befunde = Vec::new();
+    for (name, pfad) in namen {
+        let datei = format!("docs/entscheidungen/{name}");
+        let Some(text) = sys::datei_text(&pfad).ok() else { continue };
+        let Ok(t) = toml::from_str::<toml::Table>(&text) else { continue };
+        let Some(wert) = t.get("projekte") else { continue };
+        let zeile = sys::feld_zeile(&text, "projekte");
+        match wert.as_array().and_then(|a| a.iter().map(toml::Value::as_str).collect::<Option<Vec<&str>>>()) {
+            None => befunde.push(Befund::fehler(&datei, zeile, "„projekte“ ist eine Liste von Slugs, etwa `projekte = [\"dashboard\"]`.")),
+            Some(slugs) => {
+                for s in slugs.into_iter().filter(|s| !ist_da(s)) {
+                    befunde.push(Befund::fehler(
+                        &datei,
+                        zeile,
+                        format!("Das Projekt „{s}“ in „projekte“ gibt es nicht (kein Ordner projects/{s} mit projekt.toml; vertippt?); dort fehlt die Entscheidung in der Zeitleiste."),
+                    ));
+                }
+            }
+        }
+    }
+    befunde
 }
 
 /// `data/` (Schwerpunkte, Gruppen, PC, Tabu-Liste) liegt neben dem
@@ -201,7 +235,7 @@ fn summe(text: &mut String, befunde: &[Befund], projekte: Option<(usize, usize)>
     let (f, h) = pruefung::zaehlen(befunde);
     if let Some((pf, ph)) = projekte.filter(|p| *p != (f, h)) {
         text.push_str(&format!(
-            "Davon in den Projekten (so zählt auch /api/pruefung): {}. Der Rest kommt aus data/ und der Stil-Prüfung.\n",
+            "Davon in den Projekten (so zählt auch /api/pruefung): {}. Der Rest kommt aus data/, docs/entscheidungen und der Stil-Prüfung.\n",
             zahl_wort(pf, ph)
         ));
     }
@@ -250,6 +284,7 @@ fn lauf_in_mit(dir: &Path, repo_anders: Option<&Path>, args: &[String], zusatz: 
             b.extend(pruefung::pruefe_gruppen(&daten.join("gruppen.toml"), &[dir.to_path_buf()]));
             // data/pc.toml gegen den Vertrag (etwa `cloud_stand`).
             b.extend(pruefung::pruefe_pc(&daten.join("pc.toml")));
+            b.extend(pruefe_entscheidungen(&crate::app::entscheidungen_dir(dir), &[dir.to_path_buf()]));
             if svelte {
                 b.extend(scanner::svelte_check(repo, None));
             }
@@ -484,11 +519,11 @@ mod tests {
         // Zwei Unterseiten ohne Datei, vier Felder, die erst Etappe 3a zeigt,
         // ein Eintrag im Zeitstrahl ohne `kennung` und mit `farbe`. Ohne
         // Svelte-Dateien gibt es keine Stil-Prüfung (Etappe 3b), auch keinen Hinweis.
-        // Seit Etappe B2 dazu: kanban.toml läuft aus.
-        assert_eq!(zeilen.len(), 10, "{text}");
+        // Seit Etappe B2 dazu: kanban.toml läuft aus; seit B8 vier zur Stand-Pflege.
+        assert_eq!(zeilen.len(), 14, "{text}");
         assert!(zeilen[0].starts_with("HINWEIS projects/neu-form/projekt.toml, Zeile "), "{text}");
         assert!(text.contains("HINWEIS projects/neu-form/daten/kanban.toml: `kanban.toml` läuft aus"), "{text}");
-        assert_eq!(zeilen[9], "0 Fehler, 9 Hinweise");
+        assert_eq!(zeilen[13], "0 Fehler, 13 Hinweise");
         assert_eq!(lauf(&beispiel(), &args(&["neu-form", "--ohne-stil"])), (text, 0), "--ohne-stil wird angenommen");
     }
 
@@ -620,10 +655,44 @@ mod tests {
         let zeilen: Vec<&str> = ohne.lines().collect();
         assert_eq!(
             zeilen[zeilen.len() - 2],
-            "Davon in den Projekten (so zählt auch /api/pruefung): 0 Fehler, 0 Hinweise. Der Rest kommt aus data/ und der Stil-Prüfung.",
+            "Davon in den Projekten (so zählt auch /api/pruefung): 0 Fehler, 0 Hinweise. Der Rest kommt aus data/, docs/entscheidungen und der Stil-Prüfung.",
             "{ohne}"
         );
         assert_eq!(zeilen[zeilen.len() - 1], "0 Fehler, 1 Hinweis", "{ohne}");
+    }
+
+    /// Etappe B8: `projekte` in den Entscheidungen neben dem Inhalt. Ein
+    /// unbekannter Slug und eine andere Form als eine Liste von Slugs sind
+    /// Fehler mit Zeile; ohne Feld oder in einer kaputten Datei nichts.
+    /// Gegenprobe: mit bekannten Slugs 0 Fehler.
+    #[test]
+    fn entscheidungen_mit_unbekanntem_projekt() {
+        let inhalt = std::env::temp_dir().join(format!("dashboard-pruefe-entscheidungen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&inhalt);
+        let projekte = inhalt.join("projects");
+        let ordner = inhalt.join("docs").join("entscheidungen");
+        std::fs::create_dir_all(projekte.join("ruhig")).unwrap();
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(projekte.join("ruhig/projekt.toml"), "schema = 3\ntitle = \"Ruhig\"\nstatus = \"aktiv\"\nsummary = \"S\"\n").unwrap();
+        std::fs::create_dir_all(inhalt.join("data")).unwrap();
+        std::fs::write(inhalt.join("data/schwerpunkte.toml"), "[[schwerpunkt]]\nname = \"A\"\nreihenfolge = 1\nprojekte = [\"ruhig\"]\n").unwrap();
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\nprojekte = [\"ruhig\", \"weg\"]\n").unwrap();
+        std::fs::write(ordner.join("b.toml"), "thema = \"B\"\n\nprojekte = \"ruhig\"\n").unwrap();
+        std::fs::write(ordner.join("c.toml"), "thema = \"ohne Feld\"\n").unwrap();
+        std::fs::write(ordner.join("d.toml"), "thema = \n").unwrap();
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let a = args(&["--alle", "--ohne-stil"]);
+        let (text, code) = lauf_in(&projekte, Some(&repo), &a);
+        assert_eq!(code, 1, "{text}");
+        assert!(text.contains("FEHLER docs/entscheidungen/a.toml, Zeile 2: Das Projekt „weg“ in „projekte“ gibt es nicht"), "{text}");
+        assert!(text.contains("FEHLER docs/entscheidungen/b.toml, Zeile 3: „projekte“ ist eine Liste von Slugs"), "{text}");
+        assert!(!text.contains("„ruhig“") && !text.contains("c.toml") && !text.contains("d.toml"), "{text}");
+        assert!(text.ends_with("2 Fehler, 0 Hinweise\n"), "{text}");
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\nprojekte = [\"ruhig\"]\n").unwrap();
+        std::fs::write(ordner.join("b.toml"), "thema = \"B\"\nprojekte = []\n").unwrap();
+        let (text, code) = lauf_in(&projekte, Some(&repo), &a);
+        let _ = std::fs::remove_dir_all(&inhalt);
+        assert_eq!((code, text.ends_with("0 Fehler, 0 Hinweise\n")), (0, true), "{text}");
     }
 
     /// Umzug des Inhalts: `pruefe --alle` über zwei Quellen sieht die

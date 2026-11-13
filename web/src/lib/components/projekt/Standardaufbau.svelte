@@ -82,12 +82,16 @@
 	}
 	/** Reihenfolge wie im Katalog, eigene Daten danach (nach Namen). */
 	const reihe = Object.keys(titel);
+	/** Etappe B8: Fristen stehen in der Zeitleiste, plan.toml im Plan der Projektseite, nicht noch einmal hier. */
+	const imRahmen = new Set(['fristen', 'plan']);
 	const namen = $derived(
-		[...kopf.daten].sort((a, b) => {
-			const ia = reihe.indexOf(a);
-			const ib = reihe.indexOf(b);
-			return (ia < 0 ? reihe.length : ia) - (ib < 0 ? reihe.length : ib) || a.localeCompare(b);
-		})
+		kopf.daten
+			.filter((n) => !imRahmen.has(n))
+			.sort((a, b) => {
+				const ia = reihe.indexOf(a);
+				const ib = reihe.indexOf(b);
+				return (ia < 0 ? reihe.length : ia) - (ib < 0 ? reihe.length : ib) || a.localeCompare(b);
+			})
 	);
 	const pruefAdresse = $derived(`/api/pruefung/${encodeURIComponent(kopf.slug)}`);
 </script>

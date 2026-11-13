@@ -143,6 +143,8 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         ProjektStand,
         // Backlog (Etappe B2)
         Backlog,
+        // Plan (Etappe B8): GET /api/projekte/<slug>/plan
+        crate::vertrag::plan::ProjektPlan,
         // Fristen (Etappe B3): GET /api/fristen; die Datei steht in ProjektDaten
         crate::vertrag::fristen::FristenListe,
         crate::vertrag::fristen::Fristen,

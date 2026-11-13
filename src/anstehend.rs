@@ -51,8 +51,8 @@ use crate::speicher::antworten::antwort_schluessel;
 use crate::speicher::arbeiten::{AusDemSpeicher, einstufung_schluessel};
 use crate::speicher::meldungen;
 use crate::vertrag::api::{
-    Aktualisierung, AmpelGrund, AnstehendEintrag, AnstehendListe, ArbeitsStand, ArchivFrist, EintragsArt, FrageAngabe, FragenAuswahl, FragenPlatz, FristStufe,
-    GesamtStand, Meldung, MeldungAngabe, MeldungsZahlen, ProjektStand, StandAmpel, StandZahlen, Stufe, StufenAngabe, StufenGrund,
+    Aktualisierung, AmpelGrund, AnstehendEintrag, AnstehendListe, Arbeit, ArbeitsStand, ArchivFrist, EintragsArt, FrageAngabe, FragenAuswahl, FragenPlatz,
+    FristStufe, GesamtStand, Meldung, MeldungAngabe, MeldungsZahlen, ProjektStand, StandAmpel, StandZahlen, Stufe, StufenAngabe, StufenGrund,
 };
 use crate::vertrag::bedeutung::Bedeutung;
 use crate::vertrag::daten::{DatenInhalt, Frage};
@@ -66,6 +66,14 @@ pub const FRIST_BALD_TAGE: i64 = 7;
 pub const VERMERK_WARTET: &str = "wartet auf deine Antwort";
 /// `wartet_auf` für alles, was auf den Inhaber wartet.
 pub const INHABER: &str = "inhaber";
+/// Etappe B8: Wartet ein Eintrag länger als so viele Tage auf den Inhaber,
+/// steht die Ampel auf rot (`wartet-lange`).
+pub const WARTET_LANGE_TAGE: i64 = 3;
+/// Etappe B8: Ist eine Arbeit offen und hat sich so viele Tage an keiner
+/// Arbeit des Projekts etwas geändert, steht die Ampel auf gelb (`ohne-bewegung`).
+pub const OHNE_BEWEGUNG_TAGE: i64 = 7;
+/// Etappe B8: so viele Tage zählt `fertig_7_tage` (heute eingeschlossen).
+pub const FERTIG_TAGE: i64 = 7;
 
 // ----- Die Stufenregel -----
 
@@ -801,11 +809,61 @@ pub fn stand_zahlen(inhalt: &Inhalt, slug: &str, eintraege: &[AnstehendEintrag],
         laeuft: arbeiten(ArbeitsStand::Laeuft),
         wartet: arbeiten(ArbeitsStand::Wartet),
         als_naechstes: arbeiten(ArbeitsStand::AlsNaechstes),
+        fertig_7_tage: fertig_7_tage(inhalt, slug),
         meldungen: meldungs_zahlen(inhalt, slug),
         naechste_frist,
         tage_bis: tage,
         frist_stufe: stufe,
     }
+}
+
+/// Der lokale Tag eines Zeitpunkts (RFC 3339 oder JJJJ-MM-TT).
+fn tag_von(zeit: &str) -> Option<NaiveDate> {
+    datum(zeit.get(..10))
+}
+
+/// Etappe B8: Arbeiten des Projekts (außerhalb des Archivs, das erst nach
+/// sieben Tagen greift), deren Fertig-Zeitpunkt ([`crate::plan::zeiten`])
+/// höchstens [`FERTIG_TAGE`]` - 1` Tage zurückliegt.
+pub fn fertig_7_tage(inhalt: &Inhalt, slug: &str) -> u64 {
+    inhalt
+        .speicher
+        .arbeiten
+        .iter()
+        .filter(|a| a.projekt == slug && a.stand == ArbeitsStand::Fertig)
+        .filter_map(|a| crate::plan::zeiten(a).fertig.as_deref().and_then(tag_von))
+        .filter(|t| (0..FERTIG_TAGE).contains(&(inhalt.heute - *t).num_days()))
+        .count() as u64
+}
+
+/// Etappe B8: seit wann ein Eintrag auf den Inhaber wartet. Aufgaben seit
+/// `erstellt`, Fragen seit `gestellt`; Arbeiten mit Schritten seit dem
+/// frühesten `seit` der Schritte, die auf den Inhaber warten; ohne Schritte
+/// seit dem letzten Verlaufseintrag `stand` auf wartet (auch beim Wechsel von
+/// `wartet_auf` geschrieben), ohne ihn seit `geaendert`.
+/// shortcut: `seit` eines Schritts rückt auch bei einer Notiz vor, das Warten wirkt dann kürzer; eigener Zeitpunkt am Schritt, sobald das eine Ampel verschluckt.
+fn wartet_seit(inhalt: &Inhalt, e: &AnstehendEintrag) -> Option<NaiveDate> {
+    if e.art != EintragsArt::Arbeit {
+        return tag_von(&e.erstellt);
+    }
+    let a = inhalt.speicher.arbeiten.iter().find(|a| a.id == e.id)?;
+    if !a.schritte.is_empty() {
+        let beim_inhaber = a.schritte.iter().filter(|s| s.stand == ArbeitsStand::Wartet && s.wartet_auf.as_deref() == Some(INHABER));
+        return beim_inhaber.filter_map(|s| tag_von(&s.seit)).min();
+    }
+    let wartet = ArbeitsStand::Wartet.wort();
+    let seit = a.verlauf.iter().rev().find(|v| v.art == crate::vertrag::anstehend::ArbeitVerlaufArt::Stand && v.neu == wartet);
+    tag_von(seit.map_or(&a.geaendert, |v| &v.zeit))
+}
+
+/// Etappe B8: Tage seit der letzten Änderung an einer Arbeit des Projekts,
+/// wenn eine Arbeit offen ist; sonst `None`.
+fn tage_ohne_bewegung(inhalt: &Inhalt, slug: &str) -> Option<i64> {
+    let eigene: Vec<&Arbeit> = inhalt.speicher.arbeiten.iter().filter(|a| a.projekt == slug).collect();
+    if !eigene.iter().any(|a| a.stand != ArbeitsStand::Fertig) {
+        return None;
+    }
+    eigene.iter().filter_map(|a| tag_von(&a.geaendert)).max().map(|t| (inhalt.heute - t).num_days())
 }
 
 /// `GET /api/projekte/<slug>/stand` und `/stand/voll`: der Zustand des
@@ -817,8 +875,10 @@ pub fn stand_zahlen(inhalt: &Inhalt, slug: &str, eintraege: &[AnstehendEintrag],
 /// Die Ampel ist eine Regel und bleibt hier: rot bei einer offenen
 /// Fehler-Meldung oder einer Frist, die vorbei ist (bei Fragen nur die
 /// Frage, die der Inhaber sieht; seit Etappe B3 auch eine offene Frist aus
-/// `daten/fristen.toml`, dann ohne `bezug_art`), gelb, wenn etwas auf den Inhaber wartet, sonst grün;
-/// ohne Datenspeicher unbekannt statt grün.
+/// `daten/fristen.toml`, dann ohne `bezug_art`), seit Etappe B8 auch, wenn ein Eintrag seit über
+/// [`WARTET_LANGE_TAGE`] Tagen auf den Inhaber wartet (`wartet-lange`); gelb, wenn etwas auf
+/// den Inhaber wartet, sonst bei offener Arbeit ohne Änderung seit [`OHNE_BEWEGUNG_TAGE`]
+/// Tagen (`ohne-bewegung`); sonst grün; ohne Datenspeicher unbekannt statt grün.
 pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand> {
     let kopf = inhalt.projekte.iter().find(|p| p.slug == slug)?;
     let eintraege: Vec<AnstehendEintrag> = alle_eintraege(inhalt).into_iter().filter(|e| e.projekt == slug).collect();
@@ -830,15 +890,25 @@ pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand
     let datei_vorbei = datei.iter().find(|z| z.frist_stufe == Some(FristStufe::Ueberfaellig));
     // Etappe A3: eine offene Fehler-Meldung (nicht behoben, auch gelesen) macht die Ampel rot.
     let fehler = inhalt.speicher.meldungen.iter().filter(|m| m.projekt == slug && meldungen::fehler_offen(m)).max_by_key(|m| zeit_wert(&m.zuletzt));
-    let (ampel, grund, bezug_art, bezug) = match (fehler, vorbei) {
-        (Some(m), _) => (StandAmpel::Rot, AmpelGrund::FehlerOffen, Some(EintragsArt::Meldung), Some(m.titel.clone())),
-        (None, Some(e)) => (StandAmpel::Rot, AmpelGrund::FristVorbei, Some(e.art), Some(e.titel.clone())),
-        (None, None) if datei_vorbei.is_some() => (StandAmpel::Rot, AmpelGrund::FristVorbei, None, datei_vorbei.map(|z| z.titel.clone())),
+    // Etappe B8: was am längsten auf den Inhaber wartet.
+    let lange = auswahl
+        .iter()
+        .filter(|e| e.wartet_auf_dich)
+        .filter_map(|e| wartet_seit(inhalt, e).map(|t| ((inhalt.heute - t).num_days(), *e)))
+        .max_by_key(|(t, _)| *t)
+        .filter(|(t, _)| *t > WARTET_LANGE_TAGE);
+    let still = tage_ohne_bewegung(inhalt, slug).filter(|t| *t >= OHNE_BEWEGUNG_TAGE);
+    let (ampel, grund, bezug_art, bezug, tage) = match (fehler, vorbei, lange) {
+        (Some(m), _, _) => (StandAmpel::Rot, AmpelGrund::FehlerOffen, Some(EintragsArt::Meldung), Some(m.titel.clone()), None),
+        (None, Some(e), _) => (StandAmpel::Rot, AmpelGrund::FristVorbei, Some(e.art), Some(e.titel.clone()), None),
+        (None, None, _) if datei_vorbei.is_some() => (StandAmpel::Rot, AmpelGrund::FristVorbei, None, datei_vorbei.map(|z| z.titel.clone()), None),
+        (None, None, Some((t, e))) => (StandAmpel::Rot, AmpelGrund::WartetLange, Some(e.art), Some(e.titel.clone()), Some(t)),
         // Ohne Datenspeicher fehlen Aufgaben, Fristen und Meldungen: grün wäre geraten (Auflage aus A1).
         // Was wartet (Fragen aus den Dateien), bleibt gelb.
-        (None, None) if !wartet && inhalt.speicher_fehlt => (StandAmpel::Unbekannt, AmpelGrund::SpeicherFehlt, None, None),
-        (None, None) if !wartet => (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None, None),
-        (None, None) => (StandAmpel::Gelb, AmpelGrund::Wartet, None, None),
+        (None, None, None) if !wartet && inhalt.speicher_fehlt => (StandAmpel::Unbekannt, AmpelGrund::SpeicherFehlt, None, None, None),
+        (None, None, None) if wartet => (StandAmpel::Gelb, AmpelGrund::Wartet, None, None, None),
+        (None, None, None) if still.is_some() => (StandAmpel::Gelb, AmpelGrund::OhneBewegung, None, None, still),
+        (None, None, None) => (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None, None, None),
     };
     let zahlen = (!sichtbar).then(|| stand_zahlen(inhalt, slug, &eintraege, &datei));
     Some(ProjektStand {
@@ -853,6 +923,7 @@ pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand
             bezug_art,
             // Ohne Anmeldung kein Titel einer Meldung oder eines Eintrags.
             bezug: bezug.filter(|_| sichtbar),
+            tage,
             zuletzt: kopf.zuletzt.clone(),
         },
         frist_bald_tage: FRIST_BALD_TAGE,
@@ -863,6 +934,7 @@ pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand
         // Etappe B2: open[] ist persönlicher Text, ohne Anmeldung nur die Zahl.
         notizen: if sichtbar { kopf.notizen.clone() } else { Vec::new() },
         notizen_zahl: kopf.notizen.len() as u64,
+        fertig_7_tage: fertig_7_tage(inhalt, slug),
         speicher_fehlt: inhalt.speicher_fehlt,
         fristen: if sichtbar { datei } else { Vec::new() },
     })
@@ -995,6 +1067,7 @@ mod tests {
             verlauf: Vec::new(),
             besitzer: None,
             schritte: Vec::new(),
+            etappe: None,
         }
     }
 
@@ -1052,7 +1125,6 @@ mod tests {
                 beantwortet: Default::default(),
                 meldungen: Vec::new(),
                 vorgaenge: Vec::new(),
-                aufgaben_abgeschlossen: Vec::new(),
             },
             speicher_fehlt: false,
             schwerpunkte,
@@ -1441,6 +1513,97 @@ mod tests {
         assert_eq!(l.iter().find(|e| e.id == "ar-20261029-0009").unwrap().vermerk, None);
     }
 
+    /// Etappe B8: Wartet ein Eintrag seit über drei Tagen auf den Inhaber,
+    /// ist die Ampel rot (`wartet-lange`, mit Tagen; der Titel nur mit
+    /// Anmeldung); eine Arbeit wartet seit ihrem letzten Stand-Eintrag
+    /// „wartet“. Sieben Tage ohne Änderung an einer Arbeit bei offener Arbeit:
+    /// gelb (`ohne-bewegung`). Je die Grenze und einen Tag daneben.
+    #[test]
+    fn ampel_wartet_lange_und_ohne_bewegung() {
+        let grund = |i: &Inhalt, slug: &str| {
+            let s = stand(i, slug, true).unwrap();
+            (s.gesamt.ampel, s.gesamt.grund, s.gesamt.tage)
+        };
+        let mut i = inhalt();
+        // Die Aufgabe in dashboard wartet seit drei Tagen: noch gelb.
+        i.speicher.aufgaben[0].erstellt = "2026-10-26T09:00:00+01:00".into();
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None));
+        // Seit vier Tagen: rot, mit Bezug.
+        i.speicher.aufgaben[0].erstellt = "2026-10-25T09:00:00+01:00".into();
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Rot, AmpelGrund::WartetLange, Some(4)));
+        let voll = stand(&i, "dashboard", true).unwrap();
+        assert_eq!((voll.gesamt.bezug_art, voll.gesamt.bezug.as_deref()), (Some(EintragsArt::Aufgabe), Some("Aufgabe a-20261029-0001")));
+        let frei = stand(&i, "dashboard", false).unwrap();
+        assert_eq!(
+            (frei.gesamt.grund, frei.gesamt.bezug_art, frei.gesamt.bezug, frei.gesamt.tage),
+            (AmpelGrund::WartetLange, Some(EintragsArt::Aufgabe), None, Some(4))
+        );
+        // Eine Fehler-Meldung geht vor.
+        i.speicher.meldungen.push(meldung("dashboard", "m-1", crate::vertrag::api::MeldungsArt::Fehler, "2026-10-29T08:00:00+01:00"));
+        assert_eq!(grund(&i, "dashboard").1, AmpelGrund::FehlerOffen);
+
+        // Eine Arbeit wartet seit dem letzten Stand-Eintrag „wartet“, nicht seit `erstellt`.
+        let mut i = inhalt();
+        i.speicher.aufgaben[0].erstellt = "2026-10-29T09:00:00+01:00".into();
+        let a = &mut i.speicher.arbeiten[0];
+        a.stand = ArbeitsStand::Wartet;
+        a.wartet_auf = Some(INHABER.into());
+        a.erstellt = "2026-10-01T08:00:00+01:00".into();
+        a.geaendert = "2026-10-29T08:00:00+01:00".into();
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None), "ohne Eintrag zählt geaendert");
+        let eintrag = |zeit: &str, neu: &str| crate::vertrag::anstehend::ArbeitVerlauf {
+            zeit: zeit.into(),
+            von: "chat:dashboard".into(),
+            art: crate::vertrag::anstehend::ArbeitVerlaufArt::Stand,
+            schritt: None,
+            alt: "laeuft".into(),
+            neu: neu.into(),
+            text: String::new(),
+        };
+        i.speicher.arbeiten[0].verlauf = vec![
+            eintrag("2026-10-10T08:00:00+01:00", "wartet"),
+            eintrag("2026-10-12T08:00:00+01:00", "laeuft"),
+            eintrag("2026-10-20T08:00:00+01:00", "wartet"),
+        ];
+        let s = stand(&i, "dashboard", true).unwrap();
+        assert_eq!((s.gesamt.grund, s.gesamt.tage, s.gesamt.bezug_art), (AmpelGrund::WartetLange, Some(9), Some(EintragsArt::Arbeit)));
+        // Wechsel von wartet_auf (Chat → Inhaber) schreibt einen Eintrag wartet → wartet; ab da zählt es.
+        i.speicher.arbeiten[0]
+            .verlauf
+            .push(crate::vertrag::anstehend::ArbeitVerlauf { alt: "wartet".into(), ..eintrag("2026-10-28T08:00:00+01:00", "wartet") });
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None), "erst seit gestern beim Inhaber");
+        // Mit Schritten: das früheste seit der Schritte, die auf den Inhaber warten, nicht der Stand-Eintrag.
+        let a = &mut i.speicher.arbeiten[0];
+        a.verlauf = vec![eintrag("2026-10-10T08:00:00+01:00", "wartet")];
+        let mut beim_chat = schritt(1, ArbeitsStand::Wartet, Some("chat:dashboard"), Some("extern"), None);
+        beim_chat.seit = "2026-10-01T08:00:00+01:00".into();
+        let mut beim_inhaber = schritt(2, ArbeitsStand::Wartet, Some("chat:dashboard"), Some(INHABER), None);
+        beim_inhaber.seit = "2026-10-28T08:00:00+01:00".into();
+        a.schritte = vec![beim_chat, beim_inhaber.clone()];
+        assert_eq!(grund(&i, "dashboard"), (StandAmpel::Gelb, AmpelGrund::Wartet, None), "Schritt wartet erst seit gestern auf den Inhaber");
+        beim_inhaber.nr = 3;
+        beim_inhaber.seit = "2026-10-20T08:00:00+01:00".into();
+        i.speicher.arbeiten[0].schritte.push(beim_inhaber);
+        assert_eq!(grund(&i, "dashboard").1, AmpelGrund::WartetLange, "der früheste wartende Schritt zählt");
+        i.speicher.arbeiten[0].schritte.clear();
+
+        // Ohne Bewegung: hallo hat nur eine Arbeit als Nächstes.
+        let mut i = inhalt();
+        assert_eq!(grund(&i, "hallo"), (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None));
+        i.speicher.arbeiten[2].geaendert = "2026-10-23T08:00:00+01:00".into();
+        assert_eq!(grund(&i, "hallo"), (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None), "sechs Tage");
+        i.speicher.arbeiten[2].geaendert = "2026-10-22T08:00:00+01:00".into();
+        assert_eq!(grund(&i, "hallo"), (StandAmpel::Gelb, AmpelGrund::OhneBewegung, Some(7)));
+        assert_eq!(stand(&i, "hallo", false).unwrap().gesamt.grund, AmpelGrund::OhneBewegung);
+        // Eine fertige Arbeit, gestern geändert, ist Bewegung.
+        i.speicher.arbeiten.push(arbeit("hallo", "ar-20261028-0009", ArbeitsStand::Fertig, Stufe::Bald, "2026-10-28T08:00:00+01:00"));
+        assert_eq!(grund(&i, "hallo").1, AmpelGrund::NichtsWartet);
+        // Ohne offene Arbeit keine Ampel für Stillstand.
+        i.speicher.arbeiten.retain(|a| a.projekt != "hallo" || a.stand == ArbeitsStand::Fertig);
+        i.speicher.arbeiten.iter_mut().for_each(|a| a.geaendert = "2026-09-01T08:00:00+01:00".into());
+        assert_eq!(grund(&i, "hallo").1, AmpelGrund::NichtsWartet);
+    }
+
     /// Unter-Dashboard: Ampel als Regel; mit Anmeldung alle Einträge ohne
     /// Zahlen, ohne Anmeldung keine Einträge, nur Zahlen und kein Titel.
     #[test]
@@ -1684,6 +1847,12 @@ mod tests {
         let mut vorbei = arbeit("hallo", "ar-20261029-0010", ArbeitsStand::Laeuft, Stufe::Irgendwann, "2026-10-20T08:00:00+01:00");
         vorbei.frist = Some("2026-10-27".into());
         i.speicher.arbeiten.push(vorbei);
+        // Etappe B8: fertig vor zwei Tagen (zählt in fertig_7_tage) und vor zwei Wochen (zählt nicht).
+        for (id, geaendert) in [("ar-20261027-0001", "2026-10-27T08:00:00+01:00"), ("ar-20261015-0001", "2026-10-15T08:00:00+01:00")] {
+            let mut f = arbeit("dashboard", id, ArbeitsStand::Fertig, Stufe::Bald, "2026-10-10T08:00:00+01:00");
+            f.geaendert = geaendert.into();
+            i.speicher.arbeiten.push(f);
+        }
         i.speicher.einstufungen.push(Einstufung {
             projekt: "dashboard".into(),
             art: EintragsArt::Aufgabe,

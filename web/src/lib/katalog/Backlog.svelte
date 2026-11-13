@@ -1,176 +1,189 @@
 <script lang="ts">
 	/**
-	 * Backlog (Etappe B2, Modul Backlog): Aufgaben, Arbeiten und die eine
-	 * sichtbare Frage eines Projekts als Spalten nach Stand und Status (die
-	 * Kanban-Sicht aus dem Datenspeicher, statt `kanban.toml` von Hand), dazu
-	 * „Wer ist dran“: was wartet, je Verantwortlichem (du, ein Chat, jemand
-	 * draußen). Alles rechnet der Server (`GET /api/projekte/<slug>/backlog`);
-	 * der Baustein zeigt nur.
+	 * Backlog (Etappe B2, Modul Backlog; seit B8 die Aufgabenliste der
+	 * Projektseite): was jetzt zu tun ist und von wem, in Gruppen untereinander
+	 * statt Kanban-Spalten: „Wartet auf dich“, „Läuft“, „Als Nächstes“ (in der
+	 * Reihenfolge der Etappen, wie der Server sie ordnet), „Wartet auf andere“.
+	 * Je Eintrag eine Zeile mit Titel, Etappe, wer dran ist und Frist; Arbeiten
+	 * mit Schritten klappen zu ihren Schritten auf (`Schritte`). Fertige
+	 * Arbeiten stehen hier nicht (die zeigt der Plan). Alles rechnet der
+	 * Server (`GET /api/projekte/<slug>/backlog`); Gruppen und Wörter kommen
+	 * aus `#lib/projektteile.ts`, der Baustein zeigt nur.
 	 *
-	 * Klick-Antworten gibt es hier nicht: Jede Karte führt zu ihrem Eintrag
-	 * oben auf der Seite (Überblick oder „Aufgaben für dich“), wo Haken, Knöpfe
-	 * und „Etwas anderes …“ stehen. So gibt es jede Antwort nur an einer Stelle.
+	 * Mit `fuerDich` setzt die Projektseite in „Wartet auf dich“ die Frage mit
+	 * Antwort und den Kasten der Aufgaben ein; dann stehen hier nur noch die
+	 * Arbeiten, die auf dich warten, und jede Antwort gibt es nur an einer
+	 * Stelle. Ohne (etwa im Katalog) führen Fragen und Aufgaben als Link zu
+	 * ihrem Eintrag.
 	 *
-	 * Auf jeder Projektseite setzt das Dashboard den Baustein selbst ein
-	 * (`BacklogRahmen` im Rahmen der Seite); in `Seite.svelte` nicht noch
-	 * einmal einbauen. Mit `backlog` lässt er sich auch mit Beispieldaten zeigen.
+	 * Jede Arbeit trägt den Anker `arbeit-<id>`, jede Gruppe `liste-<art>-<slug>`.
+	 * Auf jeder Projektseite setzt das Dashboard den Baustein selbst ein; in
+	 * `Seite.svelte` nicht noch einmal einbauen.
 	 */
-	import type { Backlog, BacklogKarte, BacklogSpalte } from '$vertrag';
-	import StatusDot from '#lib/components/StatusDot.svelte';
-	import { ART_WORT, fristDringend, weitereFragenSatz } from '#lib/anstehend.ts';
+	import type { Snippet } from 'svelte';
+	import type { Backlog, BacklogKarte } from '$vertrag';
+	import { fristDringend, weitereFragenSatz } from '#lib/anstehend.ts';
+	import { fristWort } from '#lib/aufgaben.ts';
 	import { fmtDate } from '#lib/format.ts';
+	import {
+		NAECHSTES_SICHTBAR,
+		gruppenAnker,
+		listenGruppen,
+		offeneVerweise,
+		zeilenAngaben
+	} from '#lib/projektteile.ts';
 	import { zielHref } from '#lib/zieladresse.ts';
+	import Schritte from './widgets/Schritte.svelte';
+	import { schritteKurz } from './widgets/worte.ts';
 
 	interface Props {
 		backlog: Backlog;
+		/** Titel der Etappen nach `<projekt>/<kennung>` (aus dem Plan). */
+		etappen?: ReadonlyMap<string, string>;
+		/** Frage mit Antwort und Aufgaben-Kasten der Projektseite (Gruppe „Wartet auf dich“). */
+		fuerDich?: Snippet;
+		/** Mit `fuerDich`: wie viel auf dich wartet (dieselbe Zahl wie im Stand). */
+		fuerDichZahl?: number;
 	}
-	let { backlog }: Props = $props();
+	let { backlog, etappen = new Map<string, string>(), fuerDich, fuerDichZahl }: Props = $props();
 
-	const spalten = $derived(backlog.spalten);
-	const leer = $derived(spalten.every((s) => s.karten.length === 0));
-	const kennung = $derived(`backlog-${backlog.slug}`);
-
-	/** Die Zahl der Karten einer Spalte als Text. */
-	function zahl(s: BacklogSpalte): string {
-		return String(s.karten.length);
-	}
+	const gruppen = $derived(listenGruppen(backlog, fuerDich !== undefined));
+	const verweise = $derived(offeneVerweise(backlog));
+	const SATZ_LEER: Record<string, string> = {
+		dich: 'Nichts wartet auf dich.',
+		laeuft: 'Gerade läuft nichts.',
+		naechstes: 'Nichts geplant.',
+		andere: 'Nichts wartet auf andere.'
+	};
 </script>
 
-{#snippet karte(k: BacklogKarte)}
-	{@const href = zielHref(k.ziel)}
-	<li class="kkarte" class:frage={k.art === 'frage'}>
-		<span class="art muted small">{ART_WORT[k.art]}</span>
+{#snippet zeile(k: BacklogKarte)}
+	{@const angaben = zeilenAngaben(k, etappen)}
+	{@const id = k.art === 'arbeit' ? `arbeit-${k.id}` : undefined}
+	{@const href = k.art === 'arbeit' ? null : zielHref(k.ziel)}
+	{#snippet kopf()}
 		{#if href !== null}
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- zielHref baut mit resolve() -->
 			<a class="titel" {href}>{k.titel}</a>
 		{:else}
 			<span class="titel">{k.titel}</span>
 		{/if}
-		{#if k.frist !== null || k.hinweis !== null}
-			<span class="meta small">
-				{#if k.frist}
-					<span class:achtung={fristDringend(k.frist_stufe)}>bis {fmtDate(k.frist)}</span>
-				{/if}
-				{#if k.frist !== null && k.hinweis !== null}·{/if}
-				{#if k.hinweis}
-					<span class="muted">{k.hinweis}</span>
-				{/if}
-			</span>
+		<span class="angaben small">
+			{#each angaben as a, i (i)}<span>{a}</span>{/each}
+			<!-- Heute oder überfällig: das Wort dazu, nicht nur Farbe und Fettdruck. -->
+			{#if k.frist}<span class:achtung={fristDringend(k.frist_stufe)}
+					>{fristDringend(k.frist_stufe)
+						? fristWort(k.frist, k.frist_stufe)
+						: `bis ${fmtDate(k.frist)}`}</span
+				>{/if}
+		</span>
+		{#if k.schritte.length > 0}<span class="kurz small muted">{schritteKurz(k.schritte)}</span>{/if}
+	{/snippet}
+	<li class:frage={k.art === 'frage'}>
+		{#if k.schritte.length > 0}
+			<details class="zeile" {id}>
+				<summary>{@render kopf()}</summary>
+				<Schritte schritte={k.schritte} titel={k.titel} offeneVerweise={verweise} />
+			</details>
+		{:else}
+			<div class="zeile ohne" {id}>{@render kopf()}</div>
 		{/if}
 	</li>
 {/snippet}
 
-<section class="backlog" aria-labelledby="{kennung}-titel">
-	<p class="nur-vorlesen" id="{kennung}-titel">Backlog nach Stand</p>
+<div class="backlog">
 	{#if backlog.speicher_fehlt}
 		<p class="muted small">
 			Der Datenspeicher fehlt gerade: Aufgaben und Arbeiten stehen hier erst wieder, wenn er da ist.
 		</p>
 	{/if}
-	{#if leer}
-		<p class="muted" data-leer>Nichts offen und nichts in den letzten sieben Tagen fertig.</p>
-	{:else}
-		<div class="spalten">
-			{#each spalten as s (s.art)}
-				<section class="spalte" aria-labelledby="{kennung}-{s.art}">
-					<h3 class="kopf" id="{kennung}-{s.art}">
-						<StatusDot bedeutung={s.bedeutung} decorative />
-						<span class="name">{s.titel}</span>
-						<span class="anzahl">{zahl(s)}</span>
-					</h3>
-					{#if s.karten.length === 0}
-						<p class="muted small leer">–</p>
-					{:else}
-						<ul class="plain karten">
-							{#each s.karten as k (`${k.art}-${k.id}`)}
-								{@render karte(k)}
+	{#each gruppen as g (g.art)}
+		{@const zahl =
+			g.art === 'dich' && fuerDich !== undefined ? (fuerDichZahl ?? 0) : g.karten.length}
+		<section class="gruppe" aria-labelledby={gruppenAnker(backlog.slug, g.art)}>
+			<h3 id={gruppenAnker(backlog.slug, g.art)} tabindex="-1">
+				{g.titel} <span class="anzahl">({zahl})</span>
+			</h3>
+			{#if g.art === 'dich' && fuerDich !== undefined}
+				{@render fuerDich()}
+			{/if}
+			{#if g.karten.length > 0}
+				<ul class="plain zeilen">
+					{#each g.art === 'naechstes' ? g.karten.slice(0, NAECHSTES_SICHTBAR) : g.karten as k (`${k.art}-${k.id}`)}
+						{@render zeile(k)}
+					{/each}
+				</ul>
+				{#if g.art === 'naechstes' && g.karten.length > NAECHSTES_SICHTBAR}
+					<details class="mehr">
+						<summary class="small">und {g.karten.length - NAECHSTES_SICHTBAR} weitere</summary>
+						<ul class="plain zeilen">
+							{#each g.karten.slice(NAECHSTES_SICHTBAR) as k (`${k.art}-${k.id}`)}
+								{@render zeile(k)}
 							{/each}
 						</ul>
-					{/if}
-				</section>
-			{/each}
-		</div>
-	{/if}
-
-	{#if backlog.wartend.length > 0}
-		<h3 class="wer-titel">Wer ist dran</h3>
-		<ul class="plain gruppen">
-			{#each backlog.wartend as g (g.wer)}
-				<li class="gruppe">
-					<p class="gruppe-titel">
-						<b>{g.titel}</b> <span class="anzahl">{g.karten.length}</span>
-					</p>
-					<ul class="plain karten">
-						{#each g.karten as k (`${k.art}-${k.id}`)}
-							{@render karte(k)}
-						{/each}
-					</ul>
-				</li>
-			{/each}
-		</ul>
-	{/if}
-	{#if backlog.fragen_weitere > 0}
+					</details>
+				{/if}
+			{:else if zahl === 0}
+				<p class="muted small leer">{SATZ_LEER[g.art]}</p>
+			{/if}
+		</section>
+	{/each}
+	{#if backlog.fragen_weitere > 0 && fuerDich === undefined}
 		<p class="muted small">
 			Fragen: eine steht oben; {weitereFragenSatz(backlog.fragen_weitere)} (ohne Text, sie rücken nach
 			der Antwort nach).
 		</p>
 	{/if}
-</section>
+</div>
 
 <style>
 	.backlog {
-		margin: 0.6em 0 1em;
+		margin: 0.2em 0 0.4em;
 	}
-	.spalten {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-		gap: 0.6rem;
-		align-items: start;
+	.gruppe + .gruppe {
+		margin-top: 0.9rem;
 	}
-	.spalte {
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		background: color-mix(in srgb, var(--line) 25%, var(--card));
-		padding: 0.5rem 0.6rem 0.6rem;
-		min-width: 0;
-	}
-	.kopf {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		margin: 0 0 0.4rem;
+	h3 {
+		margin: 0 0 0.3rem;
 		font-size: var(--text-md);
 	}
-	.name {
-		flex: 1;
-	}
 	.anzahl {
-		font-size: var(--text-xs);
 		color: var(--muted);
 		font-weight: 400;
 	}
-	.karten {
-		display: grid;
-		gap: 0.4rem;
-	}
-	.kkarte {
-		display: grid;
-		gap: 0.1rem;
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: 0.5rem;
-		padding: 0.4rem 0.6rem;
-		overflow-wrap: anywhere;
+	.zeilen > li {
+		border-top: 1px solid var(--line);
+		padding: 0.4rem 0;
 		min-width: 0;
+		overflow-wrap: anywhere;
 	}
-	.kkarte.frage {
+	.zeilen > li.frage {
 		border-left: 0.2rem solid var(--warn);
+		padding-left: 0.5rem;
 	}
-	.art {
-		font-size: var(--text-xs);
+	summary {
+		cursor: pointer;
 	}
-	.meta {
+	.titel {
+		font-weight: 600;
+		margin-right: 0.5rem;
+	}
+	/* Ohne Schritte steht kein Dreieck davor: so weit eingerückt wie mit. */
+	.ohne {
+		padding-left: 1.1rem;
+	}
+	.angaben {
 		color: var(--muted);
+	}
+	.angaben > span + span::before {
+		content: ' · ';
+	}
+	.kurz {
+		display: block;
+		margin-left: 1.1rem;
+	}
+	.ohne .kurz {
+		margin-left: 0;
 	}
 	.achtung {
 		color: var(--warn-text);
@@ -179,15 +192,7 @@
 	.leer {
 		margin: 0;
 	}
-	.wer-titel {
-		margin: 1rem 0 0.4rem;
-		font-size: var(--text-md);
-	}
-	.gruppen {
-		display: grid;
-		gap: 0.75rem;
-	}
-	.gruppe-titel {
-		margin: 0 0 0.3rem;
+	.mehr {
+		margin-top: 0.3rem;
 	}
 </style>

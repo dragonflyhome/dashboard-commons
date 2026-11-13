@@ -67,18 +67,30 @@ export const QUELLEN_NAME: Record<VerlaufQuelle, string> = {
 	start: 'Starts',
 	meldung: 'Meldungen',
 	sicherung: 'Sicherungen',
-	vorgang: 'Vorgänge'
+	vorgang: 'Vorgänge',
+	arbeit: 'Arbeiten',
+	schritt: 'Schritte',
+	frage: 'Fragen',
+	entscheidung: 'Entscheidungen',
+	bau: 'Bauten',
+	frist: 'Fristen'
 };
 
 /** Kurz für die kleine Angabe rechts in der Zeile. */
 export const QUELLE_KURZ: Record<VerlaufQuelle, string> = {
-	hand: 'Notiz',
+	hand: 'von Hand',
 	'windows-installiert': 'Windows',
 	update: 'Update',
 	start: 'Start',
 	meldung: 'Meldung',
 	sicherung: 'Sicherung',
-	vorgang: 'Vorgang'
+	vorgang: 'Vorgang',
+	arbeit: 'Arbeit',
+	schritt: 'Schritt',
+	frage: 'Frage',
+	entscheidung: 'Entscheidung',
+	bau: 'Bau',
+	frist: 'Frist'
 };
 
 // ----- Einträge -----
@@ -252,38 +264,68 @@ export function routineTitel(quelle: VerlaufQuelle, n: number): string {
 			return `${String(n)} Sicherungen`;
 		case 'meldung':
 			return `${String(n)} Hinweise`;
+		case 'bau':
+			// Der Server führt auch laufende Bauten als routine: „grün“ wäre nicht immer wahr.
+			return `${String(n)} Bauten`;
+		case 'schritt':
+			return `${String(n)} Schritte`;
 		case 'hand':
 		case 'vorgang':
 		case 'windows-installiert':
+		case 'arbeit':
+		case 'frage':
+		case 'entscheidung':
+		case 'frist':
 			return `${String(n)} Routine-Einträge`;
 	}
 }
 
 /**
+ * Die Arbeit eines Schritt-Ereignisses (`schritt:<arbeit>/<nr>:<n>`) und ihr
+ * Titel aus dem Text des Servers („Bei „<Titel>“: …“).
+ */
+function schrittArbeit(e: VerlaufEreignis): { id: string; titel: string | null } {
+	const id = /^schritt:([^/]+)\//.exec(e.kennung)?.[1] ?? e.kennung;
+	const titel = /^Bei „(.+?)“: /.exec(e.text ?? '')?.[1] ?? null;
+	return { id, titel };
+}
+
+/** Wonach zusammengefasst wird: Routine je Quelle, Schritte (Etappe B8) je Arbeit; sonst nicht. */
+function routineGruppe(e: VerlaufEreignis): string | null {
+	if (e.quelle === 'schritt') return `schritt:${schrittArbeit(e).id}`;
+	return e.art === 'routine' ? e.quelle : null;
+}
+
+/**
  * Routine eines Tages je Quelle in eine Zeile („4 Updates installiert ▸“),
- * ab zwei Einträgen. Die Zeile steht dort, wo ihr neuester Eintrag stand.
- * `liste` ist neueste zuerst sortiert.
+ * ab zwei Einträgen; Schritte (auch fertige) je Arbeit („3 Schritte bei
+ * „Projektseiten neu““, Etappe B8). Die Zeile steht dort, wo ihr neuester
+ * Eintrag stand. `liste` ist neueste zuerst sortiert.
  */
 export function routineZusammenfassen(liste: readonly Eintrag[], schluessel: string): Zeile[] {
-	const jeQuelle = new Map<VerlaufQuelle, Eintrag[]>();
+	const jeGruppe = new Map<string, Eintrag[]>();
 	for (const x of liste) {
-		if (x.e.art !== 'routine') continue;
-		const l = jeQuelle.get(x.e.quelle) ?? [];
+		const g = routineGruppe(x.e);
+		if (g === null) continue;
+		const l = jeGruppe.get(g) ?? [];
 		l.push(x);
-		jeQuelle.set(x.e.quelle, l);
+		jeGruppe.set(g, l);
 	}
 	const aus: Zeile[] = [];
-	const erledigt = new Set<VerlaufQuelle>();
+	const erledigt = new Set<string>();
 	for (const x of liste) {
-		const gruppe = x.e.art === 'routine' ? jeQuelle.get(x.e.quelle) : undefined;
-		if (gruppe !== undefined && gruppe.length >= 2) {
-			if (erledigt.has(x.e.quelle)) continue;
-			erledigt.add(x.e.quelle);
+		const g = routineGruppe(x.e);
+		const gruppe = g === null ? undefined : jeGruppe.get(g);
+		if (g !== null && gruppe !== undefined && gruppe.length >= 2) {
+			if (erledigt.has(g)) continue;
+			erledigt.add(g);
+			const arbeit = x.e.quelle === 'schritt' ? schrittArbeit(x.e).titel : null;
+			const titel = routineTitel(x.e.quelle, gruppe.length);
 			aus.push({
 				art: 'routine',
-				schluessel: `${schluessel}:routine:${x.e.quelle}`,
+				schluessel: `${schluessel}:routine:${g}`,
 				quelle: x.e.quelle,
-				titel: routineTitel(x.e.quelle, gruppe.length),
+				titel: arbeit === null ? titel : `${titel} bei „${arbeit}“`,
 				eintraege: gruppe
 			});
 		} else {

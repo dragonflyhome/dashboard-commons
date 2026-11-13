@@ -9,6 +9,7 @@ import type { Gantt } from "./Gantt";
 import type { Kanban } from "./Kanban";
 import type { Kennzahlen } from "./Kennzahlen";
 import type { Orte } from "./Orte";
+import type { Plan } from "./Plan";
 import type { Zeitstrahl } from "./Zeitstrahl";
 
 /**
@@ -25,6 +26,10 @@ orte: Datei<Orte> | null,
  * Windows-Anmeldung (`/api/projects/<slug>` lässt sie sonst weg).
  */
 fristen: Datei<Fristen> | null, 
+/**
+ * `daten/plan.toml` (Etappe B8): die Etappen, nur Absicht.
+ */
+plan: Datei<Plan> | null, 
 /**
  * `daten/eigen-<name>.toml` unter dem Schlüssel `<name>`, als JSON durchgereicht.
  */

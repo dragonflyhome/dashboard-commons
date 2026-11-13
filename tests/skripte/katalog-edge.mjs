@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Ende-zu-Ende-Probe für Etappe 3a-3 (Katalog, Grundteile auf Bits UI,
- * Widgets im Unter-Dashboard) mit Edge. Gleicher Weg wie
+ * Teile der Projektseite) mit Edge. Gleicher Weg wie
  * tests/skripte/zeitachse-edge.mjs: Wegwerf-Daten in einem Temp-Ordner,
  * Port 8788 (nie 8787, nie C:\ProgramData\Dashboard), Edge headless mit
  * Wegwerf-Profil, ohne Hintergrund-Netz und Komponenten-Updates, alle
@@ -30,7 +30,7 @@
  *     passt, kein Bereich, Tab geht vorbei; danach wieder schmal)
  *   - jede CDP-Nachricht mit Zeitablauf (cdp-frist.mjs)
  *   - /projects/dashboard bei 360, 375 und 1280 px, hell und dunkel: die
- *     Widgets des Unter-Dashboards stehen da, kein seitliches Scrollen,
+ *     vier Teile (Stand, Aufgabenliste, Plan, Zeitleiste) stehen da, kein seitliches Scrollen,
  *     keine Fehler in der Konsole; seit T4 (Zweig teilschritte) eine Arbeit
  *     mit drei Schritten (angelegt wie ein Chat über scripts\Api.ps1 am
  *     Testport): Zeile in Worten, beschriftete Liste, Stand und Warten als
@@ -970,7 +970,7 @@ function schritteAnlegen() {
   return { ar, aufgabe: aufgabe.id };
 }
 
-/** Wartet, bis der Kasten Arbeiten die Arbeit mit Schritten zeigt, klappt sie auf und liest sie. */
+/** Wartet, bis die Aufgabenliste die Arbeit mit Schritten zeigt, klappt sie auf und liest sie (Zeile aus Backlog.svelte). */
 const SCHRITTE_LESEN = (ar) => `(async () => {
   for (let i = 0; i < 50; i++) {
     const d = document.getElementById(${JSON.stringify(`arbeit-${ar}`)});
@@ -988,7 +988,7 @@ const SCHRITTE_LESEN = (ar) => `(async () => {
         // T5: das Ziel des Links steht auf der Seite (nicht nur das href).
         ziel: ((h) => h !== null && document.getElementById(decodeURIComponent(h.slice(1))) !== null)(d.querySelector('ol a')?.getAttribute('href') ?? null),
         kopf: d.querySelector('summary').textContent.replace(/\\s+/g, ' ').trim(),
-        trenner: d.querySelector('summary .nur-vorlesen')?.textContent ?? null,
+        dreiecke: d.querySelectorAll('summary details, summary summary').length,
         rand,
         knoepfe: d.querySelectorAll('button, [role=progressbar], progress').length,
         rechts: Math.max(...punkte.map((li) => li.getBoundingClientRect().right)),
@@ -1099,16 +1099,16 @@ async function main() {
   for (const thema of ["light", "dark"]) {
     await cdp.thema(thema);
     for (const breite of [1280, 375, 360]) {
-      console.log(`\n== Unter-Dashboard, ${breite} px, ${thema} ==`);
+      console.log(`\n== Vier Teile der Projektseite, ${breite} px, ${thema} ==`);
       await cdp.breite(breite);
       await sicher(`/projects/dashboard ${breite} ${thema}`, async () => {
         await seiteMessen(cdp, "/projects/dashboard", breite, thema);
         const n = await cdp.auswerten(
-          `[...document.querySelectorAll('.unter .widget h2')].map((h) => h.textContent.replace(/\\s+/g, ' ').trim())`,
+          `[...document.querySelectorAll('[data-teile] section.abschnitt > h2')].map((h) => h.textContent.replace(/\\s+/g, ' ').trim())`,
         );
         pruefe(
-          n.length > 0 && n[0] === "Stand",
-          "/projects/dashboard: Widgets des Unter-Dashboards da",
+          n.join(",") === "Stand,Aufgabenliste,Plan,Zeitleiste",
+          "/projects/dashboard: die vier Teile Stand, Aufgabenliste, Plan, Zeitleiste in dieser Reihenfolge",
           n.join(", "),
         );
         // T4: die Arbeit mit Schritten, aufgeklappt.
@@ -1135,8 +1135,8 @@ async function main() {
         pruefe(s.link === `#aufgabe-${t4.aufgabe}`, `${wo}: wartet auf dich führt zur Aufgabe`, String(s.link));
         pruefe(s.ziel, `${wo}: das Ziel des Links (die Aufgabe) steht auf der Seite`, String(s.link));
         pruefe(
-          s.kopf.startsWith("Edge-Probe T4: Arbeit mit Schritten, 1 von 3 fertig") && !s.kopf.includes("▸") && s.trenner === ", ",
-          `${wo}: Zeile ohne zweites Dreieck, mit Komma nur zum Vorlesen`,
+          s.kopf.startsWith("Edge-Probe T4: Arbeit mit Schritten ") && s.kopf.endsWith(s.kurz) && !s.kopf.includes("▸") && s.dreiecke === 0,
+          `${wo}: Zeile mit Titel, Angaben und Schritten in Worten, ohne zweites Dreieck`,
           s.kopf,
         );
         pruefe(s.knoepfe === 0, `${wo}: keine Knöpfe, keine Fortschrittsleiste`, String(s.knoepfe));
