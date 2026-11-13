@@ -9,13 +9,21 @@
 /** Klasse der Hervorhebung (in app.css, nur Token). */
 export const HERVORGEHOBEN = 'ziel-hervorgehoben';
 
-/** Ob ein Anker auf einen Eintrag zeigt (`aufgabe-…`, `frage-…`, `arbeit-…`, seit A3 `meldung-…`). */
-export function ankerZumEintrag(
-	hash: string
-): { art: 'aufgabe' | 'frage' | 'arbeit' | 'meldung' } | null {
-	const m = /^(aufgabe|frage|arbeit|meldung)-./.exec(hash);
+/** Was ein Anker auf der Projektseite ansteuern kann. */
+export type ZielArt = 'aufgabe' | 'frage' | 'arbeit' | 'meldung' | 'etappe';
+
+/**
+ * Ob ein Anker auf einen Eintrag zeigt (`aufgabe-…`, `frage-…`, `arbeit-…`,
+ * seit A3 `meldung-…`, seit B8 `etappe-…` im Plan).
+ */
+export function ankerZumEintrag(hash: string): { art: ZielArt } | null {
+	const m = /^(aufgabe|frage|arbeit|meldung|etappe)-./.exec(hash);
 	const art = m?.[1];
-	return art === 'aufgabe' || art === 'frage' || art === 'arbeit' || art === 'meldung'
+	return art === 'aufgabe' ||
+		art === 'frage' ||
+		art === 'arbeit' ||
+		art === 'meldung' ||
+		art === 'etappe'
 		? { art }
 		: null;
 }

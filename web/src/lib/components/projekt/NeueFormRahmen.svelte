@@ -19,6 +19,7 @@
 	import { ausStatus } from '#lib/bedeutung.ts';
 	import { setzeProjekt } from '#lib/projekt/laden.svelte.ts';
 	import ProjektTeile from '#lib/components/projekt/ProjektTeile.svelte';
+	import BauKopf from '#lib/components/projekt/BauKopf.svelte';
 	import Fehlerbild from '#lib/components/projekt/Fehlerbild.svelte';
 	import AbschnittVerzeichnis from '#lib/components/projekt/AbschnittVerzeichnis.svelte';
 	import { aufgaben } from '#lib/aufgaben.svelte.ts';
@@ -145,6 +146,9 @@
 <div class="seite" bind:this={seiteEl}>
 	{#if aktiv === null}
 		<ProjektTeile {slug} {archiviert} />
+	{:else}
+		<!-- Auf Unterseiten steht der Stand-Kopf nicht; ein roter oder laufender Bau bleibt sichtbar. -->
+		<BauKopf {slug} nurAuffaellig />
 	{/if}
 
 	<div class="inhalt">

@@ -238,18 +238,23 @@
 			angesteuert = '';
 			return;
 		}
-		// Fragen, Aufgaben und Arbeiten stehen in der Aufgabenliste, Meldungen kommen mit dem Stand.
+		// Fragen, Aufgaben und Arbeiten stehen in der Aufgabenliste (fertige Arbeiten und Etappen im
+		// Plan); Meldungen kommen mit dem Stand, ob sie eigens stehen, entscheidet der Verlauf.
 		const bereit =
 			geladenFuer === slug &&
 			liste !== null &&
-			(ziel.art !== 'arbeit' || plan !== null) &&
+			((ziel.art !== 'arbeit' && ziel.art !== 'etappe') || plan !== null) &&
+			(ziel.art !== 'meldung' || verlauf !== null) &&
 			(ziel.art !== 'aufgabe' || aufgaben.stand !== 'laedt');
 		if (!bereit || angesteuert === h) return;
 		angesteuert = h;
 		const wissen = ziel.art === 'aufgabe' ? aufgaben.stand === 'da' : angemeldet;
 		const ohneListe = ziel.art === 'arbeit' && liste?.wert === null && !liste.anmelden;
+		// Eine Meldung, deren Sache die Zeitleiste schon zeigt (etwa „Fertig: …“), steht dort.
+		const inZeitleiste = ziel.art === 'meldung' && verlauf?.wert != null;
 		void tick().then(() => {
 			if (ansteuern(h)) ankerSatz = null;
+			else if (inZeitleiste && ansteuern(zeitleisteAnker(slug))) ankerSatz = null;
 			else if (ohneListe) ankerSatz = SATZ_LISTE_FEHLT;
 			else ankerSatz = wissen ? SATZ_NICHT_MEHR_DA : SATZ_OHNE_ANMELDUNG;
 		});

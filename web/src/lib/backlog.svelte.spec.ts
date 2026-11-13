@@ -35,8 +35,11 @@ describe('Baustein Backlog als Aufgabenliste (Etappe B8)', () => {
 		const dich = screen.getByRole('region', { name: /Wartet auf dich/ });
 		const link = within(dich).getByRole('link', { name: 'Beim Beispielportal anmelden' });
 		expect(link.getAttribute('href')).toMatch(/\/projects\/beispiel#aufgabe-a-20261103-0001$/);
-		// Frist heute ist hervorgehoben (Farbe nur zusätzlich zum Wort „bis …“).
-		expect(within(dich).getByText(/^bis /)).toHaveClass('achtung');
+		// Frist heute: das Wort „heute fällig“, die Hervorhebung nur zusätzlich.
+		expect(within(dich).getByText('heute fällig')).toHaveClass('achtung');
+		expect(within(dich).queryByText(/^bis /)).toBeNull();
+		// Gegenprobe: eine spätere Frist bleibt „bis …“ ohne Hervorhebung.
+		for (const bis of screen.queryAllByText(/^bis d/)) expect(bis).not.toHaveClass('achtung');
 		expect(within(dich).getByText('noch 1 Frage wartet')).toBeInTheDocument();
 		expect(screen.queryByText('Wie soll die Unterseite heißen?')).toBeNull();
 		expect(screen.getByText(/eine steht oben; noch 1 Frage wartet/)).toBeInTheDocument();

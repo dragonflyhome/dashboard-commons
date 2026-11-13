@@ -8,6 +8,7 @@
 import { API } from './api/client.ts';
 import { ART_WORT, kurzDatum } from './anstehend.ts';
 import { chatWort } from './aufgaben.ts';
+import { fmtDate } from './format.ts';
 import { SCHRITT_STAND, wartetAufWort } from './katalog/widgets/worte.ts';
 import { gepolstert, position } from './zeit/achse.ts';
 import { tagAusZahl, tagPlus, tagText, tagZahl } from './zeit/tage.ts';
@@ -269,8 +270,17 @@ export const ETAPPEN_BEDEUTUNG: Record<EtappenStand, Bedeutung> = {
 	'vor-dem-tracker': 'ok'
 };
 
-/** Das Stand-Wort einer Etappe: geplant, läuft seit …, fertig am …, vor dem Tracker abgeschlossen. */
+/**
+ * Das Stand-Wort einer Etappe: geplant, läuft seit …, fertig am …, vor dem
+ * Tracker abgeschlossen; mit echtem Termin dahinter „· ab 03/2027“ (der
+ * Zeitstreifen zeigt ihn nur als Raute, ohne Text).
+ */
 export function etappenWort(e: PlanEtappe): string {
+	const wort = standWort(e);
+	return e.ab === null ? wort : `${wort} · ab ${fmtDate(e.ab)}`;
+}
+
+function standWort(e: PlanEtappe): string {
 	switch (e.stand) {
 		case 'geplant':
 			return 'geplant';

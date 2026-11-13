@@ -248,6 +248,16 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		expect(document.getElementById('arbeit-ar-20261102-0007')).toBeNull();
 	});
 
+	it('ein Anker auf eine Etappe (etwa aus der Zeitleiste) klappt sie im Plan auf', async () => {
+		ort.url = new URL('http://localhost:8787/projects/beispiel#etappe-vorbereitung');
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz() });
+		await waitFor(() => {
+			expect(document.activeElement?.id).toBe('etappe-vorbereitung');
+		});
+		expect(document.getElementById('etappe-vorbereitung')).toHaveAttribute('open');
+		expect(document.querySelector('.anker-satz')).toBeNull();
+	});
+
 	it('Zeitleiste: Kommendes oben, ungelesene Meldung eigens mit „gelesen“, nicht doppelt; „Ältere anzeigen“ lädt 400 Tage', async () => {
 		const f = netz();
 		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
@@ -373,6 +383,47 @@ describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)',
 		await screen.findByText('Prüfung meldet einen Fehler');
 		expect(screen.queryByText('Fertig: Gästeliste abgeschlossen')).toBeNull();
 		expect(screen.getByRole('heading', { name: 'Neue Meldungen (1)' })).toBeInTheDocument();
+	});
+
+	it('ein Anker auf eine Meldung wartet auf die Zeitleiste; steht ihre Sache dort, landet der Fokus dort', async () => {
+		const fertig = eintrag({
+			art: 'meldung',
+			id: 'm-fertig',
+			projekt: 'beispiel',
+			titel: 'Fertig: Gästeliste abgeschlossen',
+			meldung: {
+				art: 'fertig',
+				anzahl: 1,
+				zuletzt: '2026-11-13T09:00:00+01:00',
+				text: null,
+				system: false,
+				schluessel: 'beispiel/fertig:ar-1'
+			}
+		});
+		const basis = netz(true, [frage, meldung, fertig]);
+		let verlaufFrei: () => void = () => undefined;
+		const f = vi.fn((eingabe: RequestInfo | URL) =>
+			typeof eingabe === 'string' && eingabe.includes('/verlauf?')
+				? new Promise<Response>((r) => {
+						verlaufFrei = () => {
+							r(json(verlauf));
+						};
+					})
+				: basis(eingabe)
+		);
+		ort.url = new URL('http://localhost:8787/projects/beispiel#meldung-m-fertig');
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		// Vor dem Verlauf steht die Meldung noch eigens da, wird aber nicht angesteuert.
+		await screen.findByText('Fertig: Gästeliste abgeschlossen');
+		await screen.findByRole('heading', { name: /Läuft/, level: 3 });
+		await tick();
+		expect(document.activeElement?.id).not.toBe('meldung-m-fertig');
+		verlaufFrei();
+		await waitFor(() => {
+			expect(document.activeElement?.id).toBe('zeitleiste-beispiel');
+		});
+		expect(document.getElementById('meldung-m-fertig')).toBeNull();
+		expect(document.querySelector('.anker-satz')).toBeNull();
 	});
 
 	it('Anker ohne Ziel: angemeldet „nicht mehr da“, ohne Anmeldung der Anmelde-Satz, bei kaputter Liste ihr Satz', async () => {

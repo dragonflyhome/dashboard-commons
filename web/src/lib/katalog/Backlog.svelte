@@ -23,6 +23,7 @@
 	import type { Snippet } from 'svelte';
 	import type { Backlog, BacklogKarte } from '$vertrag';
 	import { fristDringend, weitereFragenSatz } from '#lib/anstehend.ts';
+	import { fristWort } from '#lib/aufgaben.ts';
 	import { fmtDate } from '#lib/format.ts';
 	import {
 		NAECHSTES_SICHTBAR,
@@ -69,7 +70,11 @@
 		{/if}
 		<span class="angaben small">
 			{#each angaben as a, i (i)}<span>{a}</span>{/each}
-			{#if k.frist}<span class:achtung={fristDringend(k.frist_stufe)}>bis {fmtDate(k.frist)}</span
+			<!-- Heute oder überfällig: das Wort dazu, nicht nur Farbe und Fettdruck. -->
+			{#if k.frist}<span class:achtung={fristDringend(k.frist_stufe)}
+					>{fristDringend(k.frist_stufe)
+						? fristWort(k.frist, k.frist_stufe)
+						: `bis ${fmtDate(k.frist)}`}</span
 				>{/if}
 		</span>
 		{#if k.schritte.length > 0}<span class="kurz small muted">{schritteKurz(k.schritte)}</span>{/if}

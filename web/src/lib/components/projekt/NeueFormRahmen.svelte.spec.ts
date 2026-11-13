@@ -10,6 +10,14 @@ const { teile, ladenFuer } = vi.hoisted(() => ({
 	ladenFuer: vi.fn(() => Promise.resolve())
 }));
 vi.mock('#lib/components/projekt/ProjektTeile.svelte', () => ({ default: teile }));
+// Der Bau von „alpha“ ist rot (BauKopf liest den gemeinsamen Stand).
+vi.mock('#lib/bau.svelte.ts', () => ({
+	bauLage: {
+		kopf: () => ({ zustand: 'rot', bedeutung: 'problem', zeile: 'Bau rot', satz: null }),
+		schritt: null,
+		standMelden: () => undefined
+	}
+}));
 vi.mock('#lib/aufgaben.svelte.ts', () => ({
 	aufgaben: { benutzen: () => () => undefined, fuer: () => [], haken: vi.fn(), ladenFuer }
 }));
@@ -60,6 +68,11 @@ describe('Rahmen eines Projekts (Etappe 3b-2)', () => {
 		expect(screen.getByRole('link', { name: 'Zeitachse' })).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByRole('link', { name: 'Übersicht' })).not.toHaveAttribute('aria-current');
 		expect(teile).not.toHaveBeenCalled();
+	});
+
+	it('rot auf einer Unterseite: der Bau-Hinweis bleibt, ohne die vier Teile', () => {
+		render(NeueFormRahmen, { kopf: kopf(), aktiv: 'zeitachse', children: inhalt });
+		expect(document.querySelector('[data-bau="rot"]')).toHaveTextContent('Bau rot');
 	});
 });
 

@@ -162,6 +162,15 @@ describe('Plan', () => {
 		expect(etappenWort(etappe({ stand: 'vor-dem-tracker' }))).toBe('vor dem Tracker abgeschlossen');
 	});
 
+	it('ein echter Termin (ab) steht im Wort, nicht nur als Raute im Streifen', () => {
+		expect(etappenWort(etappe({ stand: 'geplant', ab: '2027-03' }))).toBe('geplant · ab 03/2027');
+		expect(
+			etappenWort(etappe({ stand: 'laeuft', begonnen: '2026-11-05T09:00:00+01:00', ab: '2026-12' }))
+		).toBe('läuft seit 05.11. · ab 12/2026');
+		// Gegenprobe: ohne Termin kein Zusatz.
+		expect(etappenWort(etappe({ stand: 'geplant', ab: null }))).toBe('geplant');
+	});
+
 	it('Zählung, Wachstum und Arbeiten in Worten', () => {
 		expect(zaehlung(etappe({ arbeiten_fertig: 3, arbeiten_gesamt: 4 }))).toBe(
 			'3 von 4 Arbeiten fertig'
