@@ -32,13 +32,13 @@ Hinzugefügt
   gleich mit laeuft, wartet oder fertig angelegt, steht das als Eintrag
   stand mit leerem alt da. Wartet eine Arbeit ohne Schritte danach auf
   jemand anderen (wartet_auf ändert sich), steht ein Eintrag stand von
-  wartet nach wartet da.
+  wartet nach wartet da (bei vollem Verlauf ohne Eintrag).
 - GET /api/projekte/<slug>/plan (geschützt wie /backlog): die Etappen aus
   daten/plan.toml in ihrer Reihenfolge mit Stand (geplant, laeuft, fertig,
   vor-dem-tracker), x von y Arbeiten fertig, begonnen, fertig,
   gewachsen_seit (seit wann und wie viele Arbeiten nach dem Beginn dazukamen,
-  auch durch eine spätere Zuordnung; eine Arbeit, die schon lief, als sie
-  zugeordnet wurde, zählt nicht) und den Arbeiten mit Titel und Stand, auch archivierte und
+  auch durch eine spätere Zuordnung; was am Tag der ersten Zuordnung
+  dazukam, etwa bei der Umstellung des Bestands, zählt nicht) und den Arbeiten mit Titel und Stand, auch archivierte und
   solche aus anderen Projekten (aus); Arbeiten, deren Etappe nicht mehr in
   plan.toml steht, in ohne_etappe. Ohne Eintrag stand im Verlauf gilt der
   letzte Schritt auf fertig, sonst die letzte Änderung (ungefaehr); lief die
@@ -113,17 +113,22 @@ Hinzugefügt
   Frist heute oder vorbei in der Aufgabenliste als Wort („heute fällig“,
   „überfällig seit …“). Anker #etappe-<kennung> klappen die Etappe im Plan
   auf; ein Anker auf eine Meldung wartet auf die Zeitleiste und landet
-  dort, wenn ihre Sache schon als Zeile dasteht.
+  dort, wenn ihre Sache schon als Zeile dasteht; gibt es sie nicht mehr, steht der Satz dazu.
 - pruefe meldet Stand von Hand auf Projektseiten als Hinweis (nach der
   Umstellung aller Seiten als Fehler): prozent im Fortschritt, farbe laeuft
   im Balkenplan, Zeitstrahl-Einträge begonnen oder geplant mit
   verstrichenem Datum, Kennzahlen ohne berechnet und ohne stand und
-  Stand-Wörter in summary; kanban.toml wie bisher.
+  Stand-Wörter in summary; kanban.toml wie bisher. Die Abhilfe passt zum
+  Fund: Kennzahlen bekommen stand oder berechnet, Zeitstrahl-Einträge ihre
+  art; nur prozent und laufende Balken wandern in Arbeiten.
 
 Geändert
 - Bruch: Datenspeicher Schema 11 (Arbeiten in Fassung 3). Eine Datei mit
   Schema 10 wird beim Start nach einer Sicherung umgestellt, ohne dass sich
   eine Arbeit ändert; ältere Programme öffnen sie danach nicht mehr.
+- Das Beispiel-Backend der Vorlage (projects/_vorlage/server) liest
+  daten/plan.toml: Endpunkt /x/etappen und Tabelle etappen statt
+  /x/fortschritt und stand; ein Modul pflegt keinen eigenen Stand.
 - Ein Wechsel des Stands zählt bei vollem Verlauf einer Arbeit gegen die
   Grenze von 500 Einträgen, auch Wiederöffnen aus fertig; auf fertig und
   das Abgeben aus laeuft oder wartet gehen weiterhin immer.
