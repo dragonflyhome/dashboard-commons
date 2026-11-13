@@ -16,7 +16,12 @@ Unreleased
 
 Hinzugefügt
 - Der Prüfer erkennt Heimatpfade unter macOS und Linux (/Users/<name>,
-  /home/<name>, auch als file:/// und URL-kodiert) wie die Windows-Formen.
+  /home/<name>, auch als file:/// und URL-kodiert) wie die Windows-Formen,
+  auch in PATH-Listen, scp-Zielen, hinter Schaltern wie -L und -I, als JSON
+  mit \/ und als WSL-Freigabe (\\wsl.localhost\<distro>\home\<name>,
+  \\wsl$\…); ein Windows-Pfad mit / zählt dabei nur einmal.
+- Vor-Push.ps1 -Beitrag <kennung>: Jeder Commit eines Beitrags mit dem
+  Namen oder der Adresse der Betreuer als Autor oder Committer ist ein Fund.
 - Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
   hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
   Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.
@@ -27,7 +32,8 @@ Hinzugefügt
   Textprüfung. Auf der Linie bleibt es genau Ranke. Die Regel gilt in jeder
   Art, auch im Projekt-Repo.
 - Ein fremder Commit ändert keinen Prüfpfad (scripts/, .cargo/, .github/,
-  tests/vor_push.rs, KONTAKT-PGP.asc), und ein Merge der Linie, der fremde
+  tests/vor_push.rs, KONTAKT-PGP.asc, .gitattributes; Groß/Klein egal;
+  auch Löschen, Umbenennen und nur der Modus), und ein Merge der Linie, der fremde
   Commits hereinholt, ändert sie gegenüber seinem ersten Elternteil nicht.
   Eigene Änderungen daran kommen in einem eigenen Merge ohne fremde Commits.
 - Issue-Formular .github/ISSUE_TEMPLATE/merge-angebot.yml (Fork-URL, Ref,
@@ -47,6 +53,16 @@ Geändert
   bauen; genau die gelesene Commit-Kennung mergen; Autor und Committer
   lesen, weil eine gefälschte Angabe der Betreuer am Prüfer vorbeigeht) und
   wer Antworten in Issues sendet.
+- Der Probe-Merge eines Beitrags entsteht ohne Arbeitsbaum und ohne Hooks
+  (git merge-tree --write-tree, git commit-tree, git branch probe) und wird
+  mit dem Prüfer aus main geprüft (-Baum probe -Commits main..probe -AufMain
+  -Beitrag <kennung>); main kommt erst nach grünem Lauf mit
+  git merge --ff-only probe auf genau diesen Merge-Commit. Ein git merge im
+  Arbeitsbaum hätte Hooks und Prüfer des Forks ausgeführt.
+- Vor-Push.ps1, Hochladen.ps1 und Freigeben.ps1 starten git über den vollen
+  Pfad aus PATH. Der Prüfer startete git über den Namen, und Windows sucht
+  dabei zuerst im aktuellen Ordner, der beim Hook die Wurzel des geprüften
+  Arbeitsbaums ist: Eine git.exe aus einem Beitrag wäre dort gelaufen.
 
 0.4.0 - 2026-11-13
 ------------------
