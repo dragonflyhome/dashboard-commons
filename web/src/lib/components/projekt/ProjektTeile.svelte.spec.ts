@@ -45,7 +45,9 @@ vi.mock('$katalog/Plan.svelte', async (echt) => {
 	const { default: Plan } = await echt<{ default: (...a: unknown[]) => unknown }>();
 	return {
 		default: (...a: unknown[]) => {
-			if (planWirft.an)
+			// Auch Daten können ihn zum Werfen bringen (ein Feld `kaputt` im Plan).
+			const daten = (a[1] as { plan?: { kaputt?: boolean } } | undefined)?.plan;
+			if (planWirft.an || daten?.kaputt === true)
 				throw new TypeError("Cannot read properties of undefined (reading 'length')");
 			return Plan(...a);
 		}
@@ -463,6 +465,26 @@ describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () 
 		});
 		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
 		expect(planAbrufe()).toBeGreaterThan(vorher);
+		await waitFor(() => {
+			expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Plan' }));
+		});
+	});
+
+	it('warfen die Daten, zeichnet „neu versuchen“ erst mit den neu geladenen', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => undefined);
+		let abrufe = 0;
+		const f = netzMit({
+			'/plan': () =>
+				Promise.resolve(json(++abrufe === 1 ? { ...projektPlan(), kaputt: true } : projektPlan()))
+		});
+		render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		expect(await screen.findByText(SATZ_TEIL_FEHLT)).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		await waitFor(() => {
+			expect(document.getElementById('etappe-einladung')).not.toBeNull();
+		});
+		expect(screen.queryByText(SATZ_TEIL_FEHLT)).toBeNull();
+		expect(abrufe).toBe(2);
 		await waitFor(() => {
 			expect(document.activeElement).toBe(screen.getByRole('heading', { level: 2, name: 'Plan' }));
 		});

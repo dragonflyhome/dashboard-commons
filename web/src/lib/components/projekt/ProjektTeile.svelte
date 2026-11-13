@@ -114,15 +114,18 @@
 		if (fuer !== slug || n !== nr.verlauf) return;
 		verlauf = v;
 	}
-	function allesLaden(s: string): void {
-		void ladeStand(s);
-		void ladeListe(s);
-		void ladePlanFuer(s);
-		// Ohne Abhängigkeit: „Ältere anzeigen“ lädt selbst und setzt die Seite nicht zurück.
-		void ladeVerlaufFuer(
-			s,
-			untrack(() => tage)
-		);
+	/** Startet alle vier Abrufe; wer warten will (neu versuchen), wartet auf alle. */
+	function allesLaden(s: string): Promise<unknown> {
+		return Promise.allSettled([
+			ladeStand(s),
+			ladeListe(s),
+			ladePlanFuer(s),
+			// Ohne Abhängigkeit: „Ältere anzeigen“ lädt selbst und setzt die Seite nicht zurück.
+			ladeVerlaufFuer(
+				s,
+				untrack(() => tage)
+			)
+		]);
 	}
 
 	$effect(() => {
@@ -132,23 +135,23 @@
 		plan = null;
 		verlauf = null;
 		tage = ZEITLEISTE_TAGE;
-		allesLaden(s);
+		void allesLaden(s);
 		const aus = [
 			live.onChange((c) => {
 				const betrifft =
 					(c.area === 'anstehend' && (c.path === 'anstehend' || c.path === `anstehend/${s}`)) ||
 					(c.area === 'aufgaben' && c.path === `aufgaben/${s}`);
-				if (betrifft) allesLaden(s);
+				if (betrifft) void allesLaden(s);
 			}),
 			live.onNachholen(() => {
-				allesLaden(s);
+				void allesLaden(s);
 			}),
 			live.onVorgang((v) => {
-				if (v.slug === s) allesLaden(s);
+				if (v.slug === s) void allesLaden(s);
 			}),
 			// Um Mitternacht neu rechnen lassen: Frist morgen wird heute, die Zeitleiste rückt weiter.
 			beiTageswechsel(() => {
-				allesLaden(s);
+				void allesLaden(s);
 			}),
 			// daten/plan.toml geändert: der Plan und die Liste (Etappen-Titel, Folge in „Als Nächstes“).
 			live.onInhalt((a: InhaltAenderung) => {
@@ -270,12 +273,13 @@
 		console.error('Fehler in einem Teil der Projektseite:', e);
 	}
 	/**
-	 * „neu versuchen“: die Daten neu laden und den Teil neu zeichnen. Der Knopf
-	 * verschwindet dabei; der Fokus geht auf die Überschrift des Abschnitts.
+	 * „neu versuchen“: erst die Daten neu laden, dann den Teil neu zeichnen (mit den
+	 * alten Daten würfe ein Teil, den sie zum Werfen bringen, gleich wieder). Der
+	 * Knopf verschwindet dabei; der Fokus geht auf die Überschrift des Abschnitts.
 	 */
 	async function neuVersuchen(knopf: HTMLElement, neu: () => void): Promise<void> {
 		const titel = knopf.closest('section')?.querySelector('h2');
-		allesLaden(slug);
+		await allesLaden(slug);
 		neu();
 		await tick();
 		if (titel) {
