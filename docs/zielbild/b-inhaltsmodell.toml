@@ -7,6 +7,7 @@ beispiel = """
 projects/<slug>/
   projekt.toml          Kopf: Titel, Status, Assistent (Feld chat), Backup, Unterseiten
   daten/
+    plan.toml           Etappen: Absicht, Reihenfolge, Ziel (kein Stand)
     kennzahlen.toml     Daten für den Baustein „Kennzahlen“
     zeitstrahl.toml     … je Baustein eine Datei, nur die nötigen
     fragen.toml         Fragen an den Benutzer
@@ -81,7 +82,18 @@ Jeder Baustein im Katalog hat genau einen Datentyp. Der Typ steht in Rust; TOML-
 
 [[block]]
 beispiel = """
-# daten/zeitstrahl.toml
+# daten/plan.toml (nur Absicht; Stand, Zählung und Verlauf rechnet der Server)
+[[etappe]]
+kennung = "beete"
+titel = "Beete anlegen"
+ziel = "Drei Hochbeete stehen und sind bepflanzt."
+reihenfolge = 1
+arbeiten = ["ar-JJJJMMTT-0001"]   # optional: Arbeiten, die schon im Archiv liegen
+"""
+
+[[block]]
+beispiel = """
+# daten/zeitstrahl.toml (Inhalt und die Zeit vor dem Tracker; Stand-Verlauf kommt aus dem Tracker)
 [[eintrag]]
 datum = "JJJJ-MM-TT"
 titel = "Beet angelegt"
@@ -129,9 +141,9 @@ zeilen = [
   ["Fortschritt (progress)", "fortschritt.toml", "Fortschritt"],
   ["Zeitstrahl (timeline)", "zeitstrahl.toml", "Zeitstrahl"],
   ["Gantt", "gantt.toml", "Gantt"],
-  ["Kanban", "kanban.toml", "Kanban"],
   ["Fluss (flow)", "fluss.toml", "Fluss"],
   ["Fragen", "fragen.toml", "Fragen"],
+  ["Plan", "plan.toml", "Plan (nur Absicht; Stand vom Server)"],
   ["Reiter (tabs)", "–", "wird eine Komponente <Reiter>, Inhalt in Svelte"],
 ]
 
