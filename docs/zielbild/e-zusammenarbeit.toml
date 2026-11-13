@@ -64,6 +64,7 @@ punkte = [
   "Projekte sind der Ort der privaten Domänenlogik über der Basis. In einem Projekt-Repo dürfen Namen stehen.",
   "Später wird jedes Projekt ein Fork des Basis-Repos, der nur projects/<slug>/ ergänzt und per Rebase auf neue Fassungen der Basis gehoben wird. Ein privates Repo führt Basis und Forks per Merge-Commit zusammen; daraus läuft das eigene Dashboard. Module melden sich ohne eine gemeinsame Datei an, damit der Rebase ohne Konflikte geht.",
   "Merge-Commits gelten beim Zusammenführen in main und ins private Repo; ein Fork hebt sich per Rebase auf die Basis. Jeder neue Fork-Stand wird vor dem Zusammenführen geprüft.",
+  "Ausnahme macOS: Die Unterstützung von macOS ändert den Kern und gehört ins Basis-Repo. Ein Mitwirkender führt sie in seinem Fork und hält ihn per Merge mit main aktuell, nie per Rebase über schon übernommene Commits. Jeder abgeschlossene Schritt kommt als Merge-Angebot nach CONTRIBUTING.md herein und durchläuft den vollen Prüfweg samt Übersetzung für den Mac.",
   "Reihenfolge: Namen raus aus dem Basis-Repo vor dem ersten Push; Forks und privates Repo als eigene spätere Stufe; allgemeine Domänenmodule als eigene Etappen.",
   "Ganzer Text: in den Entscheidungen der privaten Inhaltsquelle (Basis und Forks).",
 ]
