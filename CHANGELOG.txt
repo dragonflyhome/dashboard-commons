@@ -6,10 +6,10 @@ Format folgt Keep a Changelog 1.1.0 (https://keepachangelog.com/de/1.1.0/),
 in Klartext statt Markdown; die Versionen folgen Semantic Versioning
 (https://semver.org/lang/de/), vorerst nur 0.x.
 
-Regel 0.x: Ein Bruch oder etwas Neues hebt die mittlere Zahl (0.2.0), eine
-reine Behebung die letzte (0.2.1); alte Formen fallen ohne Übergang weg. Jeder
-Bruch steht als eigene Zeile „- Bruch: …“ unter Geändert oder Entfernt. Eine
-Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
+Regel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere Zahl (0.2.0 wird
+0.3.0), alles andere die letzte (0.2.1); alte Formen fallen ohne Übergang weg.
+Jeder Bruch steht als eigene Zeile „- Bruch: …“ unter Geändert oder Entfernt.
+Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 
 Unreleased
 ----------
@@ -42,8 +42,18 @@ Hinzugefügt
   DASHBOARD_SITZUNG_VARIABLE nennt (ohne sie keine Kennung); der Dienst merkt sich die Zuordnung bei
   jedem gelungenen, als Inhaber angemeldeten schreibenden Aufruf mit
   "von": "chat:<name>".
+- scripts/Fassung-Festschreiben.ps1 leitet die nächste Fassung aus den
+  Commits seit dem letzten Tag ab, prüft Unreleased nach der Zählregel (die
+  auslösenden Commits stehen im Abbruchsatz) und schreibt die Fassung lokal
+  fest: Commit chore(release) auf einem Zweig in einem vorübergehenden
+  Worktree, Merge-Commit auf main, leichter Tag. -Pruefen sagt nur, welche
+  Fassung es würde. Hinaus geht nichts.
 
 Geändert
+- Versionsregel 0.x: Neues (feat) oder ein Bruch (!) hebt die mittlere
+  Zahl, alles andere die letzte, auch reine Pflege (docs, chore, refactor
+  und andere). Eine Fassung nur aus Pflege trägt unter Geändert die eine
+  Zeile „- Pflege ohne sichtbare Änderung.“.
 - Bruch: Stil-Funde von Stylelint in Projektseiten sind Fehler statt
   Hinweise; eine Seite mit Fund wird nicht gebaut, die anderen bauen weiter.
 - Bruch: scripts/Hochladen.ps1 lädt refs/heads/main nach refs/heads/main
