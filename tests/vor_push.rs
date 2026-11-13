@@ -1024,8 +1024,9 @@ fn art_als_zusicherung() {
 }
 
 /// Positivliste der Art Projekt (Overlay): nur projects/<slug>/** für genau
-/// einen Slug und dashboard-version.toml, .gitignore, .gitattributes; alles
-/// andere ist ein Fund, auch nur in der Geschichte. *.md auch hier nicht.
+/// einen Slug und dashboard-version.toml, .gitignore, .gitattributes und der Leitfaden
+/// CONTRIBUTING.md in der Wurzel; alles andere ist ein Fund, auch nur in der Geschichte.
+/// Jede andere *.md auch hier nicht.
 #[test]
 fn projekt_positivliste() {
     if !bereit() {
@@ -1046,6 +1047,7 @@ fn projekt_positivliste() {
         ("zweiter Slug", "projects/beta/projekt.toml", fremd),
         ("zweiter Slug hinter dem ersten", "projects/zeta/projekt.toml", fremd),
         ("Markdown im eigenen Ordner", "projects/alpha/notiz.md", "Markdown-Datei (*.md)"),
+        ("Leitfaden im eigenen Ordner", "projects/alpha/CONTRIBUTING.md", "Markdown-Datei (*.md)"),
     ] {
         let o = Ort::projekt();
         o.ueber_merge(|o| o.datei(pfad, b"x = 1\n"));
@@ -1054,6 +1056,18 @@ fn projekt_positivliste() {
             assert!(text.contains(&format!("ABGEWIESEN {pfad}: {muster}")), "{name} ({wie}): {text}");
             assert_eq!(fundzeilen(&text).len(), 1, "{name} ({wie}): genau ein Fund:\n{text}");
         }
+    }
+    // In einem anderen Ordner ist er außerhalb der Positivliste und Markdown: zwei Funde.
+    let o = Ort::projekt();
+    o.ueber_merge(|o| o.datei("docs/CONTRIBUTING.md", b"x\n"));
+    let (code, text) = o.pruefen_mit(Some(PROJEKT_ADRESSE));
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains(&format!("ABGEWIESEN docs/CONTRIBUTING.md: {ausserhalb}")) && text.contains("ABGEWIESEN docs/CONTRIBUTING.md: Markdown"), "{text}");
+    // Der Leitfaden in der Wurzel geht durch, beim Hochladen und im Hook.
+    let o = Ort::projekt();
+    o.ueber_merge(|o| o.datei("CONTRIBUTING.md", "# Mitwirken\n\nBeiträge als Issue.\n".as_bytes()));
+    for (wie, (code, text)) in [("Hochladen", o.pruefen_mit(Some(PROJEKT_ADRESSE))), ("Hook", o.hook_mit(PROJEKT_ADRESSE))] {
+        assert_eq!(code, 0, "Leitfaden ({wie}): {text}");
     }
     // Sortiert der zweite Slug vor den ersten, gilt der eigene als fremd: abgewiesen wird so oder so.
     let o = Ort::projekt();

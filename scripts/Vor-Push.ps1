@@ -116,8 +116,8 @@
     gilt eine eigene Positivliste: projects/<slug>/** für genau einen Slug (der
     auf main des Remotes, sonst der erste, den der Lauf sieht; jeder weitere
     ist ein Fund „fremdes Projekt“)
-    und die Wurzeldateien dashboard-version.toml, .gitignore, .gitattributes;
-    jede *.md ist auch dort ein Fund. Dazu liest er dort
+    und die Wurzeldateien dashboard-version.toml, .gitignore, .gitattributes,
+    CONTRIBUTING.md; jede andere *.md ist auch dort ein Fund. Dazu liest er dort
     <Inhalt>\pruefer\ausnahmen\<name>.toml (<name> der letzte Teil der
     Adresse ohne .git), Form erlaubt = ["…", …]: Jeder Eintrag, der gefaltet
     genau einem Wert aus sensibel (mit tokens) oder nur_basis gleicht, gilt
@@ -797,8 +797,8 @@ function PfadPruefen([string]$pfad) {
         if ($m.Success) {
             if (-not $script:projektSlug) { $script:projektSlug = $m.Groups[1].Value }
             if ($m.Groups[1].Value -cne $script:projektSlug) { Fund $pfad 0 'fremdes Projekt (ein zweiter Ordner unter projects/)' }
-        } elseif ($p -cnotmatch '^(?:dashboard-version\.toml|\.gitignore|\.gitattributes)$') { Fund $pfad 0 'Ordner oder Datei nicht in der Positivliste des Projekt-Repos' }
-        if ($p -match '\.md$') { Fund $pfad 0 'Markdown-Datei (*.md)' }
+        } elseif ($p -cnotmatch '^(?:dashboard-version\.toml|\.gitignore|\.gitattributes|CONTRIBUTING\.md)$') { Fund $pfad 0 'Ordner oder Datei nicht in der Positivliste des Projekt-Repos' }
+        if ($p -match '\.md$' -and $p -cne 'CONTRIBUTING.md') { Fund $pfad 0 'Markdown-Datei (*.md)' }
     }
     $name = Split-Path -Leaf $p
     if ($geheimName.IsMatch($p) -and -not $codeEndung.IsMatch($name) -and -not $geheimAusnahme.IsMatch($p)) { Fund $pfad 0 'Name einer Geheimnis-Datei' }
