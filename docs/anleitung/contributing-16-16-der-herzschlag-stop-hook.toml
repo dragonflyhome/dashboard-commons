@@ -4,9 +4,9 @@ reihenfolge = 116
 
 [[block]]
 text = '''
-Ein Chat, der seinen Zug beendet, obwohl ihm im Dashboard noch ein laufender Schritt gehört, lässt die Arbeit liegen, bis jemand nachfragt. Der Herzschlag ist ein Stop-Hook, der das verhindert: dashboard.exe herzschlag. Der Chat-Client ruft ihn bei jedem Stop auf, mit der Eingabe des Hooks (JSON) auf stdin. Der Unterbefehl fragt das Dashboard auf dem eigenen Rechner, ob der Chat dieser Sitzung noch offene Arbeit hat, und hält den Stop an, solange das so ist.
+Ein Chat, der seinen Zug beendet, obwohl ihm im Dashboard noch ein laufender Schritt gehört, lässt die Arbeit liegen, bis jemand nachfragt. Der Herzschlag ist ein Stop-Hook, der das verhindert: dashboard-herzschlag.exe (dasselbe wie dashboard.exe herzschlag, aber ohne Fenster). Der Chat-Client ruft ihn bei jedem Stop auf, mit der Eingabe des Hooks (JSON) auf stdin. Der Hook fragt das Dashboard auf dem eigenen Rechner, ob der Chat dieser Sitzung noch offene Arbeit hat, und hält den Stop an, solange das so ist.
 
-Die Eintragung des Hooks in die Einstellungen des Chat-Clients übernimmt später ein Skript; von Hand trägt man ihn nicht ein.'''
+Der Hook wirkt erst, wenn er eingespielt ist: scripts\Herzschlag-Einspielen.ps1 trägt ihn in die Einstellungen des Chat-Clients ein und setzt DASHBOARD_SITZUNG_VARIABLE; mit -Aus nimmt es beides zurück (Teil 5). Von Hand trägt man ihn nicht ein.'''
 
 [[block]]
 titel = '1. Woher das Dashboard die Sitzung kennt'
@@ -26,23 +26,33 @@ punkte = [
 text = 'Ein wartender Schritt (stand wartet, wartet_auf gesetzt) hält nicht auf, ebenso wenig ein fertiger oder einer, den der Chat einem anderen angeboten hat.'
 
 [[block]]
-titel = '3. Wie der Unterbefehl entscheidet'
+titel = '3. Wie der Hook entscheidet'
 punkte = [
   'Unbekannte Sitzung, kein Chat zugeordnet oder nichts offen: Exit 0, der Stop geht durch.',
-  'Offene Arbeit: Exit 2, der Grund mit den offenen Schritten steht auf stderr; der Chat arbeitet weiter. Ist ein Schritt fertig, setzt er ihn auf fertig; wartet er, trägt er stand wartet mit wartet_auf ein; gibt er ihn ab, bietet er ihn an oder gibt ihn frei.',
+  'Offene Arbeit: Exit 2, der Grund mit den offenen Schritten steht auf stderr; der Chat arbeitet weiter. Ist ein Schritt fertig, setzt er ihn auf fertig; wartet er, trägt er stand wartet mit wartet_auf ein; gibt er ihn ab, bietet er ihn an oder gibt ihn frei. Weil die Antwort auch von einem fremden Programm auf dem Port kommen kann, steht jeder Schritt im Grund ohne Steuerzeichen und gekürzt (Titel höchstens 160 Bytes, die Liste höchstens 1,5 KB); der ganze Grund bleibt unter 2 KB.',
   'Höchstens drei Blocks je echtem Nutzer-Zug. Beim vierten Stop im selben Zug geht der Stop mit einer Warnung durch (Exit 0, {"systemMessage": …} auf stdout); die Arbeit bleibt offen. Das ist der Schutz gegen eine Schleife, wenn ein Schritt nie eingetragen wird.',
-  'Ist der Stop schon ein zweiter Anlauf (stop_hook_active), liest der Unterbefehl nach 1 s einmal nach: Transkript und Dashboard. Ist die Arbeit inzwischen eingetragen, geht der Stop durch. Ein solcher zweiter Anlauf setzt den Zähler nie zurück, auch wenn das Transkript einen neuen Nutzer-Zug zu zeigen scheint; so hält die Grenze von drei Blocks unabhängig davon, wie der Client die Rückmeldung des Blocks ins Transkript schreibt. Mit Nachlesen dauert ein Stop im schlechtesten Fall etwa 11 s (zwei Abfragen zu je höchstens 5 s und 1 s Pause); der Zeitrahmen des Hooks muss darüber liegen.',
-  'Jeder Fehler lässt den Stop durch (Exit 0 ohne Ausgabe): keine Verbindung, Antwort 401 oder ein anderer Code, Zeitüberschreitung (die ganze Abfrage hat höchstens 5 s), unlesbare Antwort, kaputte oder fremde Eingabe auf stdin, ein falscher Aufruf. Ein Fehler hält nie einen Chat fest.',
+  'Ist der Stop schon ein zweiter Anlauf (stop_hook_active), liest der Hook nach 1 s einmal nach: Transkript und Dashboard. Ist die Arbeit inzwischen eingetragen, geht der Stop durch. Ein solcher zweiter Anlauf setzt den Zähler nie zurück, auch wenn das Transkript einen neuen Nutzer-Zug zu zeigen scheint; so hält die Grenze von drei Blocks unabhängig davon, wie der Client die Rückmeldung des Blocks ins Transkript schreibt. Mit Nachlesen dauert ein Stop im schlechtesten Fall etwa 11 s plus zweimal die Anmeldung (zwei Abfragen zu je höchstens 5 s im Netz und 1 s Pause); der Zeitrahmen des Hooks muss darüber liegen, das Einspiel-Skript setzt 30 s.',
+  'Jeder Fehler lässt den Stop durch (Exit 0 ohne Ausgabe): keine Verbindung, Antwort 401 oder ein anderer Code, Zeitüberschreitung, unlesbare Antwort, kaputte oder fremde Eingabe auf stdin. Die Frist von 5 s gilt für Verbinden, Senden und Lesen zusammen, nicht für die Schritte der Windows-Anmeldung, die auf dem eigenen Rechner laufen. Ein falscher Aufruf lässt ebenfalls durch (Exit 0) und schreibt einen Satz auf stderr; ist stderr geschlossen, entfällt der Satz, der Exit-Code bleibt 0. Ein Fehler hält nie einen Chat fest.',
 ]
 
 [[block]]
 titel = '4. Aufruf und Dateien'
-text = 'Gefragt wird mit der Windows-Anmeldung des aufrufenden Kontos, nur auf dem eigenen Rechner; der Schalter --server 127.0.0.1:<port> wählt einen anderen Port (Standard 8787). Die Zähler je Sitzung und ein Protokoll der Fehler (herzschlag.log, nur die Art des Fehlers) liegen unter %LOCALAPPDATA%\Dashboard\herzschlag. Die Sitzungskennung wird für Dateinamen gefaltet: alles außer Buchstaben, Ziffern, - und _ wird -.'
+text = 'dashboard-herzschlag.exe gehört zum Subsystem „windows“: Startet ein Programm ohne Konsole den Hook, öffnet Windows dafür kein Konsolenfenster; stdin, stdout, stderr und der Exit-Code gehen trotzdem wie bei einem Konsolenprogramm. dashboard.exe herzschlag tut dasselbe für Proben im Terminal. Gefragt wird mit der Windows-Anmeldung des aufrufenden Kontos, nur auf dem eigenen Rechner; der Schalter --server 127.0.0.1:<port> wählt einen anderen Port (Standard 8787). Die Zähler je Sitzung und ein Protokoll der Fehler (herzschlag.log: die Art des Fehlers und, wenn bekannt, die Sitzungskennung) liegen unter %LOCALAPPDATA%\Dashboard\herzschlag. Die Sitzungskennung wird für Dateinamen und im Protokoll gefaltet: alles außer Buchstaben, Ziffern, - und _ wird -. Ist herzschlag.log größer als 64 KB, wird es vor dem nächsten Eintrag zu herzschlag.log.alt; eine vorige .alt fällt weg.'
 
 [[block]]
 beispiel = '''
-dashboard.exe herzschlag
+dashboard-herzschlag.exe
+dashboard-herzschlag.exe --server 127.0.0.1:8788
 dashboard.exe herzschlag --server 127.0.0.1:8788'''
+
+[[block]]
+titel = '5. Einspielen und Ausschalten'
+text = 'scripts\Herzschlag-Einspielen.ps1 (PowerShell 7) braucht zwei Angaben: -Einstellungen, die Einstellungsdatei des Chat-Clients (JSON; einen Standard gibt es nicht, weil der Pfad den Client nennt), und -Variable, den Namen der Umgebungsvariable, in der der Client die Sitzungskennung mitgibt. Das Skript liest und prüft die Datei zuerst; kaputtes JSON oder eine unerwartete Form von hooks bricht ab, ohne etwas zu schreiben. Sonst legt es eine Sicherung daneben (<datei>.<zeit>.bak), trägt unter hooks.Stop eine Gruppe mit dashboard-herzschlag.exe aus dem Ordner bin des Dienstes ein (Frist 30 s, anderer Ort mit -Programm) und setzt DASHBOARD_SITZUNG_VARIABLE als Benutzer-Umgebungsvariable. Vorhandene Hooks und Einstellungen bleiben; ein zweiter Aufruf ändert nichts. -Aus entfernt nur den eigenen Eintrag und die Variable. Beides gilt für Chats, die danach starten. -Umgebung nennt einen anderen Registry-Schlüssel statt der Benutzer-Umgebung; die Tests spielen so gegen eine Wegwerf-Wurzel ein.'
+
+[[block]]
+beispiel = '''
+pwsh -NoProfile -File scripts\Herzschlag-Einspielen.ps1 -Einstellungen <datei> -Variable <name>
+pwsh -NoProfile -File scripts\Herzschlag-Einspielen.ps1 -Einstellungen <datei> -Aus'''
 
 [[block]]
 text = 'Zustandsgraph und Hook-Seite sind aus einem anderen Projekt übernommen und stehen weiter unter GPL-3.0-or-later; die Herkunft steht in src\herzschlag\HERKUNFT.toml.'

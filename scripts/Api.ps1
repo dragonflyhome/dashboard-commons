@@ -19,7 +19,7 @@
 # des Chat-Clients, die sie trägt (gesetzt beim Einspielen des Stop-Hooks); fehlt
 # sie, geht keine Kennung mit, und der Stop-Hook lässt durch. Der Dienst merkt
 # sich bei jedem gelungenen POST mit "von": "chat:<name>" diese Sitzung als
-# diesen Chat; der Stop-Hook (dashboard.exe herzschlag) fragt danach.
+# diesen Chat; der Stop-Hook (dashboard-herzschlag.exe) fragt danach.
 # Darum rufen Chats die API nur hierüber auf.
 
 param(
