@@ -44,8 +44,8 @@
 //!    (`BELOW_NORMAL`) und ohne Fenster; nach dem Zeitlimit endet der ganze
 //!    Baum (Job-Objekt). Liegt danach `index.html` im Ordner, wird
 //!    `web\builds\aktuell` über eine neue Datei und Umbenennen ausgetauscht;
-//!    alte Ordner bis auf [`BEHALTEN`] werden gelöscht (nur diese darf der
-//!    Baumeister löschen). Bei rot bleibt die alte Fassung, der halbe Ordner geht.
+//!    alte Ordner bis auf [`BEHALTEN`] und den ausgelieferten ([`aufraeumen`])
+//!    werden gelöscht (nur diese darf der Baumeister löschen). Bei rot bleibt die alte Fassung, der halbe Ordner geht.
 //!
 //! Das Einspielen (`scripts\Dienst.ps1 -Neustart`, über `dashboard pruefe
 //! --bauliste --svelte`) fällt mit [`bauliste_einspielen`] dasselbe Urteil
@@ -80,7 +80,8 @@ pub const ZEITLIMIT: Duration = Duration::from_secs(120);
 /// So lange dürfen die Prüfungen eines Baus zusammen höchstens dauern (für
 /// das Zeitlimit der Anfrage, `aufgaben::BAU_HOECHSTENS`).
 pub const PRUEFUNG_HOECHSTENS: Duration = Duration::from_secs(240);
-/// So viele Bau-Ordner bleiben unter `web\builds` (der aktuelle eingeschlossen).
+/// So viele Bau-Ordner bleiben unter `web\builds` (der aktuelle eingeschlossen),
+/// dazu der ausgelieferte, solange neuere auf den Neustart warten ([`aufraeumen`]).
 pub const BEHALTEN: usize = 2;
 /// Der Zeiger: `web\builds\aktuell`.
 pub const ZEIGER: &str = "aktuell";
@@ -212,9 +213,12 @@ pub fn zeiger_schreiben(builds: &Path, name: &str) -> std::io::Result<()> {
 }
 
 /// Räumt alte Bau-Ordner weg: behält die `behalten` neuesten (nach Namen,
-/// also nach Zeit) und immer `aktuell`. Nur echte Ordner mit Bau-Namen,
-/// keine Verknüpfungen. Gibt die Zahl der entfernten Ordner zurück.
-pub fn aufraeumen(builds: &Path, behalten: usize, aktuell: &str) -> usize {
+/// also nach Zeit), immer `aktuell` und mit der Kopie `kopie` (`bin\web`)
+/// den neuesten Bau mit index.html und ihrem Grundbau: Aus ihm liefert der
+/// Dienst aus, solange neuere Bauten auf den Neustart warten
+/// (`WebOrt::ordner`). Nur echte Ordner mit Bau-Namen, keine Verknüpfungen.
+/// Gibt die Zahl der entfernten Ordner zurück.
+pub fn aufraeumen(builds: &Path, behalten: usize, aktuell: &str, kopie: Option<&Path>) -> usize {
     let Ok(eintraege) = std::fs::read_dir(builds) else { return 0 };
     let mut namen: Vec<String> = eintraege
         .filter_map(Result::ok)
@@ -223,9 +227,13 @@ pub fn aufraeumen(builds: &Path, behalten: usize, aktuell: &str) -> usize {
         .filter(|n| ist_bau_name(n))
         .collect();
     namen.sort();
+    let grund = kopie.and_then(crate::app::grundbau);
+    let gueltig = grund.and_then(|g| {
+        namen.iter().rev().find(|n| builds.join(n).join("index.html").is_file() && crate::app::grundbau(&builds.join(n)).as_ref() == Some(&g)).cloned()
+    });
     let weg = namen.len().saturating_sub(behalten);
     let mut entfernt = 0;
-    for name in namen.into_iter().take(weg).filter(|n| n != aktuell) {
+    for name in namen.into_iter().take(weg).filter(|n| n != aktuell && Some(n) != gueltig.as_ref()) {
         let pfad = builds.join(&name);
         if seite::ist_verknuepfung(&pfad) {
             continue;
@@ -1496,8 +1504,8 @@ pub async fn bauen(ort: &BauOrt, limit: Duration) -> BauErgebnis {
     // gebaut, auch ohne Änderung (`gebaut_um`; `gruen_um` bleibt).
     gebaut_merken(&ort.gruen(), v.eintraege.iter().map(|(s, _)| s.as_str()), jetzt_sekunden());
 
-    // 5. Aufräumen: nur alte Bau-Ordner, die zwei neuesten bleiben.
-    let entfernt = aufraeumen(&builds, BEHALTEN, &name);
+    // 5. Aufräumen: nur alte Bau-Ordner, die zwei neuesten und der ausgelieferte bleiben.
+    let entfernt = aufraeumen(&builds, BEHALTEN, &name, crate::app::web_kopie_neben_programm().as_deref());
     let dauer = start.elapsed();
     let mut satz = format!("Bau grün in {} s: Die Oberfläche kommt jetzt aus web\\builds\\{name}.", dauer.as_secs());
     if !v.alte_fassung.is_empty() {
@@ -1780,7 +1788,7 @@ mod tests {
         }
         std::fs::write(builds.join("20261027-080000"), "eine Datei, kein Ordner").unwrap();
         // Der Zeiger nennt den ältesten: er bleibt trotzdem.
-        assert_eq!(aufraeumen(&builds, 2, "20261027-090000"), 1);
+        assert_eq!(aufraeumen(&builds, 2, "20261027-090000", None), 1);
         let mut da: Vec<String> = std::fs::read_dir(&builds).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         da.sort();
         assert_eq!(da, ["20261027-080000", "20261027-090000", "20261027-110000", "20261027-110000-2", "fremd"]);
@@ -1789,6 +1797,44 @@ mod tests {
         assert_eq!(std::fs::read_to_string(builds.join(ZEIGER)).unwrap(), "20261027-110000\n");
         assert!(!builds.join("aktuell.neu").exists());
         std::fs::remove_dir_all(&builds).unwrap();
+    }
+
+    /// Zwei Bauten warten auf den Neustart (anderer Grundbau als die Kopie):
+    /// Der zuletzt gültige, aus dem der Dienst ausliefert, bleibt. Gegenprobe:
+    /// ohne Kopie, ohne index.html oder ohne passenden Grundbau geht er.
+    #[test]
+    fn aufraeumen_schont_den_zuletzt_gueltigen_bau() {
+        let w = std::env::temp_dir().join(format!("dashboard-bau-schonen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&w);
+        let (builds, kopie) = (w.join("builds"), w.join("bin-web"));
+        let anlegen = |o: &Path, fassung: &str| {
+            std::fs::create_dir_all(o.join("_app")).unwrap();
+            std::fs::write(o.join("index.html"), "<!doctype html>").unwrap();
+            std::fs::write(o.join("_app").join("version.json"), format!("{{\"version\":\"{fassung}\"}}")).unwrap();
+        };
+        // (Grundbau der Kopie, Kopie gesetzt, index.html in 100000, was bleibt)
+        let faelle: [(&str, bool, bool, &[&str]); 4] = [
+            ("abc-1", true, true, &["100000", "110000", "120000"]),
+            ("abc-1", false, true, &["110000", "120000"]),
+            ("xyz-1", true, true, &["110000", "120000"]),
+            // Ohne index.html gilt 100000 nicht; dann der nächstältere gültige.
+            ("abc-1", true, false, &["080000", "110000", "120000"]),
+        ];
+        for (fassung, mit, index, bleibt) in faelle {
+            let _ = std::fs::remove_dir_all(&w);
+            anlegen(&kopie, fassung);
+            for (n, f) in [("080000", "abc-0"), ("100000", "abc-2"), ("110000", "def-3"), ("120000", "def-4")] {
+                anlegen(&builds.join(format!("20261027-{n}")), f);
+            }
+            if !index {
+                std::fs::remove_file(builds.join("20261027-100000").join("index.html")).unwrap();
+            }
+            aufraeumen(&builds, BEHALTEN, "20261027-120000", mit.then_some(kopie.as_path()));
+            let mut da: Vec<String> = std::fs::read_dir(&builds).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()[9..].to_string()).collect();
+            da.sort();
+            assert_eq!(da, bleibt, "{fassung} {mit} {index}");
+        }
+        std::fs::remove_dir_all(&w).unwrap();
     }
 
     // ----- Bauen mit einem Test-Repo (echtes npm, kein SvelteKit) -----

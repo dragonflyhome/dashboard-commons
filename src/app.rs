@@ -775,8 +775,9 @@ impl WebOrt {
     /// Der Ordner, aus dem jetzt ausgeliefert wird.
     pub fn ordner(&self) -> PathBuf {
         let stempel = self.stempel();
+        // Der gemerkte Ordner kann ohne Zeigerwechsel verschwinden (etwa der letzte gültige Bau beim Aufräumen).
         if let Ok(s) = self.stand.read()
-            && let Some(s) = s.as_ref().filter(|s| s.stempel == stempel)
+            && let Some(s) = s.as_ref().filter(|s| s.stempel == stempel && s.ordner.join("index.html").is_file())
         {
             return s.ordner.clone();
         }
@@ -1853,11 +1854,22 @@ mod tests {
         // Gegenprobe: frisch gestartet ist keiner gemerkt.
         let frisch = router_angemeldet(w.state_mit_kopie(Some(kopie.clone())));
         assert!(ausgeliefert(&frisch).await.0.contains("kopie"));
-        // Gegenprobe: Der gemerkte Bau ist weg (index.html fehlt), dann die Kopie.
-        std::fs::remove_file(w.0.join("builds").join("20261027-100000").join("index.html")).unwrap();
-        // Ein anderer Inhalt des Zeigers (derselbe Ordner), damit neu gewählt wird.
-        std::fs::write(w.0.join("builds").join(crate::bote::bau::ZEIGER), "20261027-110000\r\n").unwrap();
-        assert!(ausgeliefert(&app).await.0.contains("kopie"));
+        // Ein zweiter wartender Bau: Das Aufräumen des Boten lässt den zuletzt gültigen Bau stehen.
+        let builds = w.0.join("builds");
+        let dritter = builds.join("20261027-120000");
+        std::fs::create_dir_all(dritter.join("_app")).unwrap();
+        std::fs::write(dritter.join("index.html"), "<!doctype html><title>bau-3</title>").unwrap();
+        std::fs::write(dritter.join("_app").join("version.json"), r#"{"version":"def-4"}"#).unwrap();
+        w.zeiger("20261027-120000");
+        assert_eq!(crate::bote::bau::aufraeumen(&builds, crate::bote::bau::BEHALTEN, "20261027-120000", Some(&kopie)), 0);
+        let (seite, teil, _) = ausgeliefert(&app).await;
+        assert!(seite.contains("bau-1") && teil.contains("bau-1"), "nach zwei wartenden Bauten: {seite}");
+        // Gegenprobe: Der gemerkte Bau verschwindet ohne Zeigerwechsel (derselbe
+        // Stempel, also der Treffer-Zweig): dann die Kopie, nie ein toter Ordner.
+        std::fs::remove_file(builds.join("20261027-100000").join("index.html")).unwrap();
+        let (seite, teil, csp) = ausgeliefert(&app).await;
+        assert!(seite.contains("kopie") && teil.contains("kopie"), "{seite} {teil}");
+        assert_eq!(csp, csp_von("kopie"));
     }
 
     /// Im Dienst (aus dienst.toml) liegt die Kopie neben dem Programm
