@@ -22,7 +22,9 @@
          --no-git-tag-version in web (package.json und package-lock.json).
          Dann auf main git merge --no-ff, Worktree weg, leichter Tag v0.x.y auf
          dem Merge-Commit, Zweig weg.
-    Mit -Pruefen nur Schritt 3, ohne Wirkung. Die Zeilen im Changelog schreibt,
+    Mit -Pruefen nur Schritt 3, ohne Wirkung. Nicht allein aufrufen:
+    Schritt 4 nur mit -Basis, das gibt Freigeben.ps1 nach allen Prüfungen;
+    ohne -Basis und ohne -Pruefen Abbruch. Die Zeilen im Changelog schreibt,
     wer den Zweig einbringt, nie dieses Skript.
     Geht Schritt 4 vor dem Merge schief, verschwinden Worktree und Zweig wieder;
     main bleibt, wie es war. Fehlt nach dem Merge der Tag, bleibt der Zweig
@@ -35,7 +37,8 @@
 .PARAMETER Pruefen
     Nur ableiten und prüfen, nichts ändern.
 .PARAMETER Basis
-    Der geprüfte Stand von main (Standard: main beim Start). Abgeleitet,
+    Der geprüfte Stand von main (mit -Pruefen Standard: main beim Start;
+    ohne -Pruefen Pflicht, von Freigeben.ps1). Abgeleitet,
     geprüft und festgeschrieben wird genau dieser Stand; steht main vor dem
     Merge nicht mehr darauf (oder der Arbeitsbaum nicht auf main), Abbruch mit
     Rücknahme.
@@ -90,6 +93,8 @@ $angelegt = $false
 $gemergt = $false
 $getaggt = $false
 try {
+    # Festschreiben ohne die Prüfungen von Freigeben.ps1 wäre eine Umgehung: Freigeben.ps1 lädt eine fertige Fassung ohne neue Prüfung hoch.
+    if (-not $Pruefen -and -not $Basis) { Write-Host 'Abbruch: Festgeschrieben wird nur aus scripts/Freigeben.ps1 nach allen Prüfungen (mit -Basis); allein geht nur -Pruefen. Es wurde nichts geändert.'; exit 1 }
     $Repo = (GitLauf $Repo @('rev-parse', '--show-toplevel')).Text
     $zweigJetzt = (GitLauf $Repo @('symbolic-ref', '--quiet', '--short', 'HEAD') -Still).Text
     if ($zweigJetzt -cne 'main') { Write-Host 'Abbruch: Der Arbeitsbaum steht nicht auf main. Es wurde nichts geändert.'; exit 1 }
@@ -100,13 +105,13 @@ try {
     if (-not $letzter) { Write-Host 'Abbruch: Auf main gibt es keinen Tag v0.x.y; die erste Fassung setzt der Inhaber fest. Es wurde nichts geändert.'; exit 1 }
     $betreffe = @((GitLauf $Repo @('log', '--format=%s', "refs/tags/$letzter..$Basis")).Text -split "`n" | Where-Object { $_ })
     if ($betreffe.Count -eq 0) { Write-Host "Abbruch: Seit $letzter gibt es keinen Commit auf main. Es wurde nichts geändert."; exit 1 }
-    $feat = @(); $fix = @(); $bruch = @(); $sichtbar = $false
+    $feat = @(); $fix = @(); $bruch = @(); $sichtbar = @()
     foreach ($b in $betreffe) {
         if ($b -cnotmatch '^(?<typ>[a-z]+)(?:\([^()]*\))?(?<bruch>!)?: ') { continue }
         if ($Matches['bruch']) { $bruch += $b }
         if ($Matches['typ'] -ceq 'feat') { $feat += $b }
         if ($Matches['typ'] -ceq 'fix') { $fix += $b }
-        if ($Matches['bruch'] -or @('feat', 'fix', 'perf') -ccontains $Matches['typ']) { $sichtbar = $true }
+        if ($Matches['bruch'] -or @('feat', 'fix', 'perf') -ccontains $Matches['typ']) { $sichtbar += $b }
     }
     $teile = $letzter.Substring(1).Split('.') | ForEach-Object { [int64]$_ }
     $version = if ($feat.Count -or $bruch.Count) { "0.$($teile[1] + 1).0" } else { "0.$($teile[1]).$($teile[2] + 1)" }
@@ -129,10 +134,13 @@ try {
         if ($z.StartsWith('- ')) { $eintraege += [pscustomobject]@{ Unter = $unter; Text = $z } }
     }
     # Die Pflege-Zeile zählt nur bei reiner Pflege und nur unter Geändert.
-    $eintraege = @($eintraege | Where-Object { $_.Text -cne $PFLEGE -or (-not $sichtbar -and $_.Unter -ceq 'Geändert') })
+    $mitPflegeZeile = @($eintraege | Where-Object { $_.Text -ceq $PFLEGE }).Count
+    $eintraege = @($eintraege | Where-Object { $_.Text -cne $PFLEGE -or (-not $sichtbar.Count -and $_.Unter -ceq 'Geändert') })
     $funde = @()
     $liste = { param($c) ($c | ForEach-Object { '„' + $_ + '“' }) -join ', ' }
-    if ($eintraege.Count -eq 0) { $funde += 'Unreleased in CHANGELOG.txt ist leer (bei reiner Pflege genügt unter Geändert die eine Zeile „- Pflege ohne sichtbare Änderung.“).' }
+    if ($eintraege.Count -eq 0 -and $mitPflegeZeile -and $sichtbar.Count) {
+        $funde += 'Unreleased in CHANGELOG.txt hat nur die Zeile „' + $PFLEGE + '“; sie zählt nur bei reiner Pflege (kein feat, fix, perf oder !), ausgelöst von ' + (& $liste $sichtbar) + '.'
+    } elseif ($eintraege.Count -eq 0) { $funde += 'Unreleased in CHANGELOG.txt ist leer (bei reiner Pflege genügt unter Geändert die eine Zeile „- Pflege ohne sichtbare Änderung.“).' }
     if ($bruch.Count -and -not @($eintraege | Where-Object { @('Geändert', 'Entfernt') -ccontains $_.Unter -and $_.Text.StartsWith('- Bruch: ') }).Count) {
         $funde += 'Ein Bruch ohne Zeile „- Bruch: …“ unter Geändert oder Entfernt; ausgelöst von ' + (& $liste $bruch) + '.'
     }

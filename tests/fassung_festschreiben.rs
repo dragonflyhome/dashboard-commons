@@ -87,13 +87,15 @@ impl Ort {
         self.git(&["commit", "-q", "--allow-empty", "-m", betreff]);
     }
 
+    /// Mit -Pruefen, sonst wie aus Freigeben.ps1 mit -Basis main.
     fn lauf(&self, pruefen: bool) -> (i32, String) {
+        self.lauf_mit(if pruefen { &["-Pruefen"] } else { &["-Basis", "main"] })
+    }
+
+    fn lauf_mit(&self, args: &[&str]) -> (i32, String) {
         let skript = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Fassung-Festschreiben.ps1");
         let mut c = pwsh().unwrap();
-        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(skript).arg("-Repo").arg(&self.0);
-        if pruefen {
-            c.arg("-Pruefen");
-        }
+        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(skript).arg("-Repo").arg(&self.0).args(args);
         let a = c.output().unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     }
@@ -138,7 +140,12 @@ fn changelog_zaehlregel() {
         ("feat!: Alles anders", "Hinzugefügt\n- Etwas.\n", "Bruch ohne Zeile „- Bruch: …“ unter Geändert oder Entfernt; ausgelöst von „feat!: Alles anders“"),
         ("fix!: Weg damit", "Hinzugefügt\n- Bruch: steht falsch.\n\nBehoben\n- B.\n", "ausgelöst von „fix!: Weg damit“"),
         ("docs: nur Text", "", "Unreleased in CHANGELOG.txt ist leer"),
-        ("feat: x", "Geändert\n- Pflege ohne sichtbare Änderung.\n", "Unreleased in CHANGELOG.txt ist leer"),
+        ("feat: x", "Geändert\n- Pflege ohne sichtbare Änderung.\n", "sie zählt nur bei reiner Pflege (kein feat, fix, perf oder !), ausgelöst von „feat: x“"),
+        (
+            "perf: schneller",
+            "Geändert\n- Pflege ohne sichtbare Änderung.\n",
+            "sie zählt nur bei reiner Pflege (kein feat, fix, perf oder !), ausgelöst von „perf: schneller“",
+        ),
         ("docs: x", "Hinzugefügt\n- Pflege ohne sichtbare Änderung.\n", "Unreleased in CHANGELOG.txt ist leer"),
     ] {
         let o = Ort::neu();
@@ -189,6 +196,23 @@ fn vorbedingungen() {
     let (code, text) = o.lauf(false);
     assert_eq!((code, text.contains("nicht sauber")), (1, true), "{text}");
     assert_eq!(o.git(&["tag", "--list", "v0.3.5"]), "");
+}
+
+/// Allein aufgerufen (ohne -Basis, also ohne die Prüfungen von Freigeben.ps1) schreibt es nichts fest.
+#[test]
+fn festschreiben_nur_mit_basis() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    o.changelog("Behoben\n- A.\n");
+    o.commit("fix: a");
+    let vorher = o.git(&["for-each-ref", "--format=%(refname) %(objectname)"]);
+    let (code, text) = o.lauf_mit(&[]);
+    assert_eq!(code, 1, "{text}");
+    assert!(text.contains("Festgeschrieben wird nur aus scripts/Freigeben.ps1") && text.contains("Es wurde nichts geändert."), "{text}");
+    assert_eq!(o.git(&["for-each-ref", "--format=%(refname) %(objectname)"]), vorher, "kein Merge, kein Tag, kein Zweig");
+    assert_eq!(o.git(&["worktree", "list"]).lines().count(), 1);
 }
 
 /// Festschreiben: Release-Commit auf freigabe/v0.4.0, Merge auf main, leichter Tag, alle Versionen gleich.
