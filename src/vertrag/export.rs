@@ -132,6 +132,8 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         ArbeitAngelegt,
         ArbeitGeaendert,
         ArbeitenListe,
+        // Herzschlag: offene Arbeit einer Sitzung
+        SitzungOffen,
         // Teilschritte (T3)
         SchrittAngelegt,
         Besetzt,

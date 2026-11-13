@@ -15,7 +15,8 @@
 //! Passkey und JWT für andere Windows-Konten (Etappe 7c) in `passkey/`,
 //! mehrere Inhaltsquellen (`DASHBOARD_PROJECTS_DIR` als Liste, Etappe 4b) in `quellen.rs`,
 //! Ereignisse mit Bereich (Datenspeicher, PC-Benutzerdaten, docs/; Live-Lücken) in `aenderungen.rs`,
-//! das Verbergen von Profilpfad und Benutzername in allem, was hinausgeht, in `datenschutz.rs`.
+//! das Verbergen von Profilpfad und Benutzername in allem, was hinausgeht, in `datenschutz.rs`,
+//! der Stop-Hook der Chats (`dashboard herzschlag`) in `herzschlag/`.
 //!
 //! Für eine Zusammenbau-Kiste genügen [`starten`] und [`eintrag`]:
 //! `std::process::exit(dashboard::starten(vec![dashboard::eintrag(projekt_x::X)]))`.
@@ -41,6 +42,7 @@ pub mod git;
 pub mod git_zwischenspeicher;
 #[cfg(test)]
 mod gruppen_test;
+pub mod herzschlag;
 pub mod inhalt;
 pub mod meldungen;
 pub mod oberflaeche;

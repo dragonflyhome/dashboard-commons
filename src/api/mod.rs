@@ -28,6 +28,7 @@ pub mod pc;
 pub mod projekte;
 pub mod pruefung;
 pub mod schluessel;
+pub mod sitzungen;
 pub mod stand;
 pub mod system_seiten;
 pub mod vertrag;
@@ -90,6 +91,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/arbeiten/{id}/schritte", post(arbeiten::schritt_anlegen))
         .route("/api/arbeiten/{id}/schritte/{nr}", post(arbeiten::schritt_aendern))
         .route("/api/arbeiten/{id}/schritte/{nr}/uebernehmen", post(arbeiten::schritt_uebernehmen))
+        // Herzschlag: offene Arbeit des Chats einer Sitzung (Stop-Hook `dashboard herzschlag`).
+        .route("/api/sitzungen/{id}/offen", get(sitzungen::offen))
         .route("/api/einstufung", post(anstehend::einstufen))
         .route("/api/antworten", get(antworten::liste))
         .route("/api/meldungen", get(meldungen::liste).post(meldungen::anlegen))

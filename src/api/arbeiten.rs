@@ -177,7 +177,7 @@ fn stand_pruefen(wort: &str) -> Result<ArbeitsStand, AppError> {
 }
 
 /// `chat:<name>`, `<name>` wie ein Slug (a–z, 0–9, Bindestrich, höchstens 64 Zeichen).
-fn ist_chat(wert: &str) -> bool {
+pub(crate) fn ist_chat(wert: &str) -> bool {
     wert.strip_prefix("chat:").is_some_and(|s| slug_pruefen(s).is_ok())
 }
 

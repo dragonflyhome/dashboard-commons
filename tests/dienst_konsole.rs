@@ -245,6 +245,12 @@ const POWERSHELL: &str = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell
 /// HTTP-Status ('000' ohne Verbindung) und den Körper zurück.
 #[cfg(windows)]
 fn anfrage(url: &str, anmelden: bool, json: Option<&str>) -> (String, String) {
+    anfrage_mit_sitzung(url, anmelden, json, None)
+}
+
+/// Wie `anfrage`, mit der Kopfzeile der Sitzung (wie `scripts\Api.ps1`).
+#[cfg(windows)]
+fn anfrage_mit_sitzung(url: &str, anmelden: bool, json: Option<&str>, sitzung: Option<&str>) -> (String, String) {
     let skript = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join("Anfrage.ps1");
     let befehl = format!(
         "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); \
@@ -252,6 +258,7 @@ fn anfrage(url: &str, anmelden: bool, json: Option<&str>) -> (String, String) {
          $p = @{{ Url = $env:ANFRAGE_URL; Sekunden = 40 }}; \
          if ($env:ANFRAGE_JSON) {{ $p.Methode = 'POST'; $p.Json = $env:ANFRAGE_JSON }}; \
          if ($env:ANFRAGE_OHNE) {{ $p.OhneAnmeldung = $true }}; \
+         if ($env:ANFRAGE_SITZUNG) {{ $p.Sitzung = $env:ANFRAGE_SITZUNG }}; \
          $r = WindowsAnfrage @p; \
          [Console]::Out.Write($r.Text + \"`n\" + $r.Code)",
         skript.display()
@@ -260,7 +267,11 @@ fn anfrage(url: &str, anmelden: bool, json: Option<&str>) -> (String, String) {
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &befehl])
         .env("ANFRAGE_URL", url)
         .env_remove("ANFRAGE_JSON")
-        .env_remove("ANFRAGE_OHNE");
+        .env_remove("ANFRAGE_OHNE")
+        .env_remove("ANFRAGE_SITZUNG");
+    if let Some(s) = sitzung {
+        cmd.env("ANFRAGE_SITZUNG", s);
+    }
     if let Some(j) = json {
         cmd.env("ANFRAGE_JSON", j);
     }
@@ -316,6 +327,32 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
     // Der Warter endet oft schon, bevor das PowerShell des Anlegens beendet ist (dann 0).
     let dauer = geweckt.saturating_duration_since(angelegt);
     assert!(dauer < Duration::from_secs(2), "geweckt {dauer:?} nach dem Anlegen");
+
+    // Herzschlag: ein POST mit der Kopfzeile der Sitzung ordnet sie dem Chat zu;
+    // dashboard.exe herzschlag hält den Stop dieser Sitzung dann auf (Exit 2).
+    let (status, koerper) = anfrage_mit_sitzung(
+        &format!("{basis}/api/arbeiten"),
+        true,
+        Some(r#"{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Probe Herzschlag", "stand": "laeuft"}"#),
+        Some("s-konsole"),
+    );
+    assert_eq!(status, "201", "Arbeit anlegen: {koerper}");
+    let transkript = ort.ordner.join("transkript.jsonl");
+    std::fs::write(&transkript, "{\"type\":\"user\",\"message\":{\"content\":\"frage\"}}\n").unwrap();
+    let eingabe = serde_json::json!({"hook_event_name": "Stop", "session_id": "s-konsole", "transcript_path": transkript, "stop_hook_active": false});
+    let mut hook = eigener_befehl(PROGRAMM)
+        .args(["herzschlag", "--server", &format!("127.0.0.1:{port}")])
+        .env("LOCALAPPDATA", &ort.ordner)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    hook.stdin.take().unwrap().write_all(&serde_json::to_vec(&eingabe).unwrap()).unwrap();
+    let aus = hook.wait_with_output().unwrap();
+    let grund = String::from_utf8_lossy(&aus.stderr);
+    assert_eq!(aus.status.code(), Some(2), "{grund}");
+    assert!(grund.contains("Probe Herzschlag"), "{grund}");
 
     drop(kind);
     let protokoll = ort.ordner.join("protokoll");
