@@ -99,7 +99,7 @@ zeilen = [
 [[block]]
 titel = "Wie der Inhaber es sieht"
 punkte = [
-  "Auf der Projektseite im Kasten Arbeiten. Schon in der zugeklappten Zeile steht in Worten: „3 von 7 fertig · dran: Chat pruefer“ oder „angeboten an Chat pruefer, noch nicht übernommen“.",
+  "Auf der Projektseite in der Aufgabenliste (offene Arbeiten) und im Plan (alle Arbeiten einer Etappe, auch fertige und archivierte). Schon in der zugeklappten Zeile steht in Worten: „3 von 7 fertig · dran: Chat pruefer“ oder „angeboten an Chat pruefer, noch nicht übernommen“.",
   "Aufgeklappt eine nummerierte Liste der Schritte. Je Schritt in Worten: Titel, Stand, wer dran ist, worauf er wartet, seit wann. Farbe nur zusätzlich.",
   "Ein Schritt ohne Bewegung seit über einem Tag sagt das als Satz: „seit über einem Tag unverändert“.",
   "Wartet ein Schritt auf den Inhaber, führt er zu der Frage oder Aufgabe, auf die er antwortet, wie bei Arbeiten.",
@@ -110,7 +110,7 @@ punkte = [
 [[block]]
 titel = "Eine Wahrheit statt drei Dateien"
 text = """
-Ist der Baustein live, ersetzen die Chats in fortschritt.toml, ampel.toml und im Status des Gantt-Balkens den Stand von Etappe 6 durch den Satz „Stand: siehe Arbeit im Kasten Arbeiten“. Nichts wird gelöscht; der Zeitstrahl bleibt als Geschichte, der Gantt-Balken als Plan. Danach gilt allein der Tracker. Die Projektseite des Zielbilds zeigt den Stand der Etappen mit demselben Verweis."""
+Stand wird nie von Hand gepflegt. Fortschritt, Ampel über Stand, Kanban und der Status von Gantt-Balken fallen auf Projektseiten weg; Stand, Zählung und Verlauf rechnet der Server aus dem Tracker. Von Hand bleibt nur Absicht: daten/plan.toml nennt die Etappen, ihre Reihenfolge und ihr Ziel, dazu für Arbeiten, die schon im Archiv liegen, deren Kennungen. Eine Arbeit nennt ihre Etappe im Feld etappe; jeder Wechsel ihres Stands steht in ihrem Verlauf. Fertige Arbeiten bleiben über den Plan des Projekts lesbar, auch nach dem Umzug ins Archiv."""
 
 [[block]]
 titel = "Bis der Zweig live war (abgelöst seit T5)"
