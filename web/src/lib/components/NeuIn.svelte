@@ -54,8 +54,9 @@
 
 {#if neu !== null}
 	<section class="card neu" aria-labelledby="{id}-titel">
-		<h2 id="{id}-titel">Neu in {neu.version}</h2>
-		<FassungZeilen zeilen={neu} />
+		<!-- Ohne Überschrift: Der Kasten steht vor der h1 jeder Seite. -->
+		<p class="titel"><strong id="{id}-titel">Neu in {neu.version}</strong></p>
+		<FassungZeilen zeilen={neu} ebene={null} />
 		<div class="unten">
 			<a href={resolve('/fassungen')}>Alle Fassungen</a>
 			<Knopf
@@ -74,7 +75,7 @@
 	.neu {
 		margin-bottom: 1.25rem;
 	}
-	.neu h2 {
+	.titel {
 		margin-top: 0;
 	}
 	.unten {

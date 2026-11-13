@@ -32,9 +32,15 @@ export function hatZeilen(z: FassungsZeilen): boolean {
 /** Der Anfang einer Zeile, die einen Bruch nennt (Regel im Changelog). */
 export const BRUCH = 'Bruch: ';
 
-/** Eine Zeile mit „Bruch: …“ geteilt, damit das Wort hervorgehoben stehen kann. */
-export function bruchTeilen(zeile: string): { bruch: boolean; rest: string } {
-	return zeile.startsWith(BRUCH)
+/**
+ * Eine Zeile mit „Bruch: …“ geteilt, damit das Wort hervorgehoben stehen kann;
+ * nur, wenn der Dienst sie als Bruch nennt (unter Geändert oder Entfernt).
+ */
+export function bruchTeilen(
+	zeile: string,
+	brueche: readonly string[]
+): { bruch: boolean; rest: string } {
+	return zeile.startsWith(BRUCH) && brueche.includes(zeile)
 		? { bruch: true, rest: zeile.slice(BRUCH.length) }
 		: { bruch: false, rest: zeile };
 }

@@ -9,18 +9,20 @@
 
 	interface Props {
 		zeilen: FassungsZeilen;
-		/** Überschriftenebene der Unterabschnitte (unter einem h2 also 3). */
-		ebene?: 3 | 4;
+		/** Überschriftenebene der Unterabschnitte (unter einem h2 also 3); `null`: keine Überschrift. */
+		ebene?: 3 | 4 | null;
 	}
 	let { zeilen, ebene = 3 }: Props = $props();
 	const abschnitte = $derived(abschnitteMitZeilen(zeilen));
 </script>
 
 {#each abschnitte as a (a.titel)}
-	<svelte:element this={`h${ebene}`} class="unter">{a.titel}</svelte:element>
+	<svelte:element this={ebene === null ? 'p' : `h${String(ebene)}`} class="unter"
+		>{a.titel}</svelte:element
+	>
 	<ul class="zeilen">
 		{#each a.zeilen as z, i (i)}
-			{@const t = bruchTeilen(z)}
+			{@const t = bruchTeilen(z, zeilen.brueche)}
 			<li>
 				{#if t.bruch}<strong class="bruch">Bruch:</strong> {t.rest}{:else}{t.rest}{/if}
 			</li>
@@ -34,6 +36,7 @@
 	.unter {
 		margin: 0.8em 0 0.2em;
 		font-size: var(--text-base);
+		font-weight: 600;
 	}
 	.zeilen {
 		margin: 0 0 0.6em;

@@ -3,7 +3,8 @@
 	 * Fußzeile (Entscheidung „Freigabe in einem Schritt“): die laufende
 	 * Fassung des Dienstes als Link auf /fassungen, zwischen zwei Fassungen
 	 * „0.x.y + Unveröffentlicht“. Einmal je Laden aus `/api/betrieb` (frei);
-	 * nach einer neuen Fassung lädt die Seite ohnehin neu. Antwortet der
+	 * ein schon offener Tab zeigt nach einem Neustart mit neuer Fassung die
+	 * alte Nummer, bis er neu geladen wird. Antwortet der
 	 * Dienst nicht, steht nur der Link ohne Nummer da.
 	 *
 	 * `laden` nur für Tests.

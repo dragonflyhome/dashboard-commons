@@ -24,8 +24,14 @@ describe('Fassungen', () => {
 	});
 
 	it('teilt das Wort Bruch ab', () => {
-		expect(bruchTeilen('Bruch: Alte Form weg.')).toEqual({ bruch: true, rest: 'Alte Form weg.' });
-		expect(bruchTeilen('Kein Bruch: nur Text')).toEqual({
+		const b = ['Bruch: Alte Form weg.'];
+		expect(bruchTeilen('Bruch: Alte Form weg.', b)).toEqual({
+			bruch: true,
+			rest: 'Alte Form weg.'
+		});
+		// Unter Hinzugefügt oder Behoben ist es kein Bruch (der Dienst nennt ihn nicht).
+		expect(bruchTeilen('Bruch: anderswo', b)).toEqual({ bruch: false, rest: 'Bruch: anderswo' });
+		expect(bruchTeilen('Kein Bruch: nur Text', b)).toEqual({
 			bruch: false,
 			rest: 'Kein Bruch: nur Text'
 		});
