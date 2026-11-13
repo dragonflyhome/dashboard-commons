@@ -1106,9 +1106,9 @@ fn nte_zeile_mit(text: &str, stueck: &str, n: usize) -> Option<usize> {
 }
 
 /// Etappe B2: `daten/kanban.toml` läuft aus. Die Spalten ergeben sich jetzt aus
-/// Stand und Status im Datenspeicher (Aufgabenliste oben auf jeder Projektseite).
+/// Stand und Status im Datenspeicher (Aufgabenliste oben auf der Übersicht jeder Projektseite).
 /// Lesen und zeigen geht vorerst weiter; darum ein Hinweis, kein Fehler.
-pub const SATZ_KANBAN_LAEUFT_AUS: &str = "`kanban.toml` läuft aus (Etappe B2): Was darin stand, zeigt die Aufgabenliste oben auf jeder Projektseite aus Aufgaben, Arbeiten und Fragen im Datenspeicher. Bitte Karten als Arbeiten melden (`POST /api/arbeiten`) und die Datei danach herausnehmen; bis dahin wird sie weiter gezeigt.";
+pub const SATZ_KANBAN_LAEUFT_AUS: &str = "`kanban.toml` läuft aus (Etappe B2): Was darin stand, zeigt die Aufgabenliste oben auf der Übersicht jeder Projektseite aus Aufgaben, Arbeiten und Fragen im Datenspeicher. Bitte Karten als Arbeiten melden (`POST /api/arbeiten`) und die Datei danach herausnehmen; bis dahin wird sie weiter gezeigt.";
 
 /// Der Hinweis zu `kanban.toml` (einmal je Datei, ohne Zeile).
 fn kanban_hinweis(daten: &ProjektDaten, datei: &str, befunde: &mut Vec<Befund>) {

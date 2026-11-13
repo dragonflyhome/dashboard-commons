@@ -473,7 +473,7 @@ punkte = [
   'Sparsam melden. Höchstens 20 ungelesene Meldungen je Projekt; darüber legt der Server die ältesten als gelesen ab und zählt sie in einer Sammelmeldung („Ältere Meldungen sind als gelesen abgelegt …“). Melde nur, was der Inhaber wirklich wissen sollte; Zwischenstände gehören in deine Arbeit.',
   'Nur per Api.ps1. Aus dem Browser nimmt der Server keine Meldung an (422). „gelesen“ (POST /api/meldungen/<id>/gelesen) nimmt er umgekehrt nur aus dem Browser an: Er prüft die Kopfzeilen Origin und Sec-Fetch-Site. Das schützt vor Versehen, ist aber keine Sicherheitsgrenze; klick nie an Stelle des Inhabers „gelesen“.',
   'Nachsehen: GET /api/meldungen?projekt=<slug> (alle außerhalb des Archivs, neueste zuerst, mit gelesen, behoben, anzahl). In GET /api/anstehend stehen die ungelesenen als art: "meldung"; mit ?projekt=<slug> steht dort auch aktualisierungen (alle Meldungen und Vorgänge des Projekts; die neuesten fünf wählt die Oberfläche). GET /api/projekte/<slug>/stand hat ohne Anmeldung nur zahlen.meldungen (neu, gesamt), keine Titel und Texte.',
-  'Ziel: Jede Meldung führt auf /projects/<slug>#meldung-<id>; dort steht sie, solange sie ungelesen ist, in der Zeitleiste unter „Neue Meldungen“ zum Aufklappen, danach in der Zeitleiste selbst. Systemmeldungen führen auf /pc#meldung-<id>.',
+  'Ziel: Jede Meldung führt auf /projects/<slug>#meldung-<id>; dort steht sie, solange sie ungelesen ist, in der Zeitleiste unter „Neue Meldungen“ zum Aufklappen; gelesen steht sie nur noch als Zeile im Verlauf, ohne eigenes Ziel. Systemmeldungen führen auf /pc#meldung-<id>.',
   'von ist eine Angabe, kein Nachweis; trotzdem ehrlich setzen.',
 ]
 

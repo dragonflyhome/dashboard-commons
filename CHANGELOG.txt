@@ -119,12 +119,16 @@ Geändert
   refs/heads/main; lokal geht nur noch main nach main hinaus. Ein Commit
   ohne Eltern auf main ist ein Fund, außer der einen Wurzel beim ersten
   Push (keine zweite Wurzel, auch nicht über einen Merge).
-- Projektseite: Das Status-Wort steht einmal in der Überschrift, die
-  Zeile „Status: …“ entfällt; der Chat steht klein darunter. Die vier Teile
-  stehen auf der Übersicht, Unterseiten zeigen nur ihren Inhalt.
+- Bruch: Projektseite: Das Status-Wort steht einmal in der Überschrift,
+  die Zeile „Status: …“ entfällt; der Chat steht klein darunter. Die vier
+  Teile stehen auf der Übersicht; Unterseiten zeigen nur ihren Inhalt,
+  ohne Kasten der Aufgaben und ohne Bau-Stand.
 - Zeitleiste und Verlauf: Schritte werden je Arbeit und Tag zu einer Zeile
-  verdichtet („3 Schritte bei „…““), grüne Bauten zu „Bau 3-mal grün“;
-  Einträge von Hand heißen rechts „von Hand“.
+  verdichtet („3 Schritte bei „…““), Bauten zu „3 Bauten“; Einträge von
+  Hand heißen rechts „von Hand“, auch auf der Startseite und unter /pc.
+- Der einfache Aufbau (Projekt ohne eigene Seite) zeigt fristen.toml und
+  plan.toml nicht mehr als eigene Abschnitte: Fristen stehen in der
+  Zeitleiste, die Etappen im Plan.
 - Der Hinweis von pruefe zu kanban.toml nennt die Aufgabenliste.
 
 Entfernt
@@ -136,7 +140,7 @@ Entfernt
 - Bruch: Das Backlog hat keine Spalte fertig mehr; fertige Arbeiten zeigt
   der Plan, ihre Zahl der Stand. Abgeschlossene Aufgaben erscheinen dort
   nicht mehr.
-- Auf Projektseiten das Unter-Dashboard (Kästen Stand, Wartet auf dich,
+- Bruch: Auf Projektseiten das Unter-Dashboard (Kästen Stand, Wartet auf dich,
   Arbeiten, Fristen, Zuletzt, Notizen) und der eigene Kasten des Backlogs;
   der Kasten „Aufgaben für dich“ und der Bau-Stand haben keinen eigenen
   Platz mehr.
