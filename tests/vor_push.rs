@@ -3467,11 +3467,21 @@ fn beitraege_aus_forks_ohne_changelog() {
         }
     };
     frei("Fork holt main mit Changelog", fork_merge(false));
-    // Der Fund am Fork-Merge selbst, nicht nur der allgemeine Satz am Merge der Linie.
-    abgewiesen("Merge im Fork ändert den Changelog", &format!("ein fremder Commit ändert CHANGELOG.txt; {satz}"), fork_merge(true));
-    // Eine eigene Änderung am Changelog im selben Seitenzweig wie ein Beitrag: Fund am Merge
-    // der Linie (die Zeilen kommen in einem eigenen Commit nach dem Merge).
-    abgewiesen("Changelog im Seitenzweig eines Beitrags", &format!("der Merge übernimmt fremde Commits und ändert CHANGELOG.txt; {satz}"), |o| {
+    // Konfliktlösung im Fork: Der fremde Merge ändert CHANGELOG.txt gegen jeden Elternteil.
+    // Genau ein Fund, am Fork-Merge selbst (der Merge der Linie trägt den Stand des einzigen
+    // Elternteils, der den Changelog seit der Basis geändert hat).
+    let o = Ort::neu();
+    fork_merge(true)(&o);
+    let fork = o.git(&["rev-parse", "main^2"]);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let funde: Vec<&str> = text.lines().filter(|z| z.contains(satz)).collect();
+    assert_eq!(funde.len(), 1, "{text}");
+    assert!(funde[0].contains(&format!("Commit {}", &fork[..10])) && funde[0].contains("ein fremder Commit ändert CHANGELOG.txt"), "{text}");
+    // Eine eigene Änderung am Changelog im selben Seitenzweig wie ein Beitrag: frei. Der
+    // Changelog-Commit ist der des Betreuers, der Beitrag ändert CHANGELOG.txt nicht; fremde
+    // Zeilen kämen nur über einen fremden Commit, und den prüft die Regel je Commit.
+    frei("Changelog im Seitenzweig eines Beitrags", |o| {
         o.git(&["checkout", "-q", "-B", "zweig"]);
         o.datei("CHANGELOG.txt", b"Unreleased\n");
         o.commit("docs: Changelog", &[]);
@@ -3481,9 +3491,787 @@ fn beitraege_aus_forks_ohne_changelog() {
     });
 }
 
-/// Der Bestand vor der Regel zu CHANGELOG.txt (ein übernommener Fork-Commit und sein
-/// Merge, schon veröffentlicht) ist ausgenommen: genau diese zwei vollen Kennungen, nur
-/// für CHANGELOG.txt. Ein Test-Repo kann keine Commits mit diesen Kennungen bauen. Darum
+/// Ein fremder Merge im Fork nimmt einen alten main-Stand als Elternteil und dessen
+/// CHANGELOG.txt: Gegen jeden Elternteil einzeln ändert er die Datei nicht, verwirft aber
+/// den späteren Eintrag der Betreuer, und der Merge der Linie löscht ihn. Ein Fund am
+/// Fork-Merge, auch wenn main danach weiterläuft (der Merge der Linie ergibt dann einen
+/// neuen Stand) und wenn ein Commit der Betreuer darauf liegt. Gegenprobe: derselbe
+/// Aufbau, der Fork-Merge nimmt den neuen Stand.
+#[test]
+fn beitraege_aus_forks_changelog_verworfen() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let aufbau = |verwerfen: bool, main_weiter: bool, betreuer_darauf: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n\nAlt\n- alt\n"));
+            let alt = o.git(&["rev-parse", "HEAD"]);
+            o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n\nNeu\n- Eintrag der Betreuer\n\nAlt\n- alt\n"));
+            o.git(&["checkout", "-q", "-B", "fork"]);
+            o.datei("src/b.rs", b"// b\n");
+            o.commit("feat: b", &als_beitrag(&mail));
+            if verwerfen {
+                o.git(&["checkout", "-q", &alt, "--", "CHANGELOG.txt"]);
+            }
+            o.git(&["add", "-A"]);
+            let baum = o.git(&["write-tree"]);
+            let wer = ["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}")];
+            let sha = o.git(&[&wer[..], &["commit-tree", &baum, "-p", &alt, "-p", "HEAD", "-m", "chore(merge): main"]].concat());
+            o.git(&["reset", "-q", "--hard"]);
+            o.git(&["checkout", "-q", "-B", "zweig", &sha]);
+            if betreuer_darauf {
+                o.datei("src/c.rs", b"// c\n");
+                o.commit("feat: c", &[]);
+            }
+            o.git(&["checkout", "-q", "main"]);
+            if main_weiter {
+                // Am Ende, damit sich der Merge der Linie ohne Konflikt zu einem neuen Stand ergibt.
+                let spitze = o.git(&["rev-parse", "zweig"]);
+                o.ueber_merge_mit("docs: weiter", |o| {
+                    o.datei("CHANGELOG.txt", b"Unreleased\n\nNeu\n- Eintrag der Betreuer\n\nAlt\n- alt\n\nAelter\n- ganz alt\n")
+                });
+                o.git(&["branch", "-f", "zweig", &spitze]);
+            }
+            zusammenfuehren(o);
+            let stand = o.git(&["show", "main:CHANGELOG.txt"]);
+            assert_eq!(stand.contains("Eintrag der Betreuer"), !verwerfen, "{stand}");
+        }
+    };
+    for (main_weiter, betreuer_darauf) in [(false, false), (true, false), (false, true)] {
+        let o = Ort::neu();
+        aufbau(true, main_weiter, betreuer_darauf)(&o);
+        let fork = o.git(&["rev-parse", if betreuer_darauf { "main^2^" } else { "main^2" }]);
+        let (code, text) = o.pruefen();
+        assert_eq!(code, 1, "{main_weiter} {betreuer_darauf}:\n{text}");
+        let funde: Vec<&str> = text.lines().filter(|z| z.contains("ein fremder Merge verwirft eine Änderung an CHANGELOG.txt")).collect();
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &fork[..10])), "{text}");
+        frei("Fork-Merge mit neuem Stand", aufbau(false, main_weiter, betreuer_darauf));
+    }
+}
+
+/// Ein Betreuer frischt einen eigenen Zweig mit main auf (Merge „main nach eigen“), während
+/// main noch nicht veröffentlichte Beiträge ohne Changelog-Änderung und einen Eintrag der
+/// Betreuer in CHANGELOG.txt trägt. Der Merge ändert CHANGELOG.txt gegen seinen ersten
+/// Elternteil und holt fremde Commits herein, bringt aber keine fremden Zeilen: frei, über
+/// den Zweig (main..eigen), über alles Unveröffentlichte (Wurzel..eigen) und nach dem
+/// Merge nach main über die ganze Geschichte. Ebenso, wenn auch der eigene Zweig einen
+/// Eintrag trägt und git beide zusammenführt (zwei Elternteile haben die Datei seit der
+/// Basis geändert: mild frei).
+#[test]
+fn main_nach_eigenem_zweig_mit_changelog() {
+    if !bereit() {
+        return;
+    }
+    let alt = "\nAlt\n- a1\n- a2\n- a3\n";
+    for beide in [false, true] {
+        let o = Ort::neu();
+        if beide {
+            o.ueber_merge(|o| o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}").as_bytes()));
+        }
+        let wurzel = o.git(&["rev-parse", "main"]);
+        o.git(&["checkout", "-q", "-b", "eigen"]);
+        o.datei("src/e.rs", b"// e\n");
+        if beide {
+            o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}- a4\n").as_bytes());
+        }
+        o.commit("feat: e", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", format!("Unreleased\n\nHinzugefuegt\n- b\n{}", if beide { alt } else { "" }).as_bytes()));
+        o.git(&["checkout", "-q", "eigen"]);
+        o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "main", "-m", "chore(merge): main nach eigen"]);
+        if beide {
+            let stand = o.git(&["show", "eigen:CHANGELOG.txt"]);
+            assert!(stand.contains("- b") && stand.contains("- a4"), "git führt beide Einträge zusammen:\n{stand}");
+        }
+        let bereich_alt = format!("{wurzel}..eigen");
+        for bereich in ["main..eigen", bereich_alt.as_str()] {
+            let (code, text) = o.lauf(&["-Baum", "eigen", "-Commits", bereich], None);
+            assert_eq!(code, 0, "{beide} {bereich}: muss durchgehen:\n{text}");
+        }
+        o.git(&["checkout", "-q", "main"]);
+        o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "eigen", "-m", "chore(merge): eigen"]);
+        let (code, text) = o.pruefen();
+        assert_eq!(code, 0, "{beide}:\n{text}");
+    }
+}
+
+/// git mit diesem Namen und dieser Adresse als Autor und Committer (für Merges, die `commit` nicht baut).
+fn git_als(o: &Ort, name: &str, mail: &str, args: &[&str]) -> String {
+    let name = format!("user.name={name}");
+    let mail = format!("user.email={mail}");
+    o.git(&[&["-c", name.as_str(), "-c", mail.as_str()][..], args].concat())
+}
+
+/// Die Fundzeilen zu CHANGELOG.txt.
+fn changelog_funde(text: &str) -> Vec<&str> {
+    text.lines().filter(|z| z.contains("CHANGELOG.txt ändern nur die Betreuer; die Zeilen gehören ins Merge-Angebot")).collect()
+}
+
+/// Umbenennen am Merge der Linie: Die Betreuer benennen eine Datei in CHANGELOG.txt um, der
+/// Fork ändert sie unter altem Namen, und git trägt die fremde Zeile beim Merge der Linie ein,
+/// ohne dass ein fremder Commit CHANGELOG.txt berührt. Mild: git ergibt ohne Umbenennungen den
+/// Stand der Betreuer, der Merge trägt aber einen anderen: ein Fund am Merge
+/// der Linie. Gegenprobe: derselbe Aufbau ohne fremde Änderung an der alten Datei ist frei.
+#[test]
+fn changelog_umbenennen_am_merge_der_linie() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let alt = "\nAlt\n- alt eins\n- alt zwei\n- alt drei\n- alt vier\n";
+    for fremd in [true, false] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("src/news.txt", format!("Unreleased\n{alt}").as_bytes()));
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        if fremd {
+            o.datei("src/news.txt", format!("Unreleased\n- FREMDE ZEILE\n{alt}").as_bytes());
+        } else {
+            o.datei("src/b.rs", b"// b\n");
+        }
+        o.commit("docs: news", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge_mit("docs: changelog", |o| {
+            o.git(&["mv", "src/news.txt", "CHANGELOG.txt"]);
+        });
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        let stand = o.git(&["show", "main:CHANGELOG.txt"]);
+        assert_eq!(stand.contains("FREMDE ZEILE"), fremd, "{stand}");
+        let linie = o.git(&["rev-parse", "main"]);
+        let (code, text) = o.pruefen();
+        if !fremd {
+            assert_eq!(code, 0, "ohne fremde Änderung frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(
+            funde[0].contains(&format!("Commit {}", &linie[..10]))
+                && funde[0].contains("der Merge übernimmt fremde Commits und trägt einen anderen Stand von CHANGELOG.txt"),
+            "{text}"
+        );
+    }
+}
+
+/// criss-cross: Der Betreuer übernimmt einen frühen Commit eines Angebots, der Fork hatte
+/// unabhängig ein älteres main hereingeholt und holt danach das neue. Der letzte Fork-Merge hat
+/// zwei Basen; git mergt gegen eine virtuelle Basis und kommt sauber zum neuesten Stand: frei.
+/// Gegenprobe: dieselbe Geschichte, der Fork-Merge nimmt den alten Stand: ein Fund an ihm.
+#[test]
+fn changelog_criss_cross() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for verwerfen in [false, true] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n- e1\n"));
+        let m1 = o.git(&["rev-parse", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        o.git(&["checkout", "-q", "fork"]);
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", &m1, "-m", "chore(merge): main"]);
+        o.datei("src/c.rs", b"// c\n");
+        o.commit("feat: c", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n- b\n- e1\n"));
+        o.git(&["checkout", "-q", "fork"]);
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "--no-commit", "main"]);
+        if verwerfen {
+            o.git(&["checkout", "-q", &m1, "--", "CHANGELOG.txt"]);
+        }
+        git_als(&o, "Beitrag", &mail, &["commit", "-q", "-m", "chore(merge): main"]);
+        let kreuz = o.git(&["rev-parse", "fork"]);
+        assert_eq!(o.git(&["merge-base", "--all", "fork^1", "fork^2"]).lines().count(), 2, "zwei Basen");
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        let stand = o.git(&["show", "main:CHANGELOG.txt"]);
+        assert_eq!(stand.contains("- b"), !verwerfen, "{stand}");
+        let (code, text) = o.pruefen();
+        if !verwerfen {
+            assert_eq!(code, 0, "criss-cross ohne Verwerfen frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(
+            funde[0].contains(&format!("Commit {}", &kreuz[..10])) && funde[0].contains("ein fremder Merge verwirft eine Änderung an CHANGELOG.txt"),
+            "{text}"
+        );
+    }
+}
+
+/// criss-cross am Merge der Linie: Ein eigener Seitenzweig mit einem Beitrag holt ein älteres
+/// main, das schon einen Eintrag trägt, und nimmt ihn in einem eigenen Commit zurück; der zweite
+/// Merge der Linie hat zwei Basen. Je Basis verlangte eine Basis den alten Eintrag, git mergt
+/// gegen die virtuelle Basis sauber zum Stand ohne ihn: frei. Gegenprobe: Ein Eintrag, den der
+/// Betreuer im Merge selbst einträgt, ist ein Fund, und die Meldung nennt den eigenen Commit.
+#[test]
+fn changelog_linie_criss_cross() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for im_merge in [false, true] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        let start = o.git(&["rev-parse", "main"]);
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n- a\n"));
+        let p = o.git(&["rev-parse", "main"]);
+        o.git(&["checkout", "-q", "-b", "s", &start]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("fix: fremd", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "s", "-m", "chore(merge): s"]);
+        o.git(&["checkout", "-q", "s"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", &p, "-m", "chore(merge): main nach s"]);
+        o.datei("CHANGELOG.txt", b"Unreleased\n");
+        o.commit("docs: a zurueck", &[]);
+        o.datei("src/c.rs", b"// c\n");
+        o.commit("fix: fremd2", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "--no-commit", "s"]);
+        if im_merge {
+            o.datei("CHANGELOG.txt", b"Unreleased\n- im Merge\n");
+            o.git(&["add", "CHANGELOG.txt"]);
+        }
+        git_als(&o, "Ranke", MAIL, &["commit", "-q", "-m", "chore(merge): s wieder"]);
+        assert_eq!(o.git(&["merge-base", "--all", "main^1", "main^2"]).lines().count(), 2, "zwei Basen");
+        let linie = o.git(&["rev-parse", "main"]);
+        let (code, text) = o.pruefen();
+        if !im_merge {
+            assert_eq!(o.git(&["show", "main:CHANGELOG.txt"]), "Unreleased");
+            assert_eq!(code, 0, "criss-cross am Merge der Linie frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(
+            funde[0].contains(&format!("Commit {}", &linie[..10])) && funde[0].contains("eigene Einträge in einem eigenen Commit, nicht im Merge"),
+            "{text}"
+        );
+    }
+}
+
+/// merge-tree liest keine Attribute aus dem Arbeitsbaum des geprüften Repos: Eine ungetrackte
+/// .gitattributes mit merge=union oder -merge für CHANGELOG.txt ändert das Urteil am Merge der
+/// Linie nicht. Union machte aus einem Konflikt (frei) einen sauberen Stand, den die eigene
+/// Lösung nicht trägt (Fund); -merge machte aus einem sauberen Merge mit eigenem Eintrag im
+/// Merge (Fund) einen Konflikt (frei).
+#[test]
+fn changelog_merge_tree_ohne_attribute() {
+    if !bereit() {
+        return;
+    }
+    let alt = "\nA\n- 1\n- 2\n- 3\n- 4\n- 5\n\nB\n- z\n";
+    for (konflikt, attr) in [(true, ""), (true, "merge=union"), (true, "-merge"), (false, ""), (false, "merge=union"), (false, "-merge")] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", format!("Unreleased\n- alt\n{alt}").as_bytes()));
+        o.git(&["checkout", "-q", "-b", "eigen"]);
+        o.datei("CHANGELOG.txt", format!("Unreleased\n- e\n- alt\n{alt}").as_bytes());
+        o.commit("docs: e", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        let main_stand = if konflikt { format!("Unreleased\n- m\n- alt\n{alt}") } else { format!("Unreleased\n- alt\n{alt}- y\n") };
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", main_stand.as_bytes()));
+        o.git(&["checkout", "-q", "eigen"]);
+        // Ohne Attribute: mit Konflikt; ohne Konflikt sauber, dann ein eigener Eintrag im Merge.
+        let aus = git()
+            .arg("-C")
+            .arg(o.repo())
+            .args(["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "--no-commit", "main"])
+            .output()
+            .unwrap();
+        assert_eq!(aus.status.success(), !konflikt, "{}", String::from_utf8_lossy(&aus.stderr));
+        let geloest = if konflikt { format!("Unreleased\n- m\n- e\n- alt\n{alt}") } else { format!("Unreleased\n- e\n- selbst\n- alt\n{alt}- y\n") };
+        o.datei("CHANGELOG.txt", geloest.as_bytes());
+        o.git(&["add", "CHANGELOG.txt"]);
+        git_als(&o, "Ranke", MAIL, &["commit", "-q", "-m", "chore(merge): main nach eigen"]);
+        if !attr.is_empty() {
+            o.datei(".gitattributes", format!("CHANGELOG.txt {attr}\n").as_bytes());
+        }
+        let (code, text) = o.lauf(&["-Baum", "eigen", "-Commits", "main..eigen"], None);
+        if konflikt {
+            assert_eq!(code, 0, "Konflikt mit eigener Lösung frei ({attr}):\n{text}");
+        } else {
+            assert_eq!(code, 1, "eigener Eintrag im Merge ({attr}):\n{text}");
+            assert_eq!(changelog_funde(&text).len(), 1, "{attr}:\n{text}");
+        }
+    }
+}
+
+/// Konflikt in CHANGELOG.txt am Merge der Linie mit Umbenennung: Die Betreuer benennen auf main
+/// eine Datei in CHANGELOG.txt um, der Fork ändert sie unter altem Namen und holt einen eigenen,
+/// noch nicht gemergten Changelog-Commit herein. Der Merge der Linie hat einen Konflikt in
+/// CHANGELOG.txt; git setzt die fremde Zeile über die Umbenennung in die Seite HEAD, und die
+/// Lösung mit --ours übernimmt sie: ein Fund. Gegenprobe ohne Umbenennung (main legt die Datei
+/// neu an, die fremde Zeile bleibt in der alten): Konflikt mit eigener Lösung und eigener Zeile frei.
+#[test]
+fn changelog_konflikt_am_merge_der_linie_mit_umbenennung() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let alt: String = (1..=12).map(|i| format!("- alt {i}: etwas Text für die Umbenennungserkennung\n")).collect();
+    for umbenennen in [true, false] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("src/news.txt", format!("Unreleased\n{alt}").as_bytes()));
+        let start = o.git(&["rev-parse", "main"]);
+        o.git(&["checkout", "-q", "-b", "eigen"]);
+        o.datei("CHANGELOG.txt", b"Unreleased\n- eigen\n");
+        o.commit("docs: eigen", &[]);
+        o.git(&["checkout", "-q", "-b", "fork", &start]);
+        o.datei("src/news.txt", format!("Unreleased\n- FREMDE ZEILE\n{alt}").as_bytes());
+        o.commit("fix: news", &als_beitrag(&mail));
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "eigen", "-m", "chore(merge): eigen"]);
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge_mit("docs: changelog", |o| {
+            if umbenennen {
+                o.git(&["mv", "src/news.txt", "CHANGELOG.txt"]);
+            } else {
+                o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}").as_bytes());
+            }
+        });
+        let aus = git()
+            .arg("-C")
+            .arg(o.repo())
+            .args(["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "--no-commit", "fork"])
+            .output()
+            .unwrap();
+        assert!(!aus.status.success(), "Konflikt in CHANGELOG.txt erwartet");
+        if umbenennen {
+            o.git(&["checkout", "-q", "--ours", "CHANGELOG.txt"]);
+        } else {
+            o.datei("CHANGELOG.txt", format!("Unreleased\n- eigen\n- selbst\n{alt}").as_bytes());
+        }
+        o.git(&["add", "-A"]);
+        git_als(&o, "Ranke", MAIL, &["commit", "-q", "-m", "chore(merge): fork"]);
+        let stand = o.git(&["show", "main:CHANGELOG.txt"]);
+        assert_eq!(stand.contains("FREMDE ZEILE"), umbenennen, "{stand}");
+        let linie = o.git(&["rev-parse", "main"]);
+        let (code, text) = o.pruefen();
+        if !umbenennen {
+            assert_eq!(code, 0, "Konflikt mit eigener Lösung ohne Umbenennung frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(
+            funde[0].contains(&format!("Commit {}", &linie[..10]))
+                && funde[0].contains("der Merge übernimmt fremde Commits und trägt einen anderen Stand von CHANGELOG.txt"),
+            "{text}"
+        );
+    }
+}
+
+/// Konflikt in CHANGELOG.txt am Merge der Linie, die Lösung stellt die Basiszeile wieder her, die
+/// beide Seiten geändert haben: frei, gleich welchen merge.conflictStyle der Prüfende gesetzt hat
+/// (mit diff3 und zdiff3 trüge der Stand von git sonst den Basisabschnitt mit dieser Zeile).
+#[test]
+fn changelog_linie_konflikt_basiszeile_jeder_stil() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for stil in [None, Some("diff3"), Some("zdiff3")] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n- a\n- c\n"));
+        o.git(&["checkout", "-q", "-b", "eigen"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        o.datei("CHANGELOG.txt", b"Unreleased\n- a1\n- c\n");
+        o.commit("docs: a1", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge_mit("docs: a2", |o| o.datei("CHANGELOG.txt", b"Unreleased\n- a2\n- c\n"));
+        if let Some(s) = stil {
+            o.git(&["config", "merge.conflictStyle", s]);
+        }
+        let aus = git()
+            .arg("-C")
+            .arg(o.repo())
+            .args(["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "--no-commit", "eigen"])
+            .output()
+            .unwrap();
+        assert!(!aus.status.success(), "Konflikt in CHANGELOG.txt erwartet");
+        o.datei("CHANGELOG.txt", b"Unreleased\n- a\n- c\n");
+        o.git(&["add", "-A"]);
+        git_als(&o, "Ranke", MAIL, &["commit", "-q", "-m", "chore(merge): eigen"]);
+        let (code, text) = o.pruefen();
+        assert_eq!(code, 0, "Stil {stil:?}: eigene Lösung auf die Basiszeile frei:\n{text}");
+    }
+}
+
+/// Merge der Linie mit Konflikt in einer anderen Datei: CHANGELOG.txt mergt git sauber, der Stand
+/// wird verglichen. Die Lösung mit dem Stand von git ist frei; ein eigener Eintrag im Merge ist
+/// ein Fund (der Konflikt anderswo macht CHANGELOG.txt nicht frei).
+#[test]
+fn changelog_linie_konflikt_in_anderer_datei() {
+    if !bereit() {
+        return;
+    }
+    let alt = "\nA\n- 1\n- 2\n- 3\n- 4\n- 5\n\nB\n- z\n";
+    for im_merge in [false, true] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| {
+            o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}").as_bytes());
+            o.datei("src/k.rs", b"// alt\n");
+        });
+        o.git(&["checkout", "-q", "-b", "eigen"]);
+        o.datei("CHANGELOG.txt", format!("Unreleased\n- e\n{alt}").as_bytes());
+        o.datei("src/k.rs", b"// eigen\n");
+        o.commit("feat: e", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        o.ueber_merge(|o| {
+            o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}- y\n").as_bytes());
+            o.datei("src/k.rs", b"// main\n");
+        });
+        o.git(&["checkout", "-q", "eigen"]);
+        let aus = git()
+            .arg("-C")
+            .arg(o.repo())
+            .args(["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "--no-commit", "main"])
+            .output()
+            .unwrap();
+        assert!(!aus.status.success(), "Konflikt in src/k.rs erwartet");
+        assert_eq!(o.git(&["diff", "--name-only", "--diff-filter=U"]), "src/k.rs", "nur src/k.rs im Konflikt");
+        o.datei("src/k.rs", b"// beide\n");
+        if im_merge {
+            o.datei("CHANGELOG.txt", format!("Unreleased\n- e\n- selbst\n{alt}- y\n").as_bytes());
+        }
+        o.git(&["add", "-A"]);
+        git_als(&o, "Ranke", MAIL, &["commit", "-q", "-m", "chore(merge): main nach eigen"]);
+        let (code, text) = o.lauf(&["-Baum", "eigen", "-Commits", "main..eigen"], None);
+        if !im_merge {
+            assert_eq!(code, 0, "Stand von git frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(funde[0].contains("eigene Einträge in einem eigenen Commit, nicht im Merge"), "{text}");
+    }
+}
+
+/// merge-tree liest auch am fremden Merge keine Attribute aus dem Arbeitsbaum: Ein Fork-Merge
+/// übernimmt nach einem sauberen Merge den Stand seines ersten Elternteils (ein Seitenzweig der
+/// Betreuer) und verwirft so den Eintrag auf main. Mit einer ungetrackten .gitattributes
+/// (merge=union oder -merge für CHANGELOG.txt) bleibt er ein Fund; -merge machte aus dem
+/// sauberen Merge einen Konflikt mit dem Stand des ersten Elternteils.
+#[test]
+fn changelog_fremder_merge_ohne_attribute() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let alt = "\nA\n- 1\n- 2\n- 3\n- 4\n- 5\n\nB\n- z\n";
+    for attr in ["", "merge=union", "-merge"] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}").as_bytes()));
+        o.git(&["checkout", "-q", "-b", "pflege"]);
+        o.datei("CHANGELOG.txt", format!("Unreleased\n- a\n{alt}").as_bytes());
+        o.commit("docs: changelog", &[]);
+        o.git(&["checkout", "-q", "-b", "fork", "main"]);
+        o.datei("src/k.rs", b"// fork\n");
+        o.commit("feat: k", &als_beitrag(&mail));
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "pflege", "-m", "chore(merge): pflege"]);
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", format!("Unreleased\n{alt}- y\n").as_bytes()));
+        o.git(&["checkout", "-q", "fork"]);
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "--no-commit", "main"]);
+        o.git(&["checkout", "-q", "HEAD", "--", "CHANGELOG.txt"]);
+        git_als(&o, "Beitrag", &mail, &["commit", "-q", "-m", "chore(merge): main"]);
+        let merge = o.git(&["rev-parse", "fork"]);
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        assert!(!o.git(&["show", "main:CHANGELOG.txt"]).contains("- y"), "der Eintrag auf main ist verworfen");
+        if !attr.is_empty() {
+            o.datei(".gitattributes", format!("CHANGELOG.txt {attr}\n").as_bytes());
+        }
+        let (code, text) = o.pruefen();
+        assert_eq!(code, 1, "{attr}:\n{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{attr}:\n{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &merge[..10])) && funde[0].contains("ein fremder Merge verwirft"), "{attr}:\n{text}");
+    }
+}
+
+/// Der fremde Merge wird mit Umbenennungen gemergt, unabhängig von diff.renames des Prüfenden:
+/// Die Betreuer benennen eine Datei in CHANGELOG.txt um, der Fork ändert sie unter altem Namen,
+/// holt main ohne Umbenennungen herein und löscht die alte Datei. git ergäbe mit Umbenennungen
+/// die fremde Zeile in CHANGELOG.txt; der Merge trägt den Stand von main: ein Fund, auch mit
+/// diff.renames=false im geprüften Repo.
+#[test]
+fn changelog_fremder_merge_umbenennung_fest() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let alt: String = (1..=12).map(|i| format!("- alt {i}: etwas Text für die Umbenennungserkennung\n")).collect();
+    for renames in ["false", "true"] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("src/news.txt", format!("Unreleased\n{alt}").as_bytes()));
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        o.datei("src/news.txt", format!("Unreleased\n- FREMDE ZEILE\n{alt}").as_bytes());
+        o.commit("fix: news", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge_mit("docs: changelog", |o| {
+            o.git(&["mv", "src/news.txt", "CHANGELOG.txt"]);
+        });
+        o.git(&["checkout", "-q", "fork"]);
+        let wer = format!("user.email={mail}");
+        let aus = git()
+            .arg("-C")
+            .arg(o.repo())
+            .args(["-c", "user.name=Beitrag", "-c", &wer, "-c", "merge.renames=false", "merge", "-q", "--no-ff", "--no-commit", "main"])
+            .output()
+            .unwrap();
+        assert!(!aus.status.success(), "Konflikt ändern/löschen an src/news.txt erwartet");
+        o.git(&["rm", "-q", "src/news.txt"]);
+        git_als(&o, "Beitrag", &mail, &["commit", "-q", "-m", "chore(merge): main"]);
+        let merge = o.git(&["rev-parse", "fork"]);
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        o.git(&["config", "diff.renames", renames]);
+        let (code, text) = o.pruefen();
+        assert_eq!(code, 1, "diff.renames={renames}:\n{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "diff.renames={renames}:\n{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &merge[..10])) && funde[0].contains("ein fremder Merge verwirft"), "diff.renames={renames}:\n{text}");
+    }
+}
+
+/// Ein flacher Klon bricht ab (Exit 2): Ohne die ganze Geschichte fehlen die Basen der Merges.
+#[test]
+fn flacher_klon_bricht_ab() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    o.ueber_merge(|o| o.datei("src/b.rs", b"// b\n"));
+    let voll = o.wurzel.join("voll");
+    std::fs::rename(o.repo(), &voll).unwrap();
+    let quelle = format!("file:///{}", voll.display().to_string().replace('\\', "/").trim_start_matches('/'));
+    let aus = git().args(["clone", "-q", "--depth", "1", &quelle]).arg(o.repo()).output().unwrap();
+    assert!(aus.status.success(), "{}", String::from_utf8_lossy(&aus.stderr));
+    assert_eq!(o.git(&["rev-parse", "--is-shallow-repository"]), "true");
+    let (code, text) = o.lauf(&["-Baum", "HEAD", "-Commits", "HEAD"], None);
+    assert_eq!(code, 2, "{text}");
+    assert!(text.contains("flacher Klon"), "{text}");
+}
+
+/// Ein fremder Octopus-Merge bleibt streng je Basis: frei, wenn er den Stand des einzigen
+/// Elternteils trägt, der CHANGELOG.txt seit der Basis geändert hat; ein Fund, wenn er den
+/// alten Stand trägt.
+#[test]
+fn changelog_octopus_streng() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for verwerfen in [false, true] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        let alt = o.git(&["rev-parse", "main"]);
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "-b", "fork2", "main"]);
+        o.datei("src/d.rs", b"// d\n");
+        o.commit("feat: d", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n- e1\n"));
+        o.git(&["checkout", "-q", "fork"]);
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "main", "fork2", "-m", "chore(merge): octopus"]);
+        assert_eq!(o.git(&["log", "-1", "--format=%P"]).split(' ').count(), 3, "Octopus");
+        if verwerfen {
+            o.git(&["checkout", "-q", &alt, "--", "CHANGELOG.txt"]);
+            let baum = o.git(&["write-tree"]);
+            let sha = git_als(&o, "Beitrag", &mail, &["commit-tree", &baum, "-p", "HEAD^1", "-p", "HEAD^2", "-p", "HEAD^3", "-m", "chore(merge): octopus"]);
+            o.git(&["reset", "-q", "--hard", &sha]);
+        }
+        let octopus = o.git(&["rev-parse", "fork"]);
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        let (code, text) = o.pruefen();
+        if !verwerfen {
+            assert_eq!(code, 0, "{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &octopus[..10])) && funde[0].contains("ein fremder Merge verwirft"), "{text}");
+    }
+}
+
+/// Ohne gemeinsame Basis (eine unverbundene Geschichte, CHANGELOG.txt nur auf der Seite von
+/// main): Ein fremder Merge ist frei, wenn er die Datei trägt, und ein Fund, wenn er sie fallen
+/// lässt (gegen den zweiten Elternteil unverändert, aber git ergäbe sie). Ebenso der Merge der
+/// Linie, der die fremde Geschichte direkt hereinholt (mild, Basis leer: Nur main hat die Datei).
+/// Ohne -AufMain, die zweite Wurzel ist hier nicht die Frage.
+#[test]
+fn changelog_fremder_merge_ohne_basis() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for (direkt, verwerfen) in [(false, false), (false, true), (true, false), (true, true)] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "--orphan", "wurzel"]);
+        o.git(&["rm", "-rqf", "."]);
+        o.datei("src/x.rs", b"// x\n");
+        o.commit("feat: x", &als_beitrag(&mail));
+        let (zweig, name, adresse) = if direkt { ("main", "Ranke", MAIL) } else { ("fork", "Beitrag", mail.as_str()) };
+        o.git(&["checkout", "-q", zweig]);
+        git_als(&o, name, adresse, &["merge", "-q", "--no-ff", "--no-commit", "--allow-unrelated-histories", "wurzel"]);
+        if verwerfen {
+            o.git(&["rm", "-q", "CHANGELOG.txt"]);
+        }
+        git_als(&o, name, adresse, &["commit", "-q", "-m", "chore(merge): x"]);
+        let merge = o.git(&["rev-parse", zweig]);
+        let basis = git().arg("-C").arg(o.repo()).args(["merge-base", "--all", &format!("{zweig}^1"), &format!("{zweig}^2")]).output().unwrap();
+        assert!(!basis.status.success() && basis.stdout.is_empty(), "keine gemeinsame Basis");
+        if !direkt {
+            o.git(&["checkout", "-q", "main"]);
+            git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        }
+        let (code, text) = o.lauf(&["-Baum", "main", "-Commits", "main"], None);
+        if !verwerfen {
+            assert_eq!(code, 0, "{direkt}:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{direkt}:\n{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        let meldung = if direkt { "der Merge übernimmt fremde Commits und trägt einen anderen Stand" } else { "ein fremder Merge verwirft" };
+        assert!(funde[0].contains(&format!("Commit {}", &merge[..10])) && funde[0].contains(meldung), "{text}");
+    }
+}
+
+/// Ein fremder Merge mit Konflikt (merge-tree endet mit 1, keine Fehlermeldung): Liegt der
+/// Konflikt in CHANGELOG.txt und nimmt der Merge den Stand seines ersten Elternteils (einen
+/// Seitenzweig der Betreuer, den der Fork hereingeholt hatte), verwirft er die Änderung auf main:
+/// ein Fund. Liegt der Konflikt in einer anderen Datei, ist der Stand von CHANGELOG.txt der von
+/// git: frei.
+#[test]
+fn changelog_konflikt_im_fremden_merge() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for im_changelog in [true, false] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        if im_changelog {
+            o.git(&["checkout", "-q", "-b", "pflege"]);
+            o.datei("CHANGELOG.txt", b"Unreleased\n- a\n");
+            o.commit("docs: changelog", &[]);
+        }
+        o.git(&["checkout", "-q", "-b", "fork", "main"]);
+        o.datei("src/k.rs", b"// fork\n");
+        o.commit("feat: k", &als_beitrag(&mail));
+        if im_changelog {
+            git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "pflege", "-m", "chore(merge): pflege"]);
+        }
+        o.git(&["checkout", "-q", "main"]);
+        o.ueber_merge(|o| {
+            if im_changelog {
+                o.datei("CHANGELOG.txt", b"Unreleased\n- b\n");
+            } else {
+                o.datei("src/k.rs", b"// main\n");
+            }
+        });
+        o.git(&["checkout", "-q", "fork"]);
+        let wer = format!("user.email={mail}");
+        let aus =
+            git().arg("-C").arg(o.repo()).args(["-c", "user.name=Beitrag", "-c", &wer, "merge", "-q", "--no-ff", "--no-commit", "main"]).output().unwrap();
+        assert!(!aus.status.success(), "Konflikt erwartet");
+        if im_changelog {
+            o.git(&["checkout", "-q", "--ours", "CHANGELOG.txt"]);
+        } else {
+            o.datei("src/k.rs", b"// beide\n");
+        }
+        o.git(&["add", "-A"]);
+        git_als(&o, "Beitrag", &mail, &["commit", "-q", "-m", "chore(merge): main"]);
+        let merge = o.git(&["rev-parse", "fork"]);
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        let (code, text) = o.pruefen();
+        if !im_changelog {
+            assert_eq!(code, 0, "Konflikt außerhalb des Changelogs frei:\n{text}");
+            // Im Bundle schreibt merge-tree den abweichenden Baum ins Wegwerf-Repo; das zählt
+            // nicht als Objekt, das keine Ref erreicht.
+            let p = o.wurzel.join("k.bundle").to_string_lossy().to_string();
+            o.git(&["bundle", "create", "-q", &p, "refs/heads/main"]);
+            let (code, text) = o.lauf(&["-Bundle", &p], None);
+            assert_eq!(code, 0, "Bundle mit von Hand gelöstem Fork-Merge frei:\n{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &merge[..10])) && funde[0].contains("ein fremder Merge verwirft"), "{text}");
+    }
+}
+
+/// Ein fremder Merge mit -s ours ändert gegen seinen ersten Elternteil nichts: Was der zweite
+/// Elternteil (ein Seitenzweig der Betreuer) an einem Prüfpfad geändert hat, ändert der Merge
+/// nicht (frei); an CHANGELOG.txt verwirft er es (genau der Fund „verwirft“, nicht „ändert“).
+/// Vorher wurde die leere Menge gegen den ersten Elternteil zu $null, und der zweite galt als
+/// erster.
+#[test]
+fn fremder_merge_s_ours_aendert_nichts() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for pfad in ["scripts/p.ps1", "CHANGELOG.txt"] {
+        let o = Ort::neu();
+        o.git(&["checkout", "-q", "-b", "fork"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        o.git(&["checkout", "-q", "-b", "pflege", "main"]);
+        o.datei(pfad, b"# p\n");
+        o.commit("chore: pflege", &[]);
+        o.git(&["checkout", "-q", "fork"]);
+        git_als(&o, "Beitrag", &mail, &["merge", "-q", "--no-ff", "-s", "ours", "pflege", "-m", "chore(merge): pflege"]);
+        let merge = o.git(&["rev-parse", "fork"]);
+        assert_eq!(o.git(&["diff-tree", "-r", "--name-only", "fork^1", "fork"]), "", "gegen den ersten Elternteil nichts");
+        o.git(&["checkout", "-q", "main"]);
+        git_als(&o, "Ranke", MAIL, &["merge", "-q", "--no-ff", "fork", "-m", "chore(merge): fork"]);
+        let (code, text) = o.pruefen();
+        assert!(!text.contains("ein fremder Commit ändert"), "{pfad}:\n{text}");
+        if pfad.starts_with("scripts/") {
+            assert_eq!(code, 0, "{text}");
+            continue;
+        }
+        assert_eq!(code, 1, "{text}");
+        let funde = changelog_funde(&text);
+        assert_eq!(funde.len(), 1, "{text}");
+        assert!(funde[0].contains(&format!("Commit {}", &merge[..10])) && funde[0].contains("ein fremder Merge verwirft"), "{text}");
+    }
+}
+
+/// Der Bestand vor der Regel zu CHANGELOG.txt (ein übernommener Fork-Commit, schon
+/// veröffentlicht) ist ausgenommen: genau diese eine volle Kennung, nur für CHANGELOG.txt.
+/// Sein Merge braucht keine Ausnahme: Er trägt den Stand des einzigen Elternteils, der den
+/// Changelog seit der Basis geändert hat (mild je Basis). Ein Test-Repo kann keine Commits mit diesen Kennungen bauen. Darum
 /// liest der Test die Menge wörtlich aus dem Prüfer und setzt in einer Kopie die
 /// Kennungen einer nachgebauten Geschichte ein, die erst beim Bau entstehen. Der Prüfer
 /// selbst hat dafür keinen Schalter (keine Umgebungsvariable, kein Parameter), der ihn
@@ -3493,18 +4281,18 @@ fn changelog_bestand_vor_der_regel() {
     if !bereit() {
         return;
     }
-    const BESTAND: [&str; 2] = ["8b10863c62ebf05c63bf12b25d918cb648c562ed", "84cd764e5be14be991b65b51176eaff18a48ccc4"];
+    const BESTAND: [&str; 1] = ["8b10863c62ebf05c63bf12b25d918cb648c562ed"];
     let quelle = std::fs::read_to_string(skript()).unwrap();
     // Ohne Sigil und ohne Groß/Klein, weil PowerShell auch $script:…, ${…} und andere Schreibung annimmt.
     let zeilen: Vec<&str> = quelle.lines().filter(|z| z.to_lowercase().contains("changelogbestand")).collect();
     let definition: Vec<&str> = zeilen.iter().copied().filter(|z| z.starts_with("$changelogBestand = ")).collect();
     assert_eq!(definition.len(), 1, "genau eine Festlegung der Menge:\n{zeilen:#?}");
     let kennungen: Vec<&str> = definition[0].split(|c: char| !c.is_ascii_hexdigit()).filter(|t| t.len() == 40).collect();
-    assert_eq!(kennungen, BESTAND, "die Menge enthält genau diese zwei Commits");
-    // Nur an den zwei Stellen der Regel zu CHANGELOG.txt (fremder Commit, Merge der Linie).
+    assert_eq!(kennungen, BESTAND, "die Menge enthält genau diesen einen Commit");
+    // Nur an der einen Stelle der Regel zu CHANGELOG.txt (fremder Commit).
     let nutzung = "$changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)";
-    assert_eq!(zeilen.iter().filter(|z| z.contains(nutzung)).count(), 2, "{zeilen:#?}");
-    assert_eq!(zeilen.len(), 3, "die Menge gilt für keine andere Regel:\n{zeilen:#?}");
+    assert_eq!(zeilen.iter().filter(|z| z.contains(nutzung)).count(), 1, "{zeilen:#?}");
+    assert_eq!(zeilen.len(), 2, "die Menge gilt für keine andere Regel:\n{zeilen:#?}");
     for k in BESTAND {
         assert_eq!(quelle.matches(k).count(), 1, "{k} steht nur in der Menge");
     }
@@ -3525,43 +4313,40 @@ fn changelog_bestand_vor_der_regel() {
         let merge = o.git(&["rev-parse", "main"]);
         (o, fork, merge)
     };
-    // Eine Kopie des Prüfers, in der die Menge genau diese zwei Kennungen enthält.
-    let kopie = |o: &Ort, fork: &str, merge: &str| {
+    // Eine Kopie des Prüfers, in der die Menge genau diese eine Kennung enthält.
+    let kopie = |o: &Ort, fork: &str| {
         let ordner = o.wurzel.join("kopie");
         prueferdateien_kopieren(&ordner);
         let p = ordner.join("Vor-Push.ps1");
-        std::fs::write(&p, quelle.replacen(BESTAND[0], fork, 1).replacen(BESTAND[1], merge, 1)).unwrap();
+        std::fs::write(&p, quelle.replacen(BESTAND[0], fork, 1)).unwrap();
         p
     };
     let args = ["-Baum", "main", "-Commits", "main", "-AufMain"];
     let changelog = |text: &str| -> Vec<String> { text.lines().filter(|z| z.contains(satz)).map(str::to_string).collect() };
     let (a, a_fork, a_merge) = bau("2001-01-02T00:00:00+0000", false);
-    // Gegenprobe: Ohne Eintrag in der Menge sind beide ein Fund.
+    // Gegenprobe: Ohne Eintrag in der Menge ist der Fork-Commit ein Fund, der Merge nicht.
     let (code, text) = a.pruefen();
     assert_eq!(code, 1, "{text}");
     let funde = changelog(&text);
-    assert_eq!(funde.len(), 2, "{text}");
-    assert!(funde.iter().any(|z| z.contains(&format!("Commit {}", &a_fork[..10])) && z.contains("ein fremder Commit ändert CHANGELOG.txt")), "{text}");
-    assert!(funde.iter().any(|z| z.contains(&format!("Commit {}", &a_merge[..10])) && z.contains("der Merge übernimmt fremde Commits")), "{text}");
+    assert_eq!(funde.len(), 1, "{text}");
+    assert!(funde[0].contains(&format!("Commit {}", &a_fork[..10])) && funde[0].contains("ein fremder Commit ändert CHANGELOG.txt"), "{text}");
+    assert!(!text.contains(&format!("Commit {}", &a_merge[..10])), "{text}");
     // In der Menge: frei.
-    let pruefer_a = kopie(&a, &a_fork, &a_merge);
+    let pruefer_a = kopie(&a, &a_fork);
     let (code, text) = a.lauf_mit(&pruefer_a, &a.cache(), &args, None);
     assert_eq!(code, 0, "Bestand bleibt frei:\n{text}");
     // Derselbe Inhalt mit anderer Kennung (anderes Datum): Fund, auch mit der Menge von oben.
-    let (b, b_fork, b_merge) = bau("2001-01-03T00:00:00+0000", false);
+    let (b, b_fork, _) = bau("2001-01-03T00:00:00+0000", false);
     assert_ne!(a_fork, b_fork);
     assert_eq!(a.git(&["rev-parse", "main^{tree}"]), b.git(&["rev-parse", "main^{tree}"]), "derselbe Inhalt");
     let (code, text) = b.lauf_mit(&pruefer_a, &b.cache(), &args, None);
     assert_eq!(code, 1, "{text}");
     let funde = changelog(&text);
-    assert_eq!(funde.len(), 2, "{text}");
-    assert!(
-        funde.iter().any(|z| z.contains(&format!("Commit {}", &b_fork[..10]))) && funde.iter().any(|z| z.contains(&format!("Commit {}", &b_merge[..10]))),
-        "{text}"
-    );
+    assert_eq!(funde.len(), 1, "{text}");
+    assert!(funde[0].contains(&format!("Commit {}", &b_fork[..10])), "{text}");
     // Nur für CHANGELOG.txt: Ein Bestands-Commit, der auch scripts/ ändert, bleibt dort ein Fund.
-    let (c, c_fork, c_merge) = bau("2001-01-04T00:00:00+0000", true);
-    let pruefer_c = kopie(&c, &c_fork, &c_merge);
+    let (c, c_fork, _) = bau("2001-01-04T00:00:00+0000", true);
+    let pruefer_c = kopie(&c, &c_fork);
     let (code, text) = c.lauf_mit(&pruefer_c, &c.cache(), &args, None);
     assert_eq!(code, 1, "{text}");
     assert!(changelog(&text).is_empty(), "{text}");
