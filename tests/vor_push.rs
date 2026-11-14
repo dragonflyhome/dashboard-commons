@@ -3928,6 +3928,18 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         assert!(leitfaden.contains(&text), "der Leitfaden nennt „{text}“ nicht mehr");
     }
     assert!(!leitfaden.contains(&format!("git merge --no-ff {K}")), "der Leitfaden fällt auf git merge im Arbeitsbaum zurück");
+    // Die Schutzangaben um die Befehle: feste Commit-Angabe, Fetch ohne Ziel-Ref, sauberer
+    // Arbeitsbaum auf main, -Beitrag Pflicht.
+    for satz in [
+        format!("git -c user.name=<name der betreuer> -c user.email=<adresse der betreuer> {}", commit_tree.join(" ")),
+        "git fetch <fork-url> <ref>, dann".to_string(),
+        "ohne „:“".to_string(),
+        "mit main ausgecheckt und sauberem Arbeitsbaum".to_string(),
+        "Ein Lauf ohne -Beitrag zählt nicht als grün.".to_string(),
+    ] {
+        assert!(leitfaden.contains(&satz), "der Leitfaden nennt „{satz}“ nicht mehr");
+    }
+    assert!(!leitfaden.contains("<ref>:"), "der Leitfaden holt mit Ziel-Ref (überschriebe eine lokale Ref)");
     // Im Projekt-Repo mit dessen Adresse: ohne -RemoteUrl prüfte der Prüfer als Basis-Repo.
     let projekt =
         format!("scripts/Vor-Push.ps1 -Repo <projekt-repo> -RemoteUrl <adresse des projekt-repos, wie in repos.toml> -Art Projekt {}", pruefen.join(" "));
@@ -4148,6 +4160,24 @@ fn kein_git_aus_dem_arbeitsordner() {
     // Gegenprobe: Mit . im PATH nimmt PowerShell die git.cmd, und sie schreibt die Marke.
     let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "& git --version"]);
     assert!(marke.exists(), "Gegenprobe: mit . im PATH läuft die git.cmd im aktuellen Ordner:\n{text}");
+    // pre-push sucht pwsh in sh über den Namen, im Arbeitsbaum als aktuellem Ordner: Ein
+    // „pwsh“ dort schriebe eine Marke und ließe den Push durch. Mit . im PATH bricht der
+    // Hook vorher ab. git startet aus der Wurzel des Tests (dort liegt keine git.cmd).
+    std::fs::remove_file(o.repo().join("git.cmd")).unwrap();
+    let pwsh_marke = o.wurzel.join("fremdes-pwsh-lief.txt");
+    std::fs::write(o.repo().join("pwsh"), format!("#!/bin/sh\necho lief > '{}'\n", pwsh_marke.to_string_lossy().replace('\\', "/"))).unwrap();
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/pwsh\n").unwrap();
+    let fern = o.wurzel.join("fern.git");
+    assert!(git().args(["init", "-q", "--bare"]).arg(&fern).output().unwrap().status.success());
+    let git_mit_punkt = |args: &[&str]| {
+        let a = git().arg("-C").arg(o.repo()).args(args).current_dir(&o.wurzel).env("DASHBOARD_INHALT", &inhalt).env("PATH", &pfad).output().unwrap();
+        (a.status.success(), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (ok, text) = git_mit_punkt(&["push", &fern.to_string_lossy().replace('\\', "/"), "main:main"]);
+    assert!(!ok && text.contains("pre-push: PATH") && !pwsh_marke.exists(), "git push mit pwsh im Arbeitsbaum und . im PATH: {text}");
+    // Gegenprobe: Ein Shell-Alias (sh in der Wurzel des Arbeitsbaums wie der Hook) nimmt das fremde pwsh.
+    let (_, text) = git_mit_punkt(&["-c", "alias.p=!pwsh", "p"]);
+    assert!(pwsh_marke.exists(), "Gegenprobe: mit . im PATH startet sh das pwsh im Arbeitsbaum:\n{text}");
 }
 
 /// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
@@ -4308,12 +4338,17 @@ $t = [IO.File]::ReadAllText($env:PRUEFER)
 $opt = [Text.RegularExpressions.RegexOptions]'IgnoreCase, CultureInvariant'
 $platz = [regex]::Match($t, "(?m)^\`$platzhalter = '(.*)'\r?$").Groups[1].Value.Replace("''", "'")
 if (-not $platz) { throw 'Platzhalter nicht gefunden' }
+# Nur damit ein exponentielles Muster den Test rot macht statt ihn hängen zu lassen.
+$grenze = [TimeSpan]::FromSeconds(30)
 $muster = [ordered]@{}
 foreach ($m in [regex]::Matches($t, "(?m)^\s*'(Benutzerpfad[^']*)'\s*=\s*Rx \('(.*)'\)\r?$")) {
     $teile = $m.Groups[2].Value -split "' \+ \`$platzhalter \+ '"
-    $muster[$m.Groups[1].Value] = [regex]::new((($teile | ForEach-Object { $_.Replace("''", "'") }) -join $platz), $opt)
+    $muster[$m.Groups[1].Value] = [regex]::new((($teile | ForEach-Object { $_.Replace("''", "'") }) -join $platz), $opt, $grenze)
 }
-$muster['alt'] = [regex]::new($env:ALT.Replace('PLATZ', $platz), $opt)
+$a = [regex]::Match($t, "(?m)^\`$allgemeinPfad = Rx \('(.*)' \+ \(Escape-Liste \`$listen\.allgemein\) \+ '(.*)'\)\r?$")
+if (-not $a.Success) { throw 'allgemeinPfad nicht gefunden' }
+$muster['allgemeinPfad'] = [regex]::new($a.Groups[1].Value + 'probe' + $a.Groups[2].Value, $opt, $grenze)
+$muster['alt'] = [regex]::new($env:ALT.Replace('PLATZ', $platz), $opt, $grenze)
 $n = 20000
 $h = '/h' + 'ome'
 $eingaben = [ordered]@{
@@ -4325,13 +4360,16 @@ $eingaben = [ordered]@{
     'wsl' = ('/' * $n) + 'wsl$/'
     'kodiert' = 'home' + ('%2f' * ($n / 3)) + '/'
     'var' = '/var' * ($n / 4)
+    'laufwerk-rueck' = 'c:' + ('\' * $n) + 'x'
+    'users-rueck' = 'c:\users' + ('\' * $n) + 'public'
+    'projects-rueck' = 'projects' + ('\' * $n) + 'x'
 }
 foreach ($k in $muster.Keys) {
     foreach ($e in $eingaben.Keys) {
         if ($k -eq 'alt' -and $e -ne 'slash') { continue }
         $null = $muster[$k].Matches('/x').Count
         $uhr = [Diagnostics.Stopwatch]::StartNew()
-        $null = $muster[$k].Matches($eingaben[$e]).Count
+        try { $null = $muster[$k].Matches($eingaben[$e]).Count } catch { if ($_.Exception.GetBaseException() -isnot [Text.RegularExpressions.RegexMatchTimeoutException]) { throw } }
         "ZEIT|$k|$e|$($uhr.ElapsedMilliseconds)"
     }
 }
@@ -4345,8 +4383,9 @@ const ALTES_MAC_MUSTER: &str =
 /// Die Heimatpfad-Muster laufen auf einer Zeile aus 20 000 Zeichen linear: Je Muster und
 /// Eingabe (lauter /, \/ im Wechsel, viele Stücke /home und /, /home mit langen Trennern,
 /// Laufwerk mit langen Trennern, WSL- und URL-kodierte Formen) unter 500 ms (gemessen etwa
-/// 1 ms; großzügig gegen Last). Gegenprobe: das alte Muster braucht auf 20 000 / über 1 s
-/// (gemessen etwa 5 s).
+/// 1 ms; großzügig gegen Last). Lange \-Läufe nach Laufwerk, Users und projects prüfen die
+/// Windows-Form und $allgemeinPfad (mit (?:\\\\|\\|/)+ waren sie exponentiell). Gegenprobe:
+/// das alte Muster braucht auf 20 000 / über 1 s (gemessen etwa 5 s).
 #[test]
 fn heimatpfad_muster_ohne_quadratische_laufzeit() {
     if !bereit() {
@@ -4372,9 +4411,15 @@ fn heimatpfad_muster_ohne_quadratische_laufzeit() {
         }
         namen.insert(muster.to_string());
     }
-    for name in
-        ["alt", "Benutzerpfad", "Benutzerpfad (Git-Bash-Form)", "Benutzerpfad (macOS/Linux)", "Benutzerpfad (WSL-Freigabe)", "Benutzerpfad (URL-kodiert)"]
-    {
+    for name in [
+        "alt",
+        "Benutzerpfad",
+        "Benutzerpfad (Git-Bash-Form)",
+        "Benutzerpfad (macOS/Linux)",
+        "Benutzerpfad (WSL-Freigabe)",
+        "Benutzerpfad (URL-kodiert)",
+        "allgemeinPfad",
+    ] {
         assert!(namen.contains(name), "{name} nicht gemessen:\n{text}");
     }
 }

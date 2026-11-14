@@ -691,7 +691,8 @@ function Escape-Liste($namen) { ($namen | ForEach-Object { [regex]::Escape($_) }
 $platzhalter = '(?:<[^>]*>|%[a-z]+%|\$[a-z_:{}]+|\{[a-z_]+\}|public|default|all users|default user|jemand|beispiel\d*|feind|name|[a-z])(?![a-z0-9])'
 $muster = [ordered]@{
     # C:\Users\<name>\…, auch die Admin-Freigabe \\rechner\c$\Users\<name>\… (c$ statt c:) und file:///c%3A/Users/<name>.
-    'Benutzerpfad'                       = Rx ('(?<![a-z0-9])[a-z](?::|\$|%3a)(?:\\\\|\\|/)+[u]sers(?:\\\\|\\|/)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
+    # Trenner als eine Klasse: (?:\\\\|\\|/)+ zerlegt einen Lauf aus \ auf Fib(n) Arten (exponentiell).
+    'Benutzerpfad'                       = Rx ('(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]+[u]sers[\\/]+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # /c/Users/<name>/… (Git Bash), auch /mnt/c/Users/<name>/… (WSL) und /cygdrive/c/Users/<name>/… (Cygwin).
     'Benutzerpfad (Git-Bash-Form)'       = Rx ('(?<![a-z0-9])(?:/mnt|/cygdrive)?/[a-z]/[u]sers/(?!' + $platzhalter + ')[^/\s"''<>*|:]+')
     # /Users/<name>/… (macOS) und /home/<name>/… (Linux), auch file:///Users/<name>, JSON \/home\/<name>,
@@ -737,7 +738,7 @@ foreach ($k in $listenMuster.Keys) {
 $kiBinaer = Rx ('(?<![a-z0-9])(?:' + (($kiNamen -split '\|' | Where-Object { $_ -cne 'g[p]t' }) -join '|') + ')(?![a-z0-9])')
 # shortcut: Cargo.lock in der Wurzel nennt Pakete Dritter (etwa ein Paket für ein seltenes Betriebssystem), darum dort keine KI-Namen im Inhalt; aufrüsten, wenn die Sperrdatei von Hand bearbeitet wird.
 $sperrdatei = Rx '^Cargo\.lock$'
-$allgemeinPfad = Rx ('projects(?:\\\\|\\|/)+(?:' + (Escape-Liste $listen.allgemein) + ')(?![a-z0-9_-])')
+$allgemeinPfad = Rx ('projects[\\/]+(?:' + (Escape-Liste $listen.allgemein) + ')(?![a-z0-9_-])')
 $allgemeinKiste = Rx ('projekt[-_](?:' + ((($listen.allgemein | ForEach-Object { ([regex]::Escape($_)).Replace('-', '[-_]') })) -join '|') + ')(?![a-z0-9_-])')
 $modulPfad = Rx 'path\s*=\s*"[^"]*projects[\\/]+(?!_vorlage[\\/"])'
 # Ein privater Schlüssel (PEM, OpenSSH, PGP, PuTTY) ist in jedem Text ein Fund; ein öffentlicher Block (KONTAKT-PGP.asc) nicht.

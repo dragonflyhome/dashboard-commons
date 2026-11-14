@@ -7,6 +7,11 @@
 # wird nur über scripts/Hochladen.ps1 hochgeladen, das vorher selbst prüft.
 # Ein Projekt-Repo (Overlay) hat kein scripts/: dort core.hooksPath absolut auf
 # <code-repo>/scripts/hooks. Der Prüfer liegt darum neben dem Hook, geprüft wird das aktuelle Repo.
+# Vor jedem Programmaufruf: Ein relativer PATH-Eintrag („.“, leer, ohne / vorn) startete pwsh
+# aus dem geprüften Arbeitsbaum statt den Prüfer (dieselbe Regel wie in Vor-Push.ps1).
+case ":$PATH:" in
+  *::* | *:[!/]*) echo "pre-push: PATH enthält nicht voll qualifizierte Einträge (etwa „.“); bitte entfernen, dann erneut pushen." >&2; exit 2 ;;
+esac
 repo=$(git rev-parse --show-toplevel) || exit 2
 # pwd -W (Git für Windows) gibt C:/…, das PowerShell versteht; sonst pwd.
 code=$(cd "$(dirname "$0")/../.." && { pwd -W 2>/dev/null || pwd; }) || exit 2

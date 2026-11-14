@@ -46,6 +46,13 @@ Behoben
   aus / quadratisch (20 000 Zeichen etwa 5 s); es prüft jetzt zuerst das
   Literal. Es erkennt auch /var/home/<name>, /export/home/<name> und mehrere
   oder gemischte Trenner nach dem Ordner (/home//<name>, /home\<name>).
+- Das Muster für Windows-Benutzerpfade (C:\Users\<name>) und das für
+  allgemeine Projektnamen nach projects\ liefen auf einem langen Lauf aus \
+  exponentiell (50 Zeichen hielten den Prüfer praktisch ohne Ende auf); die
+  Trenner sind jetzt eine Zeichenklasse, die Funde bleiben gleich.
+- Der Hook pre-push bricht mit Exit 2 ab, wenn ein Eintrag im PATH nicht voll
+  qualifiziert ist (etwa „.“); vorher startete er ein pwsh aus dem geprüften
+  Arbeitsbaum statt des Prüfers.
 
 0.6.0 - 2026-11-14
 ------------------
