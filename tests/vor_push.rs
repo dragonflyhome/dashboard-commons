@@ -3127,7 +3127,8 @@ fn beitraege_aus_forks_wie_jeder_commit() {
 }
 
 /// M1: Ein fremder Commit ändert keinen Prüfpfad (scripts/**, .cargo/**, .github/**,
-/// tests/vor_push.rs, KONTAKT-PGP.asc); CONTRIBUTING.md darf er ändern.
+/// tests/vor_push.rs, KONTAKT-PGP.asc, jede .gitattributes und .npmrc, 8.3-Kurznamen);
+/// CONTRIBUTING.md darf er ändern.
 /// Gezählt wird, was er gegen jeden Elternteil ändert: Ein Merge von main in den
 /// Fork übernimmt eine Änderung des Betreuers an scripts/ ohne Fund, ein Merge, der
 /// dort selbst etwas ändert, ist ein Fund. Gegenprobe: dieselbe Änderung von Ranke.
@@ -3154,10 +3155,35 @@ fn beitraege_aus_forks_ohne_pruefer() {
         ".Cargo/config.toml",
         "kontakt-pgp.asc",
         ".GitAttributes",
+        // Verschachtelt: Eine .gitattributes mit -diff verbirgt im Diff eine Datei als binär,
+        // eine .npmrc schaltet die Paket-Skripte beim npm ci ein.
+        "web/.gitattributes",
+        "tests/.gitattributes",
+        "src/.GitAttributes",
+        "web/.npmrc",
+        "WEB/.NPMRC",
     ] {
         abgewiesen(pfad, satz, |o| beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(pfad, b"# anders\n")));
         frei(pfad, |o| o.ueber_merge(|o| o.datei(pfad, b"# anders\n")));
     }
+    // 8.3-Kurznamen landen unter Windows in der Datei mit langem Namen (CARGO~1/config.toml
+    // in .cargo/config.toml). In Unterordnern weist sie schon das Muster für Kurznamen ab,
+    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst
+    // (§ hält den Prüfer über dieser Datei frei).
+    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC"] {
+        let kurz = kurz.replace('§', "");
+        abgewiesen(&kurz, &format!("ein fremder Commit ändert den Prüfpfad {kurz}"), |o| {
+            beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(&kurz, b"# anders\n"))
+        });
+    }
+    // Gegenprobe: ähnliche Namen ohne Kurznamen und ohne Punkt bleiben frei.
+    frei("ähnliche Namen", |o| {
+        beitrag(o, "feat: b", "Beitrag", NOREPLY, |o| {
+            o.datei("src/gitattributes.rs", b"// a\n");
+            o.datei("web/npmrc.txt", b"a\n");
+            o.datei("src/a~b.rs", b"// a\n");
+        })
+    });
     // Der Leitfaden ist ein Textbeitrag: Ein fremder Commit darf ihn ändern.
     frei("CONTRIBUTING.md im Beitrag", |o| beitrag(o, "docs: Leitfaden", "Beitrag", NOREPLY, |o| o.datei("CONTRIBUTING.md", b"# Mitwirken\n")));
     let mail = NOREPLY.replace('§', "");
@@ -3475,10 +3501,12 @@ const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
 /// mit dem Prüfer aus main (hier dem des Code-Repos) und -Beitrag. Ein Fork, der
 /// scripts/hooks/* und scripts/Vor-Push.ps1 ändert, führt dabei nichts aus: keine
 /// Marker-Datei, der Arbeitsbaum bleibt auf main mit dessen Prüfer, und der Prüfer
-/// meldet jeden dieser Prüfpfade. Ein sauberer Fork geht durch, und main kommt danach
-/// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenprobe: Der
+/// meldet jeden dieser Prüfpfade. Ein sauberer Fork geht durch; erst dann entsteht
+/// der Arbeitsbaum zum Bauen, auf dem Probe-Commit, ohne Hook des Forks, und main kommt
+/// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenproben: Der
 /// alte Weg (git merge im Arbeitsbaum) ruft die Hooks des Forks und legt dessen Prüfer
-/// in den Arbeitsbaum.
+/// in den Arbeitsbaum; ein Checkout der Kennung vor dem grünen Lauf ruft post-checkout
+/// des Forks.
 #[test]
 fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
     if !bereit() {
@@ -3509,7 +3537,7 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         fg(&["switch", "-q", "-c", "beitrag"]);
         std::fs::write(fork.join("src").join("b.rs"), "// b\n").unwrap();
         if fall != "sauber" {
-            for hook in ["post-merge", "pre-merge-commit", "commit-msg"] {
+            for hook in ["post-merge", "pre-merge-commit", "commit-msg", "post-checkout", "reference-transaction"] {
                 std::fs::write(fork.join("scripts").join("hooks").join(hook), FORK_HOOK).unwrap();
             }
             std::fs::write(fork.join("scripts").join("Vor-Push.ps1"), "# Pruefer des Forks\nexit 0\n").unwrap();
@@ -3535,16 +3563,33 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         assert!(pruefer_im_baum().contains("von main"), "{fall}: im Arbeitsbaum liegt der Prüfer von main");
         let (code, text) = o.lauf(&["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", &kennung], None);
         assert!(!marker.exists(), "{fall}: auch der Prüflauf führt nichts aus dem Fork aus");
+        // Bauen und Testen in einem eigenen Arbeitsbaum: nach grünem Lauf auf dem Probe-Commit.
+        let bau = o.wurzel.join("probe-bau");
+        let bau_marker = bau.join("hook-lief.txt");
         if fall == "sauber" {
             assert_eq!(code, 0, "{text}");
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), "probe"]);
+            assert!(!bau_marker.exists(), "nach grünem Lauf führt der Arbeitsbaum der Probe keinen Hook des Forks aus");
+            o.git(&["worktree", "remove", "--force", &bau.to_string_lossy()]);
             o.git(&["merge", "-q", "--ff-only", "probe"]);
             assert_eq!(o.git(&["rev-parse", "main"]), probe, "main ist genau der geprüfte Merge-Commit");
             let (code, text) = o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None);
             assert_eq!(code, 0, "nach dem Merge: {text}");
         } else {
-            for pfad in ["scripts/hooks/post-merge", "scripts/hooks/pre-merge-commit", "scripts/hooks/commit-msg", "scripts/Vor-Push.ps1"] {
+            for pfad in [
+                "scripts/hooks/post-merge",
+                "scripts/hooks/pre-merge-commit",
+                "scripts/hooks/commit-msg",
+                "scripts/hooks/post-checkout",
+                "scripts/hooks/reference-transaction",
+                "scripts/Vor-Push.ps1",
+            ] {
                 assert!(code == 1 && text.contains(&format!("ein fremder Commit ändert den Prüfpfad {pfad}")), "{pfad}: {text}");
             }
+            // Gegenprobe: Ein Checkout des Forks vor dem grünen Lauf (hier worktree add der
+            // Kennung) ruft schon dessen Hooks auf (reference-transaction im neuen Arbeitsbaum).
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), &kennung]);
+            assert!(bau_marker.exists(), "ein Checkout des Forks ruft dessen Hooks auf");
         }
     }
 }
@@ -3554,6 +3599,7 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
 /// im Prüfer noch in Hochladen.ps1; beide prüfen wie sonst. Ohne die Umgebungsvariable
 /// NoDefaultCurrentDirectoryInExePath, die die Suche im aktuellen Ordner abschaltete.
 /// Gegenprobe: Ein Start über den Namen (ProcessStartInfo „git“) nimmt dort die fremde.
+/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann bricht der Prüfer ab (Exit 2).
 #[test]
 fn kein_git_aus_dem_arbeitsordner() {
     if !bereit() {
@@ -3602,6 +3648,19 @@ fn kein_git_aus_dem_arbeitsordner() {
         "$p = New-Object Diagnostics.ProcessStartInfo 'git', '--version'; $p.UseShellExecute = $false; $p.RedirectStandardOutput = $true; $x = [Diagnostics.Process]::Start($p); $aus = $x.StandardOutput.ReadToEnd(); $x.WaitForExit(); if ($aus -match 'git version') { 'echtes git' } else { 'fremdes git' }",
     ]);
     assert!(text.contains("fremdes git"), "Gegenprobe: ein Start über den Namen nimmt die git.exe im aktuellen Ordner:\n{text}");
+    // Mit „.“ im PATH fände auch Get-Command die fremde git.exe: Der Prüfer bricht dann ab.
+    let pfad = format!(".;{}", std::env::var("PATH").unwrap_or_default());
+    let mit_punkt = |args: &[&str]| {
+        let a = pwsh().unwrap().args(args).current_dir(o.repo()).env("DASHBOARD_INHALT", &inhalt).env("PATH", &pfad).output().unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "(Get-Command git -CommandType Application | Select-Object -First 1).Source"]);
+    assert!(
+        text.trim().to_lowercase().replace('/', "\\").ends_with(&format!("{}\\git.exe", repo.to_lowercase().replace('/', "\\"))),
+        "Gegenprobe: mit . im PATH nimmt Get-Command die fremde git.exe:\n{text}"
+    );
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
 }
 
 /// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
@@ -3691,7 +3750,9 @@ fn pruefpfade_loeschen_umbenennen_modus() {
 /// Windows-Formen mit / zählen nur einmal (nicht zusätzlich als macOS/Linux).
 /// Gegenproben bleiben frei: /home und /users hinter einer Domäne, "/home" ohne Namen,
 /// /usr/home/<x> (nach einem Buchstaben; FreeBSD gehört nicht zu den Zielsystemen) und
-/// Platzhalter in den neuen Formen.
+/// Platzhalter in den neuen Formen. Bewusste Grenze, nicht festgehalten: /home hinter einem
+/// Host in URLs (ssh://…@host/home/…, …:8080/home/…) und MSYS2 mit \ (…\msys64\home\…);
+/// echte Namen fängt dort die Liste benutzer.
 #[test]
 fn heimatpfade_weitere_formen_je_ein_fund() {
     if !bereit() {
@@ -3714,6 +3775,18 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
         r"\\pc\c$/U§sers/zora",
         "/c/U§sers/zora",
         "/mnt/c/U§sers/zora",
+        // Mehrere Trenner nach dem Laufwerk: nur die Windows-Form meldet.
+        "C://U§sers/zora",
+        "c$//U§sers/zora",
+        "c%3a//U§sers/zora",
+        r"\\pc\c$//U§sers/zora",
+        // /home nach einem Laufwerk oder einem Host aus einem Buchstaben: die Windows-Form kennt nur Users.
+        "a:/h§ome/zora",
+        "C:/h§ome/zora",
+        "PATH=/a:/h§ome/zora",
+        "cc -isystem/h§ome/zora",
+        // WSL-Freigabe in JSON: nur die WSL-Form meldet.
+        r"\/\/wsl$\/U\/h§ome\/zora",
     ] {
         let text = abgewiesen(form, "Benutzerpfad", |o| o.ueber_merge(|o| o.datei("src/pfad.rs", format!("// {form}\n").as_bytes())));
         assert_eq!(fundzeilen(&text).len(), 1, "{form}: genau ein Fund:\n{text}");
@@ -3722,7 +3795,8 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
         o.ueber_merge(|o| {
             o.datei(
                 "src/frei.rs",
-                r#"// https://example.com/h§ome/x https://api.github.com/u§sers/x Path::new("/h§ome") "/h§ome/" /usr/h§ome/x
+                r#"// https://example.com/h§ome/zora https://api.github.com/u§sers/zora Path::new("/h§ome") "/h§ome/" /usr/h§ome/zora
+// https:\/\/example.com\/h§ome\/zora foo-bar/h§ome/zora
 // \\wsl$\Ubuntu\h§ome\<name> \/h§ome\/<name> -L/h§ome/<name> PATH=/usr/bin:/h§ome/$USER/bin
 "#
                 .as_bytes(),

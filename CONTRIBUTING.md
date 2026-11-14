@@ -22,7 +22,7 @@ Ein Pull Request würde auf dem Server zusammengeführt, an der Prüfung vorbei,
    - die Ref, die geprüft werden soll: Zweigname oder, am genauesten, die volle Commit-Kennung,
    - wie du die Änderung geprüft hast.
 4. **Rückfragen beantworten.** Die Betreuer antworten im Issue. Besserst du nach, kommen die Änderungen als weitere Commits auf denselben Zweig; nenne dort die neue Commit-Kennung. Schreibe einen schon angebotenen Zweig nicht um, außer die Betreuer bitten darum.
-5. **Merge.** Die Betreuer holen den genannten Stand aus deinem Fork, nennen im Issue die Commit-Kennung, die sie gelesen haben, bauen daraus einen Merge-Commit, ohne Code deines Forks auszuführen, und prüfen ihn. Nach der Annahme kommt genau dieser Merge-Commit auf `main`. Das Issue wird danach geschlossen.
+5. **Merge.** Die Betreuer holen den genannten Stand aus deinem Fork, nennen im Issue die Commit-Kennung, die sie gelesen haben, bauen daraus einen Merge-Commit, ohne Code deines Forks auszuführen, und prüfen ihn. Gebaut und getestet wird erst danach. Nach der Annahme kommt genau dieser Merge-Commit auf `main`. Das Issue wird danach geschlossen.
 
 Kleine Hinweise, Fehlerberichte und Fragen sind ebenfalls als Issue willkommen, auch ohne Fork.
 
@@ -62,7 +62,7 @@ Vor jedem Hochladen prüft ein Werkzeug die ganze Geschichte, die hinausgeht. Es
   git -c commit.gpgsign=false rebase --force-rebase --exec "git commit --amend --no-edit --no-gpg-sign --reset-author" upstream/main
   ```
 
-- **Keine Änderungen an den Prüfpfaden:** alles unter `scripts/`, `.cargo/` und `.github/` sowie `tests/vor_push.rs`, `KONTAKT-PGP.asc` und `.gitattributes`, in jeder Groß- und Kleinschreibung. Ein Commit mit fremdem Autor oder Committer, der dort etwas ändert, wird abgewiesen, auch ein Merge-Commit im Fork. Wer dort etwas braucht, beschreibt es im Issue; die Betreuer übernehmen solche Änderungen selbst, in einem eigenen Merge ohne fremde Commits.
+- **Keine Änderungen an den Prüfpfaden:** alles unter `scripts/`, `.cargo/` und `.github/` sowie `tests/vor_push.rs` und `KONTAKT-PGP.asc`, dazu jede `.gitattributes` und jede `.npmrc`, auch in Unterordnern, und jeder Pfad mit einem 8.3-Kurznamen wie `GITATT~1`, in jeder Groß- und Kleinschreibung. Ein Commit mit fremdem Autor oder Committer, der dort etwas ändert, wird abgewiesen, auch ein Merge-Commit im Fork. Wer dort etwas braucht, beschreibt es im Issue; die Betreuer übernehmen solche Änderungen selbst, in einem eigenen Merge ohne fremde Commits.
 - **Keine persönlichen Angaben.** Namen, Adressen, Pfade des eigenen Rechners, Rechner- und Netzwerknamen und Zugangsdaten gehören weder in Code noch in Texte, Tests oder Commit-Meldungen. Beispiele nur mit erfundenen Werten. Pfade unter `/Users`, `/home` oder `C:\Users` stehen nur mit Platzhalter, etwa `/home/<name>/`; übliche Beispielnamen wie `user` oder `me` an dieser Stelle weist das Werkzeug ab.
 - **Nur Orte, die das Repo schon hat.** Keine weiteren Markdown-Dateien, keine gebauten Dateien (`target`, `web/build`, `node_modules`), keine Archive.
 - **Was einmal in einem Commit stand, geht mit.** Ein späterer Commit, der etwas entfernt, hilft nicht. Bereinige deinen Zweig, bevor du ihn anbietest.

@@ -42,7 +42,8 @@
                  KI-Namen, Steuerzeichen). Ein Commit mit fremdem Autor oder
                  Committer ändert keinen Prüfpfad (scripts/**, .cargo/**,
                  .github/**, tests/vor_push.rs, KONTAKT-PGP.asc,
-                 .gitattributes; Groß/Klein egal; in jeder
+                 jede .gitattributes und .npmrc, jeder Pfad mit einem
+                 8.3-Kurznamen wie GITATT~1; Groß/Klein egal; in jeder
                  Art, auch im Projekt-Repo; gezählt wird, was er gegen jeden
                  Elternteil ändert), und ein Merge der Linie, der fremde
                  Commits hereinholt, ändert gegenüber seinem ersten
@@ -122,7 +123,9 @@
                  Schreibformen (\, \\, /, /c/Users, /mnt/c/Users (WSL),
                  /cygdrive/c/Users, \\rechner\c$\Users, /Users/<name> (macOS),
                  /home/<name> (Linux; auch hinter : wie in PATH-Listen und
-                 scp-Zielen, hinter -L oder -I und als JSON \/home\/<name>),
+                 scp-Zielen, hinter Schaltern wie -L oder -isystem und als
+                 JSON \/home\/<name>; nicht hinter Buchstabe oder Ziffer,
+                 also nicht in URLs mit Host davor),
                  \\wsl.localhost\<distro>\home\<name> und \\wsl$\…, file:///, %5C, %2F,
                  auch doppelt kodiert und c%3A, 8.3-Kurznamen); der
                  Benutzername auch ohne Pfad (Liste benutzer); E-Mail-Adressen außer ranke2@proton.me
@@ -287,6 +290,11 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 # Text, Git-Ausgaben und Listen werden streng als UTF-8 gelesen (Utf8Text).
 $strikt = New-Object System.Text.UTF8Encoding($false, $true)
 try { [Console]::OutputEncoding = $utf8 } catch { }
+# Ein „.“ oder relativer Eintrag im PATH holte git doch aus dem aktuellen Ordner oder dem geprüften Repo.
+$gitOrt = Split-Path -Parent $gitExe
+if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith($Repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "git liegt im geprüften Repo oder im aktuellen Ordner ($gitExe); PATH ohne . und ohne relative Einträge setzen"
+}
 # Ein Push überträgt die echten Objekte: Ersatz (git replace) und Grafts dürfen
 # dem Prüfer nichts anderes zeigen (gilt für jeden git-Aufruf dieses Laufs).
 $env:GIT_NO_REPLACE_OBJECTS = '1'
@@ -649,10 +657,11 @@ $muster = [ordered]@{
     'Benutzerpfad (Git-Bash-Form)'       = Rx ('(?<![a-z0-9])(?:/mnt|/cygdrive)?/[a-z]/[u]sers/(?!' + $platzhalter + ')[^/\s"''<>*|:]+')
     # /Users/<name>/… (macOS) und /home/<name>/… (Linux), auch file:///Users/<name>, JSON \/home\/<name>,
     # PATH-Listen (…:/home/<name>), scp-Ziele (rechner:/home/<name>) und Schalter (-L/home/<name>).
-    # Nicht nach Buchstabe oder Ziffer (Domäne, Wortteil, /c/Users, /usr/home), außer einem Schalter
-    # aus Strich und einem Buchstaben, und nicht nach einem Laufwerk C: oder c$ (das meldet die
-    # Windows-Form oben, sonst zählte derselbe Pfad doppelt).
-    'Benutzerpfad (macOS/Linux)'         = Rx ('(?:(?<![a-z0-9])|(?<=(?<![a-z0-9])-[a-z]))(?<!(?<![a-z0-9])[a-z][:$]\\?)\\?/(?:[u]sers|[h]ome)\\?/(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
+    # Nicht nach Buchstabe oder Ziffer, auch nicht mit \ dazwischen (Domäne, auch in JSON, Wortteil,
+    # /c/Users, /usr/home), außer einem Schalter wie -L oder -isystem. Users nicht nach einem
+    # Laufwerk C:, c$ oder c%3A mit beliebigen Trennern (das meldet die Windows-Form oben, sonst
+    # zählte derselbe Pfad doppelt); /home dort schon, die Windows-Form kennt nur Users.
+    'Benutzerpfad (macOS/Linux)'         = Rx ('(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+))/(?:(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*)[u]sers|[h]ome)\\?/(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # WSL von Windows aus: \\wsl.localhost\<distro>\home\<name> und \\wsl$\<distro>\home\<name>, auch mit / und doppelten Trennern.
     'Benutzerpfad (WSL-Freigabe)'        = Rx ('[\\/]{2,}wsl(?:\.localhost|\$)[\\/]+[^\\/\s]+[\\/]+[h]ome[\\/]+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # Der Name ganz (bis zum nächsten %, Trenner oder Leerraum), damit Maskiert ihn ganz ersetzt.
@@ -1108,13 +1117,18 @@ $beitragsMail = Rx ('^(?:(?:[0-9]+\+)?[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}@u
 # CONTRIBUTING.md bleibt frei: ein Textbeitrag; Regeln, die gelten, setzt dieser Prüfer durch.
 # Gilt in jeder Art. Im Projekt-Repo liegen diese Pfade ohnehin außerhalb der Positivliste;
 # dashboard-version.toml dort bleibt frei, sie nennt nur die Fassung (Abweichung ist ein Hinweis).
-# Dazu .gitattributes: Sie legt fest, wie scripts/ ausgecheckt wird (eol, filter).
+# Dazu jede .gitattributes, auch verschachtelt: Sie legt fest, wie scripts/ und tests/
+# ausgecheckt werden (eol, filter), und mit -diff zeigte git diff eine Datei nur als
+# „Binary files differ“, das Lesen vor dem Bau sähe nichts. Dazu jede .npmrc: web/.npmrc
+# hält mit ignore-scripts=true die Paket-Skripte beim npm ci aus.
+# Dazu jeder Pfad mit einem 8.3-Kurznamen (CARGO~1/…): Unter Windows landet er beim
+# Auschecken in .cargo/ oder einer anderen Datei mit langem Namen.
 # Groß/Klein egal (Rx): Unter Windows landet SCRIPTS/x.ps1 im selben Ordner wie scripts/.
 # Cargo.toml und web/package.json sind bewusst keine Prüfpfade (sie ändern Beiträge
 # regelmäßig); was dort im Bau läuft, deckt das Lesen des Diffs vor dem Bau (M2).
 # Grenze: Fremd heißt hier nur „Angabe nicht genau Ranke“. Ein Fork-Commit mit gefälschter
 # Ranke-Angabe ist für den Prüfer ein eigener; im Probelauf meldet ihn -Beitrag.
-$pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$|\.gitattributes$)'
+$pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$)|(?:^|/)\.(?:gitattributes|npmrc)$|(?:^|/)[^/~]{1,6}~[0-9]+(?:\.[^/]{0,3})?(?:/|$)'
 
 # Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
 # gegen JEDEN Elternteil unterscheiden. Was ein Merge unverändert von einem
