@@ -27,9 +27,35 @@
                  hat oder in CHANGELOG.txt die oberste Überschrift nach
                  Unreleased nicht "0.MINOR.PATCH - JJJJ-MM-TT" ist (gültiges
                  Datum, Strichzeile darunter).
-      Commits    Autor oder Committer nicht genau Ranke <ranke2@proton.me>
+      Commits    auf der Linie (First-Parent-Kette des Bereichs: die Merges
+                 des Betreuers; bei -Pruefen und im Bundle die Kette der
+                 Ref) Autor oder Committer nicht genau Ranke <ranke2@proton.me>
                  (Zeichen für Zeichen: ein breites ＠ oder ein anderes
-                 Nicht-ASCII-Zeichen ist ein Fund); eine erste Zeile nicht
+                 Nicht-ASCII-Zeichen ist ein Fund). Außerhalb der Linie (über
+                 zweite Eltern: Seitenzweige, Beiträge aus Forks) auch eine
+                 Beitragsadresse, verankert, nur ASCII, Groß/Klein egal:
+                 GitHub-noreply (<zahl>+<login>@users.noreply.github.com oder
+                 <login>@users.noreply.github.com, Login
+                 nach GitHub-Regeln) oder eine Adresse auf .invalid oder
+                 .example; der Name und die Adresse (ohne die feste
+                 noreply-Endung) laufen durch die Textprüfung (Listen,
+                 KI-Namen, Steuerzeichen). Ein Commit mit fremdem Autor oder
+                 Committer ändert keinen Prüfpfad (scripts/**, .cargo/**,
+                 .github/**, tests/vor_push.rs, KONTAKT-PGP.asc,
+                 jede .gitattributes und .npmrc, jeder Pfad mit einem
+                 8.3-Kurznamen wie GITATT~1; Groß/Klein egal; in jeder
+                 Art, auch im Projekt-Repo; gezählt wird, was er gegen jeden
+                 Elternteil ändert), und ein Merge der Linie, der fremde
+                 Commits hereinholt, ändert gegenüber seinem ersten
+                 Elternteil keinen Prüfpfad: Änderungen am Prüfer übernimmt der
+                 Betreuer selbst, in einem eigenen Merge ohne fremde Commits.
+                 Grenze: Die Regel hängt an der Angabe von Autor und
+                 Committer, die niemanden nachweist; ein Fork-Commit, der die
+                 feste Angabe fälscht, gilt als eigener; dagegen steht
+                 -Beitrag im Probelauf vor dem Merge (Anleitung Abschnitt
+                 15). Mit -AufMain und einem Bereich
+                 a..b setzt die Linie a fort (erster Elternteil des ältesten
+                 neuen Linien-Commits ist a). Für alle Commits: eine erste Zeile nicht
                  nach Conventional Commits (wie bei Nachricht, auch für
                  Merges); Nachrichten mit
                  einem der Text-Muster unten oder mit Anhängen (Trailer) und
@@ -38,7 +64,8 @@
                  Namen von KI-Assistenten, Modellen und ihren Anbietern,
                  Groß/Klein egal, auch mit Strichen oder Leerzeichen dazwischen) und
                  jeder Trailer, den git erkennt; Kopfzeilen außer tree,
-                 parent, author, committer (etwa eine Signatur); eine Ref,
+                 parent, author, committer (etwa eine Signatur) und
+                 Fortsetzungszeilen im Kopf; eine Ref,
                  die auf kein Commit zeigt (etwa ein Tag-Objekt).
                  git replace und Grafts gelten nicht (geprüft wird, was ein
                  Push überträgt).
@@ -56,7 +83,9 @@
                  nach der Regel oben, dazu
                  jedes Objekt, das keine Ref erreicht, als Fund; ein Bundle
                  mit Voraussetzungen (nicht ab der Wurzel) bricht ab (Exit 2).
-      Pfade      außerhalb der Positivliste der Ordner; projects\<slug> (außer
+      Pfade      außerhalb der Positivliste der Ordner und Wurzeldateien (von
+                 .github nur die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml
+                 ohne config.yml); projects\<slug> (außer
                  _vorlage), data\, docs\entscheidungen, docs\architektur-stand.md,
                  projekte.generated.ts, web\src\lib\vertrag\projekte\; jede
                  *.md (seit Etappe 6d) außer CONTRIBUTING.md in der Wurzel; ein privater
@@ -92,7 +121,12 @@
                  oder Stelle, nie dem Inhalt. Es gibt keine zweite Lesart.
       Text       Benutzerpfade in allen
                  Schreibformen (\, \\, /, /c/Users, /mnt/c/Users (WSL),
-                 /cygdrive/c/Users, \\rechner\c$\Users, file:///, %5C, %2F,
+                 /cygdrive/c/Users, \\rechner\c$\Users, /Users/<name> (macOS),
+                 /home/<name> (Linux; auch hinter : wie in PATH-Listen und
+                 scp-Zielen, hinter Schaltern wie -L oder -isystem und als
+                 JSON \/home\/<name>; nicht hinter Buchstabe oder Ziffer,
+                 also nicht in URLs mit Host davor),
+                 \\wsl.localhost\<distro>\home\<name> und \\wsl$\…, file:///, %5C, %2F,
                  auch doppelt kodiert und c%3A, 8.3-Kurznamen); der
                  Benutzername auch ohne Pfad (Liste benutzer); E-Mail-Adressen außer ranke2@proton.me
                  und erfundenen (.invalid, .example,
@@ -176,6 +210,11 @@
     Prüft Autor, Committer und Nachricht dieser Commits (Bereich wie a..b oder ein Stand).
 .PARAMETER AufMain
     Mit -Commits: die Regeln „nur Merge-Commits auf main“ und „eine Wurzel“ für diesen Bereich.
+.PARAMETER Beitrag
+    Die gelesene Kennung eines Beitrags aus einem Fork (Probelauf vor dem
+    Merge): Jeder Commit in refs/heads/main..<kennung>, dessen Autor oder
+    Committer den Namen oder die Adresse der Betreuer trägt (Groß/Klein egal),
+    ist ein Fund. Echte Commits der Betreuer liegen dort nie.
 .PARAMETER Pruefen
     Probelauf ohne Push: prüft die lokale Ref -Ref so, als ginge sie mit
     einem ersten Push nach refs/heads/main (Name, alle erreichbaren Commits,
@@ -208,6 +247,7 @@ param(
     [string]$Baum,
     [string]$Commits,
     [switch]$AufMain,
+    [string]$Beitrag,
     [switch]$Pruefen,
     [string]$Ref = 'refs/heads/main',
     [string]$Bundle,
@@ -234,6 +274,11 @@ trap {
     exit 2
 }
 
+# git über den vollen Pfad: Ein Start über den Namen (ProcessStartInfo, CreateProcess) sucht
+# zuerst im aktuellen Ordner, und der Hook läuft in der Wurzel des geprüften Arbeitsbaums.
+# Die Befehlssuche von PowerShell nimmt nur PATH, nie den aktuellen Ordner.
+$gitExe = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
 if (-not $Inhalt) {
@@ -245,6 +290,11 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 # Text, Git-Ausgaben und Listen werden streng als UTF-8 gelesen (Utf8Text).
 $strikt = New-Object System.Text.UTF8Encoding($false, $true)
 try { [Console]::OutputEncoding = $utf8 } catch { }
+# Ein „.“ oder relativer Eintrag im PATH holte git doch aus dem aktuellen Ordner oder dem geprüften Repo.
+$gitOrt = Split-Path -Parent $gitExe
+if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith($Repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "git liegt im geprüften Repo oder im aktuellen Ordner ($gitExe); PATH ohne . und ohne relative Einträge setzen"
+}
 # Ein Push überträgt die echten Objekte: Ersatz (git replace) und Grafts dürfen
 # dem Prüfer nichts anderes zeigen (gilt für jeden git-Aufruf dieses Laufs).
 $env:GIT_NO_REPLACE_OBJECTS = '1'
@@ -345,7 +395,7 @@ function ListenMuster($namen) {
 # ---------------------------------------------------------------------------
 function Git([string[]]$argumente) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'git'
+    $psi.FileName = $gitExe
     $psi.Arguments = (@('-C', "`"$Repo`"", '-c', 'core.quotepath=off') + ($argumente | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } })) -join ' '
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
@@ -367,7 +417,7 @@ function Blobs([string[]]$shas) {
     $erg = @{}
     if ($shas.Count -eq 0) { return $erg }
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'git'
+    $psi.FileName = $gitExe
     $psi.Arguments = "-C `"$Repo`" cat-file --batch"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
@@ -605,8 +655,17 @@ $muster = [ordered]@{
     'Benutzerpfad'                       = Rx ('(?<![a-z0-9])[a-z](?::|\$|%3a)(?:\\\\|\\|/)+[u]sers(?:\\\\|\\|/)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # /c/Users/<name>/… (Git Bash), auch /mnt/c/Users/<name>/… (WSL) und /cygdrive/c/Users/<name>/… (Cygwin).
     'Benutzerpfad (Git-Bash-Form)'       = Rx ('(?<![a-z0-9])(?:/mnt|/cygdrive)?/[a-z]/[u]sers/(?!' + $platzhalter + ')[^/\s"''<>*|:]+')
+    # /Users/<name>/… (macOS) und /home/<name>/… (Linux), auch file:///Users/<name>, JSON \/home\/<name>,
+    # PATH-Listen (…:/home/<name>), scp-Ziele (rechner:/home/<name>) und Schalter (-L/home/<name>).
+    # Nicht nach Buchstabe oder Ziffer, auch nicht mit \ dazwischen (Domäne, auch in JSON, Wortteil,
+    # /c/Users, /usr/home), außer einem Schalter wie -L oder -isystem. Users nicht nach einem
+    # Laufwerk C:, c$ oder c%3A mit beliebigen Trennern (das meldet die Windows-Form oben, sonst
+    # zählte derselbe Pfad doppelt); /home dort schon, die Windows-Form kennt nur Users.
+    'Benutzerpfad (macOS/Linux)'         = Rx ('(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+))/(?:(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*)[u]sers|[h]ome)\\?/(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
+    # WSL von Windows aus: \\wsl.localhost\<distro>\home\<name> und \\wsl$\<distro>\home\<name>, auch mit / und doppelten Trennern.
+    'Benutzerpfad (WSL-Freigabe)'        = Rx ('[\\/]{2,}wsl(?:\.localhost|\$)[\\/]+[^\\/\s]+[\\/]+[h]ome[\\/]+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # Der Name ganz (bis zum nächsten %, Trenner oder Leerraum), damit Maskiert ihn ganz ersetzt.
-    'Benutzerpfad (URL-kodiert)'         = Rx ('users(?:%5c|%2f|%255c|%252f)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:%]+')
+    'Benutzerpfad (URL-kodiert)'         = Rx ('(?:users|(?:(?<![a-z0-9])|(?<=%2f|%5c|%252f|%255c))home)(?:%5c|%2f|%255c|%252f)+(?!' + $platzhalter + ')[^\\/\s"''<>*|:%]+')
     # Ausnahme: PROGRA~1 ist der Kurzname von Program Files, kein Konto.
     'Benutzerpfad (8.3-Kurzname)'        = Rx '(?:\\|/)(?!progra~)[a-z0-9]{1,6}~[0-9](?:\\|/|$)'
     'E-Mail-Adresse'                     = Rx '[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}'
@@ -675,6 +734,8 @@ $positiv = @(
     '^projects/_vorlage/',
     '^\.cargo/config\.toml$',
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
+    # Nur die Issue-Formulare (Merge-Angebote), nicht ganz .github (keine Workflows, die auf GitHub Code ausführen).
+    '^\.github/ISSUE_TEMPLATE/(?!config\.yml$)[^/]+\.yml$',
     # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
     # LICENSE in der Wurzel bleibt allein für GitHub.
     '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
@@ -1040,15 +1101,89 @@ function VerlaufPruefen([string]$bereich) {
     return $eintraege.Count
 }
 
+# Beiträge aus Forks (Commits außerhalb der First-Parent-Linie): erlaubte fremde
+# Adressen, verankert, nur ASCII (sonst nähme Groß/Klein-egal etwa das Kelvin-Zeichen
+# für k). GitHub-noreply mit Login nach GitHub-Regeln (Buchstaben, Ziffern, einzelne
+# Striche innen, bis 39 Zeichen) oder eine erfundene Adresse auf .invalid oder .example.
+$beitragsMail = Rx ('^(?:(?:[0-9]+\+)?[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}@users\.noreply\.github\.com' +
+    '|[a-z0-9._+-]+@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:invalid|example))\z')
+# Prüfpfade (M1): Ein fremder Commit ändert sie nie. Ganz scripts/ (Prüfer mit
+# Positivlisten, Wurzeldateien und Listenverarbeitung, Hooks, Hochladen, Freigeben,
+# Fassung-Festschreiben, dazu Skripte, die mit Rechten laufen) und die Gegentests
+# des Prüfers; eine engere Liste vergäße still die nächste Datei, die er liest.
+# Dazu .cargo/: runner, rustc-wrapper und Aliase führen beim nächsten Bau Code aus.
+# Dazu .github/ (das Formular für Merge-Angebote und, falls die Positivliste je wächst,
+# Workflows) und KONTAKT-PGP.asc: Ein Beitrag tauscht weder Vorlage noch Kontaktschlüssel.
+# CONTRIBUTING.md bleibt frei: ein Textbeitrag; Regeln, die gelten, setzt dieser Prüfer durch.
+# Gilt in jeder Art. Im Projekt-Repo liegen diese Pfade ohnehin außerhalb der Positivliste;
+# dashboard-version.toml dort bleibt frei, sie nennt nur die Fassung (Abweichung ist ein Hinweis).
+# Dazu jede .gitattributes, auch verschachtelt: Sie legt fest, wie scripts/ und tests/
+# ausgecheckt werden (eol, filter), und mit -diff zeigte git diff eine Datei nur als
+# „Binary files differ“, das Lesen vor dem Bau sähe nichts. Dazu jede .npmrc: web/.npmrc
+# hält mit ignore-scripts=true die Paket-Skripte beim npm ci aus.
+# Dazu jeder Pfad mit einem 8.3-Kurznamen (CARGO~1/…): Unter Windows landet er beim
+# Auschecken in .cargo/ oder einer anderen Datei mit langem Namen.
+# Groß/Klein egal (Rx): Unter Windows landet SCRIPTS/x.ps1 im selben Ordner wie scripts/.
+# Cargo.toml und web/package.json sind bewusst keine Prüfpfade (sie ändern Beiträge
+# regelmäßig); was dort im Bau läuft, deckt das Lesen des Diffs vor dem Bau (M2).
+# Grenze: Fremd heißt hier nur „Angabe nicht genau Ranke“. Ein Fork-Commit mit gefälschter
+# Ranke-Angabe ist für den Prüfer ein eigener; im Probelauf meldet ihn -Beitrag.
+$pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$)|(?:^|/)\.(?:gitattributes|npmrc)$|(?:^|/)[^/~]{1,6}~[0-9]+(?:\.[^/]{0,3})?(?:/|$)'
+
+# Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
+# gegen JEDEN Elternteil unterscheiden. Was ein Merge unverändert von einem
+# Elternteil übernimmt, prüft der Commit, der es dort eingeführt hat (oder es
+# steht schon auf dem fernen main); nur was in keinem Elternteil so stand, bringt
+# der Merge selbst (gegen nur den ersten Elternteil zählte im Fork jede
+# Änderung von main als fremd).
+function EigenePfade([string]$c) {
+    $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
+    if ($eltern.Count -eq 0) { return @((Git @('diff-tree', '-r', '--root', '--no-renames', '--no-commit-id', '--name-only', '-z', $c)) -split "`0" | Where-Object { $_ }) }
+    $menge = $null
+    foreach ($p in $eltern) {
+        $jetzt = @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $p, $c)) -split "`0" | Where-Object { $_ })
+        $menge = if ($null -eq $menge) { $jetzt } else { @($menge | Where-Object { $jetzt -ccontains $_ }) }
+    }
+    return $menge
+}
+
 function CommitsPruefen([string]$bereich, [bool]$nurMain) {
     $liste = @((Git @('rev-list', $bereich)) -split "`n" | Where-Object { $_ })
+    # Die Linie: die First-Parent-Kette des Bereichs (die Merges des Betreuers auf
+    # main; beim Hook und Hochladen fern..main, bei -Pruefen und je Ref eines Bundles
+    # die ganze Kette dieser Ref). Alles andere kam über zweite Eltern (Seitenzweige, Forks).
+    $linie = @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })
+    $aufLinie = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($c in $linie) { [void]$aufLinie.Add($c) }
     foreach ($c in $liste) {
         $info = Git @('log', '-1', '--format=%an%x00%ae%x00%cn%x00%ce', $c)
         $f = $info -split "`0", 4
+        $f[3] = $f[3].TrimEnd("`n")
         $kurz = $c.Substring(0, 10)
-        # Genau, Zeichen für Zeichen: auch ein breites ＠ (U+FF20) ist ein Fund.
-        if ($f[0] -cne $RANKE_NAME -or $f[1] -cne $RANKE_MAIL) { Fund "Commit $kurz" 0 "Autor ist nicht $RANKE_NAME <$RANKE_MAIL>" }
-        if ($f[2] -cne $RANKE_NAME -or $f[3].TrimEnd("`n") -cne $RANKE_MAIL) { Fund "Commit $kurz" 0 "Committer ist nicht $RANKE_NAME <$RANKE_MAIL>" }
+        $fremd = $false
+        $erlaubt = @{}
+        foreach ($rolle in @(@('Autor', 'author', 0), @('Committer', 'committer', 2))) {
+            $name = $f[$rolle[2]]; $mail = $f[$rolle[2] + 1]
+            # Genau, Zeichen für Zeichen: auch ein breites ＠ (U+FF20) ist ein Fund.
+            if ($name -ceq $RANKE_NAME -and $mail -ceq $RANKE_MAIL) { $erlaubt[$rolle[1]] = "$RANKE_NAME <$RANKE_MAIL>"; continue }
+            if ($aufLinie.Contains($c)) { Fund "Commit $kurz" 0 "$($rolle[0]) ist nicht $RANKE_NAME <$RANKE_MAIL>"; continue }
+            if ($mail -cnotmatch '^[\x21-\x7E]+$' -or -not $beitragsMail.IsMatch($mail)) {
+                Fund "Commit $kurz" 0 "$($rolle[0]) ist nicht $RANKE_NAME <$RANKE_MAIL> und hat keine Beitragsadresse (GitHub-noreply oder auf .invalid oder .example)"
+                continue
+            }
+            $fremd = $true
+            $erlaubt[$rolle[1]] = "$name <$mail>"
+            # Der Name wie jeder Text (Listen, KI-Namen im Basis-Repo, Steuerzeichen), dazu KI-Namen in jeder Art wie in Nachrichten.
+            # Die ganze Adresse ohne die feste noreply-Endung (auch die Domäne einer .invalid-Adresse); das @ als Leerzeichen, sonst schlüge das Adressmuster an.
+            TextPruefen "Commit $kurz ($($rolle[0]))" "$name`n$($mail -replace '@users\.noreply\.github\.com$', '' -replace '@', ' ')" $false $null
+            if ($anhang.IsMatch((Falten $name))) { Fund "Commit $kurz ($($rolle[0]))" 0 'Anhang oder KI-Name im Namen' }
+        }
+        # M1: Änderungen am Prüfer kommen nie aus einem fremden Commit.
+        if ($fremd) {
+            foreach ($p in (EigenePfade $c)) {
+                if ($pruefPfad.IsMatch($p)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
+            }
+        }
         # Das rohe Objekt: Die Nachricht ganz, auch hinter
         # einem NUL (an dem %B abbricht); Kopfzeilen bis zur ersten Leerzeile.
         $roh = Git @('cat-file', 'commit', $c)
@@ -1062,17 +1197,41 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         # Jeder Trailer, den git selbst erkennt (Reviewed-by, Change-Id, …).
         if ((Git @('log', '-1', '--format=%(trailers:only,unfold)', $c)).Trim()) { Fund "Commit $kurz (Nachricht)" 0 'Anhang (Trailer) in der Nachricht' }
         # Nur die Kopfzeilen tree, parent, author, committer (encoding nur UTF-8):
-        # eine Signatur (gpgsig), ein mergetag oder eine eigene Kopfzeile ginge sonst ungeprüft hinaus.
-        $wer = '^(?:author|committer) ' + [regex]::Escape("$RANKE_NAME <$RANKE_MAIL>") + ' \d+ [+-]\d{4}$'
+        # eine Signatur (gpgsig), ein mergetag, eine eigene Kopfzeile oder eine Fortsetzungszeile
+        # (mit Leerzeichen am Anfang; erlaubt sind nur einzeilige Kopfzeilen) ginge sonst ungeprüft hinaus.
         foreach ($k in ($kopfteil -split "`n")) {
-            if ($k.StartsWith(' ')) { continue }
             if ($k -cnotmatch '^(?:tree|parent|author|committer) ' -and $k -notmatch '^encoding utf-?8$') { Fund "Commit $kurz" 0 'Kopfzeile außer tree, parent, author, committer (etwa Signatur)'; break }
-            # Die Kopfzeile selbst (handgebaute Objekte): genau Ranke <ranke2@proton.me>, Zeit, Zone.
-            if ($k -cmatch '^(?:author|committer) ' -and $k -cnotmatch $wer) { Fund "Commit $kurz" 0 "Kopfzeile author oder committer ist nicht genau $RANKE_NAME <$RANKE_MAIL>" }
+            # Die Kopfzeile selbst (handgebaute Objekte): genau die oben erlaubte Angabe (Ranke oder der Beitrag), Zeit, Zone.
+            if ($k -cmatch '^(author|committer) ') {
+                $soll = $erlaubt[$Matches[1]]
+                if (-not $soll) { $soll = "$RANKE_NAME <$RANKE_MAIL>" }
+                if ($k -cnotmatch ('^(?:author|committer) ' + [regex]::Escape($soll) + ' \d+ [+-]\d{4}$')) { Fund "Commit $kurz" 0 "Kopfzeile author oder committer ist nicht genau $RANKE_NAME <$RANKE_MAIL> oder die geprüfte Beitragsangabe" }
+            }
+        }
+    }
+    # M1 auch auf der Linie: Holt ein Merge fremde Commits herein (irgendeiner in L^1..L
+    # nicht genau Ranke), ändert er gegenüber seinem ersten Elternteil keinen Prüfpfad.
+    # Sonst brächte ein fremder Merge mit einem alten main-Stand als Elternteil einen
+    # alten Prüfer zurück, ohne dass ein einzelner Commit ihn gegen alle Eltern ändert.
+    $ranke = "$RANKE_NAME`0$RANKE_MAIL`0$RANKE_NAME`0$RANKE_MAIL"
+    foreach ($c in $linie) {
+        $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
+        if ($eltern.Count -lt 2) { continue }
+        $wer = @((Git @('log', '--format=%an%x00%ae%x00%cn%x00%ce', "$($eltern[0])..$c")) -split "`n" | Where-Object { $_ })
+        if (-not @($wer | Where-Object { $_ -cne $ranke }).Count) { continue }
+        foreach ($p in @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $eltern[0], $c)) -split "`0" | Where-Object { $_ })) {
+            if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
         }
     }
     if ($nurMain) {
-        $linie = @((Git @('rev-list', '--first-parent', $bereich)) -split "`n" | Where-Object { $_ })
+        # main setzt die bisherige Linie fort: Der älteste neue Commit der Linie hat den
+        # alten Stand als ersten Elternteil (sonst etwa ein Merge falsch herum, und ein
+        # fremder Commit, der schon draußen liegt, rückte auf die Linie).
+        if ($bereich -match '^(.+)\.\.(.+)$' -and $linie.Count) {
+            $alt = (Git @('rev-parse', "$($Matches[1])^{commit}")).Trim()
+            $erster = (((Git @('log', '-1', '--format=%P', $linie[-1])).Trim() -split ' ') | Select-Object -First 1)
+            if ($erster -ne $alt) { Fund "Commit $($linie[-1].Substring(0, 10))" 0 'main setzt die bisherige Linie nicht fort (erster Elternteil ist nicht der alte Stand von main, etwa ein Merge falsch herum)' }
+        }
         foreach ($c in $linie) {
             $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
             if ($eltern.Count -eq 1) { Fund "Commit $($c.Substring(0, 10))" 0 'auf main nur Merge-Commits (kein Fast-Forward)' }
@@ -1163,7 +1322,7 @@ if ($Hook) {
     if ($hookZeilen.Count -eq 0) { throw 'Der Hook bekam keine Ref-Zeilen.' }
     foreach ($z in $hookZeilen) { if (@($z -split '\s+').Count -ne 4) { throw "Unerwartete Ref-Zeile vom Hook." } }
 }
-if (-not ($Hook -or $Commits -or $Baum -or $Pruefen -or $Bundle)) { throw 'Nichts zu prüfen: -Hook, -Baum, -Commits, -Pruefen oder -Bundle angeben.' }
+if (-not ($Hook -or $Commits -or $Baum -or $Pruefen -or $Bundle -or $Beitrag)) { throw 'Nichts zu prüfen: -Hook, -Baum, -Commits, -Pruefen, -Bundle oder -Beitrag angeben.' }
 
 # Art des Repos: nur aus der Adresse des Remotes und repos.toml, nie aus dem
 # geprüften Baum. Ohne Adresse, mit unbekannter Adresse oder ohne repos.toml:
@@ -1293,6 +1452,18 @@ if ($Commits) {
     [void](CommitsPruefen $Commits $AufMain.IsPresent)
     $v = VerlaufPruefen $Commits
     if ($v -gt 0) { Write-Host "Geprüft: $v weitere Blobs aus den Commits $Commits." }
+}
+if ($Beitrag) {
+    # Ein Beitrag mit der Angabe der Betreuer gälte sonst als eigener (ohne Regel für Beiträge und ohne M1).
+    $kennung = (Git @('rev-parse', '--verify', "$Beitrag^{commit}")).Trim()
+    $zeilen = @((Git @('log', '--format=%H%x00%an%x00%ae%x00%cn%x00%ce', "refs/heads/main..$kennung")) -split "`n" | Where-Object { $_ })
+    foreach ($z in $zeilen) {
+        $f = $z -split "`0"
+        foreach ($r in @(@('Autor', 1), @('Committer', 3))) {
+            if ($f[$r[1]] -ieq $RANKE_NAME -or $f[$r[1] + 1] -ieq $RANKE_MAIL) { Fund "Commit $($f[0].Substring(0, 10))" 0 "$($r[0]) des Beitrags trägt die Angabe der Betreuer; so wird kein Beitrag übernommen" }
+        }
+    }
+    Write-Host "Geprüft: $($zeilen.Count) Commit(s) des Beitrags auf die Angabe der Betreuer."
 }
 
 Write-Host "Geprüft als $artText."

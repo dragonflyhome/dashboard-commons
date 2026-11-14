@@ -1,6 +1,6 @@
 #!/bin/sh
 # Pre-Push-Hook des Code-Repos (eingehängt mit: git config core.hooksPath scripts/hooks).
-# Prüft jeden Push mit scripts/Vor-Push.ps1: nur refs/heads/main und leichte Tags v0.MINOR.PATCH auf main, nur Ranke,
+# Prüft jeden Push mit scripts/Vor-Push.ps1: nur refs/heads/main und leichte Tags v0.MINOR.PATCH auf main, auf der Linie von main nur Ranke (Beiträge aus Forks daneben nach CONTRIBUTING.md),
 # nur Merge-Commits auf main, der ganze Baum ohne Privates. Die Namenslisten
 # liegen nur im Inhalts-Repo (dashboard-inhalt/pruefer/namen.toml); fehlen
 # sie, geht nichts hinaus. Den Hook kann man mit --no-verify umgehen; darum

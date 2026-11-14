@@ -116,6 +116,7 @@ docs/               Pläne und Beschlüsse
   anleitung/        die Abschnitte für /anleitung (seit 6b; seit 6d gibt es im Code-Repo keine .md-Datei mehr)
   (entscheidungen/  liegt seit dem Umzug des Inhalts in dashboard-inhalt/docs)
 LIESMICH.txt        Klartext (seit 6d): was das Repo ist und wie man das Dashboard startet, wenn es nicht läuft
+.github/ISSUE_TEMPLATE/merge-angebot.yml  das Issue-Formular für Merge-Angebote (sonst nichts unter .github)
 CHANGELOG.txt       Änderungen nach Keep a Changelog (Klartext, Abschnitt Unreleased)
 LICENSE             Lizenz des Codes: AGPL-3.0-or-later (GNU Affero GPL, Fassung 3 oder später)
 LICENSES/CC0-1.0.txt  Lizenz der Dokumentation in docs/anleitung und docs/zielbild: CC0-1.0 (gemeinfrei)'''

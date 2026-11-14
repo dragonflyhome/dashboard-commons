@@ -82,6 +82,10 @@ if (-not $Dienst) { $Dienst = Join-Path $PSScriptRoot 'Dienst.ps1' }
 # Kinder (cargo, Hooks, Fassung-Festschreiben.ps1) erben denselben Bauordner.
 if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\freigabe' }
 $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+# git über den vollen Pfad aus PATH, wie im Prüfer. cargo und npm startet der Aufrufoperator
+# von PowerShell (sucht nur PATH); sie führen im eigenen Repo ohnehin dessen Code aus (build.rs,
+# npm-Skripte); was dort liegt, ist vor dem Merge gelesen und geprüft (Anleitung Abschnitt 15).
+$git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $TAG_FORM = '^v0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$'
 $lokal = Join-Path $Inhalt 'dashboard-lokal'
 $NICHTS = 'Es ging nichts hinaus.'
@@ -91,7 +95,7 @@ function Ende([int]$code, [string]$satz) { Write-Host $satz; exit $code }
 function GitLauf([string]$wo, [string[]]$a, [switch]$Still) {
     $alt = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $aus = & git -C $wo @a 2>&1 } finally { $ErrorActionPreference = $alt }
+    try { $aus = & $git -C $wo @a 2>&1 } finally { $ErrorActionPreference = $alt }
     $code = $LASTEXITCODE
     $text = ((@($aus) | ForEach-Object { "$_" }) -join "`n").Trim()
     if ($code -ne 0 -and -not $Still) { throw "git $($a -join ' '): $text" }

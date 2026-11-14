@@ -1,0 +1,38 @@
+name: Merge-Angebot
+description: Einen Zweig oder Commit aus einem Fork zur Übernahme anbieten (statt eines Pull Requests).
+title: "Merge-Angebot: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Pull Requests sind in diesem Repo ausgeschaltet. Ein Beitrag kommt als Merge-Angebot: Die Betreuer prüfen hier im Issue und übernehmen ihn nach der Annahme mit einem Merge-Commit aus dem Fork. Die Regeln stehen in CONTRIBUTING.md. Alles in diesem Issue ist öffentlich.
+  - type: input
+    id: fork
+    attributes:
+      label: Fork-URL
+      description: Die Adresse des Forks auf GitHub.
+      placeholder: https://github.com/<login>/dashboard-commons
+    validations:
+      required: true
+  - type: input
+    id: ref
+    attributes:
+      label: Ref
+      description: Der Zweig oder, am genauesten, die volle Commit-Kennung, die übernommen werden soll.
+      placeholder: zweig-name oder 40-stellige Commit-Kennung
+    validations:
+      required: true
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Beschreibung
+      description: Was ändert sich, und warum? Wie wurde es geprüft?
+    validations:
+      required: true
+  - type: checkboxes
+    id: regeln
+    attributes:
+      label: Regeln
+      options:
+        - label: Die Commits halten die Regeln aus CONTRIBUTING.md ein.
+          required: true
