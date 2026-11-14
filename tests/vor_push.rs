@@ -316,7 +316,8 @@ fn sauberes_repo_geht_durch() {
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
 /// Ebenso die schon committeten Wurzeldateien rustfmt.toml, .git-blame-ignore-revs und
 /// CONTRIBUTING.md (die einzige erlaubte *.md, mit ihrem echten Text) und der öffentliche
-/// Schlüssel KONTAKT-PGP.asc (nur in der Wurzel; ein privater Block ist überall ein Fund).
+/// Schlüssel KONTAKT-PGP.asc (nur in der Wurzel; ein privater Block ist überall ein Fund),
+/// dazu das Issue-Formular für Merge-Angebote mit seinem echten Text.
 #[test]
 fn lizenzdateien_gehen_durch() {
     if !bereit() {
@@ -325,14 +326,30 @@ fn lizenzdateien_gehen_durch() {
     let wurzel = Path::new(env!("CARGO_MANIFEST_DIR"));
     let o = Ort::neu();
     o.ueber_merge(|o| {
-        for pfad in
-            ["LICENSE", "LICENSES/CC0-1.0.txt", "LICENSES/GPL-3.0-or-later.txt", "rustfmt.toml", ".git-blame-ignore-revs", "CONTRIBUTING.md", "KONTAKT-PGP.asc"]
-        {
+        for pfad in [
+            "LICENSE",
+            "LICENSES/CC0-1.0.txt",
+            "LICENSES/GPL-3.0-or-later.txt",
+            "rustfmt.toml",
+            ".git-blame-ignore-revs",
+            "CONTRIBUTING.md",
+            "KONTAKT-PGP.asc",
+            ".github/ISSUE_TEMPLATE/merge-angebot.yml",
+        ] {
             o.datei(pfad, &std::fs::read(wurzel.join(pfad)).unwrap());
         }
     });
     let (code, text) = o.pruefen();
     assert_eq!(code, 0, "{text}");
+    // Das Formular verlangt das Kontrollkästchen zu den Regeln (required: true je Option).
+    let formular = std::fs::read_to_string(wurzel.join(".github/ISSUE_TEMPLATE/merge-angebot.yml")).unwrap();
+    // Je Option die nächste Zeile, so zählt kein required eines anderen Feldes mit.
+    let zeilen: Vec<&str> = formular.lines().map(str::trim).collect();
+    let optionen: Vec<usize> = (0..zeilen.len()).filter(|&i| zeilen[i].starts_with("- label:")).collect();
+    assert!(!optionen.is_empty(), "Formular ohne Kontrollkästchen");
+    for i in optionen {
+        assert_eq!(zeilen.get(i + 1), Some(&"required: true"), "Option ohne required: true: {}", zeilen[i]);
+    }
     for pfad in ["LICENSES/MIT.txt", "LICENSES/CC0-1.0.txt.bak", "LICENSES/GPL-3.0-only.txt", "docs/LICENSE", "rustfmt.toml.alt"] {
         abgewiesen(pfad, "Positivliste", |o| {
             o.datei(pfad, b"x\n");
@@ -413,6 +430,14 @@ fn benutzerpfade_in_allen_schreibformen() {
         "C:%2FU§sers%2Frealname",
         r"c:\u§sers\REALNAME",
         r"C:\U§sers\REALNA§~1\dev",
+        // macOS und Linux, auch als URL und kodiert.
+        "/U§sers/realname/dev",
+        "/h§ome/realname/.ssh",
+        "file:///U§sers/realname/dev",
+        "file:///h§ome/realname",
+        "%2FU§sers%2Frealname",
+        "%2Fh§ome%2Frealname",
+        "\"/U§sers/REALNAME\"",
     ]
     .iter()
     .enumerate()
@@ -422,6 +447,13 @@ fn benutzerpfade_in_allen_schreibformen() {
             o.commit("Pfad", &[]);
         });
     }
+    // Platzhalter gehen durch wie bei Windows; Systemorte ohne Heimatordner auch.
+    let o = Ort::neu();
+    o.ueber_merge(|o| {
+        o.datei("src/posix.rs", "// /U§sers/<name>/dev, /h§ome/jemand, /h§ome/$USER, file:///U§sers/name, /usr/bin/git, /var/lib/x\n".as_bytes())
+    });
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 0, "Platzhalter in POSIX-Form: {text}");
     // UTF-16 (wie PowerShell es leicht schreibt) ist kein UTF-8, keine zweite Lesart.
     abgewiesen("UTF-16", "scripts/notiz.txt, Zeile 1: kein UTF-8", |o| {
         let mut b = vec![0xFF, 0xFE];
@@ -2942,4 +2974,833 @@ fn overlay_hooks_und_hochladen() {
     let (c, text) = hochladen(&["-Pruefen"]);
     assert_eq!(c, 1, "{text}");
     assert!(text.contains("Das Projekt-Repo hat kein Remote origin"), "{text}");
+}
+
+/// Eine erfundene GitHub-noreply-Adresse; das „§“ vor dem @ fällt weg (`beitrag`),
+/// so steht hier keine Adresse wörtlich, die der Prüfer im Text meldete.
+const NOREPLY: &str = "12345+beitrag§@users.noreply.github.com";
+
+/// Autor und Committer Beitrag mit dieser Adresse.
+fn als_beitrag(mail: &str) -> [(&'static str, &str); 4] {
+    [("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", mail), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", mail)]
+}
+
+/// Ein Beitrag aus einem Fork: `aendern` auf dem Zweig, ein Commit mit fremdem
+/// Autor und Committer (`name`, `mail`; ein „§“ fällt weg), dann ein Merge-Commit
+/// (Ranke) nach main. Der Beitrag liegt so außerhalb der First-Parent-Linie.
+fn beitrag(o: &Ort, nachricht: &str, name: &str, mail: &str, aendern: impl FnOnce(&Ort)) {
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    aendern(o);
+    let mail = mail.replace('§', "");
+    o.commit(
+        &nachricht.replace('§', ""),
+        &[("GIT_AUTHOR_NAME", name), ("GIT_AUTHOR_EMAIL", &mail), ("GIT_COMMITTER_NAME", name), ("GIT_COMMITTER_EMAIL", &mail)],
+    );
+    zusammenfuehren(o);
+}
+
+/// Wie `abgewiesen`, nur dass der Fall durchgehen muss.
+fn frei(name: &str, vorbereiten: impl FnOnce(&Ort)) {
+    let o = Ort::neu();
+    vorbereiten(&o);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 0, "{name}: muss durchgehen:\n{text}");
+}
+
+/// Beiträge aus Forks: Außerhalb der First-Parent-Linie von main darf Autor und
+/// Committer eine GitHub-noreply-Adresse oder eine Adresse auf .invalid oder
+/// .example haben (verankert, nur ASCII, Groß/Klein egal); auf der Linie bleibt es
+/// genau Ranke. Gegenproben: dieselben Adressen auf der Linie, echte und
+/// verlängerte Adressen, das breite ＠.
+#[test]
+fn beitraege_aus_forks_adressen() {
+    if !bereit() {
+        return;
+    }
+    for mail in [NOREPLY, "beitrag§@users.noreply.github.com", "12345+BEI-trag§@USERS.NOREPLY.GITHUB.COM", "beitrag@beispiel.invalid", "beitrag@team.example"]
+    {
+        frei(mail, |o| beitrag(o, "feat: Beitrag", "Beitrag", mail, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    for (fall, mail) in [
+        ("echte Adresse", "beitrag§@posteo.de"),
+        ("verlängert", "x§@users.noreply.github.com.evil.de"),
+        ("breites ＠", "x\u{FF20}users.noreply.github.com"),
+        // Das Kelvin-Zeichen gilt ohne Groß/Klein-Unterschied als k: nur ASCII.
+        ("Kelvin-Zeichen", "\u{212A}x§@users.noreply.github.com"),
+        ("Strich am Anfang des Logins", "-x§@users.noreply.github.com"),
+        ("doppelter Strich", "a--b§@users.noreply.github.com"),
+        ("Adresse von GitHub selbst", "noreply§@github.com"),
+        ("invalid nur als Wortteil", "x§@beispiel.invalidx"),
+    ] {
+        abgewiesen(fall, "und hat keine Beitragsadresse", |o| beitrag(o, "feat: Beitrag", "Beitrag", mail, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    // Nur der Committer fremd und ohne Beitragsadresse: auch ein Fund.
+    abgewiesen("Committer", "Committer ist nicht Ranke", |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[("GIT_COMMITTER_EMAIL", &"beitrag§@posteo.de".replace('§', ""))]);
+        zusammenfuehren(o);
+    });
+    // Auf der Linie bleibt es genau Ranke: ein Merge-Commit mit Beitragsadresse.
+    let mail = NOREPLY.replace('§', "");
+    abgewiesen("fremder Autor auf der Linie", "Autor ist nicht Ranke", |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[]);
+        o.git(&["checkout", "-q", "main"]);
+        o.git(&["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}"), "merge", "-q", "--no-ff", "zweig", "-m", "chore(merge): zweig"]);
+    });
+    abgewiesen("fremder Commit direkt auf main", "Autor ist nicht Ranke", |o| {
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &[("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &mail)]);
+    });
+}
+
+/// Was für jeden Commit gilt, gilt auch für Beiträge: Name durch die Textprüfung,
+/// Nachricht ohne KI-Namen und Listenwerte, keine Signatur, jeder Zwischenstand
+/// geprüft, eine Wurzel. Gegenprobe: derselbe handgebaute Commit ohne Signatur geht durch.
+#[test]
+fn beitraege_aus_forks_wie_jeder_commit() {
+    if !bereit() {
+        return;
+    }
+    for name in ["Vorname Nachname", "Geheimprojekt"] {
+        abgewiesen(name, "(Autor), Zeile 1: sensibler Name", |o| beitrag(o, "feat: b", name, NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    }
+    abgewiesen("KI-Name im Namen", "im Namen", |o| beitrag(o, "feat: b", &"Ge§mini Helfer".replace('§', ""), NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    abgewiesen("KI-Name in der Nachricht", "Anhang (Trailer) oder KI-Name", |o| {
+        beitrag(o, "feat: mit Cl§aude", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"))
+    });
+    abgewiesen("Listenwert in der Nachricht", "sensibler Name", |o| beitrag(o, "feat: Gruenkohlfest", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n")));
+    // Auch der Domänenteil einer erfundenen Adresse läuft durch die Listen (Gegenprobe: beitrag@beispiel.invalid geht durch).
+    abgewiesen("Listenwert in der Domäne", "(Autor), Zeile 2: sensibler Name", |o| {
+        beitrag(o, "feat: b", "Beitrag", "x@geheim§projekt.invalid", |o| o.datei("src/b.rs", b"// b\n"))
+    });
+    abgewiesen("Signed-off-by", "Anhang (Trailer)", |o| {
+        beitrag(o, "feat: b\n\nSigned-off-by: Beitrag <beitrag@beispiel.invalid>", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"))
+    });
+    // Signatur: ein handgebauter Commit mit gpgsig auf dem Zweig.
+    let mail = NOREPLY.replace('§', "");
+    let signiert = |sig: &'static str| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            let baum = o.git(&["rev-parse", "HEAD^{tree}"]);
+            let eltern = o.git(&["rev-parse", "HEAD"]);
+            let wer = format!("Beitrag <{mail}> 1700000000 +0100");
+            let sha = roh_objekt(o, "commit", format!("tree {baum}\nparent {eltern}\nauthor {wer}\ncommitter {wer}\n{sig}\nfeat: signiert\n").as_bytes());
+            o.git(&["branch", "-f", "zweig", &sha]);
+            zusammenfuehren(o);
+        }
+    };
+    abgewiesen("Signatur", "Kopfzeile außer tree", signiert("gpgsig -----BEGIN SSH SIGNATURE-----\n x\n -----END SSH SIGNATURE-----\n"));
+    // Eine Fortsetzungszeile (Leerzeichen am Anfang) trüge ungeprüften Text hinaus.
+    abgewiesen("Fortsetzungszeile", "Kopfzeile außer tree", signiert(" fortgesetzter Text\n"));
+    frei("ohne Signatur", signiert(""));
+    // Ein verbotener Blob nur in einem Zwischencommit des Beitrags, an der Spitze wieder weg.
+    abgewiesen("Zwischenstand", "src/kurz.rs", |o| {
+        beitrag(o, "feat: wieder weg", "Beitrag", NOREPLY, |o| {
+            o.datei("src/kurz.rs", b"// geheim\xc2\xa7projekt\n");
+            o.commit("feat: kurz da", &als_beitrag(&NOREPLY.replace('§', "")));
+            std::fs::remove_file(o.repo().join("src/kurz.rs")).unwrap();
+        });
+    });
+    // Ein Beitrag mit eigener Wurzel.
+    abgewiesen("eigene Wurzel", "Commit ohne Eltern", |o| {
+        o.git(&["checkout", "-q", "--orphan", "zweig"]);
+        o.datei("src/x.rs", b"// x\n");
+        o.commit("feat: fremde Wurzel", &als_beitrag(&NOREPLY.replace('§', "")));
+        o.git(&["checkout", "-q", "main"]);
+        o.git(&[
+            "-c",
+            "user.name=Ranke",
+            "-c",
+            "user.email=ranke2@proton.me",
+            "merge",
+            "-q",
+            "--no-ff",
+            "--allow-unrelated-histories",
+            "zweig",
+            "-m",
+            "chore(merge): zweig",
+        ]);
+    });
+}
+
+/// M1: Ein fremder Commit ändert keinen Prüfpfad (scripts/**, .cargo/**, .github/**,
+/// tests/vor_push.rs, KONTAKT-PGP.asc, jede .gitattributes und .npmrc, 8.3-Kurznamen);
+/// CONTRIBUTING.md darf er ändern.
+/// Gezählt wird, was er gegen jeden Elternteil ändert: Ein Merge von main in den
+/// Fork übernimmt eine Änderung des Betreuers an scripts/ ohne Fund, ein Merge, der
+/// dort selbst etwas ändert, ist ein Fund. Gegenprobe: dieselbe Änderung von Ranke.
+#[test]
+fn beitraege_aus_forks_ohne_pruefer() {
+    if !bereit() {
+        return;
+    }
+    let satz = "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits";
+    for pfad in [
+        "scripts/Vor-Push.ps1",
+        "scripts/hooks/pre-push",
+        "scripts/Hochladen.ps1",
+        "tests/vor_push.rs",
+        ".cargo/config.toml",
+        ".github/ISSUE_TEMPLATE/merge-angebot.yml",
+        "KONTAKT-PGP.asc",
+        ".gitattributes",
+        // Groß und Kleinschreibung: Unter Windows landen diese Pfade in denselben Ordnern und Dateien.
+        "SCRIPTS/x.ps1",
+        "Scripts/hooks/pre-push",
+        "TESTS/VOR_PUSH.rs",
+        ".GITHUB/ISSUE_TEMPLATE/x.yml",
+        ".Cargo/config.toml",
+        "kontakt-pgp.asc",
+        ".GitAttributes",
+        // Verschachtelt: Eine .gitattributes mit -diff verbirgt im Diff eine Datei als binär,
+        // eine .npmrc schaltet die Paket-Skripte beim npm ci ein.
+        "web/.gitattributes",
+        "tests/.gitattributes",
+        "src/.GitAttributes",
+        "web/.npmrc",
+        "WEB/.NPMRC",
+    ] {
+        abgewiesen(pfad, satz, |o| beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(pfad, b"# anders\n")));
+        frei(pfad, |o| o.ueber_merge(|o| o.datei(pfad, b"# anders\n")));
+    }
+    // 8.3-Kurznamen landen unter Windows in der Datei mit langem Namen (CARGO~1/config.toml
+    // in .cargo/config.toml). In Unterordnern weist sie schon das Muster für Kurznamen ab,
+    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst
+    // (§ hält den Prüfer über dieser Datei frei).
+    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC"] {
+        let kurz = kurz.replace('§', "");
+        abgewiesen(&kurz, &format!("ein fremder Commit ändert den Prüfpfad {kurz}"), |o| {
+            beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(&kurz, b"# anders\n"))
+        });
+    }
+    // Gegenprobe: ähnliche Namen ohne Kurznamen und ohne Punkt bleiben frei.
+    frei("ähnliche Namen", |o| {
+        beitrag(o, "feat: b", "Beitrag", NOREPLY, |o| {
+            o.datei("src/gitattributes.rs", b"// a\n");
+            o.datei("web/npmrc.txt", b"a\n");
+            o.datei("src/a~b.rs", b"// a\n");
+        })
+    });
+    // Der Leitfaden ist ein Textbeitrag: Ein fremder Commit darf ihn ändern.
+    frei("CONTRIBUTING.md im Beitrag", |o| beitrag(o, "docs: Leitfaden", "Beitrag", NOREPLY, |o| o.datei("CONTRIBUTING.md", b"# Mitwirken\n")));
+    let mail = NOREPLY.replace('§', "");
+    // Nur der Committer fremd (Autor Ranke): M1 gilt genauso, schon am Commit selbst
+    // (nicht erst am Merge der Linie).
+    abgewiesen("nur Committer fremd", "ein fremder Commit ändert den Prüfpfad", |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("scripts/Vor-Push.ps1", b"# anders\n");
+        o.commit("fix: Prüfer", &[("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", &mail)]);
+        zusammenfuehren(o);
+    });
+    // Der Fork holt main (mit einer Änderung des Betreuers an scripts/) in seinen Zweig.
+    let fork_merge = |boese: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            o.git(&["checkout", "-q", "-b", "zweig"]);
+            o.datei("src/a.rs", b"// a\n");
+            o.commit("feat: a", &als_beitrag(&mail));
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["checkout", "-q", "-b", "pflege"]);
+            o.datei("scripts/p.ps1", b"# p\n");
+            o.commit("fix: p", &[]);
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "pflege", "-m", "chore(merge): pflege"]);
+            o.git(&["checkout", "-q", "zweig"]);
+            let wer = ["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}")];
+            o.git(&[&wer[..], &["merge", "-q", "--no-ff", "--no-commit", "main"]].concat());
+            if boese {
+                o.datei("scripts/p.ps1", b"# p, im Merge geaendert\n");
+                o.git(&["add", "-A"]);
+            }
+            o.git(&[&wer[..], &["commit", "-q", "-m", "chore(merge): main"]].concat());
+            zusammenfuehren(o);
+        }
+    };
+    frei("Fork holt main", fork_merge(false));
+    abgewiesen("Merge im Fork ändert scripts/", satz, fork_merge(true));
+    // Eine eigene Änderung an scripts/ geht nur in einem eigenen Merge ohne fremde Commits:
+    // im selben Seitenzweig wie ein Beitrag ist sie ein Fund am Merge der Linie.
+    let gemischt = |getrennt: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            if getrennt {
+                o.ueber_merge(|o| o.datei("scripts/p.ps1", b"# p\n"));
+            }
+            o.git(&["checkout", "-q", "-B", "zweig"]);
+            if !getrennt {
+                o.datei("scripts/p.ps1", b"# p\n");
+                o.commit("fix: p", &[]);
+            }
+            o.datei("src/b.rs", b"// b\n");
+            o.commit("feat: b", &als_beitrag(&mail));
+            zusammenfuehren(o);
+        }
+    };
+    frei("eigener Merge für scripts/", gemischt(true));
+    abgewiesen("scripts/ im Seitenzweig eines Beitrags", "der Merge übernimmt fremde Commits und ändert den Prüfpfad scripts/p.ps1", gemischt(false));
+}
+
+/// Hook, Hochladen (-Commits fern..main), -Pruefen und -Bundle bestimmen die Linie
+/// gleich: ein Beitrag im Seitenzweig geht überall durch, derselbe Beitrag als
+/// Fast-Forward auf main (auf der Linie) nirgends.
+#[test]
+fn beitraege_aus_forks_alle_wege() {
+    if !bereit() {
+        return;
+    }
+    for auf_linie in [false, true] {
+        let o = Ort::neu();
+        let wurzel = o.git(&["rev-parse", "HEAD"]);
+        let mail = NOREPLY.replace('§', "");
+        if auf_linie {
+            o.datei("src/b.rs", b"// b\n");
+            o.commit("feat: b", &als_beitrag(&mail));
+        } else {
+            beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        }
+        let kopf = o.git(&["rev-parse", "HEAD"]);
+        let p = o.wurzel.join("b.bundle").to_string_lossy().to_string();
+        o.git(&["bundle", "create", "-q", &p, "refs/heads/main"]);
+        for (weg, (code, text)) in [
+            ("Hook", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {wurzel}\n")))),
+            ("Hook erster Push", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {NULL}\n")))),
+            ("Hochladen", o.lauf(&["-Baum", "main", "-Commits", &format!("{wurzel}..main"), "-AufMain"], None)),
+            ("-Pruefen", o.lauf(&["-Pruefen"], None)),
+            ("-Bundle", o.lauf(&["-Bundle", &p], None)),
+        ] {
+            if auf_linie {
+                assert!(code == 1 && text.contains("Autor ist nicht Ranke"), "{weg} auf der Linie: {text}");
+            } else {
+                assert_eq!(code, 0, "{weg} im Seitenzweig: {text}");
+            }
+        }
+    }
+}
+
+/// Positivliste: genau die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml; der Rest
+/// von .github (Workflows) bleibt ein Fund, ebenso ein Leitfaden als .txt.
+#[test]
+fn mitwirken_dateien_in_der_positivliste() {
+    if !bereit() {
+        return;
+    }
+    frei("Formular", |o| o.ueber_merge(|o| o.datei(".github/ISSUE_TEMPLATE/x.yml", b"name: x\n")));
+    // Über einen Merge: So ist die Positivliste der einzige Grund für den Fund.
+    for pfad in [
+        ".github/workflows/x.yml",
+        ".github/ISSUE_TEMPLATE/x.yaml",
+        ".github/ISSUE_TEMPLATE/a/x.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/CONFIG.yml",
+        ".github/ISSUE_TEMPLATE/Config.YML",
+        ".github/x.yml",
+        "CONTRIBUTING.txt",
+    ] {
+        let text = abgewiesen(pfad, "Positivliste", |o| o.ueber_merge(|o| o.datei(pfad, b"x\n")));
+        assert!(fundzeilen(&text).iter().all(|z| z.contains("Positivliste")), "{pfad}: nur Funde an der Positivliste:\n{text}");
+    }
+}
+
+/// M1 auf der Linie: Ein fremder Merge im Fork nimmt einen alten, schon
+/// veröffentlichten main-Stand als zweiten Elternteil und übernimmt daraus einen
+/// alten Prüfer (und lässt eine spätere Datei unter scripts/ weg). Gegen jeden
+/// Elternteil einzeln ändert er so nichts unter scripts/; der Merge des Betreuers
+/// ändert es gegenüber main und ist ein Fund. Gegenprobe: derselbe Aufbau ohne
+/// den alten Stand geht durch.
+#[test]
+fn beitraege_aus_forks_alter_stand() {
+    if !bereit() {
+        return;
+    }
+    let satz = "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits";
+    let mail = NOREPLY.replace('§', "");
+    // `erster_fork`: erster Elternteil ist ein eigener Fork-Commit statt main.
+    let aufbau = |alt_zurueck: bool, erster_fork: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            o.ueber_merge(|o| o.datei("scripts/p.ps1", b"# alt\n"));
+            let alt = o.git(&["rev-parse", "HEAD"]);
+            o.ueber_merge(|o| {
+                o.datei("scripts/p.ps1", b"# neu und strenger\n");
+                o.datei("scripts/h.ps1", b"# h\n");
+            });
+            o.git(&["checkout", "-q", "-B", "fork"]);
+            if erster_fork {
+                o.datei("src/a.rs", b"// a\n");
+                o.commit("feat: a", &als_beitrag(&mail));
+            }
+            if alt_zurueck {
+                o.git(&["checkout", "-q", &alt, "--", "scripts/p.ps1"]);
+                o.git(&["rm", "-q", "scripts/h.ps1"]);
+            }
+            o.datei("src/b.rs", b"// b\n");
+            o.git(&["add", "-A"]);
+            let baum = o.git(&["write-tree"]);
+            let wer = ["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}")];
+            let sha = o.git(&[&wer[..], &["commit-tree", &baum, "-p", "HEAD", "-p", &alt, "-m", "chore(merge): main"]].concat());
+            o.git(&["reset", "-q", "--hard"]);
+            o.git(&["branch", "-f", "zweig", &sha]);
+            zusammenfuehren(o);
+        }
+    };
+    for erster_fork in [false, true] {
+        let text = abgewiesen("alter Prüfer über einen alten Elternteil", satz, aufbau(true, erster_fork));
+        assert!(text.contains("der Merge übernimmt fremde Commits"), "{erster_fork}: Fund am Merge des Betreuers:\n{text}");
+        frei("ohne alten Stand", aufbau(false, erster_fork));
+    }
+}
+
+/// Hook und Hochladen: main setzt die bisherige Linie fort. Ein Merge falsch herum
+/// (erster Elternteil ein fremder Commit, der schon draußen liegt) brächte ihn auf
+/// die Linie. Gegenprobe: derselbe Bereich mit einem Merge richtig herum.
+#[test]
+fn main_setzt_die_linie_fort() {
+    if !bereit() {
+        return;
+    }
+    for falsch_herum in [true, false] {
+        let o = Ort::neu();
+        beitrag(&o, "feat: b", "Beitrag", NOREPLY, |o| o.datei("src/b.rs", b"// b\n"));
+        let fern = o.git(&["rev-parse", "main"]);
+        if falsch_herum {
+            o.git(&["checkout", "-q", "zweig"]);
+            o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "main", "-m", "chore(merge): main"]);
+            let kopf = o.git(&["rev-parse", "HEAD"]);
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["reset", "-q", "--hard", &kopf]);
+        } else {
+            o.ueber_merge(|o| o.datei("src/c.rs", b"// c\n"));
+        }
+        let kopf = o.git(&["rev-parse", "main"]);
+        for (weg, (code, text)) in [
+            ("Hook", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {fern}\n")))),
+            ("Hochladen", o.lauf(&["-Baum", "main", "-Commits", &format!("{fern}..main"), "-AufMain"], None)),
+        ] {
+            if falsch_herum {
+                assert!(code == 1 && text.contains("setzt die bisherige Linie nicht fort"), "{weg} falsch herum: {text}");
+            } else {
+                assert_eq!(code, 0, "{weg} richtig herum: {text}");
+            }
+        }
+    }
+}
+
+/// Overlay (Projekt-Repo): Die Regel für fremde Autoren gilt dort genauso wie im
+/// Code-Repo. Ein noreply-Commit im Seitenzweig geht durch (Vor-Push.ps1 direkt mit den
+/// Schaltern, die Hochladen.ps1 gibt, und als Hook, beide mit der Adresse des
+/// Projekt-Repos), auch wenn er dashboard-version.toml oder den Leitfaden
+/// ändert; derselbe Autor auf der Linie, eine echte Adresse und ein Prüfpfad sind ein Fund.
+#[test]
+fn beitraege_aus_forks_im_overlay() {
+    if !bereit() {
+        return;
+    }
+    let laeufe = |o: &Ort| [("Vor-Push wie Hochladen", o.pruefen_mit(Some(PROJEKT_ADRESSE))), ("Hook", o.hook_mit(PROJEKT_ADRESSE))];
+    for pfad in ["projects/alpha/daten/a.toml", "dashboard-version.toml", "CONTRIBUTING.md"] {
+        let o = Ort::projekt();
+        beitrag(&o, "feat(alpha): wert", "Beitrag", NOREPLY, |o| o.datei(pfad, b"tag = \"v0.2.0\"\n"));
+        for (weg, (code, text)) in laeufe(&o) {
+            assert_eq!(code, 0, "{pfad} im Seitenzweig ({weg}): {text}");
+        }
+    }
+    let mail = NOREPLY.replace('§', "");
+    for fall in ["fremder Autor auf der Linie", "echte Adresse", "Prüfpfad"] {
+        let o = Ort::projekt();
+        let satz = match fall {
+            "fremder Autor auf der Linie" => {
+                o.datei("projects/alpha/daten/a.toml", b"wert = 1\n");
+                o.commit("feat(alpha): wert", &als_beitrag(&mail));
+                "Autor ist nicht Ranke"
+            }
+            "echte Adresse" => {
+                beitrag(&o, "feat(alpha): wert", "Beitrag", "beitrag§@posteo.de", |o| o.datei("projects/alpha/daten/a.toml", b"wert = 1\n"));
+                "und hat keine Beitragsadresse"
+            }
+            _ => {
+                beitrag(&o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei("scripts/x.ps1", b"# x\n"));
+                "Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits"
+            }
+        };
+        for (weg, (code, text)) in laeufe(&o) {
+            assert!(code == 1 && text.contains(satz), "{fall} ({weg}): erwartet „{satz}“:\n{text}");
+        }
+    }
+}
+
+/// Ein echter Fork nach dem Leitfaden: ein zweiter Klon als Fork mit einem Commit
+/// eines fremden noreply-Autors, die Ref per git fetch ins Haupt-Repo geholt und mit
+/// git merge --no-ff als Ranke übernommen. Hochladen (Bereich alt..main) und Hook
+/// lassen das durch. Gegenproben: derselbe Ablauf mit Signatur-Kopfzeile oder mit
+/// Trailer im Fork-Commit ist ein Fund.
+#[test]
+fn echter_fork_nach_leitfaden() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    for (fall, erwartet) in [("sauber", None), ("Signatur", Some("Kopfzeile außer tree")), ("Trailer", Some("Anhang (Trailer)"))] {
+        let o = Ort::neu();
+        let alt = o.git(&["rev-parse", "main"]);
+        let fork = o.wurzel.join("fork");
+        let aus = git().arg("clone").arg("-q").arg(o.repo()).arg(&fork).output().unwrap();
+        assert!(aus.status.success(), "{}", String::from_utf8_lossy(&aus.stderr));
+        let fg = |args: &[&str]| -> String {
+            let aus = git().arg("-C").arg(&fork).args(args).output().unwrap();
+            assert!(aus.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&aus.stderr));
+            String::from_utf8_lossy(&aus.stdout).trim().to_string()
+        };
+        // Wie im Leitfaden: Adresse einmal im Klon setzen, unsigniert committen.
+        fg(&["config", "user.name", "Beitrag"]);
+        fg(&["config", "user.email", &mail]);
+        fg(&["config", "commit.gpgsign", "false"]);
+        fg(&["switch", "-q", "-c", "beitrag"]);
+        std::fs::write(fork.join("src").join("b.rs"), "// b\n").unwrap();
+        fg(&["add", "-A"]);
+        let nachricht = if fall == "Trailer" { "feat: b\n\nReviewed-by: Beitrag <beitrag@beispiel.invalid>" } else { "feat: b" };
+        fg(&["commit", "-q", "-m", nachricht]);
+        if fall == "Signatur" {
+            let baum = fg(&["rev-parse", "HEAD^{tree}"]);
+            let eltern = fg(&["rev-parse", "HEAD^"]);
+            let wer = format!("Beitrag <{mail}> 1700000000 +0100");
+            let p = o.wurzel.join("signiert.txt");
+            let roh = format!(
+                "tree {baum}\nparent {eltern}\nauthor {wer}\ncommitter {wer}\ngpgsig -----BEGIN SSH SIGNATURE-----\n x\n -----END SSH SIGNATURE-----\n\nfeat: b\n"
+            );
+            std::fs::write(&p, roh).unwrap();
+            let sha = fg(&["hash-object", "-t", "commit", "--literally", "-w", &p.to_string_lossy()]);
+            fg(&["update-ref", "refs/heads/beitrag", &sha]);
+        }
+        let angebot = fg(&["rev-parse", "beitrag"]);
+        // Die Betreuer holen die Ref, ohne etwas auszuführen, und übernehmen sie mit einem Merge-Commit.
+        o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
+        assert_eq!(o.git(&["rev-parse", "FETCH_HEAD"]), angebot);
+        // Gemergt wird genau die gelesene Kennung, nicht der Zweig (der im Fork weiterwandern kann).
+        o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", &angebot, "-m", "chore(merge): beitrag nach main"]);
+        let kopf = o.git(&["rev-parse", "main"]);
+        for (weg, (code, text)) in [
+            ("Hochladen", o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None)),
+            ("Hook", o.lauf(&["-Hook"], Some(&format!("refs/heads/main {kopf} refs/heads/main {alt}\n")))),
+        ] {
+            match erwartet {
+                None => assert_eq!(code, 0, "{fall} ({weg}): {text}"),
+                Some(satz) => assert!(code == 1 && text.contains(satz), "{fall} ({weg}): erwartet „{satz}“:\n{text}"),
+            }
+        }
+    }
+}
+
+/// Ein Hook oder Prüfer des Forks: schreibt beim Lauf `hook-lief.txt` in den
+/// aktuellen Ordner (bei Hooks die Wurzel des Arbeitsbaums).
+const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
+
+/// Der Probe-Merge nach Abschnitt 15, Teil 5: ohne Arbeitsbaum und ohne Hooks
+/// (git merge-tree --write-tree, git commit-tree als Ranke, git branch probe), geprüft
+/// mit dem Prüfer aus main (hier dem des Code-Repos) und -Beitrag. Ein Fork, der
+/// scripts/hooks/* und scripts/Vor-Push.ps1 ändert, führt dabei nichts aus: keine
+/// Marker-Datei, der Arbeitsbaum bleibt auf main mit dessen Prüfer, und der Prüfer
+/// meldet jeden dieser Prüfpfade. Ein sauberer Fork geht durch; erst dann entsteht
+/// der Arbeitsbaum zum Bauen, auf dem Probe-Commit, ohne Hook des Forks, und main kommt
+/// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenproben: Der
+/// alte Weg (git merge im Arbeitsbaum) ruft die Hooks des Forks und legt dessen Prüfer
+/// in den Arbeitsbaum; ein Checkout der Kennung vor dem grünen Lauf ruft post-checkout
+/// des Forks.
+#[test]
+fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+    for fall in ["sauber", "Fork ändert Hooks und Prüfer", "alter Weg"] {
+        let o = Ort::neu();
+        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer.
+        o.ueber_merge(|o| {
+            o.datei("scripts/hooks/post-merge", b"#!/bin/sh\nexit 0\n");
+            o.datei("scripts/Vor-Push.ps1", b"# Pruefer von main\n");
+        });
+        o.git(&["config", "core.hooksPath", "scripts/hooks"]);
+        let alt = o.git(&["rev-parse", "main"]);
+        let fork = o.wurzel.join("fork");
+        let aus = git().arg("clone").arg("-q").arg(o.repo()).arg(&fork).output().unwrap();
+        assert!(aus.status.success(), "{}", String::from_utf8_lossy(&aus.stderr));
+        let fg = |args: &[&str]| -> String {
+            let aus = git().arg("-C").arg(&fork).args(args).output().unwrap();
+            assert!(aus.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&aus.stderr));
+            String::from_utf8_lossy(&aus.stdout).trim().to_string()
+        };
+        fg(&["config", "user.name", "Beitrag"]);
+        fg(&["config", "user.email", &mail]);
+        fg(&["config", "commit.gpgsign", "false"]);
+        fg(&["switch", "-q", "-c", "beitrag"]);
+        std::fs::write(fork.join("src").join("b.rs"), "// b\n").unwrap();
+        if fall != "sauber" {
+            for hook in ["post-merge", "pre-merge-commit", "commit-msg", "post-checkout", "reference-transaction"] {
+                std::fs::write(fork.join("scripts").join("hooks").join(hook), FORK_HOOK).unwrap();
+            }
+            std::fs::write(fork.join("scripts").join("Vor-Push.ps1"), "# Pruefer des Forks\nexit 0\n").unwrap();
+        }
+        fg(&["add", "-A"]);
+        fg(&["commit", "-q", "-m", "feat: b"]);
+        o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
+        let kennung = o.git(&["rev-parse", "FETCH_HEAD"]);
+        let marker = o.repo().join("hook-lief.txt");
+        let pruefer_im_baum = || std::fs::read_to_string(o.repo().join("scripts").join("Vor-Push.ps1")).unwrap();
+        if fall == "alter Weg" {
+            o.git(&["switch", "-q", "-c", "probe", "main"]);
+            o.git(&[&ranke[..], &["merge", "-q", "--no-ff", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
+            assert!(marker.exists(), "der alte Weg ruft die Hooks des Forks");
+            assert!(pruefer_im_baum().contains("des Forks"), "der alte Weg legt den Prüfer des Forks in den Arbeitsbaum");
+            continue;
+        }
+        let baum = o.git(&["merge-tree", "--write-tree", "main", &kennung]).lines().next().unwrap().to_string();
+        let probe = o.git(&[&ranke[..], &["commit-tree", &baum, "-p", "main", "-p", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
+        o.git(&["branch", "probe", &probe]);
+        assert!(!marker.exists(), "{fall}: beim Bau der Probe läuft kein Hook");
+        assert_eq!(o.git(&["rev-parse", "HEAD"]), alt, "{fall}: der Arbeitsbaum bleibt auf main");
+        assert!(pruefer_im_baum().contains("von main"), "{fall}: im Arbeitsbaum liegt der Prüfer von main");
+        let (code, text) = o.lauf(&["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", &kennung], None);
+        assert!(!marker.exists(), "{fall}: auch der Prüflauf führt nichts aus dem Fork aus");
+        // Bauen und Testen in einem eigenen Arbeitsbaum: nach grünem Lauf auf dem Probe-Commit.
+        let bau = o.wurzel.join("probe-bau");
+        let bau_marker = bau.join("hook-lief.txt");
+        if fall == "sauber" {
+            assert_eq!(code, 0, "{text}");
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), "probe"]);
+            assert!(!bau_marker.exists(), "nach grünem Lauf führt der Arbeitsbaum der Probe keinen Hook des Forks aus");
+            o.git(&["worktree", "remove", "--force", &bau.to_string_lossy()]);
+            o.git(&["merge", "-q", "--ff-only", "probe"]);
+            assert_eq!(o.git(&["rev-parse", "main"]), probe, "main ist genau der geprüfte Merge-Commit");
+            let (code, text) = o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None);
+            assert_eq!(code, 0, "nach dem Merge: {text}");
+        } else {
+            for pfad in [
+                "scripts/hooks/post-merge",
+                "scripts/hooks/pre-merge-commit",
+                "scripts/hooks/commit-msg",
+                "scripts/hooks/post-checkout",
+                "scripts/hooks/reference-transaction",
+                "scripts/Vor-Push.ps1",
+            ] {
+                assert!(code == 1 && text.contains(&format!("ein fremder Commit ändert den Prüfpfad {pfad}")), "{pfad}: {text}");
+            }
+            // Gegenprobe: Ein Checkout des Forks vor dem grünen Lauf (hier worktree add der
+            // Kennung) ruft schon dessen Hooks auf (reference-transaction im neuen Arbeitsbaum).
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), &kennung]);
+            assert!(bau_marker.exists(), "ein Checkout des Forks ruft dessen Hooks auf");
+        }
+    }
+}
+
+/// git über den vollen Pfad: Eine fremde git.exe (eine Kopie von hostname.exe) in der
+/// Wurzel des Repos, die zugleich der aktuelle Ordner ist (wie beim Hook), läuft weder
+/// im Prüfer noch in Hochladen.ps1; beide prüfen wie sonst. Ohne die Umgebungsvariable
+/// NoDefaultCurrentDirectoryInExePath, die die Suche im aktuellen Ordner abschaltete.
+/// Gegenprobe: Ein Start über den Namen (ProcessStartInfo „git“) nimmt dort die fremde.
+/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann bricht der Prüfer ab (Exit 2).
+#[test]
+fn kein_git_aus_dem_arbeitsordner() {
+    if !bereit() {
+        return;
+    }
+    let quelle = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into())).join("System32").join("hostname.exe");
+    if !quelle.is_file() && dashboard::ueberspringen("hostname.exe fehlt") {
+        return;
+    }
+    let o = Ort::neu();
+    let inhalt = o.wurzel.join("inhalt");
+    std::fs::copy(&quelle, o.repo().join("git.exe")).unwrap();
+    let skripte = o.repo().join("scripts");
+    std::fs::create_dir_all(skripte.join("hooks")).unwrap();
+    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
+        std::fs::copy(skript().with_file_name(name), skripte.join(name)).unwrap();
+    }
+    for name in ["pre-push", "commit-msg"] {
+        std::fs::copy(skript().with_file_name("hooks").join(name), skripte.join("hooks").join(name)).unwrap();
+    }
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/git.exe\n").unwrap();
+    o.git(&["config", "core.hooksPath", "scripts/hooks"]);
+    let im_repo = |args: &[&str]| {
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env_remove("NoDefaultCurrentDirectoryInExePath")
+            .output()
+            .unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let start = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"];
+    let vor_push = skripte.join("Vor-Push.ps1").to_string_lossy().to_string();
+    let repo = o.repo().to_string_lossy().to_string();
+    let (c, text) = im_repo(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 0 && text.contains("Nichts gefunden"), "Prüfer: {text}");
+    let hochladen = skripte.join("Hochladen.ps1").to_string_lossy().to_string();
+    let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 0 && text.contains("main ginge so nach main"), "Hochladen: {text}");
+    let (_, text) = im_repo(&[
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$p = New-Object Diagnostics.ProcessStartInfo 'git', '--version'; $p.UseShellExecute = $false; $p.RedirectStandardOutput = $true; $x = [Diagnostics.Process]::Start($p); $aus = $x.StandardOutput.ReadToEnd(); $x.WaitForExit(); if ($aus -match 'git version') { 'echtes git' } else { 'fremdes git' }",
+    ]);
+    assert!(text.contains("fremdes git"), "Gegenprobe: ein Start über den Namen nimmt die git.exe im aktuellen Ordner:\n{text}");
+    // Mit „.“ im PATH fände auch Get-Command die fremde git.exe: Der Prüfer bricht dann ab.
+    let pfad = format!(".;{}", std::env::var("PATH").unwrap_or_default());
+    let mit_punkt = |args: &[&str]| {
+        let a = pwsh().unwrap().args(args).current_dir(o.repo()).env("DASHBOARD_INHALT", &inhalt).env("PATH", &pfad).output().unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "(Get-Command git -CommandType Application | Select-Object -First 1).Source"]);
+    assert!(
+        text.trim().to_lowercase().replace('/', "\\").ends_with(&format!("{}\\git.exe", repo.to_lowercase().replace('/', "\\"))),
+        "Gegenprobe: mit . im PATH nimmt Get-Command die fremde git.exe:\n{text}"
+    );
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
+}
+
+/// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
+/// der Betreuer als Autor oder Committer ist ein Fund, auch in anderer Schreibung.
+/// Gegenprobe: derselbe Beitrag mit noreply-Angabe geht durch.
+#[test]
+fn beitrag_mit_angabe_der_betreuer() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let gross = "Ranke2§@Proton.me".replace('§', "");
+    let faelle = [
+        ("Autor und Committer", vec![], Some("Autor des Beitrags trägt die Angabe der Betreuer")),
+        ("nur Committer", vec![("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &mail)], Some("Committer des Beitrags trägt die Angabe der Betreuer")),
+        (
+            "nur der Name, klein",
+            vec![("GIT_AUTHOR_NAME", "ranke"), ("GIT_AUTHOR_EMAIL", &mail), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", &mail)],
+            Some("Autor des Beitrags trägt die Angabe der Betreuer"),
+        ),
+        (
+            "nur die Adresse, groß",
+            vec![("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &gross), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", &mail)],
+            Some("Autor des Beitrags trägt die Angabe der Betreuer"),
+        ),
+        ("noreply", als_beitrag(&mail).to_vec(), None),
+    ];
+    for (fall, wer, erwartet) in faelle {
+        let o = Ort::neu();
+        o.git(&["checkout", "-q", "-b", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        let kennung = o.commit("feat: b", &wer);
+        o.git(&["checkout", "-q", "main"]);
+        let (code, text) = o.lauf(&["-Beitrag", &kennung], None);
+        match erwartet {
+            None => assert!(code == 0 && text.contains("Geprüft: 1 Commit(s) des Beitrags"), "{fall}: {text}"),
+            Some(satz) => assert!(code == 1 && text.contains(satz), "{fall}: erwartet „{satz}“:\n{text}"),
+        }
+    }
+}
+
+/// Ein Fall: Name, erwarteter Prüfpfad im Fund, die Änderung.
+type Aenderung = (&'static str, &'static str, fn(&Ort));
+
+/// M1 für jede Art der Änderung: Löschen, Umbenennen (hinaus und hinein) und nur der
+/// Modus (ausführbar) sind am fremden Commit ein Fund. Gegenprobe: dieselbe Änderung
+/// von Ranke über einen eigenen Merge.
+#[test]
+fn pruefpfade_loeschen_umbenennen_modus() {
+    if !bereit() {
+        return;
+    }
+    let vorher = |o: &Ort| {
+        o.ueber_merge(|o| {
+            o.datei("scripts/x.ps1", b"# x\n");
+            o.datei("src/y.ps1", b"# y\n");
+        })
+    };
+    let faelle: [Aenderung; 4] = [
+        ("Löschen", "scripts/x.ps1", |o| {
+            o.git(&["rm", "-q", "scripts/x.ps1"]);
+        }),
+        ("Umbenennen hinaus", "scripts/x.ps1", |o| {
+            o.git(&["mv", "scripts/x.ps1", "src/x.ps1"]);
+        }),
+        ("Umbenennen hinein", "scripts/y.ps1", |o| {
+            o.git(&["mv", "src/y.ps1", "scripts/y.ps1"]);
+        }),
+        ("nur Modus", "scripts/x.ps1", |o| {
+            o.git(&["update-index", "--chmod=+x", "scripts/x.ps1"]);
+        }),
+    ];
+    for (fall, pfad, aendern) in faelle {
+        abgewiesen(fall, &format!("ein fremder Commit ändert den Prüfpfad {pfad}"), |o| {
+            vorher(o);
+            beitrag(o, "fix: x", "Beitrag", NOREPLY, aendern);
+        });
+        frei(fall, |o| {
+            vorher(o);
+            o.ueber_merge(aendern);
+        });
+    }
+}
+
+/// Heimatpfade unter macOS und Linux in weiteren Formen (PATH-Liste, scp-Ziel,
+/// Schalter -L und -I, JSON mit \/, WSL-Freigabe), je genau ein Fund; die
+/// Windows-Formen mit / zählen nur einmal (nicht zusätzlich als macOS/Linux).
+/// Gegenproben bleiben frei: /home und /users hinter einer Domäne, "/home" ohne Namen,
+/// /usr/home/<x> (nach einem Buchstaben; FreeBSD gehört nicht zu den Zielsystemen) und
+/// Platzhalter in den neuen Formen. Bewusste Grenze, nicht festgehalten: /home hinter einem
+/// Host in URLs (ssh://…@host/home/…, …:8080/home/…) und MSYS2 mit \ (…\msys64\home\…);
+/// echte Namen fängt dort die Liste benutzer.
+#[test]
+fn heimatpfade_weitere_formen_je_ein_fund() {
+    if !bereit() {
+        return;
+    }
+    for form in [
+        "PATH=/usr/bin:/h§ome/zora/bin",
+        "scp a.txt rechner:/h§ome/zora/x",
+        "cc -L/h§ome/zora/lib",
+        "cc -I/U§sers/zora/include",
+        r#"{"p": "\/h§ome\/zora\/x"}"#,
+        r#"{"p": "\/U§sers\/zora"}"#,
+        r"\\wsl.localhost\Ubuntu\h§ome\zora\x",
+        r"\\wsl$\Ubuntu\h§ome\zora",
+        "//wsl.localhost/Ubuntu/h§ome/zora",
+        "/h§ome/zora/x",
+        "C:/U§sers/zora/dev",
+        r"C:\/U§sers\/zora",
+        "file:///C:/U§sers/zora",
+        r"\\pc\c$/U§sers/zora",
+        "/c/U§sers/zora",
+        "/mnt/c/U§sers/zora",
+        // Mehrere Trenner nach dem Laufwerk: nur die Windows-Form meldet.
+        "C://U§sers/zora",
+        "c$//U§sers/zora",
+        "c%3a//U§sers/zora",
+        r"\\pc\c$//U§sers/zora",
+        // /home nach einem Laufwerk oder einem Host aus einem Buchstaben: die Windows-Form kennt nur Users.
+        "a:/h§ome/zora",
+        "C:/h§ome/zora",
+        "PATH=/a:/h§ome/zora",
+        "cc -isystem/h§ome/zora",
+        // WSL-Freigabe in JSON: nur die WSL-Form meldet.
+        r"\/\/wsl$\/U\/h§ome\/zora",
+    ] {
+        let text = abgewiesen(form, "Benutzerpfad", |o| o.ueber_merge(|o| o.datei("src/pfad.rs", format!("// {form}\n").as_bytes())));
+        assert_eq!(fundzeilen(&text).len(), 1, "{form}: genau ein Fund:\n{text}");
+    }
+    frei("Fehltreffer", |o| {
+        o.ueber_merge(|o| {
+            o.datei(
+                "src/frei.rs",
+                r#"// https://example.com/h§ome/zora https://api.github.com/u§sers/zora Path::new("/h§ome") "/h§ome/" /usr/h§ome/zora
+// https:\/\/example.com\/h§ome\/zora foo-bar/h§ome/zora
+// \\wsl$\Ubuntu\h§ome\<name> \/h§ome\/<name> -L/h§ome/<name> PATH=/usr/bin:/h§ome/$USER/bin
+"#
+                .as_bytes(),
+            )
+        })
+    });
 }

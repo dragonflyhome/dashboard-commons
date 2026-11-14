@@ -19,8 +19,18 @@ const KOPF: &str = "\u{feff}CHANGELOG\n=========\n\nKopf.\n\n";
 const ALT: &str = "0.3.4 - 2026-01-02\n------------------\n\nHinzugefügt\n- Alt.\n";
 const LISTE: &str = "# erfunden\nsensibel = [\"geheimwortfreigabe\"]\nallgemein = [\"projektfreigabe\"]\ntabu = [\"tabufreigabe\"]\nbenutzer = [\"nutzerfreigabe\"]\nrechner = [\"pc-freigabe-erfunden\"]\nwlan = [\"wlan-freigabe-erfunden\"]\nschluessel = [\"dienst-freigabe-erfunden\"]\nmac = []\nnur_basis = [\"basisfreigabe\"]\n";
 const PRUEFE: &str = "fn main() {\n    let a: Vec<String> = std::env::args().skip(1).collect();\n    let ok = a.len() == 3 && a[1] == \"--system\";\n    if ok && std::path::Path::new(&a[2]).is_dir() {\n        println!(\"0 Fehler, 0 Hinweise\");\n    } else {\n        std::process::exit(2);\n    }\n}\n";
-const SKRIPTE: [&str; 8] =
-    ["Freigeben.ps1", "Fassung-Festschreiben.ps1", "Hochladen.ps1", "Vor-Push.ps1", "Anfrage.ps1", "hooks/pre-commit", "hooks/commit-msg", "hooks/pre-push"];
+const SKRIPTE: [&str; 10] = [
+    "Freigeben.ps1",
+    "Fassung-Festschreiben.ps1",
+    "Hochladen.ps1",
+    "Vor-Push.ps1",
+    "Anfrage.ps1",
+    "Mac-Probe.ps1",
+    "Laufzeit.ps1",
+    "hooks/pre-commit",
+    "hooks/commit-msg",
+    "hooks/pre-push",
+];
 
 fn pwsh() -> Option<Command> {
     [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok())
@@ -278,9 +288,16 @@ fn folge_probe_und_wiederaufnahme() {
     let (code, text) = o.lauf(true);
     assert_eq!(code, 0, "{text}");
     assert!(text.contains("Probe: Fassung 0.4.0 ginge so hinaus"), "{text}");
-    for schritt in
-        ["cargo fmt --check ...", "cargo clippy -D warnings ...", "cargo test ...", "npm run verify ...", "pruefe --system docs/zielbild ...", "Nur geprüft"]
-    {
+    for schritt in [
+        "cargo fmt --check ...",
+        "cargo clippy -D warnings ...",
+        "cargo test ...",
+        "npm run verify ...",
+        "pruefe --system docs/zielbild ...",
+        "Mac-Probe (Mac-Probe.ps1, ohne Abbruch) ...",
+        "Laufzeit ",
+        "Nur geprüft",
+    ] {
         assert!(text.contains(schritt), "{schritt} lief nicht:\n{text}");
     }
     assert_eq!(o.stand(), vorher, "-Pruefen ändert nichts");

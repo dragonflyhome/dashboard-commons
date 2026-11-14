@@ -1,4 +1,4 @@
-﻿CHANGELOG
+CHANGELOG
 =========
 
 Alle nennenswerten Änderungen an diesem Repo stehen in dieser Datei. Das
@@ -13,6 +13,87 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 
 Unreleased
 ----------
+
+0.6.0 - 2026-11-14
+------------------
+
+Hinzugefügt
+- Der Prüfer erkennt Heimatpfade unter macOS und Linux (/Users/<name>,
+  /home/<name>, auch als file:/// und URL-kodiert) wie die Windows-Formen,
+  auch in PATH-Listen, scp-Zielen, hinter Schaltern wie -L und -I, als JSON
+  mit \/ und als WSL-Freigabe (\\wsl.localhost\<distro>\home\<name>,
+  \\wsl$\…); ein Windows-Pfad mit / zählt dabei nur einmal, auch mit
+  mehreren Trennern nach dem Laufwerk. Nicht hinter Buchstabe oder Ziffer,
+  auch in JSON nicht (Domänen wie example.com\/home bleiben frei).
+- Vor-Push.ps1 -Beitrag <kennung>: Jeder Commit eines Beitrags mit dem
+  Namen oder der Adresse der Betreuer als Autor oder Committer ist ein Fund.
+- Beiträge aus Forks: Der Prüfer nimmt Commits außerhalb der
+  First-Parent-Linie von main (Seitenzweige, Beiträge aus Forks) mit fremdem
+  Autor und Committer an, wenn die Adresse eine GitHub-noreply-Adresse ist
+  oder auf .invalid oder .example endet; Name und Adresse laufen durch die
+  Textprüfung. Auf der Linie bleibt es genau Ranke. Die Regel gilt in jeder
+  Art, auch im Projekt-Repo.
+- Ein fremder Commit ändert keinen Prüfpfad (scripts/, .cargo/, .github/,
+  tests/vor_push.rs, KONTAKT-PGP.asc, jede .gitattributes und .npmrc auch
+  in Unterordnern, Pfade mit 8.3-Kurznamen; Groß/Klein egal;
+  auch Löschen, Umbenennen und nur der Modus), und ein Merge der Linie, der fremde
+  Commits hereinholt, ändert sie gegenüber seinem ersten Elternteil nicht.
+  Eigene Änderungen daran kommen in einem eigenen Merge ohne fremde Commits.
+- Issue-Formular .github/ISSUE_TEMPLATE/merge-angebot.yml (Fork-URL, Ref,
+  Beschreibung, Pflicht-Kontrollkästchen zu den Regeln); die Positivliste
+  lässt genau die Formulare darin zu, ohne config.yml.
+
+Geändert
+- Der Leitfaden für Mitwirkende (CONTRIBUTING.md) ist formell: kein
+  Schreibzugriff, kein direkter Push, keine Zweige und keine Pull Requests;
+  Merge-Angebot im Issue mit Fork-URL und Ref, Merge nur durch die
+  Betreuer; die Commit-Regeln so, wie der Prüfer sie durchsetzt.
+- Der Prüfer weist Fortsetzungszeilen im Commit-Kopf ab, und Hook und
+  Hochladen.ps1 verlangen, dass main die bisherige Linie fortsetzt (kein
+  Merge falsch herum).
+- Anleitung, Abschnitte 14, 15 und 17: die Regel für Beiträge aus Forks, wie
+  die Betreuer ein Angebot übernehmen (erst den ganzen Diff lesen, dann
+  bauen; genau die gelesene Commit-Kennung mergen; Autor und Committer
+  lesen, weil eine gefälschte Angabe der Betreuer am Prüfer vorbeigeht) und
+  wer Antworten in Issues sendet.
+- Der Probe-Merge eines Beitrags entsteht ohne Arbeitsbaum und ohne Hooks
+  (git merge-tree --write-tree, git commit-tree, git branch probe) und wird
+  mit dem Prüfer aus main geprüft (-Baum probe -Commits main..probe -AufMain
+  -Beitrag <kennung>); main kommt erst nach grünem Lauf mit
+  git merge --ff-only probe auf genau diesen Merge-Commit. Ein git merge im
+  Arbeitsbaum hätte Hooks und Prüfer des Forks ausgeführt. Gebaut und
+  getestet wird erst nach grünem Lauf in einem Arbeitsbaum des Probe-Commits;
+  vorher kein Checkout des Forks, denn schon der riefe dessen Hooks auf. Der
+  Diff wird mit git diff --text gelesen, URL und Ref aus dem Issue nur in
+  fester Form übernommen.
+- Vor-Push.ps1, Hochladen.ps1 und Freigeben.ps1 starten git über den vollen
+  Pfad aus PATH. Der Prüfer startete git über den Namen, und Windows sucht
+  dabei zuerst im aktuellen Ordner, der beim Hook die Wurzel des geprüften
+  Arbeitsbaums ist: Eine git.exe aus einem Beitrag wäre dort gelaufen. Liegt
+  das gefundene git im geprüften Repo oder im aktuellen Ordner, bricht der
+  Prüfer mit Exit 2 ab.
+
+Behoben
+- Die Übernahme eines Beitrags mergt genau die gelesene Commit-Kennung,
+  nicht einen Zweignamen, der sich nach dem Lesen noch ändern kann.
+- Beiträge aus Forks werden enger geprüft: Name und Adresse fremder Autoren
+  laufen durch die Textprüfung, die noreply-Regel ist verankert.
+- Der Prüfer startete git über den Namen; unter Windows konnte so eine
+  git.exe aus dem geprüften Arbeitsbaum laufen.
+- Ein Windows-Pfad mit / zählte als Heimatpfad doppelt, auch mit mehreren
+  Trennern nach dem Laufwerk.
+
+0.5.0 - 2026-11-14
+------------------
+
+Hinzugefügt
+- Mac-Probe in der Freigabe: cargo check der Bibliothek für
+  aarch64-apple-darwin, nur Ergebnis, nie ein Abbruch (scripts/Mac-Probe.ps1).
+- Gemeinsamer Baustein scripts/Laufzeit.ps1: Laufzeit und Auslastung der
+  Rechenkerne am Ende eines Skripts.
+- Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
+  hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
+  Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.
 
 0.4.0 - 2026-11-13
 ------------------

@@ -30,8 +30,9 @@
          läuft vor 2, weil es Sekunden dauert und 2 Minuten.
       2. Prüfen: cargo fmt --check, clippy -D warnings, cargo test,
          npm run verify, dashboard pruefe --system für docs/anleitung und
-         docs/zielbild (0 Fehler, 0 Hinweise), Hochladen.ps1 -Pruefen (der
-         Prüfer über das, was hinausginge).
+         docs/zielbild (0 Fehler, 0 Hinweise), die Mac-Probe (Mac-Probe.ps1,
+         nur Ergebnis, nie ein Abbruch), Hochladen.ps1 -Pruefen (der Prüfer
+         über das, was hinausginge).
       4. Fassung-Festschreiben.ps1: Merge chore(release): v0.x.y auf main und
          leichter Tag, lokal. Dann im Inhalt dashboard-lokal/Cargo.lock mit
          cargo update -p dashboard -p dashboard-projekt --offline nachziehen
@@ -81,6 +82,10 @@ if (-not $Dienst) { $Dienst = Join-Path $PSScriptRoot 'Dienst.ps1' }
 # Kinder (cargo, Hooks, Fassung-Festschreiben.ps1) erben denselben Bauordner.
 if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\freigabe' }
 $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+# git über den vollen Pfad aus PATH, wie im Prüfer. cargo und npm startet der Aufrufoperator
+# von PowerShell (sucht nur PATH); sie führen im eigenen Repo ohnehin dessen Code aus (build.rs,
+# npm-Skripte); was dort liegt, ist vor dem Merge gelesen und geprüft (Anleitung Abschnitt 15).
+$git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $TAG_FORM = '^v0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$'
 $lokal = Join-Path $Inhalt 'dashboard-lokal'
 $NICHTS = 'Es ging nichts hinaus.'
@@ -90,7 +95,7 @@ function Ende([int]$code, [string]$satz) { Write-Host $satz; exit $code }
 function GitLauf([string]$wo, [string[]]$a, [switch]$Still) {
     $alt = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $aus = & git -C $wo @a 2>&1 } finally { $ErrorActionPreference = $alt }
+    try { $aus = & $git -C $wo @a 2>&1 } finally { $ErrorActionPreference = $alt }
     $code = $LASTEXITCODE
     $text = ((@($aus) | ForEach-Object { "$_" }) -join "`n").Trim()
     if ($code -ne 0 -and -not $Still) { throw "git $($a -join ' '): $text" }
@@ -209,6 +214,9 @@ function Pruefungen([string]$stand) {
         # pruefe ist erst mit 0 Fehlern und 0 Hinweisen grün.
         if ($r.Code -ne 0 -or ($s[0] -like 'pruefe*' -and $r.Text -notmatch '(?m)^0 Fehler, 0 Hinweise\s*$')) { Ende 1 "Abbruch: $($s[0]) ist rot (siehe oben). $stand" }
     }
+    # Probe für macOS (Entscheidung macos-im-basis-repo): Ergebnis sichtbar, nie ein Abbruch.
+    Write-Host 'Mac-Probe (Mac-Probe.ps1, ohne Abbruch) ...'
+    [void](Skript (Join-Path $PSScriptRoot 'Mac-Probe.ps1') @())
     Write-Host 'Prüfer über das, was hinausginge (Hochladen.ps1 -Pruefen) ...'
     $h = Skript (Join-Path $PSScriptRoot 'Hochladen.ps1') @('-Pruefen', '-Inhalt', $Inhalt)
     if ($h.Code -ne 0) { Ende 1 "Abbruch: Hochladen.ps1 -Pruefen ist rot (siehe oben). $stand" }
