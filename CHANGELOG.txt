@@ -14,6 +14,29 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Behoben
+- Unter macOS und Linux entsteht der Schlüssel der Ausweise jetzt in
+  einem Zug: Er wird in eine Zwischendatei geschrieben und erst fertig
+  unter seinem Namen sichtbar. Ein abgebrochenes Anlegen hinterlässt
+  keine zu kurze Datei mehr, und zwei gleichzeitig startende Server
+  lesen denselben Schlüssel.
+- Unter macOS nimmt der Server den Schlüsselordner erst nach der
+  Prüfung des Ordners von Time Machine aus, und nur bei einem
+  vollständigen Pfad.
+- Unter Linux genügt für den Ort des Schlüssels ein vollständiges
+  XDG_DATA_HOME, auch wenn HOME fehlt; Anleitung und Meldung sagen es
+  jetzt so.
+- Unter macOS und Linux endet der Server geordnet auch auf SIGTERM und
+  SIGHUP, nicht nur auf Strg+C.
+- Unter macOS und Linux laufen Bau und Prüfungen mit niedriger
+  Priorität (nice 10), wie unter Windows.
+- Unter macOS und Linux endet nach dem Zeitlimit eines Baus die ganze
+  Prozessgruppe, nicht nur npm selbst.
+- Unter macOS und Linux braucht der Schlüsselordner jetzt ein Dateisystem
+  mit harten Verknüpfungen (nicht FAT oder exFAT). Sonst bleibt die
+  Anmeldung mit Passkey aus, und die Meldung nennt die Ursache und den
+  Ausweg über DASHBOARD_JWT_SCHLUESSEL.
+
 0.9.1 - 2026-11-14
 ------------------
 
