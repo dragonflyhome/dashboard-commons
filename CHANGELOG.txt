@@ -79,6 +79,13 @@ Geändert
   Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
   Ende Laufzeit und Auslastung der Rechenkerne.
 
+Behoben
+- Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
+  scheitert, cargo startet nicht) mit Exit 0, einem Satz und der
+  Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie sucht
+  llvm-dlltool.exe nach %USERPROFILE%\.cargo\bin auch im sysroot der aktiven
+  Toolchain (lib\rustlib\<host>\bin) und schreibt ihre Sätze als UTF-8.
+
 0.5.0 - 2026-11-14
 ------------------
 

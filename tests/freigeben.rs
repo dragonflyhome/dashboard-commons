@@ -265,11 +265,39 @@ impl Probe {
         if pruefen {
             c.arg("-Pruefen");
         }
-        // Ohne DASHBOARD_INHALT: der Inhalt kommt nur über -Inhalt.
-        c.env_remove("DASHBOARD_INHALT").env("CARGO_TARGET_DIR", self.ziel()).env("DASHBOARD_PRUEFER_CACHE", self.0.join("pruefer-cache"));
+        // Ohne DASHBOARD_INHALT: der Inhalt kommt nur über -Inhalt. LOCALAPPDATA umgelenkt:
+        // Die Mac-Probe legt dort ihr dlltool ab, nicht im echten Anwendungscache.
+        c.env_remove("DASHBOARD_INHALT")
+            .env("CARGO_TARGET_DIR", self.ziel())
+            .env("DASHBOARD_PRUEFER_CACHE", self.0.join("pruefer-cache"))
+            .env("LOCALAPPDATA", self.lokal());
         let a = c.output().unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     }
+
+    fn lokal(&self) -> PathBuf {
+        self.0.join("lokal")
+    }
+
+    /// Mac-Probe.ps1 allein, mit LOCALAPPDATA aus [`Probe::lokal`] und diesen Umgebungswerten.
+    fn mac_probe(&self, umgebung: &[(&str, PathBuf)]) -> (i32, String) {
+        let mut c = pwsh().unwrap();
+        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(self.repo().join("scripts").join("Mac-Probe.ps1"))
+            .current_dir(self.repo())
+            .env("CARGO_TARGET_DIR", self.ziel())
+            .env("LOCALAPPDATA", self.lokal());
+        for (k, v) in umgebung {
+            c.env(k, v);
+        }
+        let a = c.output().unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    }
+}
+
+/// Wie die Regex `(?m)^\s*Mac-Probe (grün|rot|übersprungen)`: der Ergebnissatz der Mac-Probe.
+fn mac_probe_satz(text: &str) -> bool {
+    text.lines().any(|l| ["grün", "rot", "übersprungen"].iter().any(|w| l.trim_start().starts_with(&format!("Mac-Probe {w}"))))
 }
 
 /// Probe, dann ein Lauf, der am Push scheitert (lokal festgeschrieben, nichts
@@ -300,6 +328,7 @@ fn folge_probe_und_wiederaufnahme() {
     ] {
         assert!(text.contains(schritt), "{schritt} lief nicht:\n{text}");
     }
+    assert!(mac_probe_satz(&text), "kein Ergebnissatz der Mac-Probe:\n{text}");
     assert_eq!(o.stand(), vorher, "-Pruefen ändert nichts");
 
     // Etwas Fremdes ist im Inhalt vorgemerkt, und der Lock-Commit scheitert am
@@ -411,6 +440,53 @@ fn folge_probe_und_wiederaufnahme() {
     assert!(text.contains("Es läuft Fassung 0.4.0."), "{text}");
     assert_eq!(o.neustarts(), 5);
     assert_eq!(git_in(&o.inhalt(), &["rev-parse", "HEAD"]), inhalt_kopf);
+}
+
+/// Die Mac-Probe endet bei jeder Panne mit Exit 0, einem Satz und der Laufzeitzeile;
+/// die Freigabe läuft weiter. Der Ersatz für cargo liegt in dem Ordner, den die Probe
+/// vorn in PATH stellt (im umgelenkten LOCALAPPDATA): So trifft er nur die Probe, nicht
+/// das cargo der Freigabe. Ohne Ziel oder llvm-dlltool auf dem Rechner endet jeder Fall
+/// schon mit „übersprungen“; das ist erlaubt.
+#[test]
+fn mac_probe_ohne_abbruch() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    o.zweig("feat(web): neu", |o| o.changelog("Hinzugefügt\n- Neu.\n"));
+    // Ein cargo, das scheitert und keinen Exit-Code setzt: kein alter Wert gilt als grün.
+    schreiben(&o.lokal().join("Dashboard/cache/mac-dlltool/cargo.ps1"), "Write-Output 'error: kaputt'\n");
+    let probe_rot = |name: &str, (code, text): (i32, String)| {
+        assert_eq!(code, 0, "{name}:\n{text}");
+        assert!(mac_probe_satz(&text) && !text.contains("Mac-Probe grün"), "{name}:\n{text}");
+        assert_eq!(text.lines().filter(|l| l.trim_start().starts_with("Mac-Probe ")).count(), 1, "{name}: genau ein Satz:\n{text}");
+        assert!(text.contains("Laufzeit "), "{name}:\n{text}");
+    };
+
+    let (code, text) = o.lauf(true);
+    assert_eq!(code, 0, "{text}");
+    assert!(mac_probe_satz(&text) && !text.contains("Mac-Probe grün"), "{text}");
+    assert!(text.contains("Hochladen.ps1 -Pruefen") && text.contains("Nur geprüft"), "die Freigabe läuft weiter:\n{text}");
+
+    probe_rot("cargo ohne Exit-Code", o.mac_probe(&[]));
+    // Kopieren scheitert: Wo der Ordner für dlltool hin soll, liegt eine Datei.
+    let datei = o.0.join("lokal-datei");
+    schreiben(&datei.join("Dashboard/cache/mac-dlltool"), "keine Datei für einen Ordner\n");
+    probe_rot("Kopieren scheitert", o.mac_probe(&[("LOCALAPPDATA", datei)]));
+    // rustup fehlt: PATH nur mit System32.
+    let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+    probe_rot("rustup fehlt", o.mac_probe(&[("PATH", system)]));
+
+    // llvm-dlltool nicht in %USERPROFILE%\.cargo\bin: die Probe sucht im sysroot weiter
+    // und nennt beide Orte, wenn es dort auch fehlt.
+    let profil = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap();
+    let rustup = std::env::var_os("RUSTUP_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".rustup"));
+    let cargo = std::env::var_os("CARGO_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".cargo"));
+    let (code, text) = o.mac_probe(&[("USERPROFILE", o.0.join("profil")), ("RUSTUP_HOME", rustup), ("CARGO_HOME", cargo)]);
+    if text.contains("llvm-dlltool.exe fehlt") {
+        assert!(text.contains("fehlt in %USERPROFILE%\\.cargo\\bin und in ") && text.contains("\\lib\\rustlib\\"), "{text}");
+    }
+    probe_rot("dlltool nur im sysroot", (code, text));
 }
 
 /// Jeder rote Schritt bricht ab, bevor etwas geschieht: main, Tags, das ferne
