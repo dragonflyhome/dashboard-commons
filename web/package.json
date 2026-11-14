@@ -1,7 +1,7 @@
 {
 	"name": "dashboard-web",
 	"private": true,
-	"version": "0.6.0",
+	"version": "0.7.1",
 	"license": "AGPL-3.0-or-later",
 	"type": "module",
 	"description": "Oberfläche des Dashboards (SvelteKit). Der Rust-Server liefert die Daten und das fertige Build aus.",

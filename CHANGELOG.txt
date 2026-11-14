@@ -14,6 +14,98 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.7.1 - 2026-11-14
+------------------
+
+Behoben
+- Schwärzen auch für Pfade in den Formen von macOS und Linux. Im Server
+  (src/datenschutz.rs): /Users/<name> und /home/<name> (auch hinter
+  /System/Volumes/Data und /Volumes/<x>), /root und /var/root werden zu
+  %USERPROFILE%, auch mit file: davor (mit localhost), URL-kodiert, mit \/
+  wie in JSON, in einer Liste mit Doppelpunkt (PATH, auch hinter $PATH)
+  und direkt hinter einem Schalter (-I, -L). /Volumes/<name> wird
+  /Volumes/%VOLUME%, /run/user/<n> wird /run/user/%UID%, der Temp-Ordner
+  je Konto (/var/folders/<xx>/<kennung>) wird %TMPDIR%. Adressen im Netz,
+  Git-Remotes (auch host:/pfad) und Wege im Dashboard bleiben, wie sie
+  sind. Gilt auf jeder Plattform, auch unter Windows.
+- Die Oberfläche (web/src/lib/pfade.ts) als zweite Sicherung kennt davon
+  die Profile, /root und /Volumes/<name>, je auch mit file: davor, mit \/
+  und in einer Liste mit Doppelpunkt. Sie kennt nicht /run/user/<n>, nicht
+  den Temp-Ordner je Konto, keine URL-kodierten Pfade, nicht /c/Users/<name>
+  und keine Netzwerkpfade.
+- Beide Schichten lesen einen Text nur einmal, auch 100 000 Zeichen ohne
+  Leerraum (Zeittests).
+- Der Inhaber ohne Windows: Profil aus HOME und Name aus USER und LOGNAME,
+  wenn USERPROFILE und USERNAME fehlen (Schwärzen und Anzeige von Pfaden).
+  Der Ordnername von HOME zählt nur als Name, wenn HOME direkt unter /Users
+  oder /home liegt. Ob ein Profil absolut ist, entscheidet sein Text, nicht
+  die Plattform.
+- istLokalerPfad erkennt Profil- und Systemordner von macOS und Linux; ein
+  Weg im Dashboard mit / vorn bleibt ein Link.
+- Ein Laufwerk beginnt im Server an einer Wortgrenze, auch nach einem
+  Escape (\n, \u0022, \x22, oktal), einem kodierten Zeichen (%22, %2522)
+  oder einem Farbcode. In der Oberfläche gilt ein Laufwerk mit Rückstrich
+  an jeder Stelle, wie bisher; vor einem Laufwerk mit Schrägstrich steht
+  kein Buchstabe, außer als Ende einer dieser Formen oder eines Schalters
+  (-IC:/Users/x). Bisher galt dort
+  jeder Buchstabe vor einem Doppelpunkt als Laufwerk (host:/Users/x,
+  file:///Users/x).
+- Ein Name in einem Pfad endet im Server auch an einem kodierten
+  Doppelpunkt (%3A).
+- Ein Name in einem Pfad endet im Server vor einem Laufwerk: Ein POSIX-Vorsatz
+  direkt davor (/Users/C:\Users\<name>, auch /home, /Volumes, als JSON und
+  kodiert) nahm den Laufwerksbuchstaben als Namen und ließ den Namen dahinter
+  stehen; ebenso C:\Users\<name>-D:\Users\<name>.
+- In der Oberfläche macht ein kodiertes Zeichen (%2F, %5C, %3A, auch doppelt
+  kodiert) vor einem Laufwerk mit Schrägstrich es nicht mehr zum Trenner einer
+  Liste; bei %2FC:/Users/<vorname> <nachname> blieb sonst der Nachname stehen.
+
+0.7.0 - 2026-11-14
+------------------
+
+Geändert
+- Die Vorprüfung in scripts/Hochladen.ps1 (auch -Pruefen und damit die
+  Freigabe) merkt sich saubere Blobs je Pfad unter einem Regel-Schlüssel aus
+  Prüfer, Listen, Art und PowerShell-Fassung und prüft beim nächsten Lauf nur
+  Neues (Vor-Push.ps1 -MitCache). Der Hook beim Push prüft immer kalt.
+- Bruch: Der Prüfweg (Vor-Push.ps1, Hochladen.ps1, Freigeben.ps1,
+  Fassung-Festschreiben.ps1, Mac-Probe.ps1, Laufzeit.ps1) verlangt
+  PowerShell 7.7; die Hooks commit-msg und pre-push rufen nur pwsh, ohne
+  Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
+  Ende Laufzeit und Auslastung der Rechenkerne.
+- Anleitung, Abschnitt 15, Teil 5: der Probelauf eines Beitrags im
+  Projekt-Repo mit -Repo, -RemoteUrl und -Art Projekt ausgeschrieben; ohne
+  Adresse prüft der Prüfer als Basis-Repo.
+
+Behoben
+- Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
+  scheitert, cargo startet nicht) mit Exit 0, einem Satz und der
+  Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie
+  schreibt ihre Sätze als UTF-8.
+- Mac-Probe: Das dlltool kommt zuerst aus llvm-ar.exe im sysroot der aktiven
+  Toolchain (lib\rustlib\<host>\bin; llvm-tools bringt kein llvm-dlltool
+  mit, der Name bestimmt die Rolle), sonst aus
+  %USERPROFILE%\.cargo\bin\llvm-dlltool.exe.
+- Mac-Probe: Fehlt Laufzeit.ps1 oder wirft sie, bleibt es bei einem Satz,
+  Exit 0 und einer Ersatzzeile zur Laufzeit; endet rustup rot, nennt der
+  Satz das statt „Ziel nicht installiert“.
+- Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
+  im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
+- Prüfer, Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, sobald ein
+  Eintrag im PATH nicht voll qualifiziert ist (etwa „.“); vorher hing der
+  Schutz allein am Ort des gefundenen git, auch einer git.cmd.
+- Das Muster für Heimatpfade unter macOS und Linux lief auf langen Zeilen
+  aus / quadratisch (20 000 Zeichen etwa 5 s); es prüft jetzt zuerst das
+  Literal. Es erkennt auch /var/home/<name>, /export/home/<name> und mehrere
+  oder gemischte Trenner nach dem Ordner (/home//<name>, /home\<name>).
+- Das Muster für Windows-Benutzerpfade (C:\Users\<name>) und das für
+  allgemeine Projektnamen nach projects\ liefen auf einem langen Lauf aus \
+  exponentiell (50 Zeichen hielten den Prüfer praktisch ohne Ende auf); die
+  Trenner sind jetzt eine Zeichenklasse, die Funde bleiben gleich.
+- Der Hook pre-push bricht mit Exit 2 ab, wenn ein Eintrag im PATH nicht voll
+  qualifiziert ist (etwa „.“); vorher startete er ein pwsh aus dem geprüften
+  Arbeitsbaum statt des Prüfers.
+
 0.6.0 - 2026-11-14
 ------------------
 

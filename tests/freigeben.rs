@@ -33,7 +33,7 @@ const SKRIPTE: [&str; 10] = [
 ];
 
 fn pwsh() -> Option<Command> {
-    [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok())
+    programme::befehl(Werkzeug::PowerShell7).ok()
 }
 
 fn bereit() -> bool {
@@ -265,11 +265,39 @@ impl Probe {
         if pruefen {
             c.arg("-Pruefen");
         }
-        // Ohne DASHBOARD_INHALT: der Inhalt kommt nur über -Inhalt.
-        c.env_remove("DASHBOARD_INHALT").env("CARGO_TARGET_DIR", self.ziel());
+        // Ohne DASHBOARD_INHALT: der Inhalt kommt nur über -Inhalt. LOCALAPPDATA umgelenkt:
+        // Die Mac-Probe legt dort ihr dlltool ab, nicht im echten Anwendungscache.
+        c.env_remove("DASHBOARD_INHALT")
+            .env("CARGO_TARGET_DIR", self.ziel())
+            .env("DASHBOARD_PRUEFER_CACHE", self.0.join("pruefer-cache"))
+            .env("LOCALAPPDATA", self.lokal());
         let a = c.output().unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     }
+
+    fn lokal(&self) -> PathBuf {
+        self.0.join("lokal")
+    }
+
+    /// Mac-Probe.ps1 allein, mit LOCALAPPDATA aus [`Probe::lokal`] und diesen Umgebungswerten.
+    fn mac_probe(&self, umgebung: &[(&str, PathBuf)]) -> (i32, String) {
+        let mut c = pwsh().unwrap();
+        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(self.repo().join("scripts").join("Mac-Probe.ps1"))
+            .current_dir(self.repo())
+            .env("CARGO_TARGET_DIR", self.ziel())
+            .env("LOCALAPPDATA", self.lokal());
+        for (k, v) in umgebung {
+            c.env(k, v);
+        }
+        let a = c.output().unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    }
+}
+
+/// Wie die Regex `(?m)^\s*Mac-Probe (grün|rot|übersprungen)`: der Ergebnissatz der Mac-Probe.
+fn mac_probe_satz(text: &str) -> bool {
+    text.lines().any(|l| ["grün", "rot", "übersprungen"].iter().any(|w| l.trim_start().starts_with(&format!("Mac-Probe {w}"))))
 }
 
 /// Probe, dann ein Lauf, der am Push scheitert (lokal festgeschrieben, nichts
@@ -300,6 +328,7 @@ fn folge_probe_und_wiederaufnahme() {
     ] {
         assert!(text.contains(schritt), "{schritt} lief nicht:\n{text}");
     }
+    assert!(mac_probe_satz(&text), "kein Ergebnissatz der Mac-Probe:\n{text}");
     assert_eq!(o.stand(), vorher, "-Pruefen ändert nichts");
 
     // Etwas Fremdes ist im Inhalt vorgemerkt, und der Lock-Commit scheitert am
@@ -411,6 +440,142 @@ fn folge_probe_und_wiederaufnahme() {
     assert!(text.contains("Es läuft Fassung 0.4.0."), "{text}");
     assert_eq!(o.neustarts(), 5);
     assert_eq!(git_in(&o.inhalt(), &["rev-parse", "HEAD"]), inhalt_kopf);
+}
+
+/// Die Mac-Probe endet bei jeder Panne mit Exit 0, einem Satz und der Laufzeitzeile;
+/// die Freigabe läuft weiter. Der Ersatz für cargo liegt in dem Ordner, den die Probe
+/// vorn in PATH stellt (im umgelenkten LOCALAPPDATA): So trifft er nur die Probe, nicht
+/// das cargo der Freigabe. Ohne Ziel oder llvm-dlltool auf dem Rechner endet jeder Fall
+/// schon mit „übersprungen“; das ist erlaubt.
+#[test]
+fn mac_probe_ohne_abbruch() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    o.zweig("feat(web): neu", |o| o.changelog("Hinzugefügt\n- Neu.\n"));
+    // Ein cargo, das scheitert und keinen Exit-Code setzt: kein alter Wert gilt als grün.
+    schreiben(&o.lokal().join("Dashboard/cache/mac-dlltool/cargo.ps1"), "Write-Output 'error: kaputt'\n");
+    let probe_rot = |name: &str, (code, text): (i32, String)| {
+        assert_eq!(code, 0, "{name}:\n{text}");
+        assert!(mac_probe_satz(&text) && !text.contains("Mac-Probe grün"), "{name}:\n{text}");
+        assert_eq!(text.lines().filter(|l| l.trim_start().starts_with("Mac-Probe ")).count(), 1, "{name}: genau ein Satz:\n{text}");
+        assert!(text.contains("Laufzeit "), "{name}:\n{text}");
+    };
+
+    let (code, text) = o.lauf(true);
+    assert_eq!(code, 0, "{text}");
+    assert!(mac_probe_satz(&text) && !text.contains("Mac-Probe grün"), "{text}");
+    assert!(text.contains("Hochladen.ps1 -Pruefen") && text.contains("Nur geprüft"), "die Freigabe läuft weiter:\n{text}");
+
+    probe_rot("cargo ohne Exit-Code", o.mac_probe(&[]));
+    // Kopieren scheitert: Wo der Ordner für dlltool hin soll, liegt eine Datei.
+    let datei = o.0.join("lokal-datei");
+    schreiben(&datei.join("Dashboard/cache/mac-dlltool"), "keine Datei für einen Ordner\n");
+    probe_rot("Kopieren scheitert", o.mac_probe(&[("LOCALAPPDATA", datei)]));
+    // rustup fehlt: PATH nur mit System32.
+    let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
+    probe_rot("rustup fehlt", o.mac_probe(&[("PATH", system)]));
+    // rustup endet rot: die Ursache im Satz, nicht „Ziel nicht installiert“.
+    let rot = o.0.join("rustup-rot");
+    schreiben(&rot.join("rustup.cmd"), "@exit /b 1\r\n");
+    let pfad = std::env::join_paths(std::iter::once(rot).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let (code, text) = o.mac_probe(&[("PATH", pfad.into())]);
+    assert!(text.contains("rustup target list --installed endete mit 1"), "{text}");
+    probe_rot("rustup endet rot", (code, text));
+    // Laufzeit.ps1 wirft oder fehlt: kein zweiter Satz, eine Ersatzzeile zur Laufzeit.
+    let laufzeit = o.repo().join("scripts").join("Laufzeit.ps1");
+    let original = std::fs::read(&laufzeit).unwrap();
+    schreiben(&laufzeit, "function UhrStart { 1 }\nfunction UhrZeile($u) { throw 'kaputt' }\n");
+    probe_rot("Laufzeit.ps1 wirft", o.mac_probe(&[]));
+    std::fs::remove_file(&laufzeit).unwrap();
+    probe_rot("Laufzeit.ps1 fehlt", o.mac_probe(&[]));
+    std::fs::write(&laufzeit, original).unwrap();
+
+    // Quelle des dlltool: zuerst llvm-ar.exe im sysroot (llvm-tools bringt kein
+    // llvm-dlltool mit), sonst %USERPROFILE%\.cargo\bin\llvm-dlltool.exe. Welche
+    // gewählt wurde, zeigt die Größe der Kopie.
+    let profil = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap();
+    let rustup = std::env::var_os("RUSTUP_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".rustup"));
+    let cargo = std::env::var_os("CARGO_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".cargo"));
+    let fremd_profil = o.0.join("profil");
+    let kopie = o.lokal().join("Dashboard/cache/mac-dlltool/dlltool.exe");
+    let laenge = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    let heim = |p: &std::path::Path| -> Vec<(&str, PathBuf)> {
+        vec![("USERPROFILE", p.to_path_buf()), ("RUSTUP_HOME", rustup.clone()), ("CARGO_HOME", cargo.clone())]
+    };
+    let sysroot = programme::befehl(Werkzeug::Rustc).unwrap().args(["--print", "sysroot"]).current_dir(o.repo()).output().unwrap();
+    let wirt = programme::befehl(Werkzeug::Rustc).unwrap().arg("-vV").current_dir(o.repo()).output().unwrap();
+    let wirt = String::from_utf8_lossy(&wirt.stdout).lines().find_map(|l| l.strip_prefix("host: ")).unwrap().trim().to_string();
+    let ar = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim()).join("lib/rustlib").join(&wirt).join("bin/llvm-ar.exe");
+    let (code, text) = o.mac_probe(&heim(&fremd_profil));
+    if ar.is_file() && !text.contains("übersprungen: Das Ziel") {
+        assert_eq!(laenge(&kopie), laenge(&ar), "llvm-ar aus dem sysroot als dlltool:\n{text}");
+    }
+    probe_rot("dlltool aus dem sysroot", (code, text));
+
+    // Kein sysroot (rustc scheitert): Rückfall auf .cargo\bin\llvm-dlltool.exe.
+    let ohne_rustc = o.0.join("ohne-rustc");
+    schreiben(&ohne_rustc.join("rustc.cmd"), "@exit /b 1\r\n");
+    let pfad = std::env::join_paths(std::iter::once(ohne_rustc).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let mit_pfad = |p: &std::path::Path| {
+        let mut u = heim(p);
+        u.push(("PATH", pfad.clone().into()));
+        u
+    };
+    let (code, text) = o.mac_probe(&mit_pfad(&fremd_profil));
+    if !text.contains("übersprungen: Das Ziel") {
+        assert!(
+            text.contains("übersprungen: weder dem sysroot der Toolchain") && text.contains("noch %USERPROFILE%\\.cargo\\bin\\llvm-dlltool.exe gefunden"),
+            "{text}"
+        );
+    }
+    probe_rot("weder sysroot noch .cargo", (code, text));
+    let rueckfall = o.0.join("profil-mit-dlltool");
+    schreiben(&rueckfall.join(".cargo/bin/llvm-dlltool.exe"), "ersatz");
+    let (code, text) = o.mac_probe(&mit_pfad(&rueckfall));
+    if !text.contains("übersprungen: Das Ziel") {
+        assert_eq!(laenge(&kopie), Some(6), "Rückfall .cargo\\bin:\n{text}");
+    }
+    probe_rot("dlltool aus .cargo\\bin", (code, text));
+}
+
+/// Liegt das erste git im PATH im Repo, bricht die Freigabe ab, bevor sie es startet;
+/// ebenso bei „.“ (oder einem anderen nicht voll qualifizierten Eintrag) im PATH.
+#[test]
+fn kein_git_aus_dem_repo() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    let fremd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("hostname.exe");
+    std::fs::copy(fremd, o.repo().join("git.exe")).unwrap();
+    let vorher = o.stand();
+    let lauf = |pfad: std::ffi::OsString| {
+        let a = pwsh()
+            .unwrap()
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(o.repo().join("scripts").join("Freigeben.ps1"))
+            .arg("-Inhalt")
+            .arg(o.inhalt())
+            .arg("-Pruefen")
+            .current_dir(o.repo())
+            .env("PATH", pfad)
+            .env("LOCALAPPDATA", o.lokal())
+            .output()
+            .unwrap();
+        (a.status.code(), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let mit = |vorn: PathBuf| std::env::join_paths(std::iter::once(vorn).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let (code, text) = lauf(mit(o.repo()));
+    assert_eq!(code, Some(2), "{text}");
+    assert!(text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("cargo fmt"), "{text}");
+    // „.“ vorn im PATH (aktueller Ordner ist das Repo): Jeder nicht voll qualifizierte Eintrag bricht ab.
+    let (code, text) = lauf(mit(PathBuf::from(".")));
+    assert_eq!(code, Some(2), "{text}");
+    assert!(text.contains("PATH enthält nicht voll qualifizierte Einträge") && !text.contains("cargo fmt"), "{text}");
+    std::fs::remove_file(o.repo().join("git.exe")).unwrap();
+    assert_eq!(o.stand(), vorher);
 }
 
 /// Jeder rote Schritt bricht ab, bevor etwas geschieht: main, Tags, das ferne
