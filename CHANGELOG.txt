@@ -49,6 +49,13 @@ Behoben
   file:///Users/x).
 - Ein Name in einem Pfad endet im Server auch an einem kodierten
   Doppelpunkt (%3A).
+- Ein Name in einem Pfad endet im Server vor einem Laufwerk: Ein POSIX-Vorsatz
+  direkt davor (/Users/C:\Users\<name>, auch /home, /Volumes, als JSON und
+  kodiert) nahm den Laufwerksbuchstaben als Namen und ließ den Namen dahinter
+  stehen; ebenso C:\Users\<name>-D:\Users\<name>.
+- In der Oberfläche macht ein kodiertes Zeichen (%2F, %5C, %3A, auch doppelt
+  kodiert) vor einem Laufwerk mit Schrägstrich es nicht mehr zum Trenner einer
+  Liste; bei %2FC:/Users/<vorname> <nachname> blieb sonst der Nachname stehen.
 
 0.7.0 - 2026-11-14
 ------------------

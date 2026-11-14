@@ -463,13 +463,19 @@ fn stopp(c: u8) -> bool {
     ) || c.is_ascii_control()
 }
 
+/// Beginnt an `j` ein Laufwerk (Buchstabe an einer Wortgrenze, Doppelpunkt,
+/// Trenner)? Dann endet dort ein Name (`/Users/C:\Users\<name>`, `max-D:\…`).
+fn laufwerk_beginnt(t: &[u8], j: usize) -> bool {
+    t[j].is_ascii_alphabetic() && wortgrenze_davor(t, j) && doppelpunkt(t, j + 1).is_some_and(|n| trenner_folge(t, n).is_some())
+}
+
 /// Ein Teil eines Pfads ab `i` bis zum nächsten Trennzeichen oder Stopp.
 /// Mit Leerzeichen nur, wenn danach ein Trennzeichen kommt (`Max Muster\…`);
 /// sonst endet er am ersten Leerzeichen (`…\beispiel ist kaputt`).
 fn teil(text: &str, i: usize) -> usize {
     let t = text.as_bytes();
     let mut j = i;
-    while j < t.len() && trenner(t, j).is_none() && !stopp(t[j]) && !(t[j] == b'%' && doppelpunkt(t, j).is_some()) {
+    while j < t.len() && trenner(t, j).is_none() && !stopp(t[j]) && !(t[j] == b'%' && doppelpunkt(t, j).is_some()) && !laufwerk_beginnt(t, j) {
         // Typografische Anführungszeichen beenden den Namen wie `"`.
         let c = text[j..].chars().next().unwrap_or(' ');
         if "„“”‚‘’«»‹›".contains(c) {

@@ -205,6 +205,12 @@ describe('profilVerbergen unter macOS und Linux', () => {
 			expect(profilVerbergen(p), p).toBe(p);
 		}
 	});
+
+	it('ein kodiertes Zeichen vor dem Laufwerk macht es nicht zum Listentrenner', () => {
+		expect(profilVerbergen('%2FC:/Users/beispiel zweiter')).toBe(`%2F${PROFIL_PLATZHALTER}`);
+		expect(profilVerbergen('%5CD:/Users/beispiel')).toBe(`%5C${PROFIL_PLATZHALTER}`);
+		expect(profilVerbergen('%252FC:/Users/beispiel')).toBe(`%252F${PROFIL_PLATZHALTER}`);
+	});
 });
 
 describe('profilVerbergen', () => {
