@@ -26,6 +26,52 @@ Behoben
   meldet er solche Fehler als eigene Meldung beim Projekt dashboard;
   repariert ist sie behoben.
 
+0.7.1 - 2026-11-14
+------------------
+
+Behoben
+- Schwärzen auch für Pfade in den Formen von macOS und Linux. Im Server
+  (src/datenschutz.rs): /Users/<name> und /home/<name> (auch hinter
+  /System/Volumes/Data und /Volumes/<x>), /root und /var/root werden zu
+  %USERPROFILE%, auch mit file: davor (mit localhost), URL-kodiert, mit \/
+  wie in JSON, in einer Liste mit Doppelpunkt (PATH, auch hinter $PATH)
+  und direkt hinter einem Schalter (-I, -L). /Volumes/<name> wird
+  /Volumes/%VOLUME%, /run/user/<n> wird /run/user/%UID%, der Temp-Ordner
+  je Konto (/var/folders/<xx>/<kennung>) wird %TMPDIR%. Adressen im Netz,
+  Git-Remotes (auch host:/pfad) und Wege im Dashboard bleiben, wie sie
+  sind. Gilt auf jeder Plattform, auch unter Windows.
+- Die Oberfläche (web/src/lib/pfade.ts) als zweite Sicherung kennt davon
+  die Profile, /root und /Volumes/<name>, je auch mit file: davor, mit \/
+  und in einer Liste mit Doppelpunkt. Sie kennt nicht /run/user/<n>, nicht
+  den Temp-Ordner je Konto, keine URL-kodierten Pfade, nicht /c/Users/<name>
+  und keine Netzwerkpfade.
+- Beide Schichten lesen einen Text nur einmal, auch 100 000 Zeichen ohne
+  Leerraum (Zeittests).
+- Der Inhaber ohne Windows: Profil aus HOME und Name aus USER und LOGNAME,
+  wenn USERPROFILE und USERNAME fehlen (Schwärzen und Anzeige von Pfaden).
+  Der Ordnername von HOME zählt nur als Name, wenn HOME direkt unter /Users
+  oder /home liegt. Ob ein Profil absolut ist, entscheidet sein Text, nicht
+  die Plattform.
+- istLokalerPfad erkennt Profil- und Systemordner von macOS und Linux; ein
+  Weg im Dashboard mit / vorn bleibt ein Link.
+- Ein Laufwerk beginnt im Server an einer Wortgrenze, auch nach einem
+  Escape (\n, \u0022, \x22, oktal), einem kodierten Zeichen (%22, %2522)
+  oder einem Farbcode. In der Oberfläche gilt ein Laufwerk mit Rückstrich
+  an jeder Stelle, wie bisher; vor einem Laufwerk mit Schrägstrich steht
+  kein Buchstabe, außer als Ende einer dieser Formen oder eines Schalters
+  (-IC:/Users/x). Bisher galt dort
+  jeder Buchstabe vor einem Doppelpunkt als Laufwerk (host:/Users/x,
+  file:///Users/x).
+- Ein Name in einem Pfad endet im Server auch an einem kodierten
+  Doppelpunkt (%3A).
+- Ein Name in einem Pfad endet im Server vor einem Laufwerk: Ein POSIX-Vorsatz
+  direkt davor (/Users/C:\Users\<name>, auch /home, /Volumes, als JSON und
+  kodiert) nahm den Laufwerksbuchstaben als Namen und ließ den Namen dahinter
+  stehen; ebenso C:\Users\<name>-D:\Users\<name>.
+- In der Oberfläche macht ein kodiertes Zeichen (%2F, %5C, %3A, auch doppelt
+  kodiert) vor einem Laufwerk mit Schrägstrich es nicht mehr zum Trenner einer
+  Liste; bei %2FC:/Users/<vorname> <nachname> blieb sonst der Nachname stehen.
+
 0.7.0 - 2026-11-14
 ------------------
 
