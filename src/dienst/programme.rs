@@ -314,8 +314,10 @@ mod tests {
     use super::*;
 
     /// Temp-Ordner mit leeren Programmdateien; räumt beim Freigeben auf.
+    #[cfg(windows)]
     struct Ordner(PathBuf);
 
+    #[cfg(windows)]
     impl Ordner {
         fn neu(name: &str) -> Ordner {
             let o = std::env::temp_dir().join(format!("dashboard-programme-{name}-{}", std::process::id()));
@@ -332,12 +334,14 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     impl Drop for Ordner {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 
+    #[cfg(windows)]
     fn orte(o: &Ordner) -> Orte {
         Orte {
             system_root: Some(o.0.join("Windows")),

@@ -239,7 +239,9 @@ pub struct Bote {
     stand: Arc<RwLock<BoteStand>>,
 }
 
-/// Wohin, und wem die Pipe gehören muss.
+/// Wohin, und wem die Pipe gehören muss. Gelesen werden die Felder nur
+/// unter Windows (`verbinden`); außerhalb gibt es keinen Boten.
+#[cfg_attr(not(windows), allow(dead_code))]
 struct Ziel {
     pipe: String,
     programm: PathBuf,

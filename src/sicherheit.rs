@@ -485,6 +485,7 @@ pub fn anmelden_adresse(port: u16, ziel: &str) -> String {
 /// (Etappe 7c): Browser-Seiten leiten auf `/anmelden` (Passkey) mit dem Ziel,
 /// alles andere bekommt 401 mit Art `passkey` (ohne Negotiate, sonst meldete
 /// Edge dasselbe Konto immer wieder an).
+#[cfg(windows)]
 fn passkey_noetig(req: &Request, port: u16) -> Response {
     if ist_navigation(req) {
         let ziel = req.uri().path_and_query().map_or(req.uri().path(), |p| p.as_str());
@@ -594,10 +595,10 @@ async fn ohne_windows(
     next: Next,
 ) -> (Response, crate::api::passkey::AusweisStand) {
     use crate::api::passkey::AusweisStand;
-    if let AusweisStand::Gueltig { sitzung, .. } = &ausweis {
-        if !pflicht.konto_noetig {
-            return (mit_ausweis(req, next, sitzung, None).await, ausweis);
-        }
+    if let AusweisStand::Gueltig { sitzung, .. } = &ausweis
+        && !pflicht.konto_noetig
+    {
+        return (mit_ausweis(req, next, sitzung, None).await, ausweis);
     }
     if pflicht.geschuetzt || pflicht.konto_noetig {
         let res = nach_localhost(&req, state.port)
