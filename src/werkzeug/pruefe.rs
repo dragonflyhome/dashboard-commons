@@ -187,8 +187,8 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
 /// Etappe B8: das freiwillige Feld `projekte = ["slug"]` der Entscheidungen
 /// in `ordner` gegen die Projekte aller Quellen; eine andere Form und
 /// unbekannte Slugs sind Fehler (die Entscheidung fehlte sonst still in der
-/// Zeitleiste). Dateien ohne das Feld oder unlesbare meldet hier nichts (das
-/// tut `pruefe --system`); fehlt der Ordner, nichts.
+/// Zeitleiste). Eine unlesbare Datei ist ein Fehler mit Zeile (sonst fehlte
+/// sie still); Dateien ohne das Feld meldet hier nichts; fehlt der Ordner, nichts.
 fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> {
     use crate::api::system_seiten as sys;
     let Ok((namen, _)) = sys::toml_namen(ordner) else { return Vec::new() };
@@ -197,8 +197,21 @@ fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> {
     let mut befunde = Vec::new();
     for (name, pfad) in namen {
         let datei = format!("docs/entscheidungen/{name}");
-        let Some(text) = sys::datei_text(&pfad).ok() else { continue };
-        let Ok(t) = toml::from_str::<toml::Table>(&text) else { continue };
+        let text = match sys::datei_text(&pfad) {
+            Ok(text) => text,
+            Err(satz) => {
+                befunde.push(Befund::fehler(&datei, None, satz));
+                continue;
+            }
+        };
+        let t = match toml::from_str::<toml::Table>(&text) {
+            Ok(t) => t,
+            Err(e) => {
+                let f = crate::vertrag::lesen::aus_toml_fehler(&datei, &text, &e);
+                befunde.push(Befund::fehler(f.datei, f.zeile, f.text));
+                continue;
+            }
+        };
         let Some(wert) = t.get("projekte") else { continue };
         let zeile = sys::feld_zeile(&text, "projekte");
         match wert.as_array().and_then(|a| a.iter().map(toml::Value::as_str).collect::<Option<Vec<&str>>>()) {
@@ -541,8 +554,10 @@ mod tests {
     fn alle_projekte() {
         let (text, code) = lauf(&beispiel(), &args(&["--alle"]));
         assert_eq!(code, 1, "{text}");
-        assert_eq!(text.lines().filter(|l| l.starts_with("FEHLER ")).count(), 2, "{text}");
-        assert!(text.lines().last().unwrap().starts_with("2 Fehler, "), "{text}");
+        // Zwei kaputte Projekte und die absichtlich kaputte Beispiel-Entscheidung.
+        assert_eq!(text.lines().filter(|l| l.starts_with("FEHLER ")).count(), 3, "{text}");
+        assert!(text.contains("FEHLER docs/entscheidungen/2026-10-30-kaputt.toml, Zeile 3: "), "{text}");
+        assert!(text.lines().last().unwrap().starts_with("3 Fehler, "), "{text}");
         assert_eq!(lauf(&beispiel(), &[]), (text, 1), "ohne Argument wie --alle");
     }
 
@@ -663,7 +678,7 @@ mod tests {
 
     /// Etappe B8: `projekte` in den Entscheidungen neben dem Inhalt. Ein
     /// unbekannter Slug und eine andere Form als eine Liste von Slugs sind
-    /// Fehler mit Zeile; ohne Feld oder in einer kaputten Datei nichts.
+    /// Fehler mit Zeile; ohne Feld nichts; eine unlesbare Datei ist ein Fehler.
     /// Gegenprobe: mit bekannten Slugs 0 Fehler.
     #[test]
     fn entscheidungen_mit_unbekanntem_projekt() {
@@ -679,17 +694,30 @@ mod tests {
         std::fs::write(ordner.join("a.toml"), "thema = \"A\"\nprojekte = [\"ruhig\", \"weg\"]\n").unwrap();
         std::fs::write(ordner.join("b.toml"), "thema = \"B\"\n\nprojekte = \"ruhig\"\n").unwrap();
         std::fs::write(ordner.join("c.toml"), "thema = \"ohne Feld\"\n").unwrap();
+        // Unlesbar: kaputte Schreibweise, ungültige Rückstrich-Maskierung, Schlüssel mit
+        // Umlaut ohne Anführungszeichen, kein UTF-8. Jede ist ein Fehler, nie still.
         std::fs::write(ordner.join("d.toml"), "thema = \n").unwrap();
+        std::fs::write(ordner.join("e.toml"), "thema = \"E\"\npfad = \"C:\\qordner\"\n").unwrap();
+        std::fs::write(ordner.join("f.toml"), "thema = \"F\"\n\ngrö\u{df}e = 1\n").unwrap();
+        std::fs::write(ordner.join("g.toml"), b"thema = \"\xff\"\n").unwrap();
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let a = args(&["--alle", "--ohne-stil"]);
         let (text, code) = lauf_in(&projekte, Some(&repo), &a);
         assert_eq!(code, 1, "{text}");
         assert!(text.contains("FEHLER docs/entscheidungen/a.toml, Zeile 2: Das Projekt „weg“ in „projekte“ gibt es nicht"), "{text}");
         assert!(text.contains("FEHLER docs/entscheidungen/b.toml, Zeile 3: „projekte“ ist eine Liste von Slugs"), "{text}");
-        assert!(!text.contains("„ruhig“") && !text.contains("c.toml") && !text.contains("d.toml"), "{text}");
-        assert!(text.ends_with("2 Fehler, 0 Hinweise\n"), "{text}");
+        for (datei, zeile) in [("d", 1), ("e", 2), ("f", 3)] {
+            assert!(text.contains(&format!("FEHLER docs/entscheidungen/{datei}.toml, Zeile {zeile}:")), "{datei}.toml:\n{text}");
+        }
+        assert!(text.contains("FEHLER docs/entscheidungen/g.toml") && text.contains("nicht in UTF-8"), "{text}");
+        assert!(!text.contains("„ruhig“") && !text.contains("c.toml"), "{text}");
+        assert!(text.ends_with("6 Fehler, 0 Hinweise\n"), "{text}");
         std::fs::write(ordner.join("a.toml"), "thema = \"A\"\nprojekte = [\"ruhig\"]\n").unwrap();
         std::fs::write(ordner.join("b.toml"), "thema = \"B\"\nprojekte = []\n").unwrap();
+        std::fs::write(ordner.join("d.toml"), "thema = \"D\"\n").unwrap();
+        std::fs::write(ordner.join("e.toml"), "thema = \"E\"\npfad = 'C:\\qordner'\n").unwrap();
+        std::fs::write(ordner.join("f.toml"), "thema = \"F\"\n\n\"grö\u{df}e\" = 1\n").unwrap();
+        std::fs::write(ordner.join("g.toml"), "thema = \"G\"\n").unwrap();
         let (text, code) = lauf_in(&projekte, Some(&repo), &a);
         let _ = std::fs::remove_dir_all(&inhalt);
         assert_eq!((code, text.ends_with("0 Fehler, 0 Hinweise\n")), (0, true), "{text}");
@@ -708,7 +736,7 @@ mod tests {
         let (text, code) = lauf_quellen(&q, &repo, &args(&["--alle", "--ohne-stil"]));
         assert_eq!(code, 1, "{text}");
         assert!(text.contains("FEHLER projects/beispiel-c/projekt.toml"), "die zweite Quelle zählt: {text}");
-        assert!(text.lines().last().unwrap().starts_with("3 Fehler, "), "{text}");
+        assert!(text.lines().last().unwrap().starts_with("4 Fehler, "), "{text}");
         assert_eq!(lauf_quellen(&q, &repo, &args(&["--alles"])).1, 2);
         assert_eq!(code_repo(&beispiel()), repo, "das Repo mit web/ und Cargo.toml");
         let _ = std::fs::remove_dir_all(&extra);
