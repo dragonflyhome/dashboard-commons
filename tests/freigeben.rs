@@ -476,6 +476,21 @@ fn mac_probe_ohne_abbruch() {
     // rustup fehlt: PATH nur mit System32.
     let system = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32");
     probe_rot("rustup fehlt", o.mac_probe(&[("PATH", system)]));
+    // rustup endet rot: die Ursache im Satz, nicht „Ziel nicht installiert“.
+    let rot = o.0.join("rustup-rot");
+    schreiben(&rot.join("rustup.cmd"), "@exit /b 1\r\n");
+    let pfad = std::env::join_paths(std::iter::once(rot).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let (code, text) = o.mac_probe(&[("PATH", pfad.into())]);
+    assert!(text.contains("rustup target list --installed endete mit 1"), "{text}");
+    probe_rot("rustup endet rot", (code, text));
+    // Laufzeit.ps1 wirft oder fehlt: kein zweiter Satz, eine Ersatzzeile zur Laufzeit.
+    let laufzeit = o.repo().join("scripts").join("Laufzeit.ps1");
+    let original = std::fs::read(&laufzeit).unwrap();
+    schreiben(&laufzeit, "function UhrStart { 1 }\nfunction UhrZeile($u) { throw 'kaputt' }\n");
+    probe_rot("Laufzeit.ps1 wirft", o.mac_probe(&[]));
+    std::fs::remove_file(&laufzeit).unwrap();
+    probe_rot("Laufzeit.ps1 fehlt", o.mac_probe(&[]));
+    std::fs::write(&laufzeit, original).unwrap();
 
     // llvm-dlltool nicht in %USERPROFILE%\.cargo\bin: die Probe sucht im sysroot weiter
     // und nennt beide Orte, wenn es dort auch fehlt.
@@ -487,6 +502,35 @@ fn mac_probe_ohne_abbruch() {
         assert!(text.contains("fehlt in %USERPROFILE%\\.cargo\\bin und in ") && text.contains("\\lib\\rustlib\\"), "{text}");
     }
     probe_rot("dlltool nur im sysroot", (code, text));
+}
+
+/// Liegt das erste git im PATH im Repo (etwa über „.“), bricht die Freigabe ab, bevor sie es startet.
+#[test]
+fn kein_git_aus_dem_repo() {
+    if !bereit() {
+        return;
+    }
+    let o = Probe::neu();
+    let fremd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("hostname.exe");
+    std::fs::copy(fremd, o.repo().join("git.exe")).unwrap();
+    let pfad = std::env::join_paths(std::iter::once(o.repo()).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let vorher = o.stand();
+    let a = pwsh()
+        .unwrap()
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(o.repo().join("scripts").join("Freigeben.ps1"))
+        .arg("-Inhalt")
+        .arg(o.inhalt())
+        .arg("-Pruefen")
+        .env("PATH", pfad)
+        .env("LOCALAPPDATA", o.lokal())
+        .output()
+        .unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr));
+    assert_eq!(a.status.code(), Some(2), "{text}");
+    assert!(text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("cargo fmt"), "{text}");
+    std::fs::remove_file(o.repo().join("git.exe")).unwrap();
+    assert_eq!(o.stand(), vorher);
 }
 
 /// Jeder rote Schritt bricht ab, bevor etwas geschieht: main, Tags, das ferne

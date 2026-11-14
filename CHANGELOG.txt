@@ -85,6 +85,11 @@ Behoben
   Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie sucht
   llvm-dlltool.exe nach %USERPROFILE%\.cargo\bin auch im sysroot der aktiven
   Toolchain (lib\rustlib\<host>\bin) und schreibt ihre Sätze als UTF-8.
+- Mac-Probe: Fehlt Laufzeit.ps1 oder wirft sie, bleibt es bei einem Satz,
+  Exit 0 und einer Ersatzzeile zur Laufzeit; endet rustup rot, nennt der
+  Satz das statt „Ziel nicht installiert“.
+- Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
+  im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
 
 0.5.0 - 2026-11-14
 ------------------

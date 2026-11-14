@@ -4059,6 +4059,12 @@ fn kein_git_aus_dem_arbeitsordner() {
     );
     let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
     assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
+    // Auch mit vollem Cache (die Hochladen-Läufe oben haben ihn gefüllt): der Abbruch kommt vor dem Cache.
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH und -MitCache: {text}");
+    // Hochladen bricht ab, bevor es git aus dem Arbeitsordner startet.
+    let (c, text) = mit_punkt(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("ginge so"), "Hochladen mit . im PATH: {text}");
 }
 
 /// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse

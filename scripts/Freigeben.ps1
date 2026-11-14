@@ -94,6 +94,12 @@ $NICHTS = 'Es ging nichts hinaus.'
 
 function Ende([int]$code, [string]$satz) { Write-Host $satz; exit $code }
 
+# Wie im Prüfer: Ein „.“ oder relativer Eintrag im PATH holte git aus dem Arbeitsordner oder dem Repo.
+$gitOrt = Split-Path -Parent $git
+if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith($repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    Ende 2 "Abbruch: git liegt im Repo oder im aktuellen Ordner ($git); PATH ohne . und ohne relative Einträge setzen. $NICHTS"
+}
+
 function GitLauf([string]$wo, [string[]]$a, [switch]$Still) {
     $alt = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'

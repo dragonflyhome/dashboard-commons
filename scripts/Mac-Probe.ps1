@@ -29,11 +29,15 @@ $ErrorActionPreference = 'Stop'
 # Die Sätze mit Umlauten kommen auch umgeleitet (Freigeben.ps1, Tests) als UTF-8 an.
 try { [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
 $uhr = $null
+$start = [Diagnostics.Stopwatch]::StartNew()
 $repo = Split-Path -Parent $PSScriptRoot
 
 function Fertig([string]$satz) {
     Write-Host $satz
-    if ($uhr) { UhrZeile $uhr }
+    # Fehlt Laufzeit.ps1 oder wirft sie, kommt eine Ersatzzeile statt eines zweiten Satzes über den catch.
+    try { UhrZeile $uhr } catch {
+        Write-Host "Laufzeit $($start.Elapsed.TotalSeconds.ToString('0.0', [Globalization.CultureInfo]::GetCultureInfo('de-DE'))) s; Auslastung der $([Environment]::ProcessorCount) Rechenkerne unbekannt."
+    }
     exit 0
 }
 
@@ -47,8 +51,13 @@ try {
     . (Join-Path $PSScriptRoot 'Laufzeit.ps1')
     $uhr = UhrStart
 
-    $ziele = @(& rustup target list --installed 2>$null)
-    $global:LASTEXITCODE = 0
+    # Im Repo, damit ein Toolchain-Override dort für rustup und rustc gleich gilt.
+    Push-Location -LiteralPath $repo
+    try {
+        $ziele = @(& rustup target list --installed 2>$null)
+        $rc = $LASTEXITCODE
+    } finally { Pop-Location; $global:LASTEXITCODE = 0 }
+    if ($rc -ne 0) { Fertig "Mac-Probe rot (nur Probe, kein Abbruch): rustup target list --installed endete mit $rc." }
     if ($ziele -notcontains $Ziel) { Fertig "Mac-Probe übersprungen: Das Ziel $Ziel ist nicht installiert (rustup target add $Ziel)." }
 
     $orte = @(Join-Path $env:USERPROFILE '.cargo\bin')

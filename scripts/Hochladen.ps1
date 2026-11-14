@@ -81,6 +81,11 @@ function GitAus([string[]]$a) {
 
 try {
     if ($Wurzel) { Write-Host 'Abbruch: -Wurzel gibt es nicht mehr; main geht direkt nach main hinaus (Hochladen.ps1 ohne -Wurzel, zum Probelauf -Pruefen). Es wurde nichts geändert.'; exit 1 }
+    # Wie im Prüfer: Ein „.“ oder relativer Eintrag im PATH holte git aus dem Arbeitsordner oder dem Repo.
+    $gitOrt = Split-Path -Parent $git
+    if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith((Resolve-Path -LiteralPath $repo).ProviderPath.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "git liegt im Repo oder im aktuellen Ordner ($git); PATH ohne . und ohne relative Einträge setzen"
+    }
     $repo = GitAus @('rev-parse', '--show-toplevel')
     $haken = (& $git -C $repo config --get core.hooksPath) 2>$null
     $haken = "$haken"
