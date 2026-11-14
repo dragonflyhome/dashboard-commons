@@ -14,6 +14,11 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Tests außerhalb von Windows: Die Testhilfe für angemeldete Anfragen meldet
+  über einen Passkey-Ausweis im Cookie an (reiner Testcode in src/app.rs).
+  Unter Windows unverändert.
+
 Behoben
 - pruefe meldet eine Entscheidung in docs/entscheidungen, die sich nicht
   lesen lässt (falsche TOML-Schreibweise, kein UTF-8, zu groß), als Fehler mit
