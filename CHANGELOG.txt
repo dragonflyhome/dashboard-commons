@@ -14,6 +14,36 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.9.1 - 2026-11-14
+------------------
+
+Behoben
+- Der Schlüssel der Ausweise liegt unter macOS und Linux ohne
+  Einstellungsdatei in einem eigenen Schlüsselordner außerhalb des
+  Datenbaums (macOS: Library/Application Support/dashboard-schluessel,
+  Linux: dashboard-schluessel unter XDG_DATA_HOME, sonst .local/share).
+  Ordner und Datei entstehen mit den Rechten 700 und 600. Ein Schlüssel
+  unter geheim neben dem Datenspeicher wird dort nicht übernommen;
+  angemeldete Browser melden sich einmal neu an.
+- Unter macOS und Linux prüft der Server Ordner und Schlüssel vor jedem
+  Laden: eigenes Konto, keine Verknüpfung, kein Recht für andere, genau
+  32 Bytes. Ein zu offener Ordner oder Schlüssel wird abgelehnt, mit
+  einem Satz, was zu tun ist.
+- Unter macOS nimmt der Server den neuen Schlüsselordner von Time
+  Machine aus.
+- Der Besitzer eines Repo-Ordners wird außerhalb von Windows über die
+  Benutzernummer verglichen. Bisher galt dort jedes Repo als fremd.
+
+0.9.0 - 2026-11-14
+------------------
+
+Hinzugefügt
+- Ein Projekt-Repo darf mehrere Projekte enthalten, wenn seine Ausnahmedatei
+  im Inhalts-Repo sie unter slugs = [...] nennt. Der Prüfer weist dann jeden
+  Ordner unter projects/ außerhalb der Liste ab, auch im fernen Stand; ein
+  Slug der Liste muss klein geschrieben sein und darf nur einmal stehen.
+  Ohne die Liste gilt weiter genau ein Projekt je Repo.
+
 0.8.1 - 2026-11-14
 ------------------
 

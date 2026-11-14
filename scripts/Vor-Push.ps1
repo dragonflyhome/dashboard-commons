@@ -161,7 +161,10 @@
     Projektmodule, Binärdateien außerhalb der Positivliste). Im Projekt-Repo
     gilt eine eigene Positivliste: projects/<slug>/** für genau einen Slug (der
     auf main des Remotes, sonst der erste, den der Lauf sieht; jeder weitere
-    ist ein Fund „fremdes Projekt“)
+    ist ein Fund „fremdes Projekt“; mit der Liste slugs der Ausnahmedatei
+    unten genau deren Slugs, exakt verglichen, und jeder Ordner unter projects/
+    außerhalb der Liste ist ein Fund, auch nur im fernen Stand; ein Slug der
+    Liste ohne Ordner ist keiner)
     und die Wurzeldateien dashboard-version.toml, .gitignore, .gitattributes,
     CONTRIBUTING.md; jede andere *.md ist auch dort ein Fund. Dazu liest er dort
     <Inhalt>\pruefer\ausnahmen\<name>.toml (<name> der letzte Teil der
@@ -170,7 +173,10 @@
     für diesen Lauf nur noch alleinstehend als frei: Steht ein Buchstabe oder
     eine Ziffer direkt davor oder dahinter (eine Zusammensetzung), bleibt er
     ein Fund; ein Eintrag ohne solchen Wert ist ein Fund
-    („Ausnahme ohne Listeneintrag, Nr. n“). Fehlt die Datei, gibt es keine
+    („Ausnahme ohne Listeneintrag, Nr. n“). Daneben slugs = ["…", …]: die
+    Projekte des Repos (siehe oben), je Eintrag ungefaltet ^[a-z0-9][a-z0-9-]*\z;
+    leer, ein anderes Zeichen (auch Großbuchstabe oder Leerzeichen) oder ein
+    Eintrag zweimal ist kaputt. Fehlt die Datei, gibt es keine
     Ausnahme; ist sie kaputt, Exit 2. Die Ausgabe nennt nur die Zahl. In Basis
     und Inhalt liest er sie nie. Alles andere gilt in jedem Repo. Die Art kommt
     nur von außerhalb des geprüften Baums: aus der Adresse des Remotes
@@ -361,6 +367,8 @@ $script:istBasis = $true
 $script:istProjekt = $false
 # Der eine Slug eines Projekt-Repos: der erste Ordner unter projects/, den der Lauf sieht.
 $script:projektSlug = $null
+# Die erlaubten Slugs aus der Liste slugs der Ausnahmedatei (exakt verglichen); $null: die Ein-Slug-Regel oben.
+$script:projektSlugs = $null
 # Der ungekürzte Regex von sensibel, wenn die Ausnahmedatei Werte herausnimmt (nur zum Verbergen).
 $script:maske = $null
 # So viele Zeilen je Muster und Datei werden einzeln genannt, dann die Zahl der weiteren.
@@ -512,7 +520,8 @@ $script:gelesen = New-Object 'System.Collections.Generic.SortedDictionary[string
 function ListeGelesen([string]$datei, [byte[]]$roh) {
     $script:gelesen["$([IO.Path]::GetFileName([IO.Path]::GetDirectoryName($datei)))/$([IO.Path]::GetFileName($datei))"] = $roh
 }
-function ListenLaden([string]$datei, [string[]]$namen = @('sensibel', 'allgemein', 'tabu', 'benutzer', 'rechner', 'wlan', 'schluessel', 'mac', 'nur_basis'), [string[]]$pflichten = @('allgemein', 'tabu', 'benutzer')) {
+# $ungefaltet: Listen ohne Trim, Faltung und Weglassen leerer Werte (die Form prüft der Aufrufer); fehlt eine, ist sie $null statt leer.
+function ListenLaden([string]$datei, [string[]]$namen = @('sensibel', 'allgemein', 'tabu', 'benutzer', 'rechner', 'wlan', 'schluessel', 'mac', 'nur_basis'), [string[]]$pflichten = @('allgemein', 'tabu', 'benutzer'), [string[]]$ungefaltet = @()) {
     if (-not (Test-Path -LiteralPath $datei -PathType Leaf)) { throw "Die Namensliste $datei fehlt. Ohne sie prüft der Prüfer nicht, und es geht nichts hinaus." }
     # Streng UTF-8: eine Datei in Windows-1252 machte
     # jeden Umlaut-Namen still wirkungslos. Kaputt ist sie auch mit U+FFFD.
@@ -523,6 +532,7 @@ function ListenLaden([string]$datei, [string[]]$namen = @('sensibel', 'allgemein
     if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     $listen = @{}
     foreach ($k in $namen) { $listen[$k] = @() }
+    foreach ($k in $ungefaltet) { $listen[$k] = $null }
     # Eine Liste zweimal in einer Datei ist kaputt (der zweite Block überschrieb den ersten still).
     $schonDa = @{}
     # Nur Kommentare, Leerzeilen und `name = [ "…", … ]` (auch über mehrere Zeilen).
@@ -540,7 +550,8 @@ function ListenLaden([string]$datei, [string[]]$namen = @('sensibel', 'allgemein
                     $_.Groups[1].Value -replace '\\\\', '\' })
             $ohneWerte = [regex]::Replace($innen, '"((?:[^"\\]|\\.)*)"', '')
             if ($ohneWerte -match '[^\s,]') { throw "Die Namensliste $datei ist kaputt: In der Liste $name steht etwas außer Texten in Anführungszeichen." }
-            $listen[$name] = @($werte | Where-Object { $_.Trim() -ne '' } | ForEach-Object { $_.Trim().ToLowerInvariant() })
+            if ($ungefaltet -ccontains $name) { $listen[$name] = @($werte) }
+            else { $listen[$name] = @($werte | Where-Object { $_.Trim() -ne '' } | ForEach-Object { $_.Trim().ToLowerInvariant() }) }
             ''
         })
     if ($rest -match '\S') { throw "Die Namensliste $datei ist kaputt (eine Zeile ist keine Liste der Form name = [""…""])." }
@@ -913,9 +924,11 @@ function PfadPruefen([string]$pfad) {
         if ($grund) { Fund $pfad 0 $grund }
         elseif (-not $ok) { Fund $pfad 0 'Ordner oder Datei nicht in der Positivliste' }
     } elseif ($script:istProjekt) {
-        # Overlay: genau ein projects/<slug>/**, der erste Slug des Laufs; jeder weitere ist fremd.
+        # Overlay: genau ein projects/<slug>/**, der erste Slug des Laufs; jeder weitere ist fremd. Mit Liste slugs: nur deren Slugs.
         $m = [regex]::Match($p, '^projects/([^/]+)/.')
-        if ($m.Success) {
+        if ($m.Success -and $null -ne $script:projektSlugs) {
+            if (-not $script:projektSlugs.Contains($m.Groups[1].Value)) { Fund $pfad 0 'fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)' }
+        } elseif ($m.Success) {
             if (-not $script:projektSlug) { $script:projektSlug = $m.Groups[1].Value }
             if ($m.Groups[1].Value -cne $script:projektSlug) { Fund $pfad 0 'fremdes Projekt (ein zweiter Ordner unter projects/)' }
         } elseif ($p -cnotmatch '^(?:dashboard-version\.toml|\.gitignore|\.gitattributes|CONTRIBUTING\.md)$') { Fund $pfad 0 'Ordner oder Datei nicht in der Positivliste des Projekt-Repos' }
@@ -1441,8 +1454,19 @@ if ($script:istProjekt) {
     $ausnahmeDatei = Join-Path $Inhalt "pruefer\ausnahmen\$repoName.toml"
     if ($repoName -match '^[A-Za-z0-9][A-Za-z0-9._-]*$' -and (Test-Path -LiteralPath $ausnahmeDatei -PathType Leaf)) {
         # Kaputt: Abbruch wie bei den Listen; die Meldung nennt den Namen des Repos nicht.
-        try { $erlaubt = @((ListenLaden $ausnahmeDatei @('erlaubt') @()).erlaubt) }
-        catch { throw $_.Exception.Message.Replace($ausnahmeDatei, 'pruefer\ausnahmen\<repo>.toml') }
+        try {
+            $ausnahme = ListenLaden $ausnahmeDatei @('erlaubt', 'slugs') @() @('slugs')
+            $erlaubt = @($ausnahme.erlaubt)
+            # slugs roh: Eine Faltung vor der Prüfung machte aus „Alpha“ oder „ alpha“ still einen gültigen Slug.
+            if ($null -ne $ausnahme.slugs) {
+                if (@($ausnahme.slugs).Count -eq 0) { throw "Die Namensliste $ausnahmeDatei ist kaputt: Die Liste slugs ist leer." }
+                $script:projektSlugs = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+                foreach ($s in $ausnahme.slugs) {
+                    if ($s -cnotmatch '^[a-z0-9][a-z0-9-]*\z') { throw "Die Namensliste $ausnahmeDatei ist kaputt: In der Liste slugs steht ein Eintrag, der kein Slug ist (nur a-z, 0-9 und -, vorne kein -)." }
+                    if (-not $script:projektSlugs.Add($s)) { throw "Die Namensliste $ausnahmeDatei ist kaputt: In der Liste slugs steht ein Eintrag zweimal." }
+                }
+            }
+        } catch { throw $_.Exception.Message.Replace($ausnahmeDatei, 'pruefer\ausnahmen\<repo>.toml') }
         $schluessel = { param($w) ((Falten $w) -split "$trenner+" | Where-Object { $_ }) -join ' ' }
         $bekannt = New-Object 'System.Collections.Generic.HashSet[string]'
         foreach ($w in @($listen.sensibel) + @($listen.nur_basis)) { [void]$bekannt.Add((& $schluessel $w)) }
@@ -1572,10 +1596,16 @@ if ($script:istProjekt) {
     # Hat das Remote schon main, steht der Slug fest: Sonst tauschte ein Merge, der den alten Ordner löscht, das Projekt still aus.
     $fernStaende = @($mainZeilen | Where-Object { $_[3] -ne $NULL_SHA } | ForEach-Object { $_[3] })
     if ($Commits -match '^([^.]+)\.\.[^.]') { $fernStaende += $Matches[1] }
+    # Mit Liste slugs zählt jeder Ordner dort, einmal je Ordner; der Slug wird nicht festgelegt (sonst entschiede die Reihenfolge).
+    $fernOrdner = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
     foreach ($s in $fernStaende) {
         # -z: ohne es setzt git einen Namen mit Sonderzeichen in Anführungszeichen (anderer Slug).
         $ordner = @((Git @('ls-tree', '-d', '--name-only', '-z', $s, 'projects/')) -split "`0" | Where-Object { $_ })
-        if (-not $script:projektSlug -and $ordner.Count -gt 0) { $script:projektSlug = $ordner[0].Substring(9) }
+        if ($null -ne $script:projektSlugs) { foreach ($o in $ordner) { [void]$fernOrdner.Add($o) } }
+        elseif (-not $script:projektSlug -and $ordner.Count -gt 0) { $script:projektSlug = $ordner[0].Substring(9) }
+    }
+    foreach ($o in $fernOrdner) {
+        if (-not $script:projektSlugs.Contains($o.Substring(9))) { Fund "$o (ferner Stand)" 0 'fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)' }
     }
 }
 foreach ($z in $hookZeilen) {
