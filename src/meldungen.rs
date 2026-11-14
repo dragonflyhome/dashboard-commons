@@ -292,7 +292,7 @@ pub async fn pruefung_lauf(state: &AppState, slug: &str, jetzt: Zeit) {
 /// Die Entscheidungen wie bei `dashboard pruefe` (unlesbar, unbekannte
 /// Projekte): eine eigene Meldung beim System-Projekt, sonst fiele eine kaputte
 /// Entscheidung im Betrieb still aus. Neben den Projekten in [`pruefung_alle`].
-/// shortcut: läuft nur beim Start und nach einem Überlauf, nicht bei jeder Änderung in docs/entscheidungen; aufrüsten, wenn das Ereignis `docs` hier ankommt.
+/// Läuft auch bei jeder Änderung in docs/entscheidungen (Bereich `Entscheidungen` des Melders, in [`spawn`]).
 pub async fn entscheidungen_lauf(state: &AppState, jetzt: Zeit) {
     let ordner = state.entscheidungen_dir.as_ref().clone();
     let quellen = state.quellen.to_vec();
@@ -767,6 +767,7 @@ pub fn spawn(state: AppState) {
         let abschaltung = state.abschaltung();
         tokio::pin!(abschaltung);
         let mut kanal = state.events.subscribe();
+        let mut docs = state.aenderungen.abonnieren();
         pruefung_alle(&state, aufgaben::jetzt()).await;
         if lesbarkeit_lauf(&state, aufgaben::jetzt()).await.is_empty() {
             info!("Alle gelesenen Ordner sind lesbar (projects, data, web, docs\\entscheidungen, docs\\zielbild, docs\\anleitung, soweit vorhanden).");
@@ -795,6 +796,13 @@ pub fn spawn(state: AppState) {
                     }
                     Ok(_) => {}
                     Err(RecvError::Lagged(_)) => pruefung_alle(&state, aufgaben::jetzt()).await,
+                    Err(RecvError::Closed) => return,
+                },
+                // Eine Änderung in docs/entscheidungen (gebündelt vom Melder): gleich prüfen, nicht erst beim Neustart.
+                d = docs.recv() => match d {
+                    Ok(e) if e.bereich == crate::aenderungen::Bereich::Entscheidungen => entscheidungen_lauf(&state, aufgaben::jetzt()).await,
+                    Ok(_) => {}
+                    Err(RecvError::Lagged(_)) => entscheidungen_lauf(&state, aufgaben::jetzt()).await,
                     Err(RecvError::Closed) => return,
                 },
                 _ = &mut abschaltung => return,
@@ -1076,6 +1084,35 @@ mod tests {
         let behoben = meldungen(&state).into_iter().find(|x| x.schluessel == k).unwrap().behoben;
         let _ = std::fs::remove_dir_all(&ordner);
         assert!(behoben.is_some(), "repariert: behoben");
+    }
+
+    /// Im laufenden Dienst: Eine Änderung in docs/entscheidungen (Bereich des
+    /// Melders) löst die Prüfung gleich aus, nicht erst beim nächsten Start.
+    #[tokio::test]
+    async fn entscheidungen_bei_aenderung_geprueft() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-meldung-entscheidungen-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\n").unwrap();
+        let mut state = AppState::fuer_tests(&beispiel());
+        state.entscheidungen_dir = std::sync::Arc::new(ordner.clone());
+        let k = schluessel(SYSTEM_PROJEKT, "entscheidungen-rot");
+        let offen = |s: &AppState| meldungen(s).iter().any(|m| m.schluessel == k && m.behoben.is_none());
+        spawn(state.clone());
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!offen(&state), "beim Start ist alles lesbar");
+        std::fs::write(ordner.join("a.toml"), "thema = \n").unwrap();
+        state.aenderungen.melden(crate::aenderungen::Bereich::Entscheidungen);
+        let mut da = false;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if offen(&state) {
+                da = true;
+                break;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&ordner);
+        assert!(da, "nach der Änderung gemeldet, ohne Neustart");
     }
 
     fn eintrag(art: EintragsArt, id: &str, tage: Option<i64>) -> AnstehendEintrag {

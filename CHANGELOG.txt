@@ -22,9 +22,9 @@ Behoben
 - /api/pruefung (und damit der Prüfbericht im Dashboard) zählt diese Fehler
   und unbekannte Projekte im Feld projekte einer Entscheidung beim Projekt
   dashboard mit, wie dashboard pruefe.
-- Beim Start des Dienstes (und nach einem Überlauf des Live-Kanals) meldet
-  er solche Fehler als eigene Meldung beim Projekt dashboard; repariert ist
-  sie behoben.
+- Beim Start des Dienstes und bei jeder Änderung in docs/entscheidungen
+  meldet er solche Fehler als eigene Meldung beim Projekt dashboard;
+  repariert ist sie behoben.
 
 0.7.0 - 2026-11-14
 ------------------
