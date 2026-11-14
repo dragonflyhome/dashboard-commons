@@ -35,16 +35,18 @@ fn texte(v: &Value, aus: &mut Vec<String>) {
     }
 }
 
-/// Kein Text nennt das erfundene Konto, ein `\Users\`-Profil oder das echte
-/// Profil dieses Prozesses.
+/// Kein Text nennt das erfundene Konto, ein `\Users\`-Profil, ein Profil in
+/// der Form von macOS oder Linux oder das echte Profil dieses Prozesses
+/// (`USERPROFILE`, sonst `HOME`).
 fn ohne_profil(pfad: &str, v: &Value) {
     let mut alle = Vec::new();
     texte(v, &mut alle);
-    let echt = std::env::var("USERPROFILE").ok().filter(|p| p.len() > 3).map(|p| p.to_lowercase());
+    let echt = ["USERPROFILE", "HOME"].iter().find_map(|n| std::env::var(n).ok().filter(|p| p.len() > 3)).map(|p| p.to_lowercase());
     for t in &alle {
         let k = t.to_lowercase();
         assert!(!k.contains(NAME), "{pfad}: Name in „{t}“");
         assert!(!k.contains(r":\users\") && !k.contains(":/users/"), "{pfad}: Profil in „{t}“");
+        assert!(!k.starts_with("/users/") && !k.starts_with("/home/") && !k.contains(" /users/") && !k.contains(" /home/"), "{pfad}: Profil in „{t}“");
         if let Some(e) = &echt {
             assert!(!k.contains(e.as_str()), "{pfad}: echtes Profil in „{t}“");
         }
