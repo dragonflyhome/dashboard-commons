@@ -70,6 +70,16 @@ Geändert
   das gefundene git im geprüften Repo oder im aktuellen Ordner, bricht der
   Prüfer mit Exit 2 ab.
 
+Behoben
+- Die Übernahme eines Beitrags mergt genau die gelesene Commit-Kennung,
+  nicht einen Zweignamen, der sich nach dem Lesen noch ändern kann.
+- Beiträge aus Forks werden enger geprüft: Name und Adresse fremder Autoren
+  laufen durch die Textprüfung, die noreply-Regel ist verankert.
+- Der Prüfer startete git über den Namen; unter Windows konnte so eine
+  git.exe aus dem geprüften Arbeitsbaum laufen.
+- Ein Windows-Pfad mit / zählte als Heimatpfad doppelt, auch mit mehreren
+  Trennern nach dem Laufwerk.
+
 0.5.0 - 2026-11-14
 ------------------
 
