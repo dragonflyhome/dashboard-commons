@@ -492,16 +492,52 @@ fn mac_probe_ohne_abbruch() {
     probe_rot("Laufzeit.ps1 fehlt", o.mac_probe(&[]));
     std::fs::write(&laufzeit, original).unwrap();
 
-    // llvm-dlltool nicht in %USERPROFILE%\.cargo\bin: die Probe sucht im sysroot weiter
-    // und nennt beide Orte, wenn es dort auch fehlt.
+    // Quelle des dlltool: zuerst llvm-ar.exe im sysroot (llvm-tools bringt kein
+    // llvm-dlltool mit), sonst %USERPROFILE%\.cargo\bin\llvm-dlltool.exe. Welche
+    // gewählt wurde, zeigt die Größe der Kopie.
     let profil = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap();
     let rustup = std::env::var_os("RUSTUP_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".rustup"));
     let cargo = std::env::var_os("CARGO_HOME").map(PathBuf::from).unwrap_or_else(|| profil.join(".cargo"));
-    let (code, text) = o.mac_probe(&[("USERPROFILE", o.0.join("profil")), ("RUSTUP_HOME", rustup), ("CARGO_HOME", cargo)]);
-    if text.contains("llvm-dlltool.exe fehlt") {
-        assert!(text.contains("fehlt in %USERPROFILE%\\.cargo\\bin und in ") && text.contains("\\lib\\rustlib\\"), "{text}");
+    let fremd_profil = o.0.join("profil");
+    let kopie = o.lokal().join("Dashboard/cache/mac-dlltool/dlltool.exe");
+    let laenge = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    let heim = |p: &std::path::Path| -> Vec<(&str, PathBuf)> {
+        vec![("USERPROFILE", p.to_path_buf()), ("RUSTUP_HOME", rustup.clone()), ("CARGO_HOME", cargo.clone())]
+    };
+    let sysroot = Command::new("rustc").args(["--print", "sysroot"]).current_dir(o.repo()).output().unwrap();
+    let wirt = Command::new("rustc").arg("-vV").current_dir(o.repo()).output().unwrap();
+    let wirt = String::from_utf8_lossy(&wirt.stdout).lines().find_map(|l| l.strip_prefix("host: ")).unwrap().trim().to_string();
+    let ar = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim()).join("lib/rustlib").join(&wirt).join("bin/llvm-ar.exe");
+    let (code, text) = o.mac_probe(&heim(&fremd_profil));
+    if ar.is_file() && !text.contains("übersprungen: Das Ziel") {
+        assert_eq!(laenge(&kopie), laenge(&ar), "llvm-ar aus dem sysroot als dlltool:\n{text}");
     }
-    probe_rot("dlltool nur im sysroot", (code, text));
+    probe_rot("dlltool aus dem sysroot", (code, text));
+
+    // Kein sysroot (rustc scheitert): Rückfall auf .cargo\bin\llvm-dlltool.exe.
+    let ohne_rustc = o.0.join("ohne-rustc");
+    schreiben(&ohne_rustc.join("rustc.cmd"), "@exit /b 1\r\n");
+    let pfad = std::env::join_paths(std::iter::once(ohne_rustc).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let mit_pfad = |p: &std::path::Path| {
+        let mut u = heim(p);
+        u.push(("PATH", pfad.clone().into()));
+        u
+    };
+    let (code, text) = o.mac_probe(&mit_pfad(&fremd_profil));
+    if !text.contains("übersprungen: Das Ziel") {
+        assert!(
+            text.contains("übersprungen: weder dem sysroot der Toolchain") && text.contains("noch %USERPROFILE%\\.cargo\\bin\\llvm-dlltool.exe gefunden"),
+            "{text}"
+        );
+    }
+    probe_rot("weder sysroot noch .cargo", (code, text));
+    let rueckfall = o.0.join("profil-mit-dlltool");
+    schreiben(&rueckfall.join(".cargo/bin/llvm-dlltool.exe"), "ersatz");
+    let (code, text) = o.mac_probe(&mit_pfad(&rueckfall));
+    if !text.contains("übersprungen: Das Ziel") {
+        assert_eq!(laenge(&kopie), Some(6), "Rückfall .cargo\\bin:\n{text}");
+    }
+    probe_rot("dlltool aus .cargo\\bin", (code, text));
 }
 
 /// Liegt das erste git im PATH im Repo, bricht die Freigabe ab, bevor sie es startet;

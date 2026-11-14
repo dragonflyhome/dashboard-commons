@@ -10,14 +10,14 @@
     Bei --target gelten die rustflags aus .cargo/config.toml nicht für die
     Abhängigkeiten des Hosts; windows-sys (raw-dylib) ruft dann das dlltool
     des self-contained-Ordners, dem der Assembler fehlt. Darum liegt
-    llvm-dlltool.exe als dlltool.exe in einem eigenen Ordner im Anwendungscache
-    und steht nur für diesen Lauf vorn im PATH. Quelle ist die erste gefundene:
-    %USERPROFILE%\.cargo\bin, sonst der sysroot der aktiven Toolchain
-    (lib\rustlib\<host>\bin).
+    eine Kopie als dlltool.exe in einem eigenen Ordner im Anwendungscache und
+    steht nur für diesen Lauf vorn im PATH. Quelle ist llvm-ar.exe im sysroot
+    der aktiven Toolchain (lib\rustlib\<host>\bin, aus llvm-tools; der Name
+    bestimmt die Rolle), sonst %USERPROFILE%\.cargo\bin\llvm-dlltool.exe.
 
     Eine Probe: Das Ergebnis steht in einem Satz da, der Exit-Code ist immer 0,
     auch bei einer Ausnahme (rustup fehlt, Kopieren scheitert, cargo startet
-    nicht). Fehlt das Ziel oder llvm-dlltool, sagt sie es (rustup target add
+    nicht). Fehlt das Ziel oder beide Quellen, sagt sie es (rustup target add
     aarch64-apple-darwin; rustup component add llvm-tools).
 .PARAMETER Ziel
     Das Ziel (Standard aarch64-apple-darwin).
@@ -60,19 +60,19 @@ try {
     if ($rc -ne 0) { Fertig "Mac-Probe rot (nur Probe, kein Abbruch): rustup target list --installed endete mit $rc." }
     if ($ziele -notcontains $Ziel) { Fertig "Mac-Probe übersprungen: Das Ziel $Ziel ist nicht installiert (rustup target add $Ziel)." }
 
-    $orte = @(Join-Path $env:USERPROFILE '.cargo\bin')
-    $quelle = Join-Path $orte[0] 'llvm-dlltool.exe'
-    if (-not (Test-Path -LiteralPath $quelle -PathType Leaf)) {
-        Push-Location -LiteralPath $repo
-        try {
-            $sysroot = "$(& rustc --print sysroot 2>$null)".Trim()
-            $wirt = "$(@(& rustc -vV 2>$null) -match '^host: ')" -replace '^host: ', ''
-        } finally { Pop-Location; $global:LASTEXITCODE = 0 }
-        $orte += if ($sysroot -and $wirt) { Join-Path $sysroot "lib\rustlib\$($wirt.Trim())\bin" } else { 'dem sysroot der Toolchain (lib\rustlib\<host>\bin)' }
-        $quelle = Join-Path $orte[1] 'llvm-dlltool.exe'
-        if (-not (Test-Path -LiteralPath $quelle -PathType Leaf)) {
-            Fertig "Mac-Probe übersprungen: llvm-dlltool.exe fehlt in $(Ohne $orte[0]) und in $(Ohne $orte[1]) (rustup component add llvm-tools)."
-        }
+    # llvm-tools bringt kein llvm-dlltool mit, nur llvm-ar; das Programm wählt seine Rolle nach dem Dateinamen.
+    Push-Location -LiteralPath $repo
+    try {
+        $sysroot = "$(& rustc --print sysroot 2>$null)".Trim()
+        $wirt = "$(@(& rustc -vV 2>$null) -match '^host: ')" -replace '^host: ', ''
+    } finally { Pop-Location; $global:LASTEXITCODE = 0 }
+    $orte = @(
+        if ($sysroot -and $wirt) { Join-Path $sysroot "lib\rustlib\$($wirt.Trim())\bin\llvm-ar.exe" } else { 'dem sysroot der Toolchain (lib\rustlib\<host>\bin\llvm-ar.exe)' }
+        Join-Path $env:USERPROFILE '.cargo\bin\llvm-dlltool.exe'
+    )
+    $quelle = $orte | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $quelle) {
+        Fertig "Mac-Probe übersprungen: weder $(Ohne $orte[0]) noch $(Ohne $orte[1]) gefunden (rustup component add llvm-tools)."
     }
 
     $ordner = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\mac-dlltool'
