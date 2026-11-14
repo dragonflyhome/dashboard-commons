@@ -603,12 +603,63 @@ pub fn beispiel_fuer_tests() -> PathBuf {
 /// Für Tests: der Router, als käme jede Anfrage über eine Verbindung, die
 /// schon als Inhaber angemeldet ist (eigene Verbindungsnummer, im Vorrat als
 /// Inhaber gemerkt). Für alle Tests, die nicht die Anmeldung selbst prüfen.
+///
+/// Außerhalb von Windows gibt es die Windows-Anmeldung nicht. Dort bringt
+/// jede Anfrage einen gültigen Ausweis im Cookie mit ([`test_ausweis`]): Die
+/// Tests gehen so durch die echte Schleuse für Passkey-Sitzungen, ohne
+/// Abkürzung. Wege, die ausdrücklich das Hauptkonto verlangen, bleiben damit
+/// verschlossen.
 #[cfg(test)]
 pub fn router_angemeldet(state: AppState) -> Router {
     let v = crate::anmeldung::verbindung::Verbindung::neu();
     #[cfg(windows)]
     crate::anmeldung::verbindung::merken(v.nr, crate::anmeldung::WindowsKonto::test(true));
-    router(state).layer(axum::Extension(axum::extract::ConnectInfo(v)))
+    #[cfg(not(windows))]
+    let cookie = test_ausweis(&state);
+    let r = router(state).layer(axum::Extension(axum::extract::ConnectInfo(v)));
+    #[cfg(not(windows))]
+    let r = match cookie {
+        Some(wert) => r.layer(tower::util::MapRequestLayer::new(move |mut req: axum::http::Request<axum::body::Body>| {
+            if !req.headers().contains_key(axum::http::header::COOKIE) {
+                req.headers_mut().insert(axum::http::header::COOKIE, wert.clone());
+            }
+            req
+        })),
+        None => r,
+    };
+    r
+}
+
+/// Nur für Tests außerhalb von Windows: ein Passkey im Datenspeicher des
+/// Zustands, über den ganzen Weg angelegt (Challenge, Prüfung der Antwort,
+/// Speichern, wie im Hauptkonto sofort registriert), und ein Ausweis dazu,
+/// signiert mit dem Schlüssel des Zustands, als Wert für den Kopf `Cookie`.
+/// Ein schon registrierter Passkey wird wiederverwendet. Ohne Datenspeicher
+/// oder Schlüssel `None`: Dann bleiben die geschützten Wege zu, wie im Betrieb.
+#[cfg(all(test, not(windows)))]
+fn test_ausweis(state: &AppState) -> Option<axum::http::HeaderValue> {
+    use crate::passkey::webauthn::{self, Erwartung, pruef_authenticator::PruefAuthenticator};
+    use crate::speicher::passkeys::{AufgabenArt, PasskeyAufgabe};
+    use crate::vertrag::passkey::PasskeyStatus;
+    let speicher = state.speicher.as_ref()?;
+    let jwt = state.jwt.as_ref()?;
+    let jetzt = crate::speicher::aufgaben::jetzt();
+    let vorhanden = speicher.passkeys().ok()?.into_iter().find(|p| p.hauptkonto && p.status == PasskeyStatus::Registriert);
+    let cid = match vorhanden {
+        Some(p) => p.id,
+        None => {
+            let herkunft = crate::passkey::herkunft(state.port);
+            let geraet = PruefAuthenticator::es256();
+            let aufgabe = PasskeyAufgabe::anlegen(&crate::anmeldung::WindowsKonto::test(true), "Testgerät", &jetzt);
+            let challenge = speicher.passkey_aufgabe_anlegen(&aufgabe, &jetzt).ok()?;
+            let (client, attestation) = geraet.anlegen(&challenge, &herkunft);
+            let neu = webauthn::anlegen_pruefen(&client, &attestation, &geraet.id, Erwartung { herkunft: &herkunft, rp_id: crate::passkey::RP_ID }).ok()?;
+            let aufgabe = speicher.passkey_aufgabe_nehmen(&neu.challenge, AufgabenArt::Anlegen, &jetzt).ok()?;
+            speicher.passkey_anlegen(&neu, &aufgabe, &jetzt).ok()?.0.id
+        }
+    };
+    let token = jwt.ausstellen(&crate::passkey::jwt::Ausweis::neu(&cid, jetzt.timestamp()));
+    axum::http::HeaderValue::from_str(&format!("{}={token}", crate::passkey::cookie::NAME)).ok()
 }
 
 /// Woher `zusammenbauen` seine Pfade nimmt.
