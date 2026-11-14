@@ -504,8 +504,8 @@ fn mac_probe_ohne_abbruch() {
     let heim = |p: &std::path::Path| -> Vec<(&str, PathBuf)> {
         vec![("USERPROFILE", p.to_path_buf()), ("RUSTUP_HOME", rustup.clone()), ("CARGO_HOME", cargo.clone())]
     };
-    let sysroot = Command::new("rustc").args(["--print", "sysroot"]).current_dir(o.repo()).output().unwrap();
-    let wirt = Command::new("rustc").arg("-vV").current_dir(o.repo()).output().unwrap();
+    let sysroot = programme::befehl(Werkzeug::Rustc).unwrap().args(["--print", "sysroot"]).current_dir(o.repo()).output().unwrap();
+    let wirt = programme::befehl(Werkzeug::Rustc).unwrap().arg("-vV").current_dir(o.repo()).output().unwrap();
     let wirt = String::from_utf8_lossy(&wirt.stdout).lines().find_map(|l| l.strip_prefix("host: ")).unwrap().trim().to_string();
     let ar = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim()).join("lib/rustlib").join(&wirt).join("bin/llvm-ar.exe");
     let (code, text) = o.mac_probe(&heim(&fremd_profil));
