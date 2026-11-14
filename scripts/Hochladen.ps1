@@ -67,12 +67,14 @@ $ErrorActionPreference = 'Stop'
 # Scheitert Laufzeit.ps1, fehlt nur die Zeile zur Laufzeit.
 $uhr = $null
 try { . (Join-Path $PSScriptRoot 'Laufzeit.ps1'); $uhr = UhrStart } catch { Write-Host 'HINWEIS Laufzeit.ps1 ließ sich nicht laden; die Zeile zur Laufzeit fehlt.' }
+# git über den vollen Pfad aus PATH, wie im Prüfer (nie eine git.exe aus dem Arbeitsordner).
+$git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $codeRepo = Split-Path -Parent $PSScriptRoot
 # $repo ist zugleich der Parameter -Repo (PowerShell unterscheidet Groß/Klein nicht).
 if (-not $repo) { $repo = $codeRepo }
 
 function GitAus([string[]]$a) {
-    $aus = & git -C $repo @a 2>&1
+    $aus = & $git -C $repo @a 2>&1
     if ($LASTEXITCODE -ne 0) { throw "git $($a -join ' '): $aus" }
     return ($aus | Out-String).Trim()
 }
@@ -80,7 +82,7 @@ function GitAus([string[]]$a) {
 try {
     if ($Wurzel) { Write-Host 'Abbruch: -Wurzel gibt es nicht mehr; main geht direkt nach main hinaus (Hochladen.ps1 ohne -Wurzel, zum Probelauf -Pruefen). Es wurde nichts geändert.'; exit 1 }
     $repo = GitAus @('rev-parse', '--show-toplevel')
-    $haken = (& git -C $repo config --get core.hooksPath) 2>$null
+    $haken = (& $git -C $repo config --get core.hooksPath) 2>$null
     $haken = "$haken"
     $codeHaken = Join-Path $codeRepo 'scripts\hooks'
     # Ein Projekt-Repo (Overlay) hat kein scripts/: Hooks und Prüfer kommen aus dem Code-Repo.
@@ -100,7 +102,7 @@ try {
         if ($Pruefen) { Write-Host 'Abbruch: -Tag geht nicht zusammen mit -Pruefen; -Tag lädt den Tag immer hoch.'; exit 1 }
         if ($Tag -cnotmatch '^v0\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$') { Write-Host 'Abbruch: -Tag hat nicht die Form v0.MINOR.PATCH (etwa v0.1.0).'; exit 1 }
         if (@((GitAus @('remote')) -split "`r?`n") -notcontains $Remote) { Write-Host "Abbruch: Es gibt kein Remote $Remote."; exit 1 }
-        & git -C $repo push $Remote "refs/tags/$($Tag):refs/tags/$Tag"
+        & $git -C $repo push $Remote "refs/tags/$($Tag):refs/tags/$Tag"
         if ($LASTEXITCODE -ne 0) { Write-Host 'Der Tag ging nicht hinaus (siehe git und die Funde des Hooks).'; exit 1 }
         Write-Host "Hochgeladen: Tag $Tag auf $Remote."
         exit 0
@@ -110,7 +112,7 @@ try {
     $fern = $null
     $remotes = @((GitAus @('remote')) -split "`r?`n" | Where-Object { $_ })
     if ($remotes -contains $Remote) {
-        $fern = (& git -C $repo rev-parse --verify --quiet "refs/remotes/$Remote/main") 2>$null
+        $fern = (& $git -C $repo rev-parse --verify --quiet "refs/remotes/$Remote/main") 2>$null
     } elseif ($fremd -or -not $Pruefen) {
         # Ohne Adresse prüfte der Prüfer ein Projekt-Repo als Basis: darum auch für -Pruefen ein Remote.
         if ($fremd) { Write-Host "Abbruch: Das Projekt-Repo hat kein Remote $Remote. Die Art kommt nur aus seiner Adresse: erst git remote add, dann erneut."; exit 1 }
@@ -119,7 +121,7 @@ try {
     }
     if ($fern) {
         # Nur Fast-Forward: git push wiese es ohnehin ab, -Pruefen soll es vorher sagen.
-        & git -C $repo merge-base --is-ancestor $fern $main 2>$null
+        & $git -C $repo merge-base --is-ancestor $fern $main 2>$null
         if ($LASTEXITCODE -eq 1) { Write-Host "Abbruch: main enthält den Stand von $Remote/main nicht (kein Fast-Forward). Es wurde nichts hochgeladen."; exit 1 }
         if ($LASTEXITCODE -ne 0) { throw "git merge-base --is-ancestor endete mit $LASTEXITCODE" }
     }
@@ -146,7 +148,7 @@ try {
         Write-Host "Nur geprüft: $($lokal.Substring(11)) ginge so nach main hinaus. Hochgeladen wurde nichts."
         exit 0
     }
-    & git -C $repo push $Remote "$($lokal):refs/heads/main"
+    & $git -C $repo push $Remote "$($lokal):refs/heads/main"
     if ($LASTEXITCODE -ne 0) { Write-Host 'Das Hochladen ist gescheitert (siehe git). Der Hook hat dabei noch einmal geprüft.'; exit 1 }
     Write-Host "Hochgeladen: $($lokal.Substring(11)) nach main auf $Remote."
     exit 0

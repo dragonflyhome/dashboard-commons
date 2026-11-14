@@ -3157,7 +3157,8 @@ fn beitraege_aus_forks_wie_jeder_commit() {
 }
 
 /// M1: Ein fremder Commit ändert keinen Prüfpfad (scripts/**, .cargo/**, .github/**,
-/// tests/vor_push.rs, KONTAKT-PGP.asc); CONTRIBUTING.md darf er ändern.
+/// tests/vor_push.rs, KONTAKT-PGP.asc, jede .gitattributes und .npmrc, 8.3-Kurznamen);
+/// CONTRIBUTING.md darf er ändern.
 /// Gezählt wird, was er gegen jeden Elternteil ändert: Ein Merge von main in den
 /// Fork übernimmt eine Änderung des Betreuers an scripts/ ohne Fund, ein Merge, der
 /// dort selbst etwas ändert, ist ein Fund. Gegenprobe: dieselbe Änderung von Ranke.
@@ -3175,10 +3176,44 @@ fn beitraege_aus_forks_ohne_pruefer() {
         ".cargo/config.toml",
         ".github/ISSUE_TEMPLATE/merge-angebot.yml",
         "KONTAKT-PGP.asc",
+        ".gitattributes",
+        // Groß und Kleinschreibung: Unter Windows landen diese Pfade in denselben Ordnern und Dateien.
+        "SCRIPTS/x.ps1",
+        "Scripts/hooks/pre-push",
+        "TESTS/VOR_PUSH.rs",
+        ".GITHUB/ISSUE_TEMPLATE/x.yml",
+        ".Cargo/config.toml",
+        "kontakt-pgp.asc",
+        ".GitAttributes",
+        // Verschachtelt: Eine .gitattributes mit -diff verbirgt im Diff eine Datei als binär,
+        // eine .npmrc schaltet die Paket-Skripte beim npm ci ein.
+        "web/.gitattributes",
+        "tests/.gitattributes",
+        "src/.GitAttributes",
+        "web/.npmrc",
+        "WEB/.NPMRC",
     ] {
         abgewiesen(pfad, satz, |o| beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(pfad, b"# anders\n")));
         frei(pfad, |o| o.ueber_merge(|o| o.datei(pfad, b"# anders\n")));
     }
+    // 8.3-Kurznamen landen unter Windows in der Datei mit langem Namen (CARGO~1/config.toml
+    // in .cargo/config.toml). In Unterordnern weist sie schon das Muster für Kurznamen ab,
+    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst
+    // (§ hält den Prüfer über dieser Datei frei).
+    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC"] {
+        let kurz = kurz.replace('§', "");
+        abgewiesen(&kurz, &format!("ein fremder Commit ändert den Prüfpfad {kurz}"), |o| {
+            beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(&kurz, b"# anders\n"))
+        });
+    }
+    // Gegenprobe: ähnliche Namen ohne Kurznamen und ohne Punkt bleiben frei.
+    frei("ähnliche Namen", |o| {
+        beitrag(o, "feat: b", "Beitrag", NOREPLY, |o| {
+            o.datei("src/gitattributes.rs", b"// a\n");
+            o.datei("web/npmrc.txt", b"a\n");
+            o.datei("src/a~b.rs", b"// a\n");
+        })
+    });
     // Der Leitfaden ist ein Textbeitrag: Ein fremder Commit darf ihn ändern.
     frei("CONTRIBUTING.md im Beitrag", |o| beitrag(o, "docs: Leitfaden", "Beitrag", NOREPLY, |o| o.datei("CONTRIBUTING.md", b"# Mitwirken\n")));
     let mail = NOREPLY.replace('§', "");
@@ -3289,6 +3324,8 @@ fn mitwirken_dateien_in_der_positivliste() {
         ".github/ISSUE_TEMPLATE/x.yaml",
         ".github/ISSUE_TEMPLATE/a/x.yml",
         ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/CONFIG.yml",
+        ".github/ISSUE_TEMPLATE/Config.YML",
         ".github/x.yml",
         "CONTRIBUTING.txt",
     ] {
@@ -3382,15 +3419,16 @@ fn main_setzt_die_linie_fort() {
 }
 
 /// Overlay (Projekt-Repo): Die Regel für fremde Autoren gilt dort genauso wie im
-/// Code-Repo. Ein noreply-Commit im Seitenzweig geht durch (Hochladen und Hook mit der
-/// Adresse des Projekt-Repos), auch wenn er dashboard-version.toml oder den Leitfaden
+/// Code-Repo. Ein noreply-Commit im Seitenzweig geht durch (Vor-Push.ps1 direkt mit den
+/// Schaltern, die Hochladen.ps1 gibt, und als Hook, beide mit der Adresse des
+/// Projekt-Repos), auch wenn er dashboard-version.toml oder den Leitfaden
 /// ändert; derselbe Autor auf der Linie, eine echte Adresse und ein Prüfpfad sind ein Fund.
 #[test]
 fn beitraege_aus_forks_im_overlay() {
     if !bereit() {
         return;
     }
-    let laeufe = |o: &Ort| [("Hochladen", o.pruefen_mit(Some(PROJEKT_ADRESSE))), ("Hook", o.hook_mit(PROJEKT_ADRESSE))];
+    let laeufe = |o: &Ort| [("Vor-Push wie Hochladen", o.pruefen_mit(Some(PROJEKT_ADRESSE))), ("Hook", o.hook_mit(PROJEKT_ADRESSE))];
     for pfad in ["projects/alpha/daten/a.toml", "dashboard-version.toml", "CONTRIBUTING.md"] {
         let o = Ort::projekt();
         beitrag(&o, "feat(alpha): wert", "Beitrag", NOREPLY, |o| o.datei(pfad, b"tag = \"v0.2.0\"\n"));
@@ -3836,5 +3874,378 @@ fn laufzeit_kaputt_aendert_nichts() {
         let (c, text) = o.lauf_mit(&code.join("Vor-Push.ps1"), &o.cache(), &[&["-Baum", "main", "-Commits", "main", "-AufMain"][..], extra].concat(), None);
         assert!(c == 0 && text.contains("Nichts gefunden.") && text.contains("HINWEIS Laufzeit.ps1 ließ sich nicht laden"), "{extra:?}: {text}");
         assert!(!text.lines().any(|z| z.starts_with("Laufzeit ")), "{extra:?}: {text}");
+    }
+}
+
+/// Ein Hook oder Prüfer des Forks: schreibt beim Lauf `hook-lief.txt` in den
+/// aktuellen Ordner (bei Hooks die Wurzel des Arbeitsbaums).
+const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
+
+/// Der Probe-Merge nach Abschnitt 15, Teil 5: ohne Arbeitsbaum und ohne Hooks
+/// (git merge-tree --write-tree, git commit-tree als Ranke, git branch probe), geprüft
+/// mit dem Prüfer aus main (hier dem des Code-Repos) und -Beitrag. Ein Fork, der
+/// scripts/hooks/* und scripts/Vor-Push.ps1 ändert, führt dabei nichts aus: keine
+/// Marker-Datei, der Arbeitsbaum bleibt auf main mit dessen Prüfer, und der Prüfer
+/// meldet jeden dieser Prüfpfade. Ein sauberer Fork geht durch; erst dann entsteht
+/// der Arbeitsbaum zum Bauen, auf dem Probe-Commit, ohne Hook des Forks, und main kommt
+/// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenproben: Der
+/// alte Weg (git merge im Arbeitsbaum) ruft die Hooks des Forks und legt dessen Prüfer
+/// in den Arbeitsbaum; ein Checkout der Kennung vor dem grünen Lauf ruft post-checkout
+/// des Forks.
+#[test]
+fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
+    for fall in ["sauber", "Fork ändert Hooks und Prüfer", "alter Weg"] {
+        let o = Ort::neu();
+        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer.
+        o.ueber_merge(|o| {
+            o.datei("scripts/hooks/post-merge", b"#!/bin/sh\nexit 0\n");
+            o.datei("scripts/Vor-Push.ps1", b"# Pruefer von main\n");
+        });
+        o.git(&["config", "core.hooksPath", "scripts/hooks"]);
+        let alt = o.git(&["rev-parse", "main"]);
+        let fork = o.wurzel.join("fork");
+        let aus = git().arg("clone").arg("-q").arg(o.repo()).arg(&fork).output().unwrap();
+        assert!(aus.status.success(), "{}", String::from_utf8_lossy(&aus.stderr));
+        let fg = |args: &[&str]| -> String {
+            let aus = git().arg("-C").arg(&fork).args(args).output().unwrap();
+            assert!(aus.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&aus.stderr));
+            String::from_utf8_lossy(&aus.stdout).trim().to_string()
+        };
+        fg(&["config", "user.name", "Beitrag"]);
+        fg(&["config", "user.email", &mail]);
+        fg(&["config", "commit.gpgsign", "false"]);
+        fg(&["switch", "-q", "-c", "beitrag"]);
+        std::fs::write(fork.join("src").join("b.rs"), "// b\n").unwrap();
+        if fall != "sauber" {
+            for hook in ["post-merge", "pre-merge-commit", "commit-msg", "post-checkout", "reference-transaction"] {
+                std::fs::write(fork.join("scripts").join("hooks").join(hook), FORK_HOOK).unwrap();
+            }
+            std::fs::write(fork.join("scripts").join("Vor-Push.ps1"), "# Pruefer des Forks\nexit 0\n").unwrap();
+        }
+        fg(&["add", "-A"]);
+        fg(&["commit", "-q", "-m", "feat: b"]);
+        o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
+        let kennung = o.git(&["rev-parse", "FETCH_HEAD"]);
+        let marker = o.repo().join("hook-lief.txt");
+        let pruefer_im_baum = || std::fs::read_to_string(o.repo().join("scripts").join("Vor-Push.ps1")).unwrap();
+        if fall == "alter Weg" {
+            o.git(&["switch", "-q", "-c", "probe", "main"]);
+            o.git(&[&ranke[..], &["merge", "-q", "--no-ff", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
+            assert!(marker.exists(), "der alte Weg ruft die Hooks des Forks");
+            assert!(pruefer_im_baum().contains("des Forks"), "der alte Weg legt den Prüfer des Forks in den Arbeitsbaum");
+            continue;
+        }
+        let baum = o.git(&["merge-tree", "--write-tree", "main", &kennung]).lines().next().unwrap().to_string();
+        let probe = o.git(&[&ranke[..], &["commit-tree", &baum, "-p", "main", "-p", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
+        o.git(&["branch", "probe", &probe]);
+        assert!(!marker.exists(), "{fall}: beim Bau der Probe läuft kein Hook");
+        assert_eq!(o.git(&["rev-parse", "HEAD"]), alt, "{fall}: der Arbeitsbaum bleibt auf main");
+        assert!(pruefer_im_baum().contains("von main"), "{fall}: im Arbeitsbaum liegt der Prüfer von main");
+        let (code, text) = o.lauf(&["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", &kennung], None);
+        assert!(!marker.exists(), "{fall}: auch der Prüflauf führt nichts aus dem Fork aus");
+        // Bauen und Testen in einem eigenen Arbeitsbaum: nach grünem Lauf auf dem Probe-Commit.
+        let bau = o.wurzel.join("probe-bau");
+        let bau_marker = bau.join("hook-lief.txt");
+        if fall == "sauber" {
+            assert_eq!(code, 0, "{text}");
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), "probe"]);
+            assert!(!bau_marker.exists(), "nach grünem Lauf führt der Arbeitsbaum der Probe keinen Hook des Forks aus");
+            o.git(&["worktree", "remove", "--force", &bau.to_string_lossy()]);
+            o.git(&["merge", "-q", "--ff-only", "probe"]);
+            assert_eq!(o.git(&["rev-parse", "main"]), probe, "main ist genau der geprüfte Merge-Commit");
+            let (code, text) = o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None);
+            assert_eq!(code, 0, "nach dem Merge: {text}");
+        } else {
+            for pfad in [
+                "scripts/hooks/post-merge",
+                "scripts/hooks/pre-merge-commit",
+                "scripts/hooks/commit-msg",
+                "scripts/hooks/post-checkout",
+                "scripts/hooks/reference-transaction",
+                "scripts/Vor-Push.ps1",
+            ] {
+                assert!(code == 1 && text.contains(&format!("ein fremder Commit ändert den Prüfpfad {pfad}")), "{pfad}: {text}");
+            }
+            // Gegenprobe: Ein Checkout des Forks vor dem grünen Lauf (hier worktree add der
+            // Kennung) ruft schon dessen Hooks auf (reference-transaction im neuen Arbeitsbaum).
+            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), &kennung]);
+            assert!(bau_marker.exists(), "ein Checkout des Forks ruft dessen Hooks auf");
+        }
+    }
+}
+
+/// git über den vollen Pfad: Eine fremde git.exe (eine Kopie von hostname.exe) in der
+/// Wurzel des Repos, die zugleich der aktuelle Ordner ist (wie beim Hook), läuft weder
+/// im Prüfer noch in Hochladen.ps1; beide prüfen wie sonst. Ohne die Umgebungsvariable
+/// NoDefaultCurrentDirectoryInExePath, die die Suche im aktuellen Ordner abschaltete.
+/// Gegenprobe: Ein Start über den Namen (ProcessStartInfo „git“) nimmt dort die fremde.
+/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann bricht der Prüfer ab (Exit 2).
+#[test]
+fn kein_git_aus_dem_arbeitsordner() {
+    if !bereit() {
+        return;
+    }
+    let quelle = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into())).join("System32").join("hostname.exe");
+    if !quelle.is_file() && dashboard::ueberspringen("hostname.exe fehlt") {
+        return;
+    }
+    let o = Ort::neu();
+    let inhalt = o.wurzel.join("inhalt");
+    std::fs::copy(&quelle, o.repo().join("git.exe")).unwrap();
+    let skripte = o.repo().join("scripts");
+    std::fs::create_dir_all(skripte.join("hooks")).unwrap();
+    prueferdateien_kopieren(&skripte);
+    std::fs::copy(skript().with_file_name("Hochladen.ps1"), skripte.join("Hochladen.ps1")).unwrap();
+    for name in ["pre-push", "commit-msg"] {
+        std::fs::copy(skript().with_file_name("hooks").join(name), skripte.join("hooks").join(name)).unwrap();
+    }
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/git.exe\n").unwrap();
+    o.git(&["config", "core.hooksPath", "scripts/hooks"]);
+    let im_repo = |args: &[&str]| {
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
+            .env_remove("NoDefaultCurrentDirectoryInExePath")
+            .output()
+            .unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let start = ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"];
+    let vor_push = skripte.join("Vor-Push.ps1").to_string_lossy().to_string();
+    let repo = o.repo().to_string_lossy().to_string();
+    let (c, text) = im_repo(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 0 && text.contains("Nichts gefunden") && text.contains("Inhalt kalt:"), "Prüfer: {text}");
+    let hochladen = skripte.join("Hochladen.ps1").to_string_lossy().to_string();
+    // Zweimal: Die Vorprüfung füllt den eigenen Cache-Ordner und trifft ihn dann; Laufzeit.ps1 lädt jedes Mal.
+    for lauf in 1..=2 {
+        let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+        assert!(c == 0 && text.contains("main ginge so nach main"), "Hochladen {lauf}: {text}");
+        assert!(cache_zahlen(&text).is_some_and(|(n, _)| (lauf == 1) == (n == 0)), "Hochladen {lauf}: {text}");
+        assert!(text.matches("Laufzeit ").count() >= 2 && !text.contains("HINWEIS Laufzeit.ps1"), "Hochladen {lauf}: {text}");
+    }
+    let (_, text) = im_repo(&[
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$p = New-Object Diagnostics.ProcessStartInfo 'git', '--version'; $p.UseShellExecute = $false; $p.RedirectStandardOutput = $true; $x = [Diagnostics.Process]::Start($p); $aus = $x.StandardOutput.ReadToEnd(); $x.WaitForExit(); if ($aus -match 'git version') { 'echtes git' } else { 'fremdes git' }",
+    ]);
+    assert!(text.contains("fremdes git"), "Gegenprobe: ein Start über den Namen nimmt die git.exe im aktuellen Ordner:\n{text}");
+    // Mit „.“ im PATH fände auch Get-Command die fremde git.exe: Der Prüfer bricht dann ab.
+    let pfad = format!(".;{}", std::env::var("PATH").unwrap_or_default());
+    let mit_punkt = |args: &[&str]| {
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
+            .env("PATH", &pfad)
+            .output()
+            .unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "(Get-Command git -CommandType Application | Select-Object -First 1).Source"]);
+    assert!(
+        text.trim().to_lowercase().replace('/', "\\").ends_with(&format!("{}\\git.exe", repo.to_lowercase().replace('/', "\\"))),
+        "Gegenprobe: mit . im PATH nimmt Get-Command die fremde git.exe:\n{text}"
+    );
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
+}
+
+/// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
+/// der Betreuer als Autor oder Committer ist ein Fund, auch in anderer Schreibung.
+/// Gegenprobe: derselbe Beitrag mit noreply-Angabe geht durch.
+#[test]
+fn beitrag_mit_angabe_der_betreuer() {
+    if !bereit() {
+        return;
+    }
+    let mail = NOREPLY.replace('§', "");
+    let gross = "Ranke2§@Proton.me".replace('§', "");
+    let faelle = [
+        ("Autor und Committer", vec![], Some("Autor des Beitrags trägt die Angabe der Betreuer")),
+        ("nur Committer", vec![("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &mail)], Some("Committer des Beitrags trägt die Angabe der Betreuer")),
+        (
+            "nur der Name, klein",
+            vec![("GIT_AUTHOR_NAME", "ranke"), ("GIT_AUTHOR_EMAIL", &mail), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", &mail)],
+            Some("Autor des Beitrags trägt die Angabe der Betreuer"),
+        ),
+        (
+            "nur die Adresse, groß",
+            vec![("GIT_AUTHOR_NAME", "Beitrag"), ("GIT_AUTHOR_EMAIL", &gross), ("GIT_COMMITTER_NAME", "Beitrag"), ("GIT_COMMITTER_EMAIL", &mail)],
+            Some("Autor des Beitrags trägt die Angabe der Betreuer"),
+        ),
+        ("noreply", als_beitrag(&mail).to_vec(), None),
+    ];
+    for (fall, wer, erwartet) in faelle {
+        let o = Ort::neu();
+        o.git(&["checkout", "-q", "-b", "zweig"]);
+        o.datei("src/b.rs", b"// b\n");
+        let kennung = o.commit("feat: b", &wer);
+        o.git(&["checkout", "-q", "main"]);
+        let (code, text) = o.lauf(&["-Beitrag", &kennung], None);
+        match erwartet {
+            None => assert!(code == 0 && text.contains("Geprüft: 1 Commit(s) des Beitrags"), "{fall}: {text}"),
+            Some(satz) => assert!(code == 1 && text.contains(satz), "{fall}: erwartet „{satz}“:\n{text}"),
+        }
+    }
+}
+
+/// Ein Fall: Name, erwarteter Prüfpfad im Fund, die Änderung.
+type Aenderung = (&'static str, &'static str, fn(&Ort));
+
+/// M1 für jede Art der Änderung: Löschen, Umbenennen (hinaus und hinein) und nur der
+/// Modus (ausführbar) sind am fremden Commit ein Fund. Gegenprobe: dieselbe Änderung
+/// von Ranke über einen eigenen Merge.
+#[test]
+fn pruefpfade_loeschen_umbenennen_modus() {
+    if !bereit() {
+        return;
+    }
+    let vorher = |o: &Ort| {
+        o.ueber_merge(|o| {
+            o.datei("scripts/x.ps1", b"# x\n");
+            o.datei("src/y.ps1", b"# y\n");
+        })
+    };
+    let faelle: [Aenderung; 4] = [
+        ("Löschen", "scripts/x.ps1", |o| {
+            o.git(&["rm", "-q", "scripts/x.ps1"]);
+        }),
+        ("Umbenennen hinaus", "scripts/x.ps1", |o| {
+            o.git(&["mv", "scripts/x.ps1", "src/x.ps1"]);
+        }),
+        ("Umbenennen hinein", "scripts/y.ps1", |o| {
+            o.git(&["mv", "src/y.ps1", "scripts/y.ps1"]);
+        }),
+        ("nur Modus", "scripts/x.ps1", |o| {
+            o.git(&["update-index", "--chmod=+x", "scripts/x.ps1"]);
+        }),
+    ];
+    for (fall, pfad, aendern) in faelle {
+        abgewiesen(fall, &format!("ein fremder Commit ändert den Prüfpfad {pfad}"), |o| {
+            vorher(o);
+            beitrag(o, "fix: x", "Beitrag", NOREPLY, aendern);
+        });
+        frei(fall, |o| {
+            vorher(o);
+            o.ueber_merge(aendern);
+        });
+    }
+}
+
+/// Heimatpfade unter macOS und Linux in weiteren Formen (PATH-Liste, scp-Ziel,
+/// Schalter -L und -I, JSON mit \/, WSL-Freigabe), je genau ein Fund; die
+/// Windows-Formen mit / zählen nur einmal (nicht zusätzlich als macOS/Linux).
+/// Gegenproben bleiben frei: /home und /users hinter einer Domäne, "/home" ohne Namen,
+/// /usr/home/<x> (nach einem Buchstaben; FreeBSD gehört nicht zu den Zielsystemen) und
+/// Platzhalter in den neuen Formen. Bewusste Grenze, nicht festgehalten: /home hinter einem
+/// Host in URLs (ssh://…@host/home/…, …:8080/home/…) und MSYS2 mit \ (…\msys64\home\…);
+/// echte Namen fängt dort die Liste benutzer.
+#[test]
+fn heimatpfade_weitere_formen_je_ein_fund() {
+    if !bereit() {
+        return;
+    }
+    for form in [
+        "PATH=/usr/bin:/h§ome/zora/bin",
+        "scp a.txt rechner:/h§ome/zora/x",
+        "cc -L/h§ome/zora/lib",
+        "cc -I/U§sers/zora/include",
+        r#"{"p": "\/h§ome\/zora\/x"}"#,
+        r#"{"p": "\/U§sers\/zora"}"#,
+        r"\\wsl.localhost\Ubuntu\h§ome\zora\x",
+        r"\\wsl$\Ubuntu\h§ome\zora",
+        "//wsl.localhost/Ubuntu/h§ome/zora",
+        "/h§ome/zora/x",
+        "C:/U§sers/zora/dev",
+        r"C:\/U§sers\/zora",
+        "file:///C:/U§sers/zora",
+        r"\\pc\c$/U§sers/zora",
+        "/c/U§sers/zora",
+        "/mnt/c/U§sers/zora",
+        // Mehrere Trenner nach dem Laufwerk: nur die Windows-Form meldet.
+        "C://U§sers/zora",
+        "c$//U§sers/zora",
+        "c%3a//U§sers/zora",
+        r"\\pc\c$//U§sers/zora",
+        // /home nach einem Laufwerk oder einem Host aus einem Buchstaben: die Windows-Form kennt nur Users.
+        "a:/h§ome/zora",
+        "C:/h§ome/zora",
+        "PATH=/a:/h§ome/zora",
+        "cc -isystem/h§ome/zora",
+        // WSL-Freigabe in JSON: nur die WSL-Form meldet.
+        r"\/\/wsl$\/U\/h§ome\/zora",
+    ] {
+        let text = abgewiesen(form, "Benutzerpfad", |o| o.ueber_merge(|o| o.datei("src/pfad.rs", format!("// {form}\n").as_bytes())));
+        assert_eq!(fundzeilen(&text).len(), 1, "{form}: genau ein Fund:\n{text}");
+    }
+    frei("Fehltreffer", |o| {
+        o.ueber_merge(|o| {
+            o.datei(
+                "src/frei.rs",
+                r#"// https://example.com/h§ome/zora https://api.github.com/u§sers/zora Path::new("/h§ome") "/h§ome/" /usr/h§ome/zora
+// https:\/\/example.com\/h§ome\/zora foo-bar/h§ome/zora
+// \\wsl$\Ubuntu\h§ome\<name> \/h§ome\/<name> -L/h§ome/<name> PATH=/usr/bin:/h§ome/$USER/bin
+"#
+                .as_bytes(),
+            )
+        })
+    });
+}
+
+/// Ein Fall: Name, erwarteter Fund, die Änderung (gibt die Kennung für -Beitrag).
+type CommitFall = (&'static str, &'static str, fn(&Ort) -> Option<String>);
+
+/// Der Cache überspringt nur die Inhaltsprüfung von Blobs: Die Regel für Prüfpfade an
+/// fremden Commits, die Autor-Regel auf der Linie und -Beitrag melden mit vollem Cache
+/// (jeder Blob ein Treffer) dieselben Funde wie kalt.
+#[test]
+fn cache_ueberspringt_keine_commit_regel() {
+    if !bereit() {
+        return;
+    }
+    let faelle: [CommitFall; 3] = [
+        ("Prüfpfad", "ein fremder Commit ändert den Prüfpfad scripts/x.ps1", |o| {
+            beitrag(o, "fix: x", "Beitrag", NOREPLY, |o| {
+                o.git(&["rm", "-q", "scripts/x.ps1"]);
+            });
+            None
+        }),
+        ("Autor auf der Linie", "ist nicht Ranke", |o| {
+            o.commit("feat: leer", &als_beitrag(&NOREPLY.replace('§', "")));
+            None
+        }),
+        ("-Beitrag", "Autor des Beitrags trägt die Angabe der Betreuer", |o| {
+            o.git(&["checkout", "-q", "-b", "beitrag"]);
+            let kennung = o.commit("feat: leer", &[]);
+            o.git(&["checkout", "-q", "main"]);
+            Some(kennung)
+        }),
+    ];
+    for (fall, muster, aendern) in faelle {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("scripts/x.ps1", b"# x\n"));
+        cache_fuellen(&o);
+        let kennung = aendern(&o);
+        let mut args = vec!["-Baum", "main", "-Commits", "main", "-AufMain"];
+        if let Some(k) = &kennung {
+            args.extend(["-Beitrag", k.as_str()]);
+        }
+        let (ck, kalt) = o.lauf(&args, None);
+        assert!(ck == 1 && kalt.contains(muster) && kalt.contains("Inhalt kalt:"), "{fall} kalt: {kalt}");
+        args.push("-MitCache");
+        let (cw, warm) = o.lauf(&args, None);
+        assert!(cw == 1 && cache_zahlen(&warm).is_some_and(|(n, g)| n > 0 && g == 0), "{fall}: jeder Blob ein Treffer: {warm}");
+        assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "{fall}, kalt:\n{kalt}\nwarm:\n{warm}");
     }
 }
