@@ -29,9 +29,9 @@ const PROJEKT_ADRESSE: &str = "https://git.example.INVALID/Team/projekt";
 /// Die Adresse des Inhalts-Repos in der scp-Form, mit / am Ende.
 const INHALT_ADRESSE: &str = "git@GIT.example.invalid:team/inhalt/";
 
-/// PowerShell 7, sonst Windows PowerShell (beide an festen Orten, ohne Fenster).
+/// PowerShell 7 an festem Ort, ohne Fenster (der Prüfweg verlangt 7.7, kein Rückfall auf Windows PowerShell).
 fn pwsh() -> Option<Command> {
-    [Werkzeug::PowerShell7, Werkzeug::WindowsPowerShell].into_iter().find_map(|w| programme::befehl(w).ok())
+    programme::befehl(Werkzeug::PowerShell7).ok()
 }
 
 /// git an festem Ort, ohne Fenster.
@@ -218,9 +218,25 @@ impl Ort {
     }
 
     fn lauf(&self, args: &[&str], eingabe: Option<&str>) -> (i32, String) {
+        self.lauf_mit(&skript(), &self.cache(), args, eingabe)
+    }
+
+    /// Der eigene Cache-Ordner dieses Orts (DASHBOARD_PRUEFER_CACHE).
+    fn cache(&self) -> PathBuf {
+        self.wurzel.join("cache")
+    }
+
+    /// Wie `pruefen`, mit dem Cache sauberer Blobs (wie die Vorprüfung in Hochladen.ps1).
+    fn mit_cache(&self) -> (i32, String) {
+        self.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"], None)
+    }
+
+    /// Ein Lauf mit diesem Prüfer und diesem Cache-Ort.
+    fn lauf_mit(&self, skript: &Path, cache: &Path, args: &[&str], eingabe: Option<&str>) -> (i32, String) {
         let mut c = pwsh().unwrap();
-        c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(skript())
+        c.env("DASHBOARD_PRUEFER_CACHE", cache)
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(skript)
             .arg("-Repo")
             .arg(self.repo())
             .arg("-Inhalt")
@@ -1354,6 +1370,14 @@ fn ausnahme_nur_alleinstehend() {
     }
 }
 
+/// Kopiert den Prüfer und die Datei, die er lädt (Laufzeit.ps1), in diesen Ordner.
+fn prueferdateien_kopieren(nach: &Path) {
+    std::fs::create_dir_all(nach).unwrap();
+    for name in ["Vor-Push.ps1", "Laufzeit.ps1"] {
+        std::fs::copy(skript().with_file_name(name), nach.join(name)).unwrap();
+    }
+}
+
 /// Kopiert einen Ordner samt Unterordnern.
 fn ordner_kopieren(von: &Path, nach: &Path) {
     std::fs::create_dir_all(nach).unwrap();
@@ -1383,7 +1407,7 @@ fn inhalt_neben_dem_code_repo() {
     std::fs::write(koeder.join("pruefer").join("namen.toml"), LISTE.replace(SENSIBEL, "sensibel = [\"nurimkoeder\"]")).unwrap();
     let code = o.wurzel.join("ablage").join("code");
     std::fs::create_dir_all(code.join("scripts")).unwrap();
-    std::fs::copy(skript(), code.join("scripts").join("Vor-Push.ps1")).unwrap();
+    prueferdateien_kopieren(&code.join("scripts"));
     ordner_kopieren(&o.wurzel.join("inhalt"), &o.wurzel.join("ablage").join("dashboard-inhalt"));
     let lauf = |umgebung: Option<&Path>| {
         let mut c = pwsh().unwrap();
@@ -2627,7 +2651,7 @@ fn commit_nachricht_nach_conventional_commits() {
     // Ein echter git commit: Der Hook bekommt die Nachricht vor dem Aufräumen (Kommentare noch drin).
     let skripte = o.repo().join("scripts");
     std::fs::create_dir_all(skripte.join("hooks")).unwrap();
-    std::fs::copy(skript(), skripte.join("Vor-Push.ps1")).unwrap();
+    prueferdateien_kopieren(&skripte);
     std::fs::copy(skript().with_file_name("hooks").join("commit-msg"), skripte.join("hooks").join("commit-msg")).unwrap();
     o.git(&["config", "core.hooksPath", "scripts/hooks"]);
     let datei = o.wurzel.join("nachricht.txt").to_string_lossy().to_string();
@@ -2695,7 +2719,7 @@ fn hochladen_main_nach_main() {
     // Skripte und Hooks liegen unversioniert im Repo (Hochladen nimmt den Elternordner als Repo); ausgeschlossen, damit main sauber bleibt.
     let skripte = o.repo().join("scripts");
     std::fs::create_dir_all(skripte.join("hooks")).unwrap();
-    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
+    for name in ["Vor-Push.ps1", "Hochladen.ps1", "Laufzeit.ps1"] {
         std::fs::copy(skript().with_file_name(name), skripte.join(name)).unwrap();
     }
     for name in ["pre-push", "commit-msg"] {
@@ -2718,6 +2742,7 @@ fn hochladen_main_nach_main() {
             .arg(&inhalt)
             .args(args)
             .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
             .output()
             .unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
@@ -2731,7 +2756,9 @@ fn hochladen_main_nach_main() {
     }
     // Ohne Remote: -Pruefen prüft (als Basis), Hochladen bricht ab.
     let (c, text) = hochladen(&["-Pruefen"]);
-    assert!(c == 0 && text.contains("main ginge so nach main"), "{text}");
+    // Die Vorprüfung nutzt den Cache (-MitCache), und beide Skripte nennen Laufzeit und Auslastung.
+    assert!(c == 0 && text.contains("main ginge so nach main") && text.contains("Blobs aus dem Cache"), "{text}");
+    assert!(text.matches("Laufzeit ").count() >= 2, "{text}");
     let (c, text) = hochladen(&[]);
     assert!(c == 1 && text.contains("Es gibt kein Remote origin"), "{text}");
     o.git(&["remote", "add", "origin", &fern.to_string_lossy().replace('\\', "/")]);
@@ -2745,6 +2772,8 @@ fn hochladen_main_nach_main() {
     let (c, text) = hochladen(&[]);
     assert_eq!(c, 0, "{text}");
     assert_eq!(fern_ref("refs/heads/main"), o.git(&["rev-parse", "main"]), "{text}");
+    // Die Vorprüfung nimmt den Cache, der Hook beim Push prüft kalt.
+    assert!(text.contains("Blobs aus dem Cache") && text.contains("Inhalt kalt:"), "{text}");
     // Fast-Forward mit einem weiteren Merge-Commit.
     o.ueber_merge(|o| o.datei("src/c.rs", b"// c\n"));
     let (c, text) = hochladen(&[]);
@@ -2864,7 +2893,7 @@ fn overlay_hooks_und_hochladen() {
     let code = o.wurzel.join("code");
     let hooks = code.join("scripts").join("hooks");
     std::fs::create_dir_all(&hooks).unwrap();
-    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
+    for name in ["Vor-Push.ps1", "Hochladen.ps1", "Laufzeit.ps1"] {
         std::fs::copy(skript().with_file_name(name), code.join("scripts").join(name)).unwrap();
     }
     for name in ["pre-push", "commit-msg"] {
@@ -2900,6 +2929,7 @@ fn overlay_hooks_und_hochladen() {
             .arg(&inhalt)
             .args(args)
             .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
             .output()
             .unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
@@ -3168,9 +3198,10 @@ fn beitraege_aus_forks_ohne_pruefer() {
     }
     // 8.3-Kurznamen landen unter Windows in der Datei mit langem Namen (CARGO~1/config.toml
     // in .cargo/config.toml). In Unterordnern weist sie schon das Muster für Kurznamen ab,
-    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst
+    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst, ebenso
+    // verschachtelt (web/NPMRC~1 ist unter Windows web/.npmrc)
     // (§ hält den Prüfer über dieser Datei frei).
-    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC"] {
+    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC", "web/NPM§RC~1", "a/KONT§AK~1.ASC", "src/LONG§NA~1/x"] {
         let kurz = kurz.replace('§', "");
         abgewiesen(&kurz, &format!("ein fremder Commit ändert den Prüfpfad {kurz}"), |o| {
             beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(&kurz, b"# anders\n"))
@@ -3492,9 +3523,368 @@ fn echter_fork_nach_leitfaden() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Cache sauberer Blobs (-MitCache, nur Vorprüfungen; der Hook prüft immer kalt)
+// ---------------------------------------------------------------------------
+
+/// Die Adresse des Basis-Repos aus `REPOS`.
+const BASIS_ADRESSE: &str = "https://git.example.invalid/team/basis.git";
+
+/// Die Zahlen der Zeile „Inhalt: n Blobs aus dem Cache, m geprüft.“ (`None`: kalt).
+fn cache_zahlen(text: &str) -> Option<(usize, usize)> {
+    let z = text.lines().find_map(|z| z.trim().strip_prefix("Inhalt: "))?;
+    let (n, rest) = z.split_once(" Blobs aus dem Cache, ")?;
+    Some((n.parse().ok()?, rest.strip_suffix(" geprüft.")?.parse().ok()?))
+}
+
+/// Die Regel-Ordner (64 Hex-Zeichen) eines Cache-Orts, sortiert.
+fn regel_ordner(cache: &Path) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(cache) else { return Vec::new() };
+    let mut v: Vec<PathBuf> = rd.map(|e| e.unwrap().path()).filter(|p| p.is_dir() && p.file_name().is_some_and(|n| n.len() == 64)).collect();
+    v.sort();
+    v
+}
+
+/// Die Cache-Datei des einen Regel-Ordners eines Orts.
+fn cache_datei(o: &Ort) -> PathBuf {
+    let r = regel_ordner(&o.cache());
+    assert_eq!(r.len(), 1, "genau ein Regel-Ordner erwartet: {r:?}");
+    r[0].join("sauber.txt")
+}
+
+/// Ein sauberer erster Lauf mit Cache: gibt die Zahl der geprüften Blobs.
+fn cache_fuellen(o: &Ort) -> usize {
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "{text}");
+    let (aus, geprueft) = cache_zahlen(&text).unwrap_or_else(|| panic!("keine Cache-Zeile: {text}"));
+    assert!(aus == 0 && geprueft > 0, "{text}");
+    geprueft
+}
+
+/// Ein zweiter Lauf mit Cache trifft jeden sauberen Blob und meldet dieselben
+/// Funde wie ein kalter Lauf (Text, Binär, nur_basis, ein Zwischenstand).
+#[test]
+fn cache_warm_meldet_dieselben_funde() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let geprueft = cache_fuellen(&o);
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "{text}");
+    assert_eq!(cache_zahlen(&text), Some((geprueft, 0)), "der zweite Lauf trifft alles: {text}");
+    o.ueber_merge(|o| {
+        o.datei("src/a.rs", b"// nebelfink\n");
+        o.datei("web/static/icons/b.png", &png(true));
+        o.datei("src/zwischen.rs", b"// geheimprojekt\n");
+    });
+    o.ueber_merge(|o| std::fs::remove_file(o.repo().join("src/zwischen.rs")).unwrap());
+    let (ck, kalt) = o.pruefen();
+    assert!(ck == 1 && kalt.contains("Inhalt kalt:") && fundzeilen(&kalt).len() >= 3, "{kalt}");
+    // Zweimal warm: Auch was ein Lauf mit Funden hinterließe, ändert den nächsten nicht.
+    for lauf in 1..=2 {
+        let (cw, warm) = o.mit_cache();
+        assert_eq!(cw, 1, "Lauf {lauf}: {warm}");
+        assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "Lauf {lauf}, kalt:\n{kalt}\nwarm:\n{warm}");
+        assert!(cache_zahlen(&warm).is_some_and(|(n, _)| n > 0), "Lauf {lauf}: der warme Lauf trifft: {warm}");
+    }
+}
+
+/// Ein Lauf mit Fund schreibt nichts in den Cache; der Blob mit Fund steht nie
+/// darin, und jeder weitere Lauf meldet ihn wieder.
+#[test]
+fn cache_merkt_keinen_blob_mit_fund() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    let datei = cache_datei(&o);
+    let vorher = std::fs::read(&datei).unwrap();
+    o.ueber_merge(|o| {
+        o.datei("src/a.rs", b"// geheimprojekt\n");
+        o.datei("src/sauber.rs", b"// sauber\n");
+    });
+    let sha = o.git(&["rev-parse", "main:src/a.rs"]);
+    for lauf in 1..=2 {
+        let (c, text) = o.mit_cache();
+        assert!(c == 1 && text.contains("ABGEWIESEN src/a.rs, Zeile 1: sensibler Name"), "Lauf {lauf}: {text}");
+        let jetzt = std::fs::read(&datei).unwrap();
+        assert_eq!(jetzt, vorher, "Lauf {lauf}: ein Lauf mit Fund schreibt nichts");
+        assert!(!String::from_utf8_lossy(&jetzt).contains(&sha), "Lauf {lauf}: der Blob mit Fund steht nie im Cache");
+    }
+}
+
+/// Jede Änderung an dem, wovon die Inhaltsprüfung abhängt (Listen, repos.toml,
+/// Prüfer, Laufzeit.ps1, Art, Ausnahmedatei), gibt einen neuen Regel-Schlüssel:
+/// kein Treffer. Dieselben Dateien an anderem Ort treffen (nur der Inhalt zählt).
+/// Das Aufräumen behält zwei Regel-Ordner.
+#[test]
+fn cache_neuer_regel_schluessel() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let code = o.wurzel.join("code");
+    prueferdateien_kopieren(&code);
+    let args = ["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"];
+    let lauf = |extra: &[&str]| o.lauf_mit(&code.join("Vor-Push.ps1"), &o.cache(), &[&args[..], extra].concat(), None);
+    let geprueft = cache_fuellen(&o);
+    let (c, text) = lauf(&[]);
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "dieselben Dateien an anderem Ort treffen: {text}");
+    let pruefer = o.wurzel.join("inhalt").join("pruefer");
+    // Je Fall eine Zeile an die Datei anhängen.
+    for (name, datei, zeile) in [
+        ("namen.toml", pruefer.join("namen.toml"), "# geändert\n"),
+        ("tokens", pruefer.join("tokens").join("erfunden.toml"), "# geändert\n"),
+        ("repos.toml", pruefer.join("repos.toml"), "# geändert\n"),
+        ("Vor-Push.ps1", code.join("Vor-Push.ps1"), "\r\n# geändert\r\n"),
+        ("Laufzeit.ps1", code.join("Laufzeit.ps1"), "\r\n# geändert\r\n"),
+    ] {
+        let mut t = std::fs::read(&datei).unwrap();
+        t.extend_from_slice(zeile.as_bytes());
+        std::fs::write(&datei, t).unwrap();
+        let (c, text) = lauf(&[]);
+        assert!(c == 0 && cache_zahlen(&text) == Some((0, geprueft)), "{name}: neuer Schlüssel, kein Treffer: {text}");
+        let (c, text) = lauf(&[]);
+        assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "{name}: der neue Schlüssel trifft beim zweiten Lauf: {text}");
+        assert!(regel_ordner(&o.cache()).len() <= 2, "{name}: das Aufräumen behält zwei: {:?}", regel_ordner(&o.cache()));
+    }
+    // Eine andere Art (Inhalt aus der Adresse) ist ein anderer Schlüssel.
+    let (c, text) = lauf(&["-RemoteUrl", INHALT_ADRESSE]);
+    assert!(c == 0 && text.contains("Geprüft als Inhalts-Repo") && cache_zahlen(&text) == Some((0, geprueft)), "Art: {text}");
+
+    // Im Projekt-Repo: eine Ausnahmedatei (sie gilt nur dort) ist Teil des Schlüssels.
+    let p = Ort::projekt();
+    let proj = |p: &Ort| p.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache", "-RemoteUrl", PROJEKT_ADRESSE], None);
+    let (c, text) = proj(&p);
+    let (_, g) = cache_zahlen(&text).unwrap_or_default();
+    assert!(c == 0 && g > 0, "{text}");
+    let (c, text) = proj(&p);
+    assert!(c == 0 && cache_zahlen(&text) == Some((g, 0)), "{text}");
+    p.ausnahmen("projekt", "erlaubt = [\"geheimprojekt\"]\n");
+    let (c, text) = proj(&p);
+    assert!(c == 0 && text.contains("Ausnahmen für dieses Repo: 1") && cache_zahlen(&text) == Some((0, g)), "Ausnahmedatei: {text}");
+}
+
+/// Derselbe Blob an einem anderen Pfad wird neu geprüft: Was unter
+/// tests/beispiel*/ erlaubt ist (projects/<allgemeiner slug>), ist unter src/ ein Fund.
+#[test]
+fn cache_derselbe_blob_an_anderem_pfad() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/notiz.txt", b"projects/alpha ist hier erlaubt.\n"));
+    assert_eq!(o.git(&["rev-parse", "main:src/notiz.txt"]), o.git(&["rev-parse", "main:tests/beispiel/projects/alpha/notiz.txt"]));
+    let (c, text) = o.mit_cache();
+    assert!(c == 1 && text.contains("ABGEWIESEN src/notiz.txt, Zeile 1: Projektname als Pfad"), "{text}");
+    assert_eq!(cache_zahlen(&text).map(|z| z.1), Some(1), "genau der neue Pfad wird geprüft: {text}");
+}
+
+/// MUSS (Architektur): Ein vergifteter Eintrag („sauber“ für einen Blob mit
+/// Fund, von Hand in den richtigen Regel-Ordner geschrieben) täuscht die
+/// Vorprüfung, nie den Hook: Er prüft kalt, auch mit -MitCache.
+#[test]
+fn cache_vergiftet_der_hook_findet_trotzdem() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/gift.rs", b"// geheimprojekt\n"));
+    let sha = o.git(&["rev-parse", "main:src/gift.rs"]);
+    let datei = cache_datei(&o);
+    let mut t = std::fs::read_to_string(&datei).unwrap();
+    t.push_str(&format!("{sha}\tsrc/gift.rs\n"));
+    std::fs::write(&datei, t).unwrap();
+    let (c, text) = o.mit_cache();
+    assert_eq!(c, 0, "die Vorprüfung übernimmt den Eintrag (darum ist sie nie die letzte Schranke): {text}");
+    let (c, text) = o.hook_mit(BASIS_ADRESSE);
+    assert!(c == 1 && text.contains("ABGEWIESEN src/gift.rs, Zeile 1: sensibler Name") && text.contains("Inhalt kalt:"), "Hook: {text}");
+    let kopf = o.git(&["rev-parse", "HEAD"]);
+    let (c, text) = o
+        .lauf(&["-Hook", "-RemoteName", "origin", "-RemoteUrl", BASIS_ADRESSE, "-MitCache"], Some(&format!("refs/heads/main {kopf} refs/heads/main {NULL}\n")));
+    assert!(
+        c == 1 && text.contains("ABGEWIESEN src/gift.rs, Zeile 1: sensibler Name") && text.contains("HINWEIS -MitCache gilt nicht im Hook"),
+        "Hook mit -MitCache: {text}"
+    );
+}
+
+/// Ein kaputter Cache ist nie ein Fehler des Laufs: kein UTF-8 heißt kein
+/// Treffer (kalt geprüft, danach neu geschrieben); eine Zeile anderer Form trifft nicht.
+#[test]
+fn cache_kaputt_ist_kein_treffer() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let geprueft = cache_fuellen(&o);
+    let datei = cache_datei(&o);
+    let gut = std::fs::read_to_string(&datei).unwrap();
+    let mut zeilen: Vec<&str> = gut.lines().collect();
+    zeilen.sort_unstable();
+    std::fs::write(&datei, b"\xff\xfe kaputt\n").unwrap();
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((0, geprueft)) && !text.contains("HINWEIS"), "{text}");
+    let neu = std::fs::read_to_string(&datei).unwrap();
+    let mut neu_zeilen: Vec<&str> = neu.lines().collect();
+    neu_zeilen.sort_unstable();
+    assert_eq!(neu_zeilen, zeilen, "nach dem kalten Lauf wieder geschrieben");
+    // Die Zeile von src/main.rs in anderer Form (SHA groß) und Unsinn: nur diese Zeile trifft nicht.
+    let sha = o.git(&["rev-parse", "main:src/main.rs"]);
+    let kaputt = gut.replace(&format!("{sha}\t"), &format!("{}\t", sha.to_uppercase())) + "unsinn\tsrc/main.rs\n\n";
+    std::fs::write(&datei, kaputt).unwrap();
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft - 1, 1)), "{text}");
+}
+
+/// Eine Junction ohne Administrator (mklink /J); `false`, wenn es nicht ging.
+fn junction(link: &Path, ziel: &Path) -> bool {
+    let Ok(mut c) = programme::befehl(Werkzeug::Cmd) else { return false };
+    c.args(["/c", "mklink", "/J"]).arg(link).arg(ziel).output().is_ok_and(|o| o.status.success()) && link.exists()
+}
+
+/// Eine Verknüpfung im Pfad des Caches (als Ort selbst oder darüber): kein
+/// Cache, ein Satz, kalt geprüft, nichts geschrieben.
+#[test]
+fn cache_nie_ueber_eine_verknuepfung() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let ziel = o.wurzel.join("ziel");
+    std::fs::create_dir_all(&ziel).unwrap();
+    let link = o.wurzel.join("verweis");
+    if !junction(&link, &ziel) {
+        dashboard::ueberspringen("mklink /J ging nicht");
+        return;
+    }
+    for ort in [link.clone(), link.join("cache")] {
+        let (c, text) = o.lauf_mit(&skript(), &ort, &["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"], None);
+        assert!(c == 0 && text.contains("HINWEIS Im Pfad des Prüfer-Caches liegt eine Verknüpfung") && text.contains("Inhalt kalt:"), "{ort:?}: {text}");
+        assert!(std::fs::read_dir(&ziel).unwrap().next().is_none(), "{ort:?}: nichts geschrieben");
+    }
+}
+
+/// Die Namen der Einträge eines Ordners, sortiert.
+fn namen_in(ordner: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(ordner).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    v.sort();
+    v
+}
+
+/// Datiert einen Ordner um `stunden` in die Zukunft (eine zurückgestellte Uhr, ein kopierter Cache).
+fn in_die_zukunft(ordner: &Path, stunden: u32) {
+    let befehl = format!("[IO.Directory]::SetLastWriteTimeUtc('{}', [DateTime]::UtcNow.AddHours({stunden}))", ordner.display());
+    let o = pwsh().unwrap().args(["-NoProfile", "-NonInteractive", "-Command", &befehl]).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+}
+
+/// Das Aufräumen behält zwei Regel-Ordner: den eigenen (nie gelöscht, auch wenn
+/// andere jünger datiert sind) und den zuletzt genutzten anderen. Was nicht wie
+/// ein Regel-Ordner heißt oder mehr als Cache-Dateien enthält, bleibt.
+#[test]
+fn cache_aufraeumen_behaelt_zwei() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    for z in ["a", "b", "c"] {
+        std::fs::create_dir_all(o.cache().join(z.repeat(64))).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::fs::create_dir_all(o.cache().join("fremd")).unwrap();
+    let geprueft = cache_fuellen(&o);
+    let namen = namen_in(&o.cache());
+    assert_eq!(namen.len(), 3, "{namen:?}");
+    assert!(namen.contains(&"c".repeat(64)) && namen.contains(&"fremd".to_string()), "{namen:?}");
+    let eigen = namen.iter().find(|n| n.len() == 64 && **n != "c".repeat(64)).unwrap().clone();
+    // Drei jünger datierte Ordner; f enthält eine fremde Datei und gehört darum nicht dem Cache.
+    for (z, stunden, fremd) in [("d", 1, false), ("e", 2, false), ("f", 3, true)] {
+        let ordner = o.cache().join(z.repeat(64));
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(ordner.join("sauber.txt"), "").unwrap();
+        if fremd {
+            std::fs::write(ordner.join("fremd.txt"), "nicht vom Cache\n").unwrap();
+        }
+        in_die_zukunft(&ordner, stunden);
+    }
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "der eigene Ordner bleibt und trifft: {text}");
+    let mut erwartet = vec![eigen, "e".repeat(64), "f".repeat(64), "fremd".to_string()];
+    erwartet.sort();
+    assert_eq!(namen_in(&o.cache()), erwartet);
+    assert!(o.cache().join("f".repeat(64)).join("fremd.txt").exists());
+}
+
+/// Die Pfadregeln laufen auch für Treffer. Im Projekt-Repo steht der Slug nicht
+/// im Regel-Schlüssel: Hat das ferne main projects/beta, meldet der warme Lauf
+/// die gemerkten Pfade unter projects/alpha wie der kalte als fremdes Projekt.
+#[test]
+fn cache_pfadregeln_auch_bei_treffer() {
+    if !bereit() {
+        return;
+    }
+    let p = Ort::projekt();
+    let (c, text) = p.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache", "-RemoteUrl", PROJEKT_ADRESSE], None);
+    assert!(c == 0 && cache_zahlen(&text).is_some_and(|(_, g)| g > 0), "{text}");
+    p.git(&["checkout", "-q", "--orphan", "fern"]);
+    p.git(&["rm", "-rqf", "."]);
+    p.datei("projects/beta/projekt.toml", b"schema = 3\n");
+    p.commit("fern", &[]);
+    p.git(&["checkout", "-q", "main"]);
+    let bereich = ["-Baum", "main", "-Commits", "fern..main", "-RemoteUrl", PROJEKT_ADRESSE];
+    let (ck, kalt) = p.lauf(&bereich, None);
+    assert!(ck == 1 && kalt.contains("fremdes Projekt") && kalt.contains("Inhalt kalt:"), "{kalt}");
+    let (cw, warm) = p.lauf(&[&bereich[..], &["-MitCache"]].concat(), None);
+    assert!(cw == 1 && cache_zahlen(&warm).is_some_and(|(n, _)| n > 0), "der warme Lauf trifft: {warm}");
+    assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "kalt:\n{kalt}\nwarm:\n{warm}");
+}
+
+/// Beim Schreiben bleiben die schon gemerkten Einträge: Nach einer Änderung an
+/// main trifft der übernächste Lauf wieder alles.
+#[test]
+fn cache_behaelt_alte_eintraege() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/neu.rs", b"// sauber\n"));
+    let (c, text) = o.mit_cache();
+    let (n, m) = cache_zahlen(&text).unwrap_or_default();
+    assert!(c == 0 && n > 0 && m > 0, "{text}");
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((n + m, 0)), "alte und neue Einträge treffen: {text}");
+}
+
+/// Scheitert Laufzeit.ps1, fehlt nur die Zeile zur Laufzeit; die Prüfung geht
+/// wie sonst aus (kein Exit 2), mit und ohne Cache.
+#[test]
+fn laufzeit_kaputt_aendert_nichts() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let code = o.wurzel.join("code");
+    prueferdateien_kopieren(&code);
+    std::fs::write(code.join("Laufzeit.ps1"), "throw 'kaputt'\r\n").unwrap();
+    for extra in [&[][..], &["-MitCache"][..]] {
+        let (c, text) = o.lauf_mit(&code.join("Vor-Push.ps1"), &o.cache(), &[&["-Baum", "main", "-Commits", "main", "-AufMain"][..], extra].concat(), None);
+        assert!(c == 0 && text.contains("Nichts gefunden.") && text.contains("HINWEIS Laufzeit.ps1 ließ sich nicht laden"), "{extra:?}: {text}");
+        assert!(!text.lines().any(|z| z.starts_with("Laufzeit ")), "{extra:?}: {text}");
+    }
+}
+
 /// Ein Hook oder Prüfer des Forks: schreibt beim Lauf `hook-lief.txt` in den
 /// aktuellen Ordner (bei Hooks die Wurzel des Arbeitsbaums).
 const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
+
+/// Die Marke des eigenen post-checkout von main.
+const MAIN_MARKE: &str = "main-hook-lief.txt";
+const MAIN_HOOK: &str = "#!/bin/sh\necho lief > main-hook-lief.txt\n";
 
 /// Der Probe-Merge nach Abschnitt 15, Teil 5: ohne Arbeitsbaum und ohne Hooks
 /// (git merge-tree --write-tree, git commit-tree als Ranke, git branch probe), geprüft
@@ -3506,19 +3896,70 @@ const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
 /// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenproben: Der
 /// alte Weg (git merge im Arbeitsbaum) ruft die Hooks des Forks und legt dessen Prüfer
 /// in den Arbeitsbaum; ein Checkout der Kennung vor dem grünen Lauf ruft post-checkout
-/// des Forks.
+/// des Forks. Die Befehle kommen aus dem Text des Leitfadens (include_str!), und main hat
+/// einen eigenen post-checkout mit eigener Marke, die der Arbeitsbaum der Probe schreibt.
 #[test]
 fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
     if !bereit() {
         return;
     }
+    // Die Befehle dieses Tests sind die des Leitfadens (Abschnitt 15, Teil 5), mit dessen
+    // Platzhaltern; der Test setzt sie ein und prüft, dass der Text sie wörtlich nennt.
+    let leitfaden = include_str!("../docs/anleitung/contributing-15-15-im-team-an-einem-projekt-repo.toml");
+    const K: &str = "<kennung>";
+    let holen = ["rev-parse", "FETCH_HEAD"];
+    let merge_tree = ["merge-tree", "--write-tree", "main", K];
+    let commit_tree = ["commit-tree", "$t", "-p", "main", "-p", K, "-m"];
+    let branch = ["branch", "probe", "$m"];
+    let pruefen = ["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", K];
+    let bauen = ["worktree", "add", "--detach", "<ordner>", "probe"];
+    let vorspulen = ["merge", "--ff-only", "probe"];
+    for (vorn, befehl) in [
+        ("git ", &holen[..]),
+        ("git ", &merge_tree),
+        // Davor stehen im Leitfaden die -c für Name und Adresse der Betreuer.
+        ("", &commit_tree),
+        ("git ", &branch),
+        ("scripts/Vor-Push.ps1 ", &pruefen),
+        ("git ", &bauen),
+        ("git ", &vorspulen),
+    ] {
+        let text = format!("{vorn}{}", befehl.join(" "));
+        assert!(leitfaden.contains(&text), "der Leitfaden nennt „{text}“ nicht mehr");
+    }
+    assert!(!leitfaden.contains(&format!("git merge --no-ff {K}")), "der Leitfaden fällt auf git merge im Arbeitsbaum zurück");
+    // Die Schutzangaben um die Befehle: feste Commit-Angabe, Fetch ohne Ziel-Ref, sauberer
+    // Arbeitsbaum auf main, -Beitrag Pflicht.
+    for satz in [
+        format!("git -c user.name=<name der betreuer> -c user.email=<adresse der betreuer> {}", commit_tree.join(" ")),
+        "git fetch <fork-url> <ref>, dann".to_string(),
+        "ohne „:“".to_string(),
+        "mit main ausgecheckt und sauberem Arbeitsbaum".to_string(),
+        "Ein Lauf ohne -Beitrag zählt nicht als grün.".to_string(),
+    ] {
+        assert!(leitfaden.contains(&satz), "der Leitfaden nennt „{satz}“ nicht mehr");
+    }
+    assert!(!leitfaden.contains("<ref>:"), "der Leitfaden holt mit Ziel-Ref (überschriebe eine lokale Ref)");
+    // Im Projekt-Repo mit dessen Adresse: ohne -RemoteUrl prüfte der Prüfer als Basis-Repo.
+    let projekt =
+        format!("scripts/Vor-Push.ps1 -Repo <projekt-repo> -RemoteUrl <adresse des projekt-repos, wie in repos.toml> -Art Projekt {}", pruefen.join(" "));
+    assert!(leitfaden.contains(&projekt), "der Leitfaden nennt den Probelauf für ein Projekt-Repo nicht mehr");
+    // Platzhalter einsetzen; ergibt die Argumente für git oder den Prüfer.
+    fn setzen(befehl: &[&str], werte: &[(&str, &str)]) -> Vec<String> {
+        befehl.iter().map(|a| werte.iter().find(|(p, _)| p == a).map_or(a.to_string(), |(_, w)| w.to_string())).collect()
+    }
+    fn als_str(v: &[String]) -> Vec<&str> {
+        v.iter().map(String::as_str).collect()
+    }
     let mail = NOREPLY.replace('§', "");
     let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
     for fall in ["sauber", "Fork ändert Hooks und Prüfer", "alter Weg"] {
         let o = Ort::neu();
-        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer.
+        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer;
+        // sein post-checkout schreibt eine eigene Marke (so ist „kein Hook des Forks“ nicht leer).
         o.ueber_merge(|o| {
             o.datei("scripts/hooks/post-merge", b"#!/bin/sh\nexit 0\n");
+            o.datei("scripts/hooks/post-checkout", MAIN_HOOK.as_bytes());
             o.datei("scripts/Vor-Push.ps1", b"# Pruefer von main\n");
         });
         o.git(&["config", "core.hooksPath", "scripts/hooks"]);
@@ -3545,7 +3986,7 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         fg(&["add", "-A"]);
         fg(&["commit", "-q", "-m", "feat: b"]);
         o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
-        let kennung = o.git(&["rev-parse", "FETCH_HEAD"]);
+        let kennung = o.git(&holen);
         let marker = o.repo().join("hook-lief.txt");
         let pruefer_im_baum = || std::fs::read_to_string(o.repo().join("scripts").join("Vor-Push.ps1")).unwrap();
         if fall == "alter Weg" {
@@ -3555,23 +3996,25 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
             assert!(pruefer_im_baum().contains("des Forks"), "der alte Weg legt den Prüfer des Forks in den Arbeitsbaum");
             continue;
         }
-        let baum = o.git(&["merge-tree", "--write-tree", "main", &kennung]).lines().next().unwrap().to_string();
-        let probe = o.git(&[&ranke[..], &["commit-tree", &baum, "-p", "main", "-p", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
-        o.git(&["branch", "probe", &probe]);
+        let baum = o.git(&als_str(&setzen(&merge_tree, &[(K, &kennung)]))).lines().next().unwrap().to_string();
+        let commit_tree = setzen(&commit_tree, &[("$t", &baum), (K, &kennung)]);
+        let probe = o.git(&[&ranke[..], &als_str(&commit_tree), &["chore(merge): beitrag nach main"]].concat());
+        o.git(&als_str(&setzen(&branch, &[("$m", &probe)])));
         assert!(!marker.exists(), "{fall}: beim Bau der Probe läuft kein Hook");
         assert_eq!(o.git(&["rev-parse", "HEAD"]), alt, "{fall}: der Arbeitsbaum bleibt auf main");
         assert!(pruefer_im_baum().contains("von main"), "{fall}: im Arbeitsbaum liegt der Prüfer von main");
-        let (code, text) = o.lauf(&["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", &kennung], None);
+        let (code, text) = o.lauf(&als_str(&setzen(&pruefen, &[(K, &kennung)])), None);
         assert!(!marker.exists(), "{fall}: auch der Prüflauf führt nichts aus dem Fork aus");
         // Bauen und Testen in einem eigenen Arbeitsbaum: nach grünem Lauf auf dem Probe-Commit.
         let bau = o.wurzel.join("probe-bau");
         let bau_marker = bau.join("hook-lief.txt");
         if fall == "sauber" {
             assert_eq!(code, 0, "{text}");
-            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), "probe"]);
+            o.git(&als_str(&setzen(&bauen, &[("<ordner>", &bau.to_string_lossy())])));
             assert!(!bau_marker.exists(), "nach grünem Lauf führt der Arbeitsbaum der Probe keinen Hook des Forks aus");
+            assert!(bau.join(MAIN_MARKE).exists(), "der Arbeitsbaum der Probe ruft den post-checkout von main");
             o.git(&["worktree", "remove", "--force", &bau.to_string_lossy()]);
-            o.git(&["merge", "-q", "--ff-only", "probe"]);
+            o.git(&vorspulen);
             assert_eq!(o.git(&["rev-parse", "main"]), probe, "main ist genau der geprüfte Merge-Commit");
             let (code, text) = o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None);
             assert_eq!(code, 0, "nach dem Merge: {text}");
@@ -3599,7 +4042,10 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
 /// im Prüfer noch in Hochladen.ps1; beide prüfen wie sonst. Ohne die Umgebungsvariable
 /// NoDefaultCurrentDirectoryInExePath, die die Suche im aktuellen Ordner abschaltete.
 /// Gegenprobe: Ein Start über den Namen (ProcessStartInfo „git“) nimmt dort die fremde.
-/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann bricht der Prüfer ab (Exit 2).
+/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann brechen Prüfer und
+/// Hochladen.ps1 ab (Exit 2, jeder nicht voll qualifizierte PATH-Eintrag), ebenso mit dem
+/// Repo als vollem Pfad im PATH (Ortsvergleich). Dasselbe mit einer git.cmd, die eine
+/// Marke schriebe; die Marke entsteht nie, außer in der Gegenprobe mit „& git“.
 #[test]
 fn kein_git_aus_dem_arbeitsordner() {
     if !bereit() {
@@ -3614,9 +4060,8 @@ fn kein_git_aus_dem_arbeitsordner() {
     std::fs::copy(&quelle, o.repo().join("git.exe")).unwrap();
     let skripte = o.repo().join("scripts");
     std::fs::create_dir_all(skripte.join("hooks")).unwrap();
-    for name in ["Vor-Push.ps1", "Hochladen.ps1"] {
-        std::fs::copy(skript().with_file_name(name), skripte.join(name)).unwrap();
-    }
+    prueferdateien_kopieren(&skripte);
+    std::fs::copy(skript().with_file_name("Hochladen.ps1"), skripte.join("Hochladen.ps1")).unwrap();
     for name in ["pre-push", "commit-msg"] {
         std::fs::copy(skript().with_file_name("hooks").join(name), skripte.join("hooks").join(name)).unwrap();
     }
@@ -3628,6 +4073,7 @@ fn kein_git_aus_dem_arbeitsordner() {
             .args(args)
             .current_dir(o.repo())
             .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
             .env_remove("NoDefaultCurrentDirectoryInExePath")
             .output()
             .unwrap();
@@ -3637,10 +4083,15 @@ fn kein_git_aus_dem_arbeitsordner() {
     let vor_push = skripte.join("Vor-Push.ps1").to_string_lossy().to_string();
     let repo = o.repo().to_string_lossy().to_string();
     let (c, text) = im_repo(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
-    assert!(c == 0 && text.contains("Nichts gefunden"), "Prüfer: {text}");
+    assert!(c == 0 && text.contains("Nichts gefunden") && text.contains("Inhalt kalt:"), "Prüfer: {text}");
     let hochladen = skripte.join("Hochladen.ps1").to_string_lossy().to_string();
-    let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
-    assert!(c == 0 && text.contains("main ginge so nach main"), "Hochladen: {text}");
+    // Zweimal: Die Vorprüfung füllt den eigenen Cache-Ordner und trifft ihn dann; Laufzeit.ps1 lädt jedes Mal.
+    for lauf in 1..=2 {
+        let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+        assert!(c == 0 && text.contains("main ginge so nach main"), "Hochladen {lauf}: {text}");
+        assert!(cache_zahlen(&text).is_some_and(|(n, _)| (lauf == 1) == (n == 0)), "Hochladen {lauf}: {text}");
+        assert!(text.matches("Laufzeit ").count() >= 2 && !text.contains("HINWEIS Laufzeit.ps1"), "Hochladen {lauf}: {text}");
+    }
     let (_, text) = im_repo(&[
         "-NoProfile",
         "-NonInteractive",
@@ -3651,7 +4102,15 @@ fn kein_git_aus_dem_arbeitsordner() {
     // Mit „.“ im PATH fände auch Get-Command die fremde git.exe: Der Prüfer bricht dann ab.
     let pfad = format!(".;{}", std::env::var("PATH").unwrap_or_default());
     let mit_punkt = |args: &[&str]| {
-        let a = pwsh().unwrap().args(args).current_dir(o.repo()).env("DASHBOARD_INHALT", &inhalt).env("PATH", &pfad).output().unwrap();
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
+            .env("PATH", &pfad)
+            .output()
+            .unwrap();
         (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
     };
     let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "(Get-Command git -CommandType Application | Select-Object -First 1).Source"]);
@@ -3659,8 +4118,66 @@ fn kein_git_aus_dem_arbeitsordner() {
         text.trim().to_lowercase().replace('/', "\\").ends_with(&format!("{}\\git.exe", repo.to_lowercase().replace('/', "\\"))),
         "Gegenprobe: mit . im PATH nimmt Get-Command die fremde git.exe:\n{text}"
     );
+    // Ohne Umlaut: Hochladen.ps1 schreibt in eine Pipe in der Codepage der Konsole.
+    let relativ = "nicht voll qualifizierte";
     let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
-    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
+    assert!(c == 2 && text.contains(relativ), "Prüfer mit . im PATH: {text}");
+    // Auch mit vollem Cache (die Hochladen-Läufe oben haben ihn gefüllt): der Abbruch kommt vor dem Cache.
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"]].concat());
+    assert!(c == 2 && text.contains(relativ), "Prüfer mit . im PATH und -MitCache: {text}");
+    // Hochladen bricht ab, bevor es git aus dem Arbeitsordner startet.
+    let (c, text) = mit_punkt(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains(relativ) && !text.contains("ginge so"), "Hochladen mit . im PATH: {text}");
+    // Das Repo mit vollem Pfad vorn im PATH: Der Ortsvergleich bricht ab.
+    let mit_repo = |args: &[&str]| {
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
+            .env("PATH", format!("{repo};{}", std::env::var("PATH").unwrap_or_default()))
+            .output()
+            .unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (c, text) = mit_repo(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit dem Repo im PATH: {text}");
+    let (c, text) = mit_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("ginge so"), "Hochladen mit dem Repo im PATH: {text}");
+    // git.cmd statt git.exe: Sie schriebe eine Marke, die nie entstehen darf.
+    std::fs::remove_file(o.repo().join("git.exe")).unwrap();
+    let marke = o.wurzel.join("fremdes-git-lief.txt");
+    std::fs::write(o.repo().join("git.cmd"), format!("@echo lief> \"{}\"\r\n@exit /b 0\r\n", marke.display())).unwrap();
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/git.cmd\n").unwrap();
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains(relativ) && !marke.exists(), "Prüfer mit git.cmd und . im PATH: {text}");
+    let (c, text) = mit_punkt(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains(relativ) && !text.contains("ginge so") && !marke.exists(), "Hochladen mit git.cmd und . im PATH: {text}");
+    // Ohne . im PATH gilt git.cmd nie: CreateProcess sucht im aktuellen Ordner nur git.exe.
+    let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 0 && text.contains("main ginge so nach main") && !marke.exists(), "Hochladen mit git.cmd im Repo: {text}");
+    // Gegenprobe: Mit . im PATH nimmt PowerShell die git.cmd, und sie schreibt die Marke.
+    let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "& git --version"]);
+    assert!(marke.exists(), "Gegenprobe: mit . im PATH läuft die git.cmd im aktuellen Ordner:\n{text}");
+    // pre-push sucht pwsh in sh über den Namen, im Arbeitsbaum als aktuellem Ordner: Ein
+    // „pwsh“ dort schriebe eine Marke und ließe den Push durch. Mit . im PATH bricht der
+    // Hook vorher ab. git startet aus der Wurzel des Tests (dort liegt keine git.cmd).
+    std::fs::remove_file(o.repo().join("git.cmd")).unwrap();
+    let pwsh_marke = o.wurzel.join("fremdes-pwsh-lief.txt");
+    std::fs::write(o.repo().join("pwsh"), format!("#!/bin/sh\necho lief > '{}'\n", pwsh_marke.to_string_lossy().replace('\\', "/"))).unwrap();
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/pwsh\n").unwrap();
+    let fern = o.wurzel.join("fern.git");
+    assert!(git().args(["init", "-q", "--bare"]).arg(&fern).output().unwrap().status.success());
+    let git_mit_punkt = |args: &[&str]| {
+        let a = git().arg("-C").arg(o.repo()).args(args).current_dir(&o.wurzel).env("DASHBOARD_INHALT", &inhalt).env("PATH", &pfad).output().unwrap();
+        (a.status.success(), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (ok, text) = git_mit_punkt(&["push", &fern.to_string_lossy().replace('\\', "/"), "main:main"]);
+    assert!(!ok && text.contains("pre-push: PATH") && !pwsh_marke.exists(), "git push mit pwsh im Arbeitsbaum und . im PATH: {text}");
+    // Gegenprobe: Ein Shell-Alias (sh in der Wurzel des Arbeitsbaums wie der Hook) nimmt das fremde pwsh.
+    let (_, text) = git_mit_punkt(&["-c", "alias.p=!pwsh", "p"]);
+    assert!(pwsh_marke.exists(), "Gegenprobe: mit . im PATH startet sh das pwsh im Arbeitsbaum:\n{text}");
 }
 
 /// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
@@ -3746,7 +4263,8 @@ fn pruefpfade_loeschen_umbenennen_modus() {
 }
 
 /// Heimatpfade unter macOS und Linux in weiteren Formen (PATH-Liste, scp-Ziel,
-/// Schalter -L und -I, JSON mit \/, WSL-Freigabe), je genau ein Fund; die
+/// Schalter -L und -I, JSON mit \/, WSL-Freigabe, /var/home, /export/home, mehrere
+/// oder gemischte Trenner nach dem Ordner), je genau ein Fund; die
 /// Windows-Formen mit / zählen nur einmal (nicht zusätzlich als macOS/Linux).
 /// Gegenproben bleiben frei: /home und /users hinter einer Domäne, "/home" ohne Namen,
 /// /usr/home/<x> (nach einem Buchstaben; FreeBSD gehört nicht zu den Zielsystemen) und
@@ -3787,6 +4305,12 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
         "cc -isystem/h§ome/zora",
         // WSL-Freigabe in JSON: nur die WSL-Form meldet.
         r"\/\/wsl$\/U\/h§ome\/zora",
+        // Mehrere oder gemischte Trenner nach dem Ordner, /var/home (Fedora Silverblue) und /export/home.
+        "/h§ome//zora",
+        r"/h§ome\zora",
+        "/var/h§ome/zora",
+        "/export/h§ome/zora",
+        r#"{"p": "\/var\/h§ome\/zora"}"#,
     ] {
         let text = abgewiesen(form, "Benutzerpfad", |o| o.ueber_merge(|o| o.datei("src/pfad.rs", format!("// {form}\n").as_bytes())));
         assert_eq!(fundzeilen(&text).len(), 1, "{form}: genau ein Fund:\n{text}");
@@ -3798,9 +4322,151 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
                 r#"// https://example.com/h§ome/zora https://api.github.com/u§sers/zora Path::new("/h§ome") "/h§ome/" /usr/h§ome/zora
 // https:\/\/example.com\/h§ome\/zora foo-bar/h§ome/zora
 // \\wsl$\Ubuntu\h§ome\<name> \/h§ome\/<name> -L/h§ome/<name> PATH=/usr/bin:/h§ome/$USER/bin
+// /var/h§ome/<name> /h§ome//<name> /h§ome\<name> x/var/h§ome/zora /variable/h§ome/zora /var/h§omes/zora
 "#
                 .as_bytes(),
             )
         })
     });
+}
+
+/// Liest die Muster „Benutzerpfad…“ aus Vor-Push.ps1 (Zeilen `'name' = Rx ('…')`, der
+/// Platzhalter eingesetzt), dazu das Muster aus $env:ALT, und misst jedes an langen Zeilen.
+/// Ausgabe je Paar: `ZEIT|<muster>|<eingabe>|<ms>`.
+const MUSTER_MESSEN: &str = r#"
+$t = [IO.File]::ReadAllText($env:PRUEFER)
+$opt = [Text.RegularExpressions.RegexOptions]'IgnoreCase, CultureInvariant'
+$platz = [regex]::Match($t, "(?m)^\`$platzhalter = '(.*)'\r?$").Groups[1].Value.Replace("''", "'")
+if (-not $platz) { throw 'Platzhalter nicht gefunden' }
+# Nur damit ein exponentielles Muster den Test rot macht statt ihn hängen zu lassen.
+$grenze = [TimeSpan]::FromSeconds(30)
+$muster = [ordered]@{}
+foreach ($m in [regex]::Matches($t, "(?m)^\s*'(Benutzerpfad[^']*)'\s*=\s*Rx \('(.*)'\)\r?$")) {
+    $teile = $m.Groups[2].Value -split "' \+ \`$platzhalter \+ '"
+    $muster[$m.Groups[1].Value] = [regex]::new((($teile | ForEach-Object { $_.Replace("''", "'") }) -join $platz), $opt, $grenze)
+}
+$a = [regex]::Match($t, "(?m)^\`$allgemeinPfad = Rx \('(.*)' \+ \(Escape-Liste \`$listen\.allgemein\) \+ '(.*)'\)\r?$")
+if (-not $a.Success) { throw 'allgemeinPfad nicht gefunden' }
+$muster['allgemeinPfad'] = [regex]::new($a.Groups[1].Value + 'probe' + $a.Groups[2].Value, $opt, $grenze)
+$muster['alt'] = [regex]::new($env:ALT.Replace('PLATZ', $platz), $opt, $grenze)
+$n = 20000
+$h = '/h' + 'ome'
+$eingaben = [ordered]@{
+    'slash' = '/' * $n
+    'gemischt' = '\/' * ($n / 2)
+    'home' = ($h + '/') * ($n / 6)
+    'home-trenner' = $h + ('/' * $n)
+    'laufwerk' = 'c:' + ('/' * $n) + 'u'
+    'wsl' = ('/' * $n) + 'wsl$/'
+    'kodiert' = 'home' + ('%2f' * ($n / 3)) + '/'
+    'var' = '/var' * ($n / 4)
+    'laufwerk-rueck' = 'c:' + ('\' * $n) + 'x'
+    'users-rueck' = 'c:\users' + ('\' * $n) + 'public'
+    'projects-rueck' = 'projects' + ('\' * $n) + 'x'
+}
+foreach ($k in $muster.Keys) {
+    foreach ($e in $eingaben.Keys) {
+        if ($k -eq 'alt' -and $e -ne 'slash') { continue }
+        $null = $muster[$k].Matches('/x').Count
+        $uhr = [Diagnostics.Stopwatch]::StartNew()
+        try { $null = $muster[$k].Matches($eingaben[$e]).Count } catch { if ($_.Exception.GetBaseException() -isnot [Text.RegularExpressions.RegexMatchTimeoutException]) { throw } }
+        "ZEIT|$k|$e|$($uhr.ElapsedMilliseconds)"
+    }
+}
+"#;
+
+/// Das Muster „Benutzerpfad (macOS/Linux)“ vor der Behebung: Der Lookbehind über die
+/// Trenner stand vor dem Literal und lief hinter jedem / zurück (quadratisch).
+const ALTES_MAC_MUSTER: &str =
+    r#"(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+))/(?:(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*)[u]sers|[h]ome)\\?/(?!PLATZ)[^\\/\s"'<>*|:]+"#;
+
+/// Die Heimatpfad-Muster laufen auf einer Zeile aus 20 000 Zeichen linear: Je Muster und
+/// Eingabe (lauter /, \/ im Wechsel, viele Stücke /home und /, /home mit langen Trennern,
+/// Laufwerk mit langen Trennern, WSL- und URL-kodierte Formen) unter 500 ms (gemessen etwa
+/// 1 ms; großzügig gegen Last). Lange \-Läufe nach Laufwerk, Users und projects prüfen die
+/// Windows-Form und $allgemeinPfad (mit (?:\\\\|\\|/)+ waren sie exponentiell). Gegenprobe:
+/// das alte Muster braucht auf 20 000 / über 1 s (gemessen etwa 5 s).
+#[test]
+fn heimatpfad_muster_ohne_quadratische_laufzeit() {
+    if !bereit() {
+        return;
+    }
+    let aus = pwsh()
+        .unwrap()
+        .args(["-NoProfile", "-NonInteractive", "-Command", MUSTER_MESSEN])
+        .env("PRUEFER", skript())
+        .env("ALT", ALTES_MAC_MUSTER)
+        .output()
+        .unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr));
+    assert!(aus.status.success(), "{text}");
+    let mut namen = std::collections::BTreeSet::new();
+    for zeile in text.lines().filter_map(|z| z.trim().strip_prefix("ZEIT|")) {
+        let teile: Vec<&str> = zeile.split('|').collect();
+        let (muster, eingabe, ms) = (teile[0], teile[1], teile[2].parse::<u64>().unwrap());
+        if muster == "alt" {
+            assert!(ms >= 1000, "Gegenprobe: das alte Muster läuft auf 20 000 / quadratisch, gemessen {ms} ms");
+        } else {
+            assert!(ms < 500, "{muster} auf {eingabe}: {ms} ms\n{text}");
+        }
+        namen.insert(muster.to_string());
+    }
+    for name in [
+        "alt",
+        "Benutzerpfad",
+        "Benutzerpfad (Git-Bash-Form)",
+        "Benutzerpfad (macOS/Linux)",
+        "Benutzerpfad (WSL-Freigabe)",
+        "Benutzerpfad (URL-kodiert)",
+        "allgemeinPfad",
+    ] {
+        assert!(namen.contains(name), "{name} nicht gemessen:\n{text}");
+    }
+}
+
+/// Ein Fall: Name, erwarteter Fund, die Änderung (gibt die Kennung für -Beitrag).
+type CommitFall = (&'static str, &'static str, fn(&Ort) -> Option<String>);
+
+/// Der Cache überspringt nur die Inhaltsprüfung von Blobs: Die Regel für Prüfpfade an
+/// fremden Commits, die Autor-Regel auf der Linie und -Beitrag melden mit vollem Cache
+/// (jeder Blob ein Treffer) dieselben Funde wie kalt.
+#[test]
+fn cache_ueberspringt_keine_commit_regel() {
+    if !bereit() {
+        return;
+    }
+    let faelle: [CommitFall; 3] = [
+        ("Prüfpfad", "ein fremder Commit ändert den Prüfpfad scripts/x.ps1", |o| {
+            beitrag(o, "fix: x", "Beitrag", NOREPLY, |o| {
+                o.git(&["rm", "-q", "scripts/x.ps1"]);
+            });
+            None
+        }),
+        ("Autor auf der Linie", "ist nicht Ranke", |o| {
+            o.commit("feat: leer", &als_beitrag(&NOREPLY.replace('§', "")));
+            None
+        }),
+        ("-Beitrag", "Autor des Beitrags trägt die Angabe der Betreuer", |o| {
+            o.git(&["checkout", "-q", "-b", "beitrag"]);
+            let kennung = o.commit("feat: leer", &[]);
+            o.git(&["checkout", "-q", "main"]);
+            Some(kennung)
+        }),
+    ];
+    for (fall, muster, aendern) in faelle {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("scripts/x.ps1", b"# x\n"));
+        cache_fuellen(&o);
+        let kennung = aendern(&o);
+        let mut args = vec!["-Baum", "main", "-Commits", "main", "-AufMain"];
+        if let Some(k) = &kennung {
+            args.extend(["-Beitrag", k.as_str()]);
+        }
+        let (ck, kalt) = o.lauf(&args, None);
+        assert!(ck == 1 && kalt.contains(muster) && kalt.contains("Inhalt kalt:"), "{fall} kalt: {kalt}");
+        args.push("-MitCache");
+        let (cw, warm) = o.lauf(&args, None);
+        assert!(cw == 1 && cache_zahlen(&warm).is_some_and(|(n, g)| n > 0 && g == 0), "{fall}: jeder Blob ein Treffer: {warm}");
+        assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "{fall}, kalt:\n{kalt}\nwarm:\n{warm}");
+    }
 }

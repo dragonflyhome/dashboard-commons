@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Leitet die nächste Fassung ab, prüft das Changelog und schreibt Fassung und
     Tag lokal fest. Nichts geht hinaus.

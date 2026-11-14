@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Gemeinsamer Baustein: Laufzeit und Auslastung der Rechenkerne am Ende eines Skripts.
 .DESCRIPTION
@@ -34,7 +35,8 @@ function UhrSatz($uhr) {
         return "Laufzeit $s s; Auslastung der $kerne Rechenkerne unbekannt."
     }
     $gesamt = $jetzt.Gesamt - $uhr.Zeiten.Gesamt
-    $prozent = [math]::Round(100 * (1 - ($jetzt.Leerlauf - $uhr.Zeiten.Leerlauf) / $gesamt))
+    # [int]: Clamp mit double und int ist für PowerShell mehrdeutig.
+    $prozent = [int][math]::Round(100 * (1 - ($jetzt.Leerlauf - $uhr.Zeiten.Leerlauf) / $gesamt))
     return "Laufzeit $s s; Rechenkerne zu $([math]::Clamp($prozent, 0, 100)) % ausgelastet ($kerne Kerne)."
 }
 

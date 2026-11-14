@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Der einzige Weg nach draußen: prüft main ganz und lädt nur dann hoch.
 .DESCRIPTION
@@ -10,7 +11,9 @@
          Fast-Forward),
       3. prüft mit scripts\Vor-Push.ps1 den ganzen Baum von main, alle
          Commits, die hinausgingen (fern..main; Autor, Committer, Nachricht),
-         und dass main dabei nur Merge-Commits bekommt (First-Parent-Linie),
+         und dass main dabei nur Merge-Commits bekommt (First-Parent-Linie);
+         diese Vorprüfung nutzt den Cache sauberer Blobs (-MitCache), der
+         Hook beim Push prüft kalt,
       4. lädt erst dann hoch, und nur refs/heads/main nach refs/heads/main
          (keine anderen Zweige, kein --force, kein --no-verify).
     Mit -Pruefen kein Schritt 4.
@@ -61,6 +64,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Scheitert Laufzeit.ps1, fehlt nur die Zeile zur Laufzeit.
+$uhr = $null
+try { . (Join-Path $PSScriptRoot 'Laufzeit.ps1'); $uhr = UhrStart } catch { Write-Host 'HINWEIS Laufzeit.ps1 ließ sich nicht laden; die Zeile zur Laufzeit fehlt.' }
 # git über den vollen Pfad aus PATH, wie im Prüfer (nie eine git.exe aus dem Arbeitsordner).
 $git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $codeRepo = Split-Path -Parent $PSScriptRoot
@@ -75,6 +81,13 @@ function GitAus([string[]]$a) {
 
 try {
     if ($Wurzel) { Write-Host 'Abbruch: -Wurzel gibt es nicht mehr; main geht direkt nach main hinaus (Hochladen.ps1 ohne -Wurzel, zum Probelauf -Pruefen). Es wurde nichts geändert.'; exit 1 }
+    # Wie im Prüfer: Ein „.“ oder relativer Eintrag im PATH holte git aus dem Arbeitsordner oder dem Repo.
+    $relativ = @($env:PATH -split ';' | Where-Object { $_.Trim() -and -not [IO.Path]::IsPathFullyQualified($_.Trim().Trim('"')) })
+    if ($relativ) { throw "PATH enthält nicht voll qualifizierte Einträge ($($relativ -join ';')); PATH nur mit vollen Pfaden setzen" }
+    $gitOrt = Split-Path -Parent $git
+    if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith((Resolve-Path -LiteralPath $repo).ProviderPath.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "git liegt im Repo oder im aktuellen Ordner ($git); PATH ohne . und ohne relative Einträge setzen"
+    }
     $repo = GitAus @('rev-parse', '--show-toplevel')
     $haken = (& $git -C $repo config --get core.hooksPath) 2>$null
     $haken = "$haken"
@@ -89,7 +102,8 @@ try {
         Write-Host "Abbruch: core.hooksPath dieses Repos zeigt nicht auf die Hooks des Code-Repos. Einmal setzen: git config core.hooksPath <code-repo>/scripts/hooks (absolut)"
         exit 1
     }
-    $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+    # Der Prüfer läuft in derselben PowerShell (mindestens 7.7) wie dieses Skript.
+    $ps = [Environment]::ProcessPath
     if ($Tag) {
         # Ein Tag lässt sich nicht zurücknehmen (Verschieben und Löschen sind ein Fund): kein Push bei einem gemeinten Probelauf.
         if ($Pruefen) { Write-Host 'Abbruch: -Tag geht nicht zusammen mit -Pruefen; -Tag lädt den Tag immer hoch.'; exit 1 }
@@ -119,7 +133,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "git merge-base --is-ancestor endete mit $LASTEXITCODE" }
     }
     $bereich = if ($fern) { "$fern..$main" } else { $main }
-    $argumente = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'Vor-Push.ps1'), '-Repo', $repo, '-Baum', $lokal, '-Commits', $bereich, '-AufMain')
+    $argumente = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'Vor-Push.ps1'), '-Repo', $repo, '-Baum', $lokal, '-Commits', $bereich, '-AufMain', '-MitCache')
     # Die Art (Projekt) kommt nur aus der Adresse und repos.toml, nie aus diesem Skript.
     if ($fremd) {
         # Gepusht wird an die Push-Adressen (pushurl, bei mehreren an alle): genau die prüft er; verschiedene gehen nicht.
@@ -148,4 +162,4 @@ try {
 } catch {
     Write-Host "FEHLER $($_.Exception.Message). Es wurde nichts hochgeladen."
     exit 2
-}
+} finally { if ($uhr) { try { UhrZeile $uhr } catch { } } }

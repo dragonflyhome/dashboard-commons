@@ -14,6 +14,49 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Die Vorprüfung in scripts/Hochladen.ps1 (auch -Pruefen und damit die
+  Freigabe) merkt sich saubere Blobs je Pfad unter einem Regel-Schlüssel aus
+  Prüfer, Listen, Art und PowerShell-Fassung und prüft beim nächsten Lauf nur
+  Neues (Vor-Push.ps1 -MitCache). Der Hook beim Push prüft immer kalt.
+- Bruch: Der Prüfweg (Vor-Push.ps1, Hochladen.ps1, Freigeben.ps1,
+  Fassung-Festschreiben.ps1, Mac-Probe.ps1, Laufzeit.ps1) verlangt
+  PowerShell 7.7; die Hooks commit-msg und pre-push rufen nur pwsh, ohne
+  Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
+  Ende Laufzeit und Auslastung der Rechenkerne.
+- Anleitung, Abschnitt 15, Teil 5: der Probelauf eines Beitrags im
+  Projekt-Repo mit -Repo, -RemoteUrl und -Art Projekt ausgeschrieben; ohne
+  Adresse prüft der Prüfer als Basis-Repo.
+
+Behoben
+- Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
+  scheitert, cargo startet nicht) mit Exit 0, einem Satz und der
+  Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie
+  schreibt ihre Sätze als UTF-8.
+- Mac-Probe: Das dlltool kommt zuerst aus llvm-ar.exe im sysroot der aktiven
+  Toolchain (lib\rustlib\<host>\bin; llvm-tools bringt kein llvm-dlltool
+  mit, der Name bestimmt die Rolle), sonst aus
+  %USERPROFILE%\.cargo\bin\llvm-dlltool.exe.
+- Mac-Probe: Fehlt Laufzeit.ps1 oder wirft sie, bleibt es bei einem Satz,
+  Exit 0 und einer Ersatzzeile zur Laufzeit; endet rustup rot, nennt der
+  Satz das statt „Ziel nicht installiert“.
+- Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
+  im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
+- Prüfer, Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, sobald ein
+  Eintrag im PATH nicht voll qualifiziert ist (etwa „.“); vorher hing der
+  Schutz allein am Ort des gefundenen git, auch einer git.cmd.
+- Das Muster für Heimatpfade unter macOS und Linux lief auf langen Zeilen
+  aus / quadratisch (20 000 Zeichen etwa 5 s); es prüft jetzt zuerst das
+  Literal. Es erkennt auch /var/home/<name>, /export/home/<name> und mehrere
+  oder gemischte Trenner nach dem Ordner (/home//<name>, /home\<name>).
+- Das Muster für Windows-Benutzerpfade (C:\Users\<name>) und das für
+  allgemeine Projektnamen nach projects\ liefen auf einem langen Lauf aus \
+  exponentiell (50 Zeichen hielten den Prüfer praktisch ohne Ende auf); die
+  Trenner sind jetzt eine Zeichenklasse, die Funde bleiben gleich.
+- Der Hook pre-push bricht mit Exit 2 ab, wenn ein Eintrag im PATH nicht voll
+  qualifiziert ist (etwa „.“); vorher startete er ein pwsh aus dem geprüften
+  Arbeitsbaum statt des Prüfers.
+
 0.6.0 - 2026-11-14
 ------------------
 

@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 7.7
+<#
 .SYNOPSIS
     Gibt eine neue Fassung des Code-Repos heraus: ein Aufruf, ohne Rückfrage,
     in fester Folge. Jeder rote Schritt bricht ab, bevor etwas hinausgeht.
@@ -81,7 +82,8 @@ $env:DASHBOARD_INHALT = $Inhalt
 if (-not $Dienst) { $Dienst = Join-Path $PSScriptRoot 'Dienst.ps1' }
 # Kinder (cargo, Hooks, Fassung-Festschreiben.ps1) erben denselben Bauordner.
 if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path $env:LOCALAPPDATA 'Dashboard\cache\freigabe' }
-$ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell.exe' }
+# Kinder (Prüfweg, Dienst.ps1) laufen in derselben PowerShell (mindestens 7.7) wie dieses Skript.
+$ps = [Environment]::ProcessPath
 # git über den vollen Pfad aus PATH, wie im Prüfer. cargo und npm startet der Aufrufoperator
 # von PowerShell (sucht nur PATH); sie führen im eigenen Repo ohnehin dessen Code aus (build.rs,
 # npm-Skripte); was dort liegt, ist vor dem Merge gelesen und geprüft (Anleitung Abschnitt 15).
@@ -91,6 +93,14 @@ $lokal = Join-Path $Inhalt 'dashboard-lokal'
 $NICHTS = 'Es ging nichts hinaus.'
 
 function Ende([int]$code, [string]$satz) { Write-Host $satz; exit $code }
+
+# Wie im Prüfer: Ein „.“ oder relativer Eintrag im PATH holte git aus dem Arbeitsordner oder dem Repo.
+$relativ = @($env:PATH -split ';' | Where-Object { $_.Trim() -and -not [IO.Path]::IsPathFullyQualified($_.Trim().Trim('"')) })
+if ($relativ) { Ende 2 "Abbruch: PATH enthält nicht voll qualifizierte Einträge ($($relativ -join ';')); PATH nur mit vollen Pfaden setzen. $NICHTS" }
+$gitOrt = Split-Path -Parent $git
+if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith($repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    Ende 2 "Abbruch: git liegt im Repo oder im aktuellen Ordner ($git); PATH ohne . und ohne relative Einträge setzen. $NICHTS"
+}
 
 function GitLauf([string]$wo, [string[]]$a, [switch]$Still) {
     $alt = $ErrorActionPreference
