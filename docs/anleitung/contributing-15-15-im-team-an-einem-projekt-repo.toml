@@ -10,11 +10,11 @@ Die Beispiele sind erfunden: das Projekt gartenplaner der Organisation beispiel-
 
 [[block]]
 titel = '1. Was ein Projekt-Repo ist'
-text = 'Ein Projekt-Repo ist ein Overlay: Es enthält genau ein Projekt und legt sich beim Start über das Code-Repo des Dashboards. Es ist kein Fork des Code-Repos und ersetzt es nicht; das Code-Repo kommt immer getrennt dazu. Die folgenden Regeln prüft der Prüfer nur, wenn die Liste der Repos beim Betreiber die Adresse des Repos als Projekt führt; sonst prüft er es als Code-Repo. Erlaubt sind dann nur diese Pfade, alles andere weist der Prüfer ab:'
+text = 'Ein Projekt-Repo ist ein Overlay: Es enthält in der Regel genau ein Projekt (mehrere nur über die Liste slugs, Abschnitt 14) und legt sich beim Start über das Code-Repo des Dashboards. Es ist kein Fork des Code-Repos und ersetzt es nicht; das Code-Repo kommt immer getrennt dazu. Die folgenden Regeln prüft der Prüfer nur, wenn die Liste der Repos beim Betreiber die Adresse des Repos als Projekt führt; sonst prüft er es als Code-Repo. Erlaubt sind dann nur diese Pfade, alles andere weist der Prüfer ab:'
 
 [[block]]
 punkte = [
-  'projects/<slug>/ mit allem darunter, für genau einen Slug (im Beispiel projects/gartenplaner/ mit projekt.toml, daten/*.toml, Seite.svelte und assets/)',
+  'projects/<slug>/ mit allem darunter, für genau einen Slug (im Beispiel projects/gartenplaner/ mit projekt.toml, daten/*.toml, Seite.svelte und assets/); mehrere nur, wenn der Betreiber sie für dieses Repo in seiner Ausnahmedatei unter slugs freigibt (Abschnitt 14), dann genau diese',
   'dashboard-version.toml in der Wurzel mit einer Zeile tag = "v0.1.0": die Fassung des Code-Repos, gegen die die Seite gebaut ist',
   '.gitignore und .gitattributes in der Wurzel',
 ]

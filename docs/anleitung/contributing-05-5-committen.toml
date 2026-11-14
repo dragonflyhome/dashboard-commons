@@ -402,7 +402,7 @@ text = 'Was der Server hinausgibt, nennt nie das Profil oder den Windows-Namen d
 [[block]]
 titel = 'Commits in einem geteilten Projekt-Repo (Overlay)'
 punkte = [
-  'Ein geteiltes Projekt-Repo enthält nur projects/<slug>/ für genau einen Slug und dashboard-version.toml (tag = "v0.1.0", ohne Adresse), dazu höchstens .gitignore und .gitattributes. Es ist ein Overlay, kein Fork: Das Code-Repo kommt getrennt dazu. Kollegen forken und schreiben Issues, Pull-Requests gibt es nicht.',
+  'Ein geteiltes Projekt-Repo enthält nur projects/<slug>/ für genau einen Slug (mehrere nur, wenn dashboard-inhalt/pruefer/ausnahmen/<repo>.toml sie unter slugs = [...] nennt, Abschnitt 14) und dashboard-version.toml (tag = "v0.1.0", ohne Adresse), dazu höchstens .gitignore und .gitattributes. Es ist ein Overlay, kein Fork: Das Code-Repo kommt getrennt dazu. Kollegen forken und schreiben Issues, Pull-Requests gibt es nicht.',
   'Der Wurzel-Commit entsteht genau einmal (frisches Repo), danach kommt alles nur mit Merge-Commit nach main (git merge --no-ff), als Ranke, Nachricht nach Conventional Commits, ohne Anhänge.',
   'Hooks: Das Repo hat kein scripts/. Einmal je Klon: git config core.hooksPath <code-repo>/scripts/hooks (absolut). Dann prüfen commit-msg und pre-push wie im Code-Repo; der Prüfer prüft es als Art Projekt, wenn seine Adresse in dashboard-inhalt/pruefer/repos.toml als Projekt steht.',
   'Wörter aus den Namenslisten, die das Projekt braucht, stehen einzeln in dashboard-inhalt/pruefer/ausnahmen/<repo>.toml (erlaubt = [...]) und sind nur alleinstehend frei (mit Buchstabe oder Ziffer daneben bleiben sie ein Fund); jeder Eintrag braucht die Abnahme der Architektur-Rolle (Abschnitt 14).',

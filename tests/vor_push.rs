@@ -1370,6 +1370,146 @@ fn ausnahme_nur_alleinstehend() {
     }
 }
 
+/// Hook und Hochladen eines Projekt-Repos; mit `fern` hat das Remote schon diesen Stand von main.
+fn projekt_laeufe(o: &Ort, fern: Option<&str>) -> [(&'static str, (i32, String)); 2] {
+    let kopf = o.git(&["rev-parse", "HEAD"]);
+    let alt = fern.unwrap_or(NULL);
+    let hook = o.lauf(&["-Hook", "-RemoteName", "origin", "-RemoteUrl", PROJEKT_ADRESSE], Some(&format!("refs/heads/main {kopf} refs/heads/main {alt}\n")));
+    let hochladen = match fern {
+        Some(f) => o.lauf(&["-RemoteUrl", PROJEKT_ADRESSE, "-Baum", "main", "-Commits", &format!("{f}..main"), "-AufMain"], None),
+        None => o.pruefen_mit(Some(PROJEKT_ADRESSE)),
+    };
+    [("Hook", hook), ("Hochladen", hochladen)]
+}
+
+/// Liste `slugs` der Ausnahmedatei: mehrere Projekte in einem Projekt-Repo,
+/// exakt verglichen, im neuen Stand und im fernen Stand; kaputt ist Abbruch.
+/// In Basis und Inhalt ändert sie nichts.
+#[test]
+fn projekt_mehrere_slugs() {
+    if !bereit() {
+        return;
+    }
+    let fremd = "fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)";
+    // Ein Eintrag: wie die Ein-Slug-Regel, ein zweiter Ordner ist ein Fund.
+    let o = Ort::projekt();
+    o.ausnahmen("projekt", "slugs = [\"alpha\"]\n");
+    for (wie, (code, text)) in projekt_laeufe(&o, None) {
+        assert_eq!(code, 0, "ein Eintrag, sauber ({wie}): {text}");
+    }
+    o.ueber_merge(|o| o.datei("projects/beispiel-b/projekt.toml", b"schema = 3\n"));
+    for (wie, (code, text)) in projekt_laeufe(&o, None) {
+        assert_eq!(code, 1, "ein Eintrag, zweiter Ordner ({wie}): {text}");
+        assert_eq!(fundzeilen(&text), vec![format!("ABGEWIESEN projects/beispiel-b/projekt.toml: {fremd}")], "{wie}: {text}");
+    }
+    // Zwei erlaubte Slugs, der zweite Ordner vor oder hinter dem ersten, die Liste in jeder Reihenfolge,
+    // dazu ein Slug ohne Ordner und erlaubt daneben: frei, neu und als Folgepush.
+    for zweiter in ["beispiel-b", "aa-beispiel"] {
+        for liste in [format!("[\"alpha\", \"{zweiter}\", \"beispiel-c\"]"), format!("[\"beispiel-c\", \"{zweiter}\", \"alpha\"]")] {
+            let o = Ort::projekt();
+            o.ausnahmen("projekt", &format!("erlaubt = []\nslugs = {liste}\n"));
+            o.ueber_merge(|o| o.datei(&format!("projects/{zweiter}/projekt.toml"), b"schema = 3\n"));
+            let fern = o.git(&["rev-parse", "HEAD"]);
+            for (wie, (code, text)) in projekt_laeufe(&o, None) {
+                assert_eq!(code, 0, "{zweiter}, {liste} ({wie}): {text}");
+            }
+            o.ueber_merge(|o| o.datei("projects/alpha/b.toml", b"x = 1\n"));
+            for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+                assert_eq!(code, 0, "{zweiter}, {liste}, Folgepush ({wie}): {text}");
+            }
+        }
+    }
+    // Der Slug des fernen Stands ist mit Liste nicht festgelegt: alpha weg, beispiel-b neu, beide in der Liste.
+    let o = Ort::projekt();
+    o.ausnahmen("projekt", "slugs = [\"alpha\", \"beispiel-b\"]\n");
+    let fern = o.git(&["rev-parse", "HEAD"]);
+    o.ueber_merge(|o| {
+        std::fs::remove_dir_all(o.repo().join("projects").join("alpha")).unwrap();
+        o.datei("projects/beispiel-b/projekt.toml", b"schema = 3\n");
+    });
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+        assert_eq!(code, 0, "Tausch in der Liste ({wie}): {text}");
+    }
+    // Ordner außerhalb der Liste im neuen Commit: Fund, auch in anderer Schreibung (exakt).
+    for (name, pfad) in [("außerhalb", "projects/beispiel-x/a.toml"), ("Großschreibung", "projects/Beispiel-B/a.toml")] {
+        let o = Ort::projekt();
+        o.ausnahmen("projekt", "slugs = [\"alpha\", \"beispiel-b\"]\n");
+        o.ueber_merge(|o| o.datei(pfad, b"x = 1\n"));
+        for (wie, (code, text)) in projekt_laeufe(&o, None) {
+            assert_eq!(code, 1, "{name} ({wie}): {text}");
+            assert_eq!(fundzeilen(&text), vec![format!("ABGEWIESEN {pfad}: {fremd}")], "{name} ({wie}): {text}");
+        }
+    }
+    // Auch nur in einem Zwischenstand.
+    let o = Ort::projekt();
+    o.ausnahmen("projekt", "slugs = [\"alpha\"]\n");
+    o.ueber_merge(|o| {
+        o.datei("projects/beispiel-x/a.toml", b"x = 1\n");
+        o.commit("zwischendurch", &[]);
+        std::fs::remove_dir_all(o.repo().join("projects").join("beispiel-x")).unwrap();
+    });
+    for (wie, (code, text)) in projekt_laeufe(&o, None) {
+        assert_eq!(code, 1, "Zwischenstand ({wie}): {text}");
+        assert!(text.contains(&format!("ABGEWIESEN projects/beispiel-x/a.toml: {fremd}")), "Zwischenstand ({wie}): {text}");
+    }
+    // Ein Ordner außerhalb der Liste nur im fernen Stand (der Push löscht ihn): Fund, einmal.
+    let o = Ort::projekt();
+    o.ueber_merge(|o| o.datei("projects/beispiel-x/a.toml", b"x = 1\n"));
+    let fern = o.git(&["rev-parse", "HEAD"]);
+    o.ueber_merge(|o| {
+        std::fs::remove_dir_all(o.repo().join("projects").join("beispiel-x")).unwrap();
+        o.datei("projects/alpha/b.toml", b"x = 1\n");
+    });
+    o.ausnahmen("projekt", "slugs = [\"alpha\"]\n");
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+        assert_eq!(code, 1, "ferner Stand ({wie}): {text}");
+        assert_eq!(fundzeilen(&text), vec![format!("ABGEWIESEN projects/beispiel-x (ferner Stand): {fremd}")], "ferner Stand ({wie}): {text}");
+    }
+    // Gegenprobe ohne Liste: wie heute frei (alpha ist der Slug des fernen Stands).
+    o.ausnahmen("projekt", "erlaubt = []\n");
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+        assert_eq!(code, 0, "ferner Stand ohne Liste ({wie}): {text}");
+    }
+
+    // Kaputt: Abbruch (Exit 2) ohne Namen des Repos; die Form gilt am rohen Wert, vor jeder Faltung.
+    for (name, liste) in [
+        ("leer", "[]"),
+        ("Großbuchstabe", "[\"Alpha\"]"),
+        ("ganz groß", "[\"ALPHA\"]"),
+        ("Leerzeichen davor", "[\" alpha\"]"),
+        ("Leerzeichen dahinter", "[\"alpha \"]"),
+        ("leerer Eintrag", "[\"alpha\", \"\"]"),
+        ("Strich vorn", "[\"-alpha\"]"),
+        ("Unterstrich", "[\"beispiel_b\"]"),
+        ("Umlaut", "[\"beispiel-ä\"]"),
+        ("Schrägstrich", "[\"alpha/x\"]"),
+        ("Zeilenende", "[\"alpha\n\"]"),
+        ("doppelt", "[\"alpha\", \"beispiel-b\", \"alpha\"]"),
+    ] {
+        let o = Ort::projekt();
+        o.ausnahmen("projekt", &format!("erlaubt = []\nslugs = {liste}\n"));
+        for (wie, (code, text)) in projekt_laeufe(&o, None) {
+            assert_eq!(code, 2, "{name} ({wie}): {text}");
+            assert!(text.contains("<repo>.toml ist kaputt") && text.contains("slugs") && text.contains("Es geht nichts hinaus"), "{name} ({wie}): {text}");
+            assert!(!text.contains("ausnahmen\\projekt") && !text.contains("example"), "{name} ({wie}): {text}");
+        }
+    }
+
+    // In Basis und Inhalt wird sie nie gelesen: dieselben Funde wie ohne Datei, auch kaputt kein Abbruch.
+    for (art, adresse, name) in [("Basis", "https://git.example.invalid/team/basis.git", "basis"), ("Inhalt", INHALT_ADRESSE, "inhalt")] {
+        let o = Ort::neu();
+        o.ueber_merge(|o| o.datei("projects/beispiel-b/projekt.toml", b"schema = 3\n"));
+        let (code0, text0) = o.hook_mit(adresse);
+        for datei in ["slugs = [\"beispiel-b\", \"_vorlage\"]\n", "slugs = [\"Beispiel-B\"]\n", "slugs = []\n"] {
+            o.ausnahmen(name, datei);
+            let (code, text) = o.hook_mit(adresse);
+            assert_eq!(code, code0, "{art}, {datei}: {text}");
+            assert_eq!(fundzeilen(&text), fundzeilen(&text0), "{art}, {datei}: {text}");
+            assert!(text.contains(&format!("Geprüft als {art}")) && !text.contains("Ausnahmen"), "{art}, {datei}: {text}");
+        }
+    }
+}
+
 /// Kopiert den Prüfer und die Datei, die er lädt (Laufzeit.ps1), in diesen Ordner.
 fn prueferdateien_kopieren(nach: &Path) {
     std::fs::create_dir_all(nach).unwrap();
