@@ -71,7 +71,9 @@ rand_core = { version = "=0.6.4", features = ["getrandom"] }
 getrandom = { version = "=0.2.17", default-features = false }
 
 # libc nur außerhalb von Windows, exakt auf der Fassung, die tokio und sysinfo schon in die
-# Sperrdatei bringen (kein neues Paket). Aufrufe: getuid (Besitz von Schlüsselordner und Repo-Ordner).
+# Sperrdatei bringen (kein neues Paket). Aufrufe: getuid (Besitz von Schlüsselordner und Repo-Ordner),
+# setpriority (niedrige Priorität für Bau und Prüfungen), getpgrp und killpg (Prozessgruppe des Baus
+# nach dem Zeitlimit); nur in Tests kill mit Signal 0 und getpriority.
 # Dazu Konstanten ohne Aufruf: O_NOFOLLOW, O_NONBLOCK, ELOOP.
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.191"

@@ -38,8 +38,9 @@ pub enum Werkzeug {
     /// Machine aus (`passkey::geheim`). Unter Windows und Linux gibt es keinen Ort.
     Tmutil,
     /// `/bin/sh`, nur unter macOS und Linux und nur in Tests (ein Kind mit
-    /// Enkel für die Prozessgruppe, ein Kind für die Priorität), wie `Cmd`
-    /// unter Windows.
+    /// Enkel für die Prozessgruppe, ein Kind für die Priorität). Die Variante
+    /// gibt es nur im Testbau: Im Betrieb führt kein Weg zu einer Shell.
+    #[cfg(test)]
     Sh,
 }
 
@@ -57,6 +58,7 @@ impl Werkzeug {
             Werkzeug::Node => "node",
             Werkzeug::Explorer => "explorer.exe",
             Werkzeug::Tmutil => "tmutil",
+            #[cfg(test)]
             Werkzeug::Sh => "sh",
         }
     }
@@ -105,6 +107,7 @@ impl Orte {
             return match w {
                 Werkzeug::Git => vec![PathBuf::from("/usr/bin/git")],
                 Werkzeug::Tmutil if cfg!(target_os = "macos") => vec![PathBuf::from("/usr/bin/tmutil")],
+                #[cfg(test)]
                 Werkzeug::Sh => vec![PathBuf::from("/bin/sh")],
                 _ => Vec::new(),
             };
@@ -130,7 +133,9 @@ impl Orte {
             Werkzeug::Rustc => vec![unter(&self.user_profile, &[".cargo", "bin", "rustc.exe"])],
             Werkzeug::Node => vec![unter(&self.program_files, &["nodejs", "node.exe"])],
             Werkzeug::Explorer => vec![unter(&self.system_root, &["explorer.exe"])],
-            Werkzeug::Tmutil | Werkzeug::Sh => Vec::new(),
+            Werkzeug::Tmutil => Vec::new(),
+            #[cfg(test)]
+            Werkzeug::Sh => Vec::new(),
         };
         liste.into_iter().flatten().filter(|p| p.is_absolute()).collect()
     }

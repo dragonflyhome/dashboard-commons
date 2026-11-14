@@ -216,6 +216,16 @@ pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> R
     laden_oder_anlegen_versuch(pfad, ausnehmen, true)
 }
 
+/// Ob der Schlüsselordner von der Sicherung ausgenommen wird: nur ein Ordner,
+/// der in diesem Aufruf neu entstanden ist, und nur mit vollständigem Pfad.
+/// Ein relativer Pfad, der mit `-` beginnt, ginge sonst als Option an das
+/// Programm. Reine Funktion, damit die Bedingung auf jeder Plattform prüfbar
+/// ist; unter Windows gibt es sie nur im Test.
+#[cfg(any(unix, test))]
+fn ausnahme_setzen(neu_angelegt: bool, ordner: &Path) -> bool {
+    neu_angelegt && ordner.is_absolute()
+}
+
 /// `nochmal`: Kommt ein anderer Lauf beim Anlegen zuvor, wird genau einmal neu geladen, nicht beliebig tief.
 #[cfg(unix)]
 fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(), String>, nochmal: bool) -> Result<JwtSchluessel, String> {
@@ -248,8 +258,7 @@ fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(
     // vollständigen Pfad: Ein relativer Pfad aus der Umgebung, der mit `-`
     // beginnt, ginge sonst als Option an das Programm. Zusätzliche
     // Absicherung, kein Schutz: Schutz sind Ort und Rechte.
-    if neu_angelegt
-        && ordner.is_absolute()
+    if ausnahme_setzen(neu_angelegt, ordner)
         && let Err(e) = ausnehmen(ordner)
     {
         tracing::warn!("Ausnahme für Time Machine nicht gesetzt ({e}).");
@@ -310,7 +319,17 @@ fn ohne_halbstand_anlegen(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::
         .custom_flags(libc::O_NOFOLLOW)
         .open(&zwischen)
         .and_then(|mut d| d.write_all(bytes).and_then(|()| d.sync_all()));
-    let ergebnis = geschrieben.and_then(|()| std::fs::hard_link(&zwischen, pfad));
+    // Ohne harte Verknüpfungen (FAT, exFAT, manches Netzlaufwerk) entsteht kein
+    // Schlüssel; kein Rückfall auf direktes Schreiben, aber der Satz nennt die Ursache.
+    let ergebnis = geschrieben.and_then(|()| {
+        std::fs::hard_link(&zwischen, pfad).map_err(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => e,
+            art => std::io::Error::new(
+                art,
+                format!("harte Verknüpfung nicht möglich ({e}); der Ort braucht ein Dateisystem mit harten Verknüpfungen, sonst DASHBOARD_JWT_SCHLUESSEL an einen anderen Ort legen"),
+            ),
+        })
+    });
     let _ = std::fs::remove_file(&zwischen);
     ergebnis
 }
@@ -539,6 +558,20 @@ mod tests {
         match ergebnis {
             Err(satz) => satz,
             Ok(_) => panic!("{was}: der Schlüssel wurde geladen statt abgelehnt"),
+        }
+    }
+
+    /// Die Ausnahme für die Sicherung gilt nur für einen neu angelegten Ordner
+    /// mit vollständigem Pfad; ein relativer Pfad, der mit `-` beginnt, nie.
+    #[test]
+    fn ausnahme_nur_neu_und_vollstaendig() {
+        let voll = std::env::temp_dir().join("dashboard-schluessel");
+        assert!(voll.is_absolute());
+        assert!(ausnahme_setzen(true, &voll));
+        assert!(!ausnahme_setzen(false, &voll), "nur beim Anlegen");
+        for relativ in ["-dashboard-relativ", "-rf/dashboard-schluessel", "dashboard-schluessel", ""] {
+            assert!(!ausnahme_setzen(true, Path::new(relativ)), "{relativ}");
+            assert!(!ausnahme_setzen(false, Path::new(relativ)), "{relativ}");
         }
     }
 
@@ -808,10 +841,16 @@ mod tests {
         laden_oder_anlegen_mit(&pfad, &|_| Ok(())).unwrap();
         std::fs::remove_file(&pfad).unwrap();
         let ausweis = crate::passkey::jwt::Ausweis::neu("c", 1_793_000_000);
+        // Alle Läufe warten an der Schranke und starten zusammen, damit sie sich auch dort treffen, wo `fsync` fast nichts kostet.
+        let schranke = std::sync::Arc::new(std::sync::Barrier::new(16));
         let laeufe: Vec<_> = (0..16)
             .map(|_| {
                 let pfad = pfad.clone();
-                std::thread::spawn(move || laden_oder_anlegen_mit(&pfad, &|_| Ok(())).map_err(|e| e.to_string()))
+                let schranke = schranke.clone();
+                std::thread::spawn(move || {
+                    schranke.wait();
+                    laden_oder_anlegen_mit(&pfad, &|_| Ok(())).map_err(|e| e.to_string())
+                })
             })
             .collect();
         let schluessel: Vec<JwtSchluessel> = laeufe.into_iter().map(|l| l.join().unwrap().expect("jeder Lauf bekommt einen Schlüssel")).collect();
@@ -832,16 +871,7 @@ mod tests {
             gerufen.set(gerufen.get() + 1);
             Ok(())
         };
-        // Ein relativer Pfad, dessen Ordner mit `-` beginnt: Der Schlüssel entsteht, die Ausnahme wird nicht gerufen.
-        let name = format!("-dashboard-relativ-{}", std::process::id());
-        let relativ = Path::new(&name).join(SCHLUESSEL_DATEI);
-        let _ = std::fs::remove_dir_all(&name);
-        let ergebnis = laden_oder_anlegen_mit(&relativ, &zaehlen);
-        let da = relativ.exists();
-        let _ = std::fs::remove_dir_all(&name);
-        assert!(ergebnis.is_ok() && da, "der Schlüssel entsteht auch am relativen Ort");
-        assert_eq!(gerufen.get(), 0, "keine Ausnahme für einen relativen Pfad");
-        // Ein vollständiger Pfad: einmal.
+        // Ein vollständiger Pfad: genau einmal. Den relativen Fall prüft `ausnahme_nur_neu_und_vollstaendig` ohne Platte.
         let o = ordner("unix-ausnahme-pfad");
         laden_oder_anlegen_mit(&o.join(SCHLUESSEL_ORDNER).join(SCHLUESSEL_DATEI), &zaehlen).unwrap();
         assert_eq!(gerufen.get(), 1);

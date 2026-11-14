@@ -400,7 +400,10 @@ pub fn mit_laufzeit<T>(f: impl Future<Output = Result<T, StartFehler>>) -> Resul
 ///
 /// Unter macOS und Linux zählen daneben SIGTERM (so beendet launchd einen
 /// Agenten, ebenso `kill` und das Abmelden) und SIGHUP (Terminal
-/// geschlossen): Das erste der drei Signale beendet geordnet ([`erstes_signal`]).
+/// geschlossen): Das erste der drei Signale beendet geordnet (`erstes_signal`).
+/// Grenze: Das Abfangen hebt ein geerbtes Ignorieren von SIGHUP auf. Wer den
+/// Server mit `nohup` startet, bekommt beim Schließen des Terminals darum ein
+/// geordnetes Ende, kein Weiterlaufen.
 async fn strg_c() -> Duration {
     #[cfg(not(unix))]
     if tokio::signal::ctrl_c().await.is_err() {
@@ -428,12 +431,15 @@ async fn strg_c() -> Duration {
     BEENDEN_HOECHSTENS
 }
 
-/// Eine Quelle eines Signals zum Beenden.
+/// Eine Quelle eines Signals zum Beenden. Unter Windows nur im Test: Dort
+/// wartet der Server allein auf Strg+C.
+#[cfg(any(unix, test))]
 type SignalQuelle = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
 
 /// Wartet auf die erste von mehreren Quellen; gibt ihre Stelle zurück. Ohne
 /// Quelle bleibt die Zukunft offen. Als reine Funktion über Zukünfte, damit
 /// die Auswahl auf jeder Plattform prüfbar ist, ohne ein Signal zu schicken.
+#[cfg(any(unix, test))]
 async fn erstes_signal(quellen: Vec<SignalQuelle>) -> usize {
     if quellen.is_empty() {
         return std::future::pending().await;

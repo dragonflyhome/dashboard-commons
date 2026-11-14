@@ -62,7 +62,7 @@ pub fn gruppe_beenden(gruppe: i32) -> Result<(), String> {
     // SAFETY: `killpg` ist ein Systemaufruf ohne Zeiger; die Nummer ist oben
     // geprüft (größer als 1, nicht die eigene Gruppe).
     let ergebnis = unsafe { libc::killpg(gruppe, libc::SIGKILL) };
-    if ergebnis == 0 { Ok(()) } else { Err(format!("Die Prozessgruppe {gruppe} ließ sich nicht beenden: {}", std::io::Error::last_os_error().kind())) }
+    if ergebnis == 0 { Ok(()) } else { Err(format!("Die Prozessgruppe {gruppe} ließ sich nicht beenden: {}", std::io::Error::last_os_error())) }
 }
 
 /// Nur für Tests: Gibt es den Prozess `pid` noch? Ein nicht abgeholter
@@ -178,13 +178,9 @@ mod tests {
         kind.wait().unwrap();
         std::thread::sleep(Duration::from_millis(200));
         let lebt = prozess_da(enkel);
-        // Aufräumen: Der Enkel ist noch in der Gruppe des Kindes.
-        // SAFETY: `kill` mit einer geprüften Prozessnummer größer als 1; trifft nur den Enkel dieses Tests.
-        if enkel > 1 {
-            unsafe {
-                libc::kill(enkel, libc::SIGKILL);
-            }
-        }
+        // Aufräumen: Die Gruppe des Kindes besteht durch den Enkel weiter, auch
+        // nachdem das Kind abgeholt ist; die Schranke gilt mit.
+        let _ = super::gruppe_beenden(kind.id() as i32);
         assert!(lebt, "nur das Kind zu beenden lässt den Enkel laufen");
     }
 
