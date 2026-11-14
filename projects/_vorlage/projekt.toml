@@ -21,3 +21,5 @@ open = ["Erster offener Punkt", "Zweiter offener Punkt"]
 # [[links]]
 # name = "Ordner"
 # url = "C:/Users/<name>/Projekte/<slug>"
+# Unter macOS und Linux ohne Laufwerk, auch mit Leerzeichen im Pfad:
+# url = "/Users/<name>/Projekte/<slug>"

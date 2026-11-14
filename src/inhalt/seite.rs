@@ -210,9 +210,18 @@ fn verknuepfung_pruefen(pfad: &Path, datei: String, ordner: &str) -> Result<(), 
 
 /// Ist der Fehler ein Lesefehler (Datei gerade gesperrt oder ohne Rechte)?
 /// Fehlende Dateien (`NotFound`) und unlesbarer Inhalt (`InvalidData`, etwa
-/// UTF-16) zählen nicht. Windows: 32 ERROR_SHARING_VIOLATION, 33 ERROR_LOCK_VIOLATION.
+/// UTF-16) zählen nicht. Siehe [`ist_gesperrt_bei`].
 pub fn ist_gesperrt(e: &std::io::Error) -> bool {
-    e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(32 | 33))
+    ist_gesperrt_bei(e.kind(), e.raw_os_error(), cfg!(windows))
+}
+
+/// Die Regel hinter [`ist_gesperrt`], mit der Plattform als Angabe, damit
+/// beide Zweige überall prüfbar sind. `PermissionDenied` gilt auf jeder
+/// Plattform. Die Nummern 32 (ERROR_SHARING_VIOLATION) und 33
+/// (ERROR_LOCK_VIOLATION) gelten nur unter Windows: Unter macOS und Linux
+/// tragen sie andere Fehler (EPIPE, EDOM), die keine Sperre sind.
+pub fn ist_gesperrt_bei(art: std::io::ErrorKind, nummer: Option<i32>, windows: bool) -> bool {
+    art == std::io::ErrorKind::PermissionDenied || (windows && matches!(nummer, Some(32 | 33)))
 }
 
 thread_local! {
