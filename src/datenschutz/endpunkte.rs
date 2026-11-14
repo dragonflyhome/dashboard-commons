@@ -64,6 +64,37 @@ async fn api_pc() {
     ohne_profil("/api/pc", &v);
 }
 
+/// `/api/pc` (frei): nie der Name des Rechners, nie der Name eines
+/// Datenträgers. Der Test setzt erfundene Werte in den Zustand.
+#[tokio::test]
+async fn api_pc_rechner_und_datentraeger() {
+    use crate::pc::system::DiskInfo;
+    let state = AppState::fuer_tests(&beispiel_fuer_tests());
+    {
+        let mut s = state.snapshot.write().await;
+        s.host = "beispiel-rechner".into();
+        s.disks = vec![
+            DiskInfo { name: "Beispiel Platte".into(), mount: "/Volumes/Beispiel Platte".into(), total: 10, used: 1, belegung: Default::default() },
+            DiskInfo { name: String::new(), mount: r"C:\".into(), total: 10, used: 1, belegung: Default::default() },
+        ];
+    }
+    let (status, v) = hole(&router(state), "/api/pc").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    assert_eq!(v["snapshot"]["host"], "%COMPUTERNAME%");
+    assert_eq!(v["snapshot"]["disks"][0]["name"], "%VOLUME%");
+    assert_eq!(v["snapshot"]["disks"][0]["mount"], "/Volumes/%VOLUME%");
+    // Ein leerer Name bleibt leer, ein Laufwerksbuchstabe bleibt.
+    assert_eq!(v["snapshot"]["disks"][1]["name"], "");
+    assert_eq!(v["snapshot"]["disks"][1]["mount"], r"C:\");
+    let mut alle = Vec::new();
+    texte(&v, &mut alle);
+    for t in &alle {
+        let k = t.to_lowercase();
+        assert!(!k.contains("beispiel-rechner") && !k.contains("beispiel platte"), "/api/pc: Name in „{t}“");
+    }
+    ohne_profil("/api/pc", &v);
+}
+
 /// `/api/pc/benutzer`: `inventory.root`, `inventory.hinweis`,
 /// `autostart.command`, `winget_error`.
 #[tokio::test]

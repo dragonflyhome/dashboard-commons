@@ -82,7 +82,8 @@
 	<div class="head">
 		<h2>Wie geht es dem PC?</h2>
 		<span class="muted small">
-			{report.snapshot.host} · {report.snapshot.os}
+			<!-- Ohne den Namen des Rechners: Der Server liefert dort nur einen Platzhalter. -->
+			{report.snapshot.os}
 			{#if ready}· läuft seit {fmtUptime(uptime)}{/if}
 		</span>
 	</div>

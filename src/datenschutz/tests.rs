@@ -567,3 +567,74 @@ fn name_endet_vor_einem_laufwerk() {
     assert_eq!(v("%2FUsers%2FC%3A%5CUsers%5Cbeispiel"), "%2FUsers%2F%USERPROFILE%");
     assert_eq!(v(r"C:\Users\beispiel-D:\Users\beispiel2"), "%USERPROFILE%%USERPROFILE%");
 }
+
+/// Der Name des Rechners als ganzes Wort wird `%COMPUTERNAME%`, auch in einem
+/// Netzwerkpfad. Ein Wort, das den Namen nur enthält, bleibt.
+#[test]
+fn rechner_als_ganzes_wort() {
+    let b = Bekannt::default().mit_rechner(Some("beispiel-rechner"));
+    assert_eq!(b.rechner, ["beispiel-rechner"]);
+    let w = |t: &str| verbergen_mit(t, &b);
+    assert_eq!(w(r"\\beispiel-rechner\freigabe"), r"\\%COMPUTERNAME%\freigabe");
+    assert_eq!(w("//BEISPIEL-RECHNER/freigabe/x"), "//%COMPUTERNAME%/freigabe/x");
+    assert_eq!(w("Der Rechner Beispiel-Rechner antwortet nicht."), "Der Rechner %COMPUTERNAME% antwortet nicht.");
+    assert_eq!(w("http://beispiel-rechner:8787/pc"), "http://%COMPUTERNAME%:8787/pc");
+    for text in ["beispiel-rechner2", "mein-beispiel-rechner", "beispiel-rechner-alt", "xbeispiel-rechner", "beispiel", "rechner"] {
+        assert_eq!(w(text), text, "{text}");
+    }
+}
+
+/// Ein Name mit Punkten gilt ganz und bis zum ersten Punkt. Leeres und Namen
+/// unter drei Zeichen fallen weg.
+#[test]
+fn rechner_mit_punkt_und_kurze_namen() {
+    let b = Bekannt::default().mit_rechner(Some(" beispiel-rechner.local "));
+    assert_eq!(b.rechner, ["beispiel-rechner.local", "beispiel-rechner"]);
+    assert_eq!(verbergen_mit("beispiel-rechner.local:8787 und beispiel-rechner", &b), "%COMPUTERNAME%:8787 und %COMPUTERNAME%");
+    assert_eq!(verbergen_mit("beispiel-rechner.beispiel.example", &b), "%COMPUTERNAME%.beispiel.example");
+    for name in [None, Some(""), Some("  "), Some("pc"), Some("ab.local.example")] {
+        let b = Bekannt::default().mit_rechner(name);
+        assert!(b.rechner.iter().all(|n| n.chars().count() >= 3 && n != "ab"), "{name:?}: {:?}", b.rechner);
+    }
+    assert_eq!(Bekannt::default().mit_rechner(Some("pc")), Bekannt::default());
+    // Derselbe Name zweimal zählt einmal.
+    assert_eq!(Bekannt::default().mit_rechner(Some("Beispiel-Rechner")).mit_rechner(Some("beispiel-rechner")).rechner.len(), 1);
+}
+
+/// Enthält der Name des Rechners den Benutzernamen als Wort, wird der ganze
+/// Rechnername ersetzt, nicht nur der Benutzername darin.
+#[test]
+fn rechner_vor_dem_benutzernamen() {
+    let b = Bekannt::aus(None, Some("beispiel")).mit_rechner(Some("beispiel-rechner"));
+    assert_eq!(verbergen_mit("beispiel-rechner und beispiel", &b), "%COMPUTERNAME% und %USERNAME%");
+}
+
+/// Die Rechner-Werte: `host` fest der Platzhalter, der Name eines
+/// Datenträgers der Platzhalter oder leer.
+#[test]
+fn rechner_werte_ohne_namen() {
+    use crate::pc::system::{DiskInfo, Snapshot};
+    let platte = |name: &str, mount: &str| DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
+    let mut s = Snapshot {
+        host: "beispiel-rechner".into(),
+        disks: vec![
+            platte("Beispiel Platte", "/Volumes/Beispiel Platte"),
+            platte("", r"C:\"),
+            platte("Ablage", r"D:\"),
+            platte("x", "/Volumes/Beispiel Platte/unter"),
+            platte("y", "/"),
+        ],
+        ..Default::default()
+    };
+    rechner_verbergen(&mut s);
+    assert_eq!(s.host, "%COMPUTERNAME%");
+    let namen: Vec<&str> = s.disks.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(namen, ["%VOLUME%", "", "%VOLUME%", "%VOLUME%", "%VOLUME%"]);
+    let orte: Vec<&str> = s.disks.iter().map(|d| d.mount.as_str()).collect();
+    // Der Einhängepunkt direkt unter /Volumes ganz, auch mit Leerzeichen; Laufwerke und die Wurzel bleiben.
+    assert_eq!(orte, ["/Volumes/%VOLUME%", r"C:\", r"D:\", "/Volumes/Beispiel Platte/unter", "/"]);
+    // Ohne Namen des Rechners: trotzdem der Platzhalter, nie leer und nie der echte.
+    let mut leer = Snapshot::default();
+    rechner_verbergen(&mut leer);
+    assert_eq!(leer.host, "%COMPUTERNAME%");
+}
