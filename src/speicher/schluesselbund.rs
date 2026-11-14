@@ -34,7 +34,10 @@ pub fn lesen(dienst: &str, konto: &str) -> Result<Zeroizing<Vec<u8>>, i32> {
 /// -25299 zurück, und der vorhandene bleibt, wie er ist.
 pub fn anlegen(dienst: &str, konto: &str, inhalt: &[u8; 32]) -> Result<(), i32> {
     let _sperre = SecKeychain::disable_user_interaction().map_err(|e| e.code())?;
-    // Der Standard-Schlüsselbund des Kontos ist der Anmelde-Schlüsselbund.
+    // Der Standard-Schlüsselbund des Kontos ist gewöhnlich der Anmelde-Schlüsselbund.
+    // Gelesen wird oben über die Suchliste des Kontos, in der er gewöhnlich steht. Bei
+    // einem ungewöhnlich eingerichteten Konto (der Standard fehlt in der Suchliste)
+    // fände das Lesen diesen Eintrag nicht.
     let anmeldung = SecKeychain::default().map_err(|e| e.code())?;
     anmeldung.add_generic_password(dienst, konto, inhalt).map_err(|e| e.code())
 }

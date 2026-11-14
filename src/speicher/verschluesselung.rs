@@ -41,27 +41,29 @@ const SCHLUESSELBUND_KONTO: &str = "aufgaben-links-v1";
 /// ersten Bedarf, also beim ersten Link, nie beim Start: Ein Start ohne Link
 /// berührt den Schlüsselbund nicht. Danach liegt der Schlüssel hier, in einem
 /// Puffer, der beim Freigeben überschrieben wird. Ein Fehler wird nicht
-/// gemerkt; der nächste Bedarf versucht es wieder.
+/// gemerkt; der nächste Bedarf versucht es wieder
+/// (`mischform::zwischengespeichert`, dort getestet).
+///
+/// `anlegen`: Nur das Verschlüsseln darf einen fehlenden Schlüssel anlegen.
+/// Das Entschlüsseln holt nur; fehlt der Schlüssel zu einem gespeicherten
+/// Wert, kommt der feste Satz, und es entsteht kein neuer.
 ///
 /// Die Sperre gilt für den ganzen Zugriff: Das Abschalten der Dialoge im
 /// Schlüsselbund wirkt für den ganzen Prozess, und zwei Läufe zugleich
 /// könnten sonst beide anlegen wollen.
 #[cfg(all(not(windows), not(test)))]
-fn schluessel() -> Result<super::mischform::Schluessel, String> {
+fn schluessel(anlegen: bool) -> Result<super::mischform::Schluessel, String> {
     static ABLAGE: std::sync::Mutex<Option<super::mischform::Schluessel>> = std::sync::Mutex::new(None);
-    let mut ablage = ABLAGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(s) = ablage.as_ref() {
-        return Ok(s.clone());
-    }
-    let s = schluessel_aus_dem_system()?;
-    *ablage = Some(s.clone());
-    Ok(s)
+    super::mischform::zwischengespeichert(&ABLAGE, &|| schluessel_aus_dem_system(anlegen))
 }
 
 /// Unter macOS: der Anmelde-Schlüsselbund, über die Regeln in `mischform::schluessel_holen`.
 #[cfg(all(target_os = "macos", not(test)))]
-fn schluessel_aus_dem_system() -> Result<super::mischform::Schluessel, String> {
+fn schluessel_aus_dem_system(anlegen: bool) -> Result<super::mischform::Schluessel, String> {
     use super::{mischform, schluesselbund};
+    if !anlegen {
+        return mischform::schluessel_nur_lesen(&|| schluesselbund::lesen(SCHLUESSELBUND_DIENST, SCHLUESSELBUND_KONTO));
+    }
     mischform::schluessel_holen(
         &|| schluesselbund::lesen(SCHLUESSELBUND_DIENST, SCHLUESSELBUND_KONTO),
         &|inhalt| schluesselbund::anlegen(SCHLUESSELBUND_DIENST, SCHLUESSELBUND_KONTO, inhalt),
@@ -73,14 +75,14 @@ fn schluessel_aus_dem_system() -> Result<super::mischform::Schluessel, String> {
 /// Schlüssel. Eine eigene Funktion, damit ein Ort dort später nur diese eine
 /// Stelle tauscht.
 #[cfg(all(not(windows), not(target_os = "macos"), not(test)))]
-fn schluessel_aus_dem_system() -> Result<super::mischform::Schluessel, String> {
+fn schluessel_aus_dem_system(_anlegen: bool) -> Result<super::mischform::Schluessel, String> {
     Err("Links an Aufgaben gibt es unter Linux noch nicht: Für ihren Schlüssel ist dort noch kein Ort festgelegt.".to_string())
 }
 
 /// In Tests außerhalb von Windows: ein fester, erfundener Schlüssel. Die
 /// Tests verschlüsseln echt, berühren aber nie einen Schlüsselbund.
 #[cfg(all(not(windows), test))]
-fn schluessel() -> Result<super::mischform::Schluessel, String> {
+fn schluessel(_anlegen: bool) -> Result<super::mischform::Schluessel, String> {
     Ok(zeroize::Zeroizing::new(*b"dashboard-test-schluessel-012345"))
 }
 
@@ -88,7 +90,7 @@ fn schluessel() -> Result<super::mischform::Schluessel, String> {
 #[cfg(not(windows))]
 pub fn verschluesseln(klartext: &[u8]) -> Result<Vec<u8>, String> {
     use super::mischform;
-    let schluessel = schluessel()?;
+    let schluessel = schluessel(true)?;
     mischform::versiegeln(&schluessel, &mischform::neue_nonce()?, klartext)
 }
 
@@ -99,7 +101,8 @@ pub fn entschluesseln(geheim: &[u8]) -> Result<zeroize::Zeroizing<Vec<u8>>, Stri
     use super::mischform;
     #[cfg(test)]
     ENTSCHLUESSELT.with(|n| n.set(n.get() + 1));
-    let schluessel = schluessel()?;
+    // Nur holen, nie anlegen: Zu einem gespeicherten Wert gibt es den Schlüssel, oder er fehlt.
+    let schluessel = schluessel(false)?;
     mischform::oeffnen(&schluessel, geheim).map_err(|f| mischform::format_satz(f).to_string())
 }
 

@@ -216,6 +216,34 @@ pub fn schluessel_holen(
     }
 }
 
+/// Holt den Schlüssel nur, ohne je anzulegen: für das Entschlüsseln. Dort
+/// gibt es schon einen gespeicherten Wert; fehlt der Schlüssel dazu (Eintrag
+/// entfernt, anderer Rechner, Sicherung ohne Schlüsselbund), würde ein neuer
+/// Schlüssel ihn nicht öffnen, und kehrte der alte Eintrag zurück, stünde er
+/// neben einem neuen. Darum hier bei „nicht gefunden“ nur der feste Satz.
+pub fn schluessel_nur_lesen(lesen: &dyn Fn() -> Result<Zeroizing<Vec<u8>>, i32>) -> Result<Schluessel, String> {
+    match lesen() {
+        Ok(bytes) => aus_eintrag(&bytes),
+        Err(nummer) => Err(schluesselbund_satz(nummer)),
+    }
+}
+
+/// Der Zwischenspeicher für den Schlüssel: Die Quelle wird erst beim ersten
+/// Bedarf gefragt, nach einem Erfolg nie wieder. Ein Fehler wird nicht
+/// gemerkt; der nächste Aufruf fragt wieder. Die Sperre gilt für die ganze
+/// Frage an die Quelle: Zwei Läufe zugleich fragen nacheinander, und der
+/// zweite findet den Schlüssel schon vor. Bricht die Quelle mit einer Panik
+/// ab, bleibt der Speicher leer, und der nächste Aufruf läuft weiter.
+pub fn zwischengespeichert(ablage: &std::sync::Mutex<Option<Schluessel>>, quelle: &dyn Fn() -> Result<Schluessel, String>) -> Result<Schluessel, String> {
+    let mut platz = ablage.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(s) = platz.as_ref() {
+        return Ok(s.clone());
+    }
+    let s = quelle()?;
+    *platz = Some(s.clone());
+    Ok(s)
+}
+
 /// Fester Satz für einen Eintrag mit falscher Länge.
 pub const LAENGE_SATZ: &str = "Der Eintrag für den Schlüssel der Aufgaben-Links hat nicht genau 32 Bytes; er wird nicht benutzt und nicht überschrieben.";
 
@@ -375,6 +403,12 @@ mod tests {
                 &|| Ok(Zeroizing::new([5u8; 32])),
             )
         }
+        fn nur_lesen(&self) -> Result<Schluessel, String> {
+            schluessel_nur_lesen(&|| {
+                self.gelesen.set(self.gelesen.get() + 1);
+                self.lesen.borrow_mut().remove(0).map(Zeroizing::new)
+            })
+        }
     }
 
     /// Der Eintrag ist da: einmal lesen, nie anlegen.
@@ -445,6 +479,99 @@ mod tests {
             assert_eq!(a.holen().unwrap_err(), LAENGE_SATZ);
             assert_eq!(a.angelegt.borrow().len(), 0);
         }
+    }
+
+    /// Das Entschlüsseln holt nur: Bei „nicht gefunden“ entsteht kein
+    /// Schlüssel, und es kommt der feste Satz. Auch sonst wird nie angelegt
+    /// und genau einmal gelesen.
+    #[test]
+    fn lesen_allein_legt_nie_an() {
+        let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN)], vec![]);
+        assert_eq!(
+            a.nur_lesen().unwrap_err(),
+            "Der Schlüssel der Aufgaben-Links fehlt im Schlüsselbund (-25300); gespeicherte Links sind nicht lesbar und laufen nur ab."
+        );
+        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
+        let a = Ablage::neu(vec![Ok(vec![9u8; 32])], vec![]);
+        assert_eq!(*a.nur_lesen().unwrap(), [9u8; 32]);
+        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
+        for nummer in [GESPERRT, VERWEIGERT, GIBT_ES_SCHON, -128] {
+            let a = Ablage::neu(vec![Err(nummer)], vec![]);
+            assert!(a.nur_lesen().unwrap_err().contains(&nummer.to_string()));
+            assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
+        }
+        let a = Ablage::neu(vec![Ok(vec![9u8; 31])], vec![]);
+        assert_eq!(a.nur_lesen().unwrap_err(), LAENGE_SATZ);
+    }
+
+    /// Der Zwischenspeicher: Ein Fehler wird nicht gemerkt, der zweite Aufruf
+    /// fragt wieder; nach einem Erfolg fragt keiner mehr; die Quelle wird vor
+    /// dem ersten Bedarf nie gefragt.
+    #[test]
+    fn zwischenspeicher_merkt_nur_den_erfolg() {
+        use std::sync::Mutex;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let ablage: Mutex<Option<Schluessel>> = Mutex::new(None);
+        let gefragt = AtomicU32::new(0);
+        assert_eq!(gefragt.load(Ordering::SeqCst), 0, "ohne Bedarf keine Frage");
+        let quelle = || {
+            // Die ersten zwei Fragen scheitern, die dritte bringt den Schlüssel.
+            match gefragt.fetch_add(1, Ordering::SeqCst) {
+                0 | 1 => Err("erfundener Fehler".to_string()),
+                n => Ok(Zeroizing::new([n as u8; 32])),
+            }
+        };
+        assert_eq!(zwischengespeichert(&ablage, &quelle).unwrap_err(), "erfundener Fehler");
+        assert!(ablage.lock().unwrap().is_none(), "ein Fehler wird nicht gespeichert");
+        assert!(zwischengespeichert(&ablage, &quelle).is_err());
+        assert_eq!(gefragt.load(Ordering::SeqCst), 2, "der zweite Aufruf fragt wieder");
+        assert_eq!(*zwischengespeichert(&ablage, &quelle).unwrap(), [2u8; 32]);
+        for _ in 0..5 {
+            assert_eq!(*zwischengespeichert(&ablage, &quelle).unwrap(), [2u8; 32]);
+        }
+        assert_eq!(gefragt.load(Ordering::SeqCst), 3, "nach dem Erfolg fragt keiner mehr");
+    }
+
+    /// Eine Panik in der Quelle hält den nächsten Aufruf nicht auf, und der
+    /// Speicher bleibt dabei leer.
+    #[test]
+    fn zwischenspeicher_laeuft_nach_einer_panik_weiter() {
+        use std::sync::{Arc, Mutex};
+        let ablage: Arc<Mutex<Option<Schluessel>>> = Arc::new(Mutex::new(None));
+        let fremd = ablage.clone();
+        let lauf = std::thread::spawn(move || zwischengespeichert(&fremd, &|| panic!("erfundene Panik in der Quelle")));
+        assert!(lauf.join().is_err(), "die Panik kommt beim Aufrufer an");
+        assert!(ablage.is_poisoned(), "die Sperre gilt als vergiftet");
+        assert_eq!(*zwischengespeichert(&ablage, &|| Ok(Zeroizing::new([4u8; 32]))).unwrap(), [4u8; 32]);
+        assert_eq!(*zwischengespeichert(&ablage, &|| Err("wird nicht gefragt".to_string())).unwrap(), [4u8; 32]);
+    }
+
+    /// Zwei Läufe zugleich fragen die Quelle nacheinander: Sie wird genau
+    /// einmal gefragt, und beide bekommen denselben Schlüssel.
+    #[test]
+    fn zwischenspeicher_fragt_bei_gleichzeitigem_bedarf_einmal() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::{Arc, Barrier, Mutex};
+        let ablage: Arc<Mutex<Option<Schluessel>>> = Arc::new(Mutex::new(None));
+        let gefragt = Arc::new(AtomicU32::new(0));
+        let schranke = Arc::new(Barrier::new(8));
+        let laeufe: Vec<_> = (0..8)
+            .map(|_| {
+                let (ablage, gefragt, schranke) = (ablage.clone(), gefragt.clone(), schranke.clone());
+                std::thread::spawn(move || {
+                    schranke.wait();
+                    zwischengespeichert(&ablage, &|| {
+                        let n = gefragt.fetch_add(1, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                        Ok(Zeroizing::new([10 + n as u8; 32]))
+                    })
+                })
+            })
+            .collect();
+        for lauf in laeufe {
+            assert_eq!(*lauf.join().unwrap().unwrap(), [10u8; 32]);
+        }
+        assert_eq!(gefragt.load(Ordering::SeqCst), 1);
     }
 
     /// Kein Satz nennt den Schlüssel, den Klartext oder einen Teil davon.
