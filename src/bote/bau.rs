@@ -195,6 +195,20 @@ pub fn ist_bau_name(name: &str) -> bool {
     }
 }
 
+/// Das Zeichen zwischen den Einträgen von `PATH`: `;` unter Windows, `:` sonst.
+const PFAD_TRENNER: &str = if cfg!(windows) { ";" } else { ":" };
+
+/// Der `PATH` für den Bau: der Ordner von Node vorn, dahinter der geerbte
+/// `PATH`, mit `trenner` dazwischen. Der geerbte Wert bleibt, wie er ist.
+fn pfad_mit_node(node_ordner: &std::ffi::OsStr, geerbt: Option<&std::ffi::OsStr>, trenner: &str) -> std::ffi::OsString {
+    let mut pfad = std::ffi::OsString::from(node_ordner);
+    if let Some(alt) = geerbt {
+        pfad.push(trenner);
+        pfad.push(alt);
+    }
+    pfad
+}
+
 /// Ein neuer, noch freier Ordnername für jetzt.
 fn neuer_name(builds: &Path) -> String {
     let basis = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
@@ -1587,13 +1601,9 @@ async fn npm_lauf(ort: &BauOrt, builds: &Path, limit: Duration, zeiger: bool) ->
     // Etappe 4b: niedrige Priorität, damit das Cockpit nicht ruckelt (vite erbt sie).
     programme::niedrig_async(&mut cmd);
     // Node vorn in den PATH: die Skripte in package.json rufen `node` und
-    // `vite` über cmd.exe auf (npm hängt node_modules\.bin selbst davor).
+    // `vite` über die Shell auf (npm hängt node_modules/.bin selbst davor).
     let node_ordner = Path::new(cmd.as_std().get_program()).parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut pfad = std::ffi::OsString::from(node_ordner.as_os_str());
-    if let Some(alt) = std::env::var_os("PATH") {
-        pfad.push(";");
-        pfad.push(alt);
-    }
+    let pfad = pfad_mit_node(node_ordner.as_os_str(), std::env::var_os("PATH").as_deref(), PFAD_TRENNER);
     cmd.args(["run", "build"])
         .current_dir(&web)
         .env(UMGEBUNG_ZIEL, &ziel)
@@ -3577,5 +3587,24 @@ writeFileSync(join(ziel, 'index.html'), '<!doctype html><title>gebaut</title>');
         let e = bauen(&r.ort(), ZEITLIMIT).await;
         assert!(!e.gruen && e.satz.contains("fehlt package.json"), "{e:?}");
         assert!(!r.0.join(pruefe::BAULISTE_DATEI).exists());
+    }
+
+    /// Der Ordner von Node steht vorn im `PATH`, dahinter unverändert der
+    /// geerbte Wert, mit dem Trennzeichen der Plattform dazwischen: `;` unter
+    /// Windows, `:` sonst. Beide Zeichen, auf jeder Plattform geprüft.
+    #[test]
+    fn pfad_mit_node_je_trenner() {
+        use std::ffi::OsStr;
+        let p = |node: &str, geerbt: Option<&str>, trenner: &str| pfad_mit_node(OsStr::new(node), geerbt.map(OsStr::new), trenner);
+        assert_eq!(
+            p(r"C:\Program Files\nodejs", Some(r"C:\Windows\system32;C:\Windows"), ";"),
+            OsStr::new(r"C:\Program Files\nodejs;C:\Windows\system32;C:\Windows")
+        );
+        assert_eq!(p("/opt/homebrew/bin", Some("/usr/bin:/bin"), ":"), OsStr::new("/opt/homebrew/bin:/usr/bin:/bin"));
+        // Der geerbte Wert bleibt wörtlich, auch mit Anführungszeichen um einen Eintrag (Windows erlaubt das).
+        assert_eq!(p(r"C:\nodejs", Some(r#""C:\a;b";C:\c"#), ";"), OsStr::new(r#"C:\nodejs;"C:\a;b";C:\c"#));
+        // Ohne geerbten PATH nur der Ordner von Node, ohne Trennzeichen.
+        assert_eq!(p("/opt/homebrew/bin", None, ":"), OsStr::new("/opt/homebrew/bin"));
+        assert_eq!(PFAD_TRENNER, if cfg!(windows) { ";" } else { ":" });
     }
 }

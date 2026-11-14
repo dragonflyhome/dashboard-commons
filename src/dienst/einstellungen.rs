@@ -191,6 +191,17 @@ fn standard_bote_programm() -> String {
     "C:/ProgramData/Dashboard/bin/dashboard-bote.exe".to_string()
 }
 
+/// `bote.programm` ohne Prüfung übernehmen? Unter Windows nie: Dort startet
+/// der Dienst über dieses Feld den Boten, es ist eine Vertrauensgrenze, und
+/// der Wert muss ein vollständiger Pfad sein (`None`: prüfen). Außerhalb von
+/// Windows wird das Feld nicht benutzt; Schritt 5 der Portierung entfernt es
+/// dort. Der Wert bleibt dann, wie er dasteht, und löst nichts aus: Der Teil
+/// des Boten, der ihn nutzt, fehlt dort, und `oeffnen::ordner_des_dienstes`
+/// nimmt nur vollständige Pfade.
+fn bote_programm(wert: &str, windows: bool) -> Option<PathBuf> {
+    (!windows).then(|| PathBuf::from(wert))
+}
+
 impl Einstellungen {
     /// Liest und prüft die Datei.
     pub fn laden(pfad: &Path) -> Result<Einstellungen, Satz> {
@@ -296,7 +307,10 @@ impl Einstellungen {
         if pipe.is_empty() || pipe.contains(['\\', '/']) {
             return Err(fehler("bote.pipe", format!("Bei `pipe` steht „{pipe}“. Bitte nur den Namen ohne Schrägstriche, etwa „dashboard-bote“.")));
         }
-        let programm = absolut("bote.programm", &roh.bote.programm, "C:/ProgramData/Dashboard/bin/dashboard-bote.exe")?;
+        let programm = match bote_programm(&roh.bote.programm, cfg!(windows)) {
+            Some(p) => p,
+            None => absolut("bote.programm", &roh.bote.programm, "C:/ProgramData/Dashboard/bin/dashboard-bote.exe")?,
+        };
 
         Ok(Einstellungen {
             datei: pfad.to_path_buf(),
@@ -430,6 +444,65 @@ mod tests {
         let ohne = ort.gut().split("\n[konten]").next().unwrap().to_string();
         let e = ort.laden(&ohne).unwrap();
         assert_eq!(e.bote.programm, PathBuf::from("C:/ProgramData/Dashboard/bin/dashboard-bote.exe"));
+    }
+
+    /// Eine `dienst.toml` ohne den Abschnitt `[bote]` lädt auf jeder
+    /// Plattform; es gelten die Standards.
+    #[test]
+    fn ohne_bote_laedt() {
+        let ort = Ort::neu("ohne-bote");
+        let block = "\n[bote]\npipe = \"dashboard-bote\"\nprogramm = \"C:/ProgramData/Dashboard/bin/dashboard-bote.exe\"\n";
+        assert!(ort.gut().contains(block), "{}", ort.gut());
+        let ohne = ort.gut().replace(block, "\n");
+        assert!(!ohne.contains("[bote]") && ohne.contains("[konten]"), "{ohne}");
+        let e = ort.laden(&ohne).unwrap();
+        assert_eq!(e.bote.pipe, "dashboard-bote");
+        assert_eq!(e.bote.programm, PathBuf::from("C:/ProgramData/Dashboard/bin/dashboard-bote.exe"));
+    }
+
+    /// `bote.programm` wird nur unter Windows geprüft (dort startet der Dienst
+    /// darüber den Boten). Außerhalb von Windows bleibt der Wert, wie er
+    /// dasteht. Beide Zweige auf jeder Plattform.
+    #[test]
+    fn bote_programm_nur_unter_windows_geprueft() {
+        for wert in ["C:/ProgramData/Dashboard/bin/dashboard-bote.exe", "bin/dashboard-bote", "", "/opt/dashboard/dashboard-bote"] {
+            assert_eq!(bote_programm(wert, true), None, "unter Windows immer prüfen: {wert}");
+            assert_eq!(bote_programm(wert, false), Some(PathBuf::from(wert)), "außerhalb unverändert: {wert}");
+        }
+        // Durch `laden`: ein Wert, der kein vollständiger Pfad ist.
+        let ort = Ort::neu("bote-programm");
+        let text = ort.gut().replace("C:/ProgramData/Dashboard/bin/dashboard-bote.exe", "bin/dashboard-bote");
+        assert!(text.contains("programm = \"bin/dashboard-bote\""), "{text}");
+        // Unter Windows weist die Prüfung ab, außerhalb lädt die Datei.
+        let ergebnis = ort.laden(&text);
+        assert_eq!(ergebnis.is_err(), cfg!(windows), "{:?}", ergebnis.as_ref().err());
+        match ergebnis {
+            Ok(e) => assert_eq!(e.bote.programm, PathBuf::from("bin/dashboard-bote")),
+            Err(e) => assert!(e.0.contains("Bei `bote.programm` steht „bin/dashboard-bote“."), "{e}"),
+        }
+    }
+
+    /// Ein gesetzter Wert, der kein vollständiger Pfad ist, löst nichts aus:
+    /// Der einzige weitere Leser, `oeffnen::ordner_des_dienstes`, nimmt nur
+    /// vollständige Pfade. Der Wert wird hier von Hand gesetzt, damit der Test
+    /// auch unter Windows läuft (dort weist `laden` ihn ab).
+    #[test]
+    fn unvollstaendiges_bote_programm_taucht_nirgends_auf() {
+        let ort = Ort::neu("bote-ordner");
+        let mut e = ort.laden(&ort.gut()).unwrap();
+        // Ein gültiger, vollständiger Wert unter dem Testordner: Sein Ordner ist dabei (auf jeder Plattform).
+        let bin = ort.ordner.join("bin");
+        e.bote.programm = bin.join("dashboard-bote");
+        let mit = crate::oeffnen::ordner_des_dienstes(Some(&e));
+        assert!(mit.contains(&bin), "{mit:?}");
+        e.bote.programm = PathBuf::from("bin/dashboard-bote");
+        let ordner = crate::oeffnen::ordner_des_dienstes(Some(&e));
+        assert!(ordner.iter().all(|p| p.is_absolute()), "{ordner:?}");
+        assert!(!ordner.contains(&bin) && !ordner.iter().any(|p| p.ends_with("bin")), "{ordner:?}");
+        // Gegenprobe: Die übrigen Ordner des Dienstes sind dieselben, nur der Ordner des Boten fehlt.
+        assert_eq!(ordner.len(), mit.len() - 1, "{mit:?} / {ordner:?}");
+        let ohne_bote: Vec<&PathBuf> = mit.iter().filter(|p| **p != bin).collect();
+        assert_eq!(ordner.iter().collect::<Vec<_>>(), ohne_bote);
     }
 
     #[test]

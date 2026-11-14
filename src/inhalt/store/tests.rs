@@ -351,10 +351,23 @@ fn utf16_und_fehlende_datei_sind_keine_lesefehler() {
     assert!(b.lesefehler_befunde().is_empty());
     assert!(!pc_lesen(&o.0.join("data/pc.toml")).1, "fehlt: nicht gesperrt");
     assert!(ist_gesperrt(&std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
-    assert!(ist_gesperrt(&std::io::Error::from_raw_os_error(32)));
-    assert!(ist_gesperrt(&std::io::Error::from_raw_os_error(33)));
     assert!(!ist_gesperrt(&std::io::Error::from(std::io::ErrorKind::NotFound)));
     assert!(!ist_gesperrt(&std::io::Error::from(std::io::ErrorKind::InvalidData)));
+    // Die Nummern 32 und 33 sind nur unter Windows eine Sperre; beide Zweige auf jeder Plattform.
+    use crate::inhalt::seite::ist_gesperrt_bei;
+    use std::io::ErrorKind;
+    for nummer in [32, 33] {
+        assert!(ist_gesperrt_bei(ErrorKind::Other, Some(nummer), true), "{nummer} unter Windows");
+        assert!(!ist_gesperrt_bei(ErrorKind::Other, Some(nummer), false), "{nummer} außerhalb von Windows");
+        assert_eq!(ist_gesperrt(&std::io::Error::from_raw_os_error(nummer)), cfg!(windows), "{nummer} auf dieser Plattform");
+    }
+    for windows in [true, false] {
+        assert!(ist_gesperrt_bei(ErrorKind::PermissionDenied, None, windows));
+        assert!(ist_gesperrt_bei(ErrorKind::PermissionDenied, Some(5), windows));
+        assert!(!ist_gesperrt_bei(ErrorKind::NotFound, Some(2), windows));
+        assert!(!ist_gesperrt_bei(ErrorKind::Other, Some(34), windows));
+        assert!(!ist_gesperrt_bei(ErrorKind::Other, None, windows));
+    }
 }
 
 /// Gezählt wird der Fehler der Leseoperation selbst: Eine kurze Sperre
