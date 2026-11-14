@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.7.2 - 2026-11-14
+------------------
+
 Geändert
 - Tests außerhalb von Windows: Die Testhilfe für angemeldete Anfragen meldet
   über einen Passkey-Ausweis im Cookie an (reiner Testcode in src/app.rs).

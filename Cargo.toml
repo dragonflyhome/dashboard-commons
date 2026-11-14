@@ -1,6 +1,6 @@
 [package]
 name = "dashboard"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 rust-version = "1.88"
 description = "Lokales Dashboard: Zustand des PCs und aller Projekte im Browser"
