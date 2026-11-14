@@ -289,6 +289,32 @@ pub async fn pruefung_lauf(state: &AppState, slug: &str, jetzt: Zeit) {
     }
 }
 
+/// Die Entscheidungen wie bei `dashboard pruefe` (unlesbar, unbekannte
+/// Projekte): eine eigene Meldung beim System-Projekt, sonst fiele eine kaputte
+/// Entscheidung im Betrieb still aus. Neben den Projekten in [`pruefung_alle`].
+/// Läuft auch bei jeder Änderung in docs/entscheidungen (Bereich `Entscheidungen` des Melders, in [`spawn`]).
+pub async fn entscheidungen_lauf(state: &AppState, jetzt: Zeit) {
+    let ordner = state.entscheidungen_dir.as_ref().clone();
+    let quellen = state.quellen.to_vec();
+    let befunde = match tokio::task::spawn_blocking(move || crate::werkzeug::pruefe::pruefe_entscheidungen(&ordner, &quellen)).await {
+        Ok(b) => b,
+        Err(e) => {
+            warn!("Prüfung der Entscheidungen abgebrochen: {e}");
+            return;
+        }
+    };
+    let fehler: Vec<&Befund> = befunde.iter().filter(|b| b.ist_fehler()).collect();
+    let Some(erster) = fehler.first() else {
+        let k = schluessel(SYSTEM_PROJEKT, "entscheidungen-rot");
+        beheben(state, move |m| m.schluessel == k, jetzt).await;
+        return;
+    };
+    let mut n = neu(SYSTEM_PROJEKT, MeldungsArt::Fehler, "entscheidungen-rot", format!("Die Prüfung der Entscheidungen ist rot: {} Fehler.", fehler.len()));
+    let zeile = erster.zeile.map(|z| format!(", Zeile {z}")).unwrap_or_default();
+    n.text = Some(kuerzen(&format!("{}{zeile}: {}", erster.datei, erster.text), crate::api::arbeiten::NOTIZ_HOECHSTENS));
+    melden(state, n, Wiederholung::Zustand, jetzt).await;
+}
+
 /// Prüft alle Projekte aller Inhaltsquellen (beim Start und nach einem
 /// Überlauf des Live-Kanals).
 pub async fn pruefung_alle(state: &AppState, jetzt: Zeit) {
@@ -301,6 +327,7 @@ pub async fn pruefung_alle(state: &AppState, jetzt: Zeit) {
             return;
         }
     };
+    entscheidungen_lauf(state, jetzt).await;
     let mut gesehen = BTreeSet::new();
     for (slug, befunde) in &alle {
         gesehen.insert(slug.clone());
@@ -740,6 +767,7 @@ pub fn spawn(state: AppState) {
         let abschaltung = state.abschaltung();
         tokio::pin!(abschaltung);
         let mut kanal = state.events.subscribe();
+        let mut docs = state.aenderungen.abonnieren();
         pruefung_alle(&state, aufgaben::jetzt()).await;
         if lesbarkeit_lauf(&state, aufgaben::jetzt()).await.is_empty() {
             info!("Alle gelesenen Ordner sind lesbar (projects, data, web, docs\\entscheidungen, docs\\zielbild, docs\\anleitung, soweit vorhanden).");
@@ -768,6 +796,13 @@ pub fn spawn(state: AppState) {
                     }
                     Ok(_) => {}
                     Err(RecvError::Lagged(_)) => pruefung_alle(&state, aufgaben::jetzt()).await,
+                    Err(RecvError::Closed) => return,
+                },
+                // Eine Änderung in docs/entscheidungen (gebündelt vom Melder): gleich prüfen, nicht erst beim Neustart.
+                d = docs.recv() => match d {
+                    Ok(e) if e.bereich == crate::aenderungen::Bereich::Entscheidungen => entscheidungen_lauf(&state, aufgaben::jetzt()).await,
+                    Ok(_) => {}
+                    Err(RecvError::Lagged(_)) => entscheidungen_lauf(&state, aufgaben::jetzt()).await,
                     Err(RecvError::Closed) => return,
                 },
                 _ = &mut abschaltung => return,
@@ -1014,7 +1049,7 @@ mod tests {
         pruefung_alle(&state, zeit(30, 10, 0)).await;
         pruefung_alle(&state, zeit(30, 10, 1)).await;
         let m = meldungen(&state);
-        let gemeldet: BTreeSet<String> = m.iter().map(|x| x.projekt.clone()).collect();
+        let gemeldet: BTreeSet<String> = m.iter().filter(|x| x.schluessel.ends_with("/pruefung-rot")).map(|x| x.projekt.clone()).collect();
         assert_eq!(gemeldet, rot);
         assert!(m.iter().all(|x| x.anzahl == 1), "Zustand zählt nicht je Lauf");
         // Eine Meldung zu einem Projekt, das es nicht gibt, ist nach dem nächsten Lauf behoben.
@@ -1025,6 +1060,59 @@ mod tests {
         assert_eq!(projekt_aus_pfad("projects/schaufenster/projekt.toml"), Some("schaufenster"));
         assert_eq!(projekt_aus_pfad("projects/schaufenster"), None);
         assert_eq!(projekt_aus_pfad("data/pc.toml"), None);
+    }
+
+    /// Eine kaputte Entscheidung macht beim Lauf über alle eine eigene Meldung
+    /// beim System-Projekt; repariert ist sie behoben.
+    #[tokio::test]
+    async fn entscheidungen_rot_und_wieder_gruen() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-meldung-entscheidungen-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\npfad = \"C:\\qordner\"\n").unwrap();
+        let mut state = AppState::fuer_tests(&beispiel());
+        state.entscheidungen_dir = std::sync::Arc::new(ordner.clone());
+        pruefung_alle(&state, zeit(30, 11, 0)).await;
+        let k = schluessel(SYSTEM_PROJEKT, "entscheidungen-rot");
+        let m = meldungen(&state);
+        let e = m.iter().find(|x| x.schluessel == k).expect("Meldung zur kaputten Entscheidung");
+        assert_eq!((e.projekt.as_str(), e.art, e.behoben.is_none()), (SYSTEM_PROJEKT, MeldungsArt::Fehler, true));
+        assert_eq!(e.titel, "Die Prüfung der Entscheidungen ist rot: 1 Fehler.");
+        assert!(e.text.as_deref().unwrap_or_default().starts_with("docs/entscheidungen/a.toml, Zeile 2: "), "{:?}", e.text);
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\npfad = 'C:\\qordner'\n").unwrap();
+        pruefung_alle(&state, zeit(30, 11, 1)).await;
+        let behoben = meldungen(&state).into_iter().find(|x| x.schluessel == k).unwrap().behoben;
+        let _ = std::fs::remove_dir_all(&ordner);
+        assert!(behoben.is_some(), "repariert: behoben");
+    }
+
+    /// Im laufenden Dienst: Eine Änderung in docs/entscheidungen (Bereich des
+    /// Melders) löst die Prüfung gleich aus, nicht erst beim nächsten Start.
+    #[tokio::test]
+    async fn entscheidungen_bei_aenderung_geprueft() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-meldung-entscheidungen-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(ordner.join("a.toml"), "thema = \"A\"\n").unwrap();
+        let mut state = AppState::fuer_tests(&beispiel());
+        state.entscheidungen_dir = std::sync::Arc::new(ordner.clone());
+        let k = schluessel(SYSTEM_PROJEKT, "entscheidungen-rot");
+        let offen = |s: &AppState| meldungen(s).iter().any(|m| m.schluessel == k && m.behoben.is_none());
+        spawn(state.clone());
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!offen(&state), "beim Start ist alles lesbar");
+        std::fs::write(ordner.join("a.toml"), "thema = \n").unwrap();
+        state.aenderungen.melden(crate::aenderungen::Bereich::Entscheidungen);
+        let mut da = false;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if offen(&state) {
+                da = true;
+                break;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&ordner);
+        assert!(da, "nach der Änderung gemeldet, ohne Neustart");
     }
 
     fn eintrag(art: EintragsArt, id: &str, tage: Option<i64>) -> AnstehendEintrag {

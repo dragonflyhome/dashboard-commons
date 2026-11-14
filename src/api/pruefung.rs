@@ -102,6 +102,21 @@ fn ohne_zusammenbau(state: &AppState) -> Vec<(String, Befund)> {
         .collect()
 }
 
+/// Die Entscheidungen wie bei `dashboard pruefe` (unlesbar, unbekannte
+/// Projekte), beim System-Projekt: Sonst fiele eine kaputte Entscheidung im
+/// Betrieb still aus. Liest die Platte.
+fn entscheidungen_befunde(state: &AppState) -> Vec<(String, Befund)> {
+    let system = crate::meldungen::SYSTEM_PROJEKT.to_string();
+    crate::werkzeug::pruefe::pruefe_entscheidungen(&state.entscheidungen_dir, &state.quellen).into_iter().map(|b| (system.clone(), b)).collect()
+}
+
+/// Was nur im Hintergrund gelesen wird: Rechenteile ohne Modul und die Entscheidungen.
+fn von_der_platte(state: &AppState) -> Vec<(String, Befund)> {
+    let mut b = ohne_zusammenbau(state);
+    b.extend(entscheidungen_befunde(state));
+    b
+}
+
 /// `GET /api/pruefung`. Etappe B2: ohne Windows-Anmeldung nur Zahlen (gesamt
 /// und je Projekt), keine Befund-Sätze; sie können Inhalt zitieren.
 pub async fn alle(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<PruefungsBericht>, AppError> {
@@ -109,7 +124,7 @@ pub async fn alle(State(state): State<AppState>, angemeldet: Option<Extension<An
     let quellen = state.quellen.to_vec();
     let mut modul = weitere_befunde(&state);
     let s = state.clone();
-    modul.extend(im_hintergrund(move || ohne_zusammenbau(&s)).await?);
+    modul.extend(im_hintergrund(move || von_der_platte(&s)).await?);
     let mut bericht = im_hintergrund(move || mit_modul_befunden(bericht_aus(&quellen), modul)).await?;
     bericht.projekte = bericht.projekte.into_iter().map(|p| p.ohne_saetze(angemeldet)).collect();
     Ok(Json(bericht))
@@ -127,7 +142,7 @@ pub async fn eines(
     let s = slug.clone();
     let mut alle_weiteren = weitere_befunde(&state);
     let st = state.clone();
-    alle_weiteren.extend(im_hintergrund(move || ohne_zusammenbau(&st)).await?);
+    alle_weiteren.extend(im_hintergrund(move || von_der_platte(&st)).await?);
     let modul: Vec<Befund> = alle_weiteren.into_iter().filter(|(m, _)| *m == slug).map(|(_, b)| b).collect();
     let ergebnis = im_hintergrund(move || {
         let da = pruefung::wird_geprueft(&dir, &s);
@@ -177,8 +192,12 @@ mod tests {
     async fn bericht_ueber_alle_projekte() {
         let (status, v) = hole("/api/pruefung").await;
         assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!(v["gesamt"]["fehler"], 2, "{v}");
+        // Zwei kaputte Projekte und die absichtlich kaputte Beispiel-Entscheidung.
+        assert_eq!(v["gesamt"]["fehler"], 3, "{v}");
         assert_eq!(v["gesamt"]["projekte"], 7, "{v}");
+        let system = v["projekte"].as_array().unwrap().iter().find(|p| p["slug"] == crate::meldungen::SYSTEM_PROJEKT).cloned().unwrap_or_default();
+        let e = system["befunde"].as_array().unwrap().iter().find(|b| b["datei"] == "docs/entscheidungen/2026-10-30-kaputt.toml").cloned().unwrap_or_default();
+        assert_eq!((e["zeile"].as_u64(), e["schwere"].as_str()), (Some(3), Some("fehler")), "unlesbare Entscheidung: {system}");
         let slugs: Vec<&str> = v["projekte"].as_array().unwrap().iter().map(|p| p["slug"].as_str().unwrap()).collect();
         let mut sortiert = slugs.clone();
         sortiert.sort();
@@ -196,7 +215,7 @@ mod tests {
     async fn ohne_anmeldung_nur_zahlen() {
         let (status, v) = hole_frei("/api/pruefung").await;
         assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!((v["gesamt"]["fehler"].as_u64(), v["gesamt"]["projekte"].as_u64()), (Some(2), Some(7)), "{v}");
+        assert_eq!((v["gesamt"]["fehler"].as_u64(), v["gesamt"]["projekte"].as_u64()), (Some(3), Some(7)), "{v}");
         let kaputt = v["projekte"].as_array().unwrap().iter().find(|p| p["slug"] == "neu-kaputt").cloned().unwrap();
         assert_eq!((kaputt["befunde"].clone(), kaputt["fehler"].as_u64()), (serde_json::json!([]), Some(1)), "{kaputt}");
         assert!(!v.to_string().contains("aktief"), "{v}");
@@ -234,7 +253,7 @@ mod tests {
         let res = app.clone().oneshot(hol("/api/pruefung")).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(v["gesamt"]["projekte"], 8, "{v}");
-        assert_eq!(v["gesamt"]["fehler"], 2, "nur die zwei kaputten Beispiele: {v}");
+        assert_eq!(v["gesamt"]["fehler"], 3, "die zwei kaputten Beispiele und die kaputte Entscheidung: {v}");
         let res = app.oneshot(hol("/api/pruefung/beispiel-a")).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();

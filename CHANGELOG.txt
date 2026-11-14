@@ -14,6 +14,18 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Behoben
+- pruefe meldet eine Entscheidung in docs/entscheidungen, die sich nicht
+  lesen lässt (falsche TOML-Schreibweise, kein UTF-8, zu groß), als Fehler mit
+  Datei und Zeile; vorher fiel sie still aus und fehlte nur auf
+  /entscheidungen.
+- /api/pruefung (und damit der Prüfbericht im Dashboard) zählt diese Fehler
+  und unbekannte Projekte im Feld projekte einer Entscheidung beim Projekt
+  dashboard mit, wie dashboard pruefe.
+- Beim Start des Dienstes und bei jeder Änderung in docs/entscheidungen
+  meldet er solche Fehler als eigene Meldung beim Projekt dashboard;
+  repariert ist sie behoben.
+
 0.7.1 - 2026-11-14
 ------------------
 
