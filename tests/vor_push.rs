@@ -3729,8 +3729,23 @@ fn cache_nie_ueber_eine_verknuepfung() {
     }
 }
 
-/// Das Aufräumen behält die zwei zuletzt genutzten Regel-Ordner (den eigenen und
-/// den jüngsten anderen); was nicht wie ein Regel-Ordner heißt, bleibt.
+/// Die Namen der Einträge eines Ordners, sortiert.
+fn namen_in(ordner: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(ordner).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    v.sort();
+    v
+}
+
+/// Datiert einen Ordner um `stunden` in die Zukunft (eine zurückgestellte Uhr, ein kopierter Cache).
+fn in_die_zukunft(ordner: &Path, stunden: u32) {
+    let befehl = format!("[IO.Directory]::SetLastWriteTimeUtc('{}', [DateTime]::UtcNow.AddHours({stunden}))", ordner.display());
+    let o = pwsh().unwrap().args(["-NoProfile", "-NonInteractive", "-Command", &befehl]).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+}
+
+/// Das Aufräumen behält zwei Regel-Ordner: den eigenen (nie gelöscht, auch wenn
+/// andere jünger datiert sind) und den zuletzt genutzten anderen. Was nicht wie
+/// ein Regel-Ordner heißt oder mehr als Cache-Dateien enthält, bleibt.
 #[test]
 fn cache_aufraeumen_behaelt_zwei() {
     if !bereit() {
@@ -3742,12 +3757,84 @@ fn cache_aufraeumen_behaelt_zwei() {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     std::fs::create_dir_all(o.cache().join("fremd")).unwrap();
-    cache_fuellen(&o);
-    let mut namen: Vec<String> = std::fs::read_dir(o.cache()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    namen.sort();
+    let geprueft = cache_fuellen(&o);
+    let namen = namen_in(&o.cache());
     assert_eq!(namen.len(), 3, "{namen:?}");
-    assert!(
-        namen.contains(&"c".repeat(64)) && namen.contains(&"fremd".to_string()) && !namen.contains(&"a".repeat(64)) && !namen.contains(&"b".repeat(64)),
-        "{namen:?}"
-    );
+    assert!(namen.contains(&"c".repeat(64)) && namen.contains(&"fremd".to_string()), "{namen:?}");
+    let eigen = namen.iter().find(|n| n.len() == 64 && **n != "c".repeat(64)).unwrap().clone();
+    // Drei jünger datierte Ordner; f enthält eine fremde Datei und gehört darum nicht dem Cache.
+    for (z, stunden, fremd) in [("d", 1, false), ("e", 2, false), ("f", 3, true)] {
+        let ordner = o.cache().join(z.repeat(64));
+        std::fs::create_dir_all(&ordner).unwrap();
+        std::fs::write(ordner.join("sauber.txt"), "").unwrap();
+        if fremd {
+            std::fs::write(ordner.join("fremd.txt"), "nicht vom Cache\n").unwrap();
+        }
+        in_die_zukunft(&ordner, stunden);
+    }
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((geprueft, 0)), "der eigene Ordner bleibt und trifft: {text}");
+    let mut erwartet = vec![eigen, "e".repeat(64), "f".repeat(64), "fremd".to_string()];
+    erwartet.sort();
+    assert_eq!(namen_in(&o.cache()), erwartet);
+    assert!(o.cache().join("f".repeat(64)).join("fremd.txt").exists());
+}
+
+/// Die Pfadregeln laufen auch für Treffer. Im Projekt-Repo steht der Slug nicht
+/// im Regel-Schlüssel: Hat das ferne main projects/beta, meldet der warme Lauf
+/// die gemerkten Pfade unter projects/alpha wie der kalte als fremdes Projekt.
+#[test]
+fn cache_pfadregeln_auch_bei_treffer() {
+    if !bereit() {
+        return;
+    }
+    let p = Ort::projekt();
+    let (c, text) = p.lauf(&["-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache", "-RemoteUrl", PROJEKT_ADRESSE], None);
+    assert!(c == 0 && cache_zahlen(&text).is_some_and(|(_, g)| g > 0), "{text}");
+    p.git(&["checkout", "-q", "--orphan", "fern"]);
+    p.git(&["rm", "-rqf", "."]);
+    p.datei("projects/beta/projekt.toml", b"schema = 3\n");
+    p.commit("fern", &[]);
+    p.git(&["checkout", "-q", "main"]);
+    let bereich = ["-Baum", "main", "-Commits", "fern..main", "-RemoteUrl", PROJEKT_ADRESSE];
+    let (ck, kalt) = p.lauf(&bereich, None);
+    assert!(ck == 1 && kalt.contains("fremdes Projekt") && kalt.contains("Inhalt kalt:"), "{kalt}");
+    let (cw, warm) = p.lauf(&[&bereich[..], &["-MitCache"]].concat(), None);
+    assert!(cw == 1 && cache_zahlen(&warm).is_some_and(|(n, _)| n > 0), "der warme Lauf trifft: {warm}");
+    assert_eq!(fundzeilen(&kalt), fundzeilen(&warm), "kalt:\n{kalt}\nwarm:\n{warm}");
+}
+
+/// Beim Schreiben bleiben die schon gemerkten Einträge: Nach einer Änderung an
+/// main trifft der übernächste Lauf wieder alles.
+#[test]
+fn cache_behaelt_alte_eintraege() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    cache_fuellen(&o);
+    o.ueber_merge(|o| o.datei("src/neu.rs", b"// sauber\n"));
+    let (c, text) = o.mit_cache();
+    let (n, m) = cache_zahlen(&text).unwrap_or_default();
+    assert!(c == 0 && n > 0 && m > 0, "{text}");
+    let (c, text) = o.mit_cache();
+    assert!(c == 0 && cache_zahlen(&text) == Some((n + m, 0)), "alte und neue Einträge treffen: {text}");
+}
+
+/// Scheitert Laufzeit.ps1, fehlt nur die Zeile zur Laufzeit; die Prüfung geht
+/// wie sonst aus (kein Exit 2), mit und ohne Cache.
+#[test]
+fn laufzeit_kaputt_aendert_nichts() {
+    if !bereit() {
+        return;
+    }
+    let o = Ort::neu();
+    let code = o.wurzel.join("code");
+    prueferdateien_kopieren(&code);
+    std::fs::write(code.join("Laufzeit.ps1"), "throw 'kaputt'\r\n").unwrap();
+    for extra in [&[][..], &["-MitCache"][..]] {
+        let (c, text) = o.lauf_mit(&code.join("Vor-Push.ps1"), &o.cache(), &[&["-Baum", "main", "-Commits", "main", "-AufMain"][..], extra].concat(), None);
+        assert!(c == 0 && text.contains("Nichts gefunden.") && text.contains("HINWEIS Laufzeit.ps1 ließ sich nicht laden"), "{extra:?}: {text}");
+        assert!(!text.lines().any(|z| z.starts_with("Laufzeit ")), "{extra:?}: {text}");
+    }
 }

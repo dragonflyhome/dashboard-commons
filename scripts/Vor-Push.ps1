@@ -285,10 +285,8 @@ trap {
 
 # Die Dateien, die der Prüfer lädt: Ihr Inhalt geht in den Regel-Schlüssel des Caches.
 $script:prueferDateien = @($PSCommandPath, (Join-Path $PSScriptRoot 'Laufzeit.ps1'))
-. $script:prueferDateien[1]
-$uhr = UhrStart
-# Die Zeile zur Laufzeit ändert nie das Ergebnis der Prüfung.
-function Ende([int]$code) { try { UhrZeile $uhr } catch { }; exit $code }
+$uhr = $null
+function Ende([int]$code) { if ($uhr) { try { UhrZeile $uhr } catch { } }; exit $code }
 
 if (-not $Repo) { $Repo = Split-Path -Parent $PSScriptRoot }
 $Repo = (Resolve-Path -LiteralPath $Repo).Path
@@ -301,6 +299,8 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 # Text, Git-Ausgaben und Listen werden streng als UTF-8 gelesen (Utf8Text).
 $strikt = New-Object System.Text.UTF8Encoding($false, $true)
 try { [Console]::OutputEncoding = $utf8 } catch { }
+# Die Zeile zur Laufzeit ändert nie das Ergebnis der Prüfung: Scheitert Laufzeit.ps1, fehlt nur sie.
+try { . $script:prueferDateien[1]; $uhr = UhrStart } catch { Write-Host 'HINWEIS Laufzeit.ps1 ließ sich nicht laden; die Zeile zur Laufzeit fehlt.' }
 # Ein Push überträgt die echten Objekte: Ersatz (git replace) und Grafts dürfen
 # dem Prüfer nichts anderes zeigen (gilt für jeden git-Aufruf dieses Laufs).
 $env:GIT_NO_REPLACE_OBJECTS = '1'
@@ -1413,7 +1413,7 @@ $cacheZeile = [regex]::new('^[0-9a-f]{40}(?:[0-9a-f]{24})?\t[^\r\n]+$', [Text.Re
 function RegelSchluessel {
     $strom = [IO.MemoryStream]::new()
     $teil = { param([string]$name, [byte[]]$b) $k = $utf8.GetBytes("$name`n$($b.Length)`n"); $strom.Write($k, 0, $k.Length); $strom.Write($b, 0, $b.Length) }
-    & $teil 'regeln' $utf8.GetBytes("art=$artAusAdresse grenze=$GRENZE ps=$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)")
+    & $teil 'regeln' $utf8.GetBytes("art=$artAusAdresse grenze=$GRENZE ps=$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor) net=$([Environment]::Version)")
     foreach ($d in $script:prueferDateien) { & $teil "pruefer/$([IO.Path]::GetFileName($d))" ([IO.File]::ReadAllBytes($d)) }
     foreach ($k in $script:gelesen.Keys) { & $teil "liste/$k" $script:gelesen[$k] }
     return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($strom.ToArray())).ToLowerInvariant()
@@ -1433,7 +1433,8 @@ elseif ($MitCache) {
     try {
         if (-not $cacheOrt) { Write-Host 'HINWEIS Ohne LOCALAPPDATA gibt es keinen Prüfer-Cache; geprüft wird kalt.' }
         else {
-            $regelOrdner = Join-Path $cacheOrt (RegelSchluessel)
+            $regelName = RegelSchluessel
+            $regelOrdner = Join-Path $cacheOrt $regelName
             $datei = Join-Path $regelOrdner 'sauber.txt'
             if (-not (MitVerknuepfung $datei)) { [void][IO.Directory]::CreateDirectory($regelOrdner) }
             if (MitVerknuepfung $datei) { Write-Host 'HINWEIS Im Pfad des Prüfer-Caches liegt eine Verknüpfung (Junction oder Symlink); geprüft wird kalt.' }
@@ -1445,9 +1446,12 @@ elseif ($MitCache) {
                     try { foreach ($z in $strikt.GetString([IO.File]::ReadAllBytes($datei)).Split("`n")) { if ($cacheZeile.IsMatch($z)) { [void]$script:sauber.Add($z) } } }
                     catch { $script:sauber.Clear() }
                 }
-                # Nur die zwei zuletzt genutzten Regel-Ordner bleiben (dieser ist gerade genutzt).
-                $alt = @([IO.DirectoryInfo]::new($cacheOrt).GetDirectories() | Where-Object { $_.Name -cmatch '^[0-9a-f]{64}$' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
-                    Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 2)
+                # Zwei Regel-Ordner bleiben: dieser (nie gelöscht, auch wenn ein anderer jünger datiert ist) und der
+                # zuletzt genutzte andere. Gelöscht wird nur, was wie ein Regel-Ordner aussieht und nur Cache-Dateien enthält.
+                $alt = @([IO.DirectoryInfo]::new($cacheOrt).GetDirectories() |
+                    Where-Object { $_.Name -cne $regelName -and $_.Name -cmatch '^[0-9a-f]{64}$' -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+                        @($_.GetFileSystemInfos() | Where-Object { $_ -isnot [IO.FileInfo] -or $_.Name -cnotmatch '^sauber\.txt(?:\.[0-9a-f]{32}\.tmp)?$' }).Count -eq 0 } |
+                    Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip 1)
                 foreach ($d in $alt) { try { $d.Delete($true) } catch { } }
             }
         }

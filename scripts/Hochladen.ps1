@@ -64,8 +64,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'Laufzeit.ps1')
-$uhr = UhrStart
+# Scheitert Laufzeit.ps1, fehlt nur die Zeile zur Laufzeit.
+$uhr = $null
+try { . (Join-Path $PSScriptRoot 'Laufzeit.ps1'); $uhr = UhrStart } catch { Write-Host 'HINWEIS Laufzeit.ps1 ließ sich nicht laden; die Zeile zur Laufzeit fehlt.' }
 $codeRepo = Split-Path -Parent $PSScriptRoot
 # $repo ist zugleich der Parameter -Repo (PowerShell unterscheidet Groß/Klein nicht).
 if (-not $repo) { $repo = $codeRepo }
@@ -152,4 +153,4 @@ try {
 } catch {
     Write-Host "FEHLER $($_.Exception.Message). Es wurde nichts hochgeladen."
     exit 2
-} finally { try { UhrZeile $uhr } catch { } }
+} finally { if ($uhr) { try { UhrZeile $uhr } catch { } } }
