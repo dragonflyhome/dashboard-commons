@@ -50,15 +50,41 @@
                  Commits hereinholt, ändert gegenüber seinem ersten
                  Elternteil keinen Prüfpfad: Änderungen am Prüfer übernimmt der
                  Betreuer selbst, in einem eigenen Merge ohne fremde Commits.
-                 Ebenso CHANGELOG.txt in der Wurzel (Groß/Klein egal): Die
+                 CHANGELOG.txt in der Wurzel (Groß/Klein egal) ändert kein
+                 fremder Commit (gegen jeden Elternteil, wie oben), und kein
+                 fremder Merge verwirft eine Änderung daran (er trägt den
+                 Stand, den git beim Merge ergibt: merge-tree, ein Octopus
+                 streng je Basis). Am Merge der Linie, der fremde Commits
+                 hereinholt, gilt es nicht gegen den ersten Elternteil
+                 (sonst wiese jeder Merge „main nach eigener Zweig“ die
+                 Einträge der Betreuer auf main ab), sondern mild: Er trägt
+                 den Stand, den git merge-tree ohne Umbenennungen ergibt
+                 (so fällt eine fremde Zeile auf, die git über eine
+                 Umbenennung einträgt); bei einem Konflikt in der Datei ist
+                 die eigene Lösung frei, außer sie trägt eine Zeile, die
+                 git nur mit Umbenennungen einträgt (in keinem Elternteil
+                 in CHANGELOG.txt; Konfliktstil fest, unabhängig von
+                 merge.conflictStyle); ein Octopus je Basis (genau ein
+                 Elternteil hat die Datei
+                 seit der Basis geändert: dessen Stand, keiner: der der
+                 Basis, zwei oder mehr: frei). merge-tree liest dabei keine
+                 .gitattributes aus Arbeitsbaum und Index (attr.tree leer);
+                 info/attributes, core.attributesFile und GIT_ATTR_SOURCE
+                 des Prüfenden gelten weiter. Der fremde Merge wird mit
+                 Umbenennungen gemergt, unabhängig von diff.renames. Die
                  Zeilen stehen im Merge-Angebot, die Betreuer tragen sie ein.
+                 Grenze: Benennt ein eigener Seitenzweig eine Datei in
+                 CHANGELOG.txt um und nimmt einen Beitrag auf, der die alte
+                 Datei ändert, sieht die fremde Zeile kein Push von main,
+                 nur ein Lauf über die Linie des Seitenzweigs (-Commits
+                 <zweig>).
                  Grenze: Die Regel hängt an der Angabe von Autor und
                  Committer, die niemanden nachweist; ein Fork-Commit, der die
                  feste Angabe fälscht, gilt als eigener; dagegen steht
                  -Beitrag im Probelauf vor dem Merge (Anleitung Abschnitt
-                 15). Beiträge vor der Regel zu CHANGELOG.txt: 8b10863 und
-                 sein Merge 84cd764; nur für diese Regel ausgenommen, als
-                 feste Menge über die volle Kennung, nicht über ein Datum.
+                 15). Beitrag vor der Regel zu CHANGELOG.txt: 8b10863; nur
+                 für diese Regel ausgenommen, als feste Menge über die volle
+                 Kennung, nicht über ein Datum.
                  Mit -AufMain und einem Bereich
                  a..b setzt die Linie a fort (erster Elternteil des ältesten
                  neuen Linien-Commits ist a). Für alle Commits: eine erste Zeile nicht
@@ -89,6 +115,8 @@
                  nach der Regel oben, dazu
                  jedes Objekt, das keine Ref erreicht, als Fund; ein Bundle
                  mit Voraussetzungen (nicht ab der Wurzel) bricht ab (Exit 2).
+                 Ein flacher Klon (--depth) bricht außer im Bundle-Modus ab
+                 (Exit 2): Ohne die ganze Geschichte fehlen Basen von Merges.
       Pfade      außerhalb der Positivliste der Ordner und Wurzeldateien (von
                  .github nur die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml
                  ohne config.yml); projects\<slug> (außer
@@ -440,7 +468,9 @@ function ListenMuster($namen) {
 # ---------------------------------------------------------------------------
 # git
 # ---------------------------------------------------------------------------
-function Git([string[]]$argumente) {
+# -EinsOhneMeldung: Exit 1 ohne Text auf stderr ist eine Antwort, kein Fehler (merge-base ohne
+# gemeinsame Basis, merge-tree mit Konflikt); jeder andere Fehler bricht ab wie sonst.
+function Git([string[]]$argumente, [switch]$EinsOhneMeldung) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $gitExe
     $psi.Arguments = (@('-C', "`"$Repo`"", '-c', 'core.quotepath=off') + ($argumente | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } })) -join ' '
@@ -454,7 +484,7 @@ function Git([string[]]$argumente) {
     $fehl = $p.StandardError.ReadToEnd()
     $p.WaitForExit()
     $aus.Wait()
-    if ($p.ExitCode -ne 0) { throw "git $($argumente -join ' ') endete mit $($p.ExitCode): $($fehl.Trim())" }
+    if ($p.ExitCode -ne 0 -and -not ($EinsOhneMeldung -and $p.ExitCode -eq 1 -and -not $fehl.Trim())) { throw "git $($argumente -join ' ') endete mit $($p.ExitCode): $($fehl.Trim())" }
     # Pfade, Baum-Einträge, Meldungen, Autor, Committer und Tag-Texte streng als UTF-8.
     return Utf8Text $puffer.ToArray() (OhneProfil "Git-Ausgabe (git $($argumente[0]) $($argumente[-1]))") $false
 }
@@ -1225,9 +1255,14 @@ $pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP
 # die Betreuer tragen sie nach der Übernahme in einem eigenen Commit ein.
 $changelogPfad = Rx '^CHANGELOG\.txt$'
 $changelogSatz = 'CHANGELOG.txt ändern nur die Betreuer; die Zeilen gehören ins Merge-Angebot'
-# Bestand vor dieser Regel, schon veröffentlicht: der übernommene Fork-Commit und sein Merge. Genau diese zwei,
+# Bestand vor dieser Regel, schon veröffentlicht: der übernommene Fork-Commit. Genau dieser eine,
 # über die volle Kennung (ein Datum ließe sich fälschen), und nur für CHANGELOG.txt, nie für die Prüfpfade.
-$changelogBestand = [Collections.Generic.HashSet[string]]::new([string[]]@('8b10863c62ebf05c63bf12b25d918cb648c562ed', '84cd764e5be14be991b65b51176eaff18a48ccc4'), [StringComparer]::Ordinal)
+$changelogBestand = [Collections.Generic.HashSet[string]]::new([string[]]@('8b10863c62ebf05c63bf12b25d918cb648c562ed'), [StringComparer]::Ordinal)
+# Für jeden merge-tree: Attribute aus dem leeren Baum, nicht aus dem Arbeitsbaum des Prüfenden
+# (eine ungetrackte .gitattributes mit merge=union, -merge oder einem Treiber änderte das Ergebnis).
+# Umbenennungen und Konfliktstil legt jeder Aufruf selbst fest, wo sie das Ergebnis ändern.
+# shortcut: $GIT_DIR/info/attributes, core.attributesFile und GIT_ATTR_SOURCE liest merge-tree weiter (Dateien und Umgebung des Prüfenden), abfangen, sobald fremde Hände sie setzen können.
+$ohneAttribute = 'attr.tree=4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
 # Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
 # gegen JEDEN Elternteil unterscheiden. Was ein Merge unverändert von einem
@@ -1235,15 +1270,94 @@ $changelogBestand = [Collections.Generic.HashSet[string]]::new([string[]]@('8b10
 # steht schon auf dem fernen main); nur was in keinem Elternteil so stand, bringt
 # der Merge selbst (gegen nur den ersten Elternteil zählte im Fork jede
 # Änderung von main als fremd).
-function EigenePfade([string]$c) {
-    $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
+function EigenePfade([string]$c, [string[]]$eltern) {
     if ($eltern.Count -eq 0) { return @((Git @('diff-tree', '-r', '--root', '--no-renames', '--no-commit-id', '--name-only', '-z', $c)) -split "`0" | Where-Object { $_ }) }
     $menge = $null
     foreach ($p in $eltern) {
         $jetzt = @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $p, $c)) -split "`0" | Where-Object { $_ })
-        $menge = if ($null -eq $menge) { $jetzt } else { @($menge | Where-Object { $jetzt -ccontains $_ }) }
+        # Das Komma hält ein leeres Feld als Feld; sonst würde $menge $null und der nächste Elternteil gälte als erster.
+        $menge = if ($null -eq $menge) { , $jetzt } else { , @($menge | Where-Object { $jetzt -ccontains $_ }) }
     }
     return $menge
+}
+
+# Die gemeinsamen Basen der Eltern wie git: bei zwei alle (criss-cross), sonst die eines Octopus.
+# Ohne gemeinsame Basis (Exit 1 ohne Meldung) keine.
+function Basen([string[]]$eltern) {
+    $suche = if ($eltern.Count -eq 2) { '--all' } else { '--octopus' }
+    return @((Git (@('merge-base', $suche) + $eltern) -EinsOhneMeldung) -split "`n" | Where-Object { $_ })
+}
+
+# Der Stand von CHANGELOG.txt (Groß/Klein egal) in einem Commit: Name und Objekt je Wurzeleintrag.
+function ChangelogStand([string]$c) {
+    return (@((Git @('ls-tree', '-z', $c)) -split "`0" | Where-Object { $_ -and $changelogPfad.IsMatch(($_ -split "`t", 2)[1]) }) -join "`n")
+}
+
+# Ein Merge, der CHANGELOG.txt gegen keinen Elternteil ändert, kann trotzdem eine Änderung
+# verwerfen: Er nimmt den Stand des Elternteils, der die Datei seit der Basis nicht geändert
+# hat (etwa ein alter main-Stand als Elternteil), und der Merge der Linie löscht damit
+# Einträge der Betreuer. Recht ist nur, was git beim Merge ergibt: bei zwei Eltern der Baum
+# von merge-tree (gegen die virtuelle Basis, wie git bei criss-cross; bei einem Konflikt
+# trägt er Konfliktmarken, dann weicht der Stand ab), bei einem Octopus streng je Basis.
+# Umbenennungen fest an (sonst folgte merge-tree diff.renames des Prüfenden).
+# merge-tree schreibt den Ergebnisbaum als lose Objekte ins geprüfte Repo (gc räumt sie weg).
+function ChangelogVerworfen([string]$c, [string[]]$eltern) {
+    if ($eltern.Count -ne 2) { return ChangelogAbweichend $c $eltern $false }
+    $sollBaum = ((Git @('-c', 'merge.renames=true', '-c', $ohneAttribute, 'merge-tree', '--write-tree', '--no-messages', '--allow-unrelated-histories', $eltern[0], $eltern[1]) -EinsOhneMeldung) -split "`n")[0]
+    return (ChangelogStand $c) -cne (ChangelogStand $sollBaum)
+}
+
+# Die Zeilen von CHANGELOG.txt (alle Schreibweisen in der Wurzel) in einem Commit oder Baum.
+function ChangelogZeilen([string]$c) {
+    $zeilen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($e in @((Git @('ls-tree', '-z', $c)) -split "`0" | Where-Object { $_ -and $changelogPfad.IsMatch(($_ -split "`t", 2)[1]) })) {
+        $oid = (($e -split "`t", 2)[0] -split ' ')[2]
+        foreach ($z in ((Git @('cat-file', 'blob', $oid)) -split "`r?`n")) { [void]$zeilen.Add($z) }
+    }
+    return , $zeilen
+}
+
+# Am Merge der Linie mit zwei Eltern: der Stand, den git ohne Umbenennungen gegen die virtuelle
+# Basis ergibt (je Basis gäbe es bei criss-cross Fehlalarm); ohne Umbenennungen trägt git eine
+# fremde Zeile aus einer umbenannten Datei nicht ein, der echte Merge schon: dann ein Fund. Bei
+# einem Konflikt in CHANGELOG.txt ist die eigene Lösung frei, außer sie trägt eine Zeile, die
+# git nur mit Umbenennungen einträgt (Konfliktstil fest merge: mit diff3 oder zdiff3 des Prüfenden trüge
+# der Stand von git Basiszeilen, und eine Lösung auf die Basis fiele auf). Ein Octopus mild je Basis.
+function ChangelogLinieAbweichend([string]$c, [string[]]$eltern) {
+    if ($eltern.Count -ne 2) { return ChangelogAbweichend $c $eltern $true }
+    $aus = @((Git @('-c', 'merge.renames=false', '-c', $ohneAttribute, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', '--allow-unrelated-histories', $eltern[0], $eltern[1]) -EinsOhneMeldung) -split "`0" | Where-Object { $_ })
+    if (@($aus | Select-Object -Skip 1 | Where-Object { $changelogPfad.IsMatch($_) }).Count) {
+        # Konflikt in CHANGELOG.txt: eigene Lösung frei, nur keine Zeile, die git allein über eine
+        # Umbenennung in die Datei bringt (sie steht in keinem Elternteil in CHANGELOG.txt).
+        $mit = ((Git @('-c', 'merge.conflictStyle=merge', '-c', 'merge.renames=true', '-c', $ohneAttribute, 'merge-tree', '--write-tree', '--no-messages', '--allow-unrelated-histories', $eltern[0], $eltern[1]) -EinsOhneMeldung) -split "`n")[0]
+        $fremd = ChangelogZeilen $mit
+        $fremd.ExceptWith((ChangelogZeilen $eltern[0]))
+        $fremd.ExceptWith((ChangelogZeilen $eltern[1]))
+        $fremd.IntersectWith((ChangelogZeilen $c))
+        return $fremd.Count -gt 0
+    }
+    return (ChangelogStand $c) -cne (ChangelogStand $aus[0])
+}
+
+# Je Basis (ohne gemeinsame Basis der leere Stand): Hat genau ein Elternteil CHANGELOG.txt seit
+# der Basis geändert, trägt der Merge dessen Stand, hat es keiner, den der Basis. Streng: Zwei
+# verschiedene Änderungen sind schon eine Abweichung. Mild (Merge der Linie): Haben zwei oder
+# mehr Elternteile sie geändert, ist die Basis frei; fremde Zeilen fielen dann schon je Commit
+# auf, und „main nach eigener Zweig“ bleibt frei.
+function ChangelogAbweichend([string]$c, [string[]]$eltern, [bool]$mild) {
+    $basen = @(Basen $eltern)
+    $staende = @($eltern | ForEach-Object { ChangelogStand $_ })
+    $selbst = ChangelogStand $c
+    foreach ($b in $(if ($basen.Count) { $basen } else { @('') })) {
+        $bs = if ($b) { ChangelogStand $b } else { '' }
+        $geaendert = @($staende | Where-Object { $_ -cne $bs })
+        if ($mild -and $geaendert.Count -ge 2) { continue }
+        $verschieden = [Collections.Generic.HashSet[string]]::new([string[]]$geaendert, [StringComparer]::Ordinal)
+        if ($verschieden.Count -gt 1) { return $true }
+        $soll = if ($verschieden.Count -eq 1) { @($verschieden)[0] } else { $bs }
+        if ($selbst -cne $soll) { return $true }
+    }
+    return $false
 }
 
 function CommitsPruefen([string]$bereich, [bool]$nurMain) {
@@ -1279,9 +1393,14 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         }
         # M1: Änderungen am Prüfer kommen nie aus einem fremden Commit.
         if ($fremd) {
-            foreach ($p in (EigenePfade $c)) {
+            $eltern = @(((Git @('log', '-1', '--format=%P', $c)).Trim() -split ' ') | Where-Object { $_ })
+            $eigene = @(EigenePfade $c $eltern)
+            foreach ($p in $eigene) {
                 if ($pruefPfad.IsMatch($p)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
                 elseif ($changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert $p; $changelogSatz" }
+            }
+            if ($eltern.Count -ge 2 -and -not @($eigene | Where-Object { $changelogPfad.IsMatch($_) }).Count -and (ChangelogVerworfen $c $eltern)) {
+                Fund "Commit $kurz" 0 "ein fremder Merge verwirft eine Änderung an CHANGELOG.txt (Stand eines Elternteils, der ihn seit der Basis nicht geändert hat); $changelogSatz"
             }
         }
         # Das rohe Objekt: Die Nachricht ganz, auch hinter
@@ -1321,8 +1440,14 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         if (-not @($wer | Where-Object { $_ -cne $ranke }).Count) { continue }
         foreach ($p in @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $eltern[0], $c)) -split "`0" | Where-Object { $_ })) {
             if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
-            elseif ($changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert $p; $changelogSatz" }
         }
+        # CHANGELOG.txt nicht gegen den ersten Elternteil: Das wiese jeden Merge „main nach eigener
+        # Zweig“ ab, sobald main Beiträge und Einträge der Betreuer trägt. Fremde Zeilen kommen
+        # über einen Commit, der die Datei gegen jeden Elternteil ändert, gelöschte über einen
+        # fremden Merge, der eine Änderung verwirft; beides fällt oben auf. Hier nur mild:
+        # git kann am Merge selbst fremde Zeilen eintragen (Umbenennung auf Seite der Betreuer,
+        # der Fork ändert die Datei unter altem Namen), ohne dass ein fremder Commit sie berührt.
+        if (ChangelogLinieAbweichend $c $eltern) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und trägt einen anderen Stand von CHANGELOG.txt, als git aus den Elternteilen ergibt (etwa über eine Umbenennung; eigene Einträge in einem eigenen Commit, nicht im Merge); $changelogSatz" }
     }
     if ($nurMain) {
         # main setzt die bisherige Linie fort: Der älteste neue Commit der Linie hat den
@@ -1579,6 +1704,13 @@ function CacheSchreiben {
     }
 }
 
+# Ein flacher Klon kennt die Basen der Merges nicht (merge-base endet mit Exit 1 ohne Meldung):
+# Die Regeln an Merges hingen dann am Schnitt. Das Bundle holt der Prüfer selbst ganz.
+if (-not $Bundle -and (Git @('rev-parse', '--is-shallow-repository')).Trim() -ceq 'true') {
+    Write-Host 'FEHLER Das Repo ist ein flacher Klon; ohne die ganze Geschichte prüft der Prüfer nicht (erst git fetch --unshallow). Es geht nichts hinaus.'
+    Ende 2
+}
+
 # Teil 3: main für die Tags, zuerst was dieser Push nach main schickt, dann was
 # fern schon main ist; ohne main-Zeile fragt der Prüfer das Remote selbst. Nie die
 # Remote-Tracking-Ref: die ist lokal frei setzbar (update-ref, fetch von woanders),
@@ -1632,6 +1764,9 @@ if ($Bundle) {
     if ($koepfe.Count -eq 0) { throw 'Das Bundle hat keine Ref.' }
     # Tags des Bundles gegen seine Ref main.
     $script:mainStaende = @($koepfe | Where-Object { $_[1] -cin $LOKAL_ERLAUBT } | ForEach-Object { $_[0] })
+    # Vor den Refs zählen: ChangelogVerworfen schreibt mit merge-tree neue Objekte ins Wegwerf-Repo.
+    $alle = @((Git @('cat-file', '--batch-all-objects', '--batch-check=%(objectname)')) -split "`n" | Where-Object { $_ }).Count
+    $erreichbar = @((Git @('rev-list', '--objects', '--all')) -split "`n" | Where-Object { $_ }).Count
     foreach ($k in $koepfe) {
         if ($k[1] -ceq 'HEAD') {
             if (-not @($koepfe | Where-Object { $_[1] -cne 'HEAD' -and $_[0] -eq $k[0] }).Count) { Fund 'Ref HEAD' 0 'HEAD im Bundle zeigt auf keinen Zweig des Bundles' }
@@ -1640,8 +1775,6 @@ if ($Bundle) {
         if ($k[1].StartsWith('refs/tags/', [StringComparison]::Ordinal)) { RefPruefen $k[1] $k[0] $k[1] $NULL_SHA; continue }
         RefPruefen $k[1] $k[0] 'refs/heads/main' $NULL_SHA
     }
-    $alle = @((Git @('cat-file', '--batch-all-objects', '--batch-check=%(objectname)')) -split "`n" | Where-Object { $_ }).Count
-    $erreichbar = @((Git @('rev-list', '--objects', '--all')) -split "`n" | Where-Object { $_ }).Count
     if ($alle -gt $erreichbar) { Fund 'Bundle' 0 "$($alle - $erreichbar) Objekt(e), die keine Ref erreicht" }
     Write-Host "Geprüft: Bundle mit $($koepfe.Count) Ref(s) und $alle Objekten."
     Remove-Item -LiteralPath $script:wegwerf -Recurse -Force -ErrorAction SilentlyContinue
