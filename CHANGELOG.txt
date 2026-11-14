@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.6.0 - 2026-11-14
+------------------
+
 Hinzugefügt
 - Der Prüfer erkennt Heimatpfade unter macOS und Linux (/Users/<name>,
   /home/<name>, auch als file:/// und URL-kodiert) wie die Windows-Formen,
