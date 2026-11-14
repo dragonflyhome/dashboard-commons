@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.8.0 - 2026-11-14
+------------------
+
 Hinzugefügt
 - Der Prüfer nennt zu jedem Fund aus einem älteren Commit am Ende der
   Zeile dessen Kennung mit 10 Zeichen, als „(Commit <kennung>)“: den
