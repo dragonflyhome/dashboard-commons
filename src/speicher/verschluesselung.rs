@@ -18,14 +18,90 @@
 //! das Konto: Andere Konten und andere PCs lesen nichts. `CRYPTPROTECT_UI_FORBIDDEN`: nie ein Dialog
 //! (der Dienst hat keinen Bildschirm). Schlägt etwas fehl, kommt ein Fehler
 //! mit dem Windows-Fehlercode zurück, nie der Klartext.
+//!
+//! Außerhalb von Windows gibt es DPAPI nicht. Dort gilt die Mischform
+//! (`mischform`): XChaCha20-Poly1305 im Programm, der Schlüssel unter macOS
+//! im Anmelde-Schlüsselbund, hinter denselben zwei Funktionen. Unter Linux
+//! gibt es noch keinen Ort für den Schlüssel; Aufgaben mit Link werden dort
+//! mit einem festen Satz abgelehnt.
 
 /// Fester Zusatzwert der Anwendung für DPAPI: trennt diese Daten von
 /// anderen DPAPI-Daten desselben Kontos, ist aber kein Geheimnis. Nie ändern: sonst sind alle
 /// gespeicherten Links unlesbar (sie laufen dann nur ab).
 pub const ENTROPIE: &[u8] = b"dashboard/aufgaben_links/dpapi/v1";
 
+/// Dienst und Konto des Eintrags im Anmelde-Schlüsselbund von macOS. Nie
+/// ändern: Ein anderer Name fände den Schlüssel nicht mehr.
+#[cfg(all(target_os = "macos", not(test)))]
+const SCHLUESSELBUND_DIENST: &str = "dashboard-commons";
+#[cfg(all(target_os = "macos", not(test)))]
+const SCHLUESSELBUND_KONTO: &str = "aufgaben-links-v1";
+
+/// Der Schlüssel der Links außerhalb von Windows. Gelesen wird erst beim
+/// ersten Bedarf, also beim ersten Link, nie beim Start: Ein Start ohne Link
+/// berührt den Schlüsselbund nicht. Danach liegt der Schlüssel hier, in einem
+/// Puffer, der beim Freigeben überschrieben wird. Ein Fehler wird nicht
+/// gemerkt; der nächste Bedarf versucht es wieder.
+///
+/// Die Sperre gilt für den ganzen Zugriff: Das Abschalten der Dialoge im
+/// Schlüsselbund wirkt für den ganzen Prozess, und zwei Läufe zugleich
+/// könnten sonst beide anlegen wollen.
 #[cfg(all(not(windows), not(test)))]
-compile_error!("Die Links der Aufgaben werden mit DPAPI verschlüsselt; das gibt es nur unter Windows.");
+fn schluessel() -> Result<super::mischform::Schluessel, String> {
+    static ABLAGE: std::sync::Mutex<Option<super::mischform::Schluessel>> = std::sync::Mutex::new(None);
+    let mut ablage = ABLAGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(s) = ablage.as_ref() {
+        return Ok(s.clone());
+    }
+    let s = schluessel_aus_dem_system()?;
+    *ablage = Some(s.clone());
+    Ok(s)
+}
+
+/// Unter macOS: der Anmelde-Schlüsselbund, über die Regeln in `mischform::schluessel_holen`.
+#[cfg(all(target_os = "macos", not(test)))]
+fn schluessel_aus_dem_system() -> Result<super::mischform::Schluessel, String> {
+    use super::{mischform, schluesselbund};
+    mischform::schluessel_holen(
+        &|| schluesselbund::lesen(SCHLUESSELBUND_DIENST, SCHLUESSELBUND_KONTO),
+        &|inhalt| schluesselbund::anlegen(SCHLUESSELBUND_DIENST, SCHLUESSELBUND_KONTO, inhalt),
+        &mischform::neuer_schluessel,
+    )
+}
+
+/// Unter Linux und anderen Systemen gibt es noch keinen Ort für den
+/// Schlüssel. Eine eigene Funktion, damit ein Ort dort später nur diese eine
+/// Stelle tauscht.
+#[cfg(all(not(windows), not(target_os = "macos"), not(test)))]
+fn schluessel_aus_dem_system() -> Result<super::mischform::Schluessel, String> {
+    Err("Links an Aufgaben gibt es unter Linux noch nicht: Für ihren Schlüssel ist dort noch kein Ort festgelegt.".to_string())
+}
+
+/// In Tests außerhalb von Windows: ein fester, erfundener Schlüssel. Die
+/// Tests verschlüsseln echt, berühren aber nie einen Schlüsselbund.
+#[cfg(all(not(windows), test))]
+fn schluessel() -> Result<super::mischform::Schluessel, String> {
+    Ok(zeroize::Zeroizing::new(*b"dashboard-test-schluessel-012345"))
+}
+
+/// Verschlüsselt `klartext` mit dem Schlüssel der Links (Mischform, Format DL1).
+#[cfg(not(windows))]
+pub fn verschluesseln(klartext: &[u8]) -> Result<Vec<u8>, String> {
+    use super::mischform;
+    let schluessel = schluessel()?;
+    mischform::versiegeln(&schluessel, &mischform::neue_nonce()?, klartext)
+}
+
+/// Entschlüsselt, was `verschluesseln` mit demselben Schlüssel geschrieben
+/// hat. Der Klartext liegt in einem Puffer, der beim Freigeben überschrieben wird.
+#[cfg(not(windows))]
+pub fn entschluesseln(geheim: &[u8]) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
+    use super::mischform;
+    #[cfg(test)]
+    ENTSCHLUESSELT.with(|n| n.set(n.get() + 1));
+    let schluessel = schluessel()?;
+    mischform::oeffnen(&schluessel, geheim).map_err(|f| mischform::format_satz(f).to_string())
+}
 
 /// Verschlüsselt `klartext` für das eigene Konto.
 #[cfg(windows)]
@@ -117,22 +193,6 @@ unsafe fn ausgabe_nehmen(aus: windows_sys::Win32::Security::Cryptography::CRYPT_
     // SAFETY: Der Puffer stammt aus LocalAlloc (DPAPI) und wird genau einmal freigegeben.
     unsafe { windows_sys::Win32::Foundation::LocalFree(aus.pbData.cast()) };
     kopie
-}
-
-/// Nur für Tests auf anderen Plattformen: keine echte Verschlüsselung, aber
-/// der Klartext steht nie offen da (umgedreht und mit festem Kopf).
-#[cfg(all(not(windows), test))]
-pub fn verschluesseln(klartext: &[u8]) -> Result<Vec<u8>, String> {
-    let mut v = b"TEST".to_vec();
-    v.extend(klartext.iter().rev().map(|b| b ^ 0x5a));
-    Ok(v)
-}
-
-#[cfg(all(not(windows), test))]
-pub fn entschluesseln(geheim: &[u8]) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
-    ENTSCHLUESSELT.with(|n| n.set(n.get() + 1));
-    let rest = geheim.strip_prefix(b"TEST").ok_or("kein Testwert")?;
-    Ok(zeroize::Zeroizing::new(rest.iter().rev().map(|b| b ^ 0x5a).collect()))
 }
 
 #[cfg(test)]

@@ -78,6 +78,18 @@ getrandom = { version = "=0.2.17", default-features = false }
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.191"
 
+# Verfahren für die Links der Aufgaben außerhalb von Windows (Mischform, Schritt 4a): XChaCha20-Poly1305
+# aus RustCrypto, reines Rust. Unter Windows bleibt DPAPI; dort steht die Kiste nur für die Tests des
+# Formats unter [dev-dependencies], wortgleich. Ohne Standard-Merkmale: Die Nonce kommt aus dem
+# vorhandenen Zufall (rand_core über getrandom 0.2.17), nicht aus einer zweiten Fassung davon.
+[target.'cfg(not(windows))'.dependencies]
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
+
+# Anmelde-Schlüsselbund von macOS für den Schlüssel der Links: drei Aufrufe (lesen, hinzufügen,
+# Dialoge sperren). Ohne Merkmale; das unsafe liegt in der Kiste.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "=3.7.0", default-features = false }
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
 # windows-service bleibt bei 0.8.1: Dienst-Modus (`--dienst`, Etappe 7a). Bauprobe bestanden.
@@ -100,6 +112,9 @@ windows-sys = { version = "=0.61.2", features = [
 
 [dev-dependencies]
 http-body-util = "0.1"
+# Wortgleich wie oben für außerhalb von Windows: Die Tests für Format und Verfahren der Links
+# laufen so auch unter Windows, ohne dass das Programm dort die Kiste enthält.
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
 # Prüfstand und Schreiben der Modul-Typen nur in Tests (Etappe 4b).
 dashboard-projekt = { path = "crates/dashboard-projekt", features = ["dienst", "pruefstand"] }
 # Die Vorlage eines Moduls als neutrales Beispiel für die Tests des Registers.
