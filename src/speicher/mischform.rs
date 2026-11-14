@@ -59,7 +59,7 @@ pub enum Fehlerart {
     NichtGefunden,
     /// Beim Anlegen: Es gibt den Eintrag schon. Einmal neu lesen, nie schreiben.
     GibtEsSchon,
-    /// Der Schlüsselbund ist gesperrt, oder macOS wollte nachfragen; Nachfragen sind verboten.
+    /// Der Schlüsselbund ist gesperrt, oder die Sitzung hat keine Anmeldung (etwa über SSH).
     Gesperrt,
     /// Der Schlüsselbund gibt den Eintrag diesem Programm nicht.
     Verweigert,
@@ -86,7 +86,7 @@ pub fn schluesselbund_satz(nummer: i32) -> String {
             format!("Der Schlüssel der Aufgaben-Links fehlt im Schlüsselbund ({nummer}); gespeicherte Links sind nicht lesbar und laufen nur ab.")
         }
         Fehlerart::GibtEsSchon => format!("Der Schlüssel der Aufgaben-Links ist schon im Schlüsselbund und wird nie überschrieben ({nummer})."),
-        Fehlerart::Gesperrt => format!("Schlüsselbund gesperrt oder Bestätigung nötig (etwa nach einem Neubau ohne feste Signatur) ({nummer})."),
+        Fehlerart::Gesperrt => format!("Schlüsselbund gesperrt oder eine Sitzung ohne Anmeldung ({nummer})."),
         Fehlerart::Verweigert => {
             format!("Der Schlüsselbund gibt den Schlüssel der Aufgaben-Links diesem Programm nicht (etwa nach einem Neubau ohne feste Signatur) ({nummer}).")
         }
@@ -403,7 +403,7 @@ mod tests {
             assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0), "{nummer}");
         }
         let a = Ablage::neu(vec![Err(GESPERRT)], vec![]);
-        assert_eq!(a.holen().unwrap_err(), "Schlüsselbund gesperrt oder Bestätigung nötig (etwa nach einem Neubau ohne feste Signatur) (-25308).");
+        assert_eq!(a.holen().unwrap_err(), "Schlüsselbund gesperrt oder eine Sitzung ohne Anmeldung (-25308).");
         // Am Gerät gemessen: Nach einem Neubau ohne feste Signatur kommt -25293. Auch dann entsteht kein zweiter Schlüssel.
         let a = Ablage::neu(vec![Err(VERWEIGERT)], vec![]);
         assert_eq!(
