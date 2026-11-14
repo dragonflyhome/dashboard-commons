@@ -601,6 +601,31 @@ fn rechner_mit_punkt_und_kurze_namen() {
     assert_eq!(Bekannt::default().mit_rechner(Some("Beispiel-Rechner")).mit_rechner(Some("beispiel-rechner")).rechner.len(), 1);
 }
 
+/// `localhost` ist kein Rechnername: ganz und als Teil vor dem ersten Punkt
+/// kein Eintrag, und eine Adresse auf localhost bleibt.
+#[test]
+fn localhost_ist_kein_rechnername() {
+    for name in ["localhost", "LocalHost", "localhost.localdomain"] {
+        assert_eq!(Bekannt::default().mit_rechner(Some(name)), Bekannt::default(), "{name}");
+    }
+    let b = Bekannt::default().mit_rechner(Some("localhost.localdomain"));
+    assert_eq!(verbergen_mit("http://localhost:8787/", &b), "http://localhost:8787/");
+    // Gegenprobe: ein Name, der nur mit localhost beginnt, ist einer.
+    assert_eq!(Bekannt::default().mit_rechner(Some("localhost-zwei")).rechner, ["localhost-zwei"]);
+}
+
+/// Verdrahtung: Konsole und Dienst kennen den Namen dieses Rechners, wenn
+/// das System einen mit mindestens drei Zeichen nennt.
+#[test]
+fn rechnername_in_konsole_und_dienst() {
+    let Some(name) = rechnername().filter(|n| n.trim().chars().count() >= 3 && !n.trim().to_lowercase().starts_with("localhost")) else {
+        return;
+    };
+    let name = name.trim().to_string();
+    assert!(Bekannt::aus_umgebung().rechner.contains(&name), "Konsole: {name}");
+    assert!(bekannt_fuer_dienst(None, Some("beispiel")).rechner.contains(&name), "Dienst: {name}");
+}
+
 /// Enthält der Name des Rechners den Benutzernamen als Wort, wird der ganze
 /// Rechnername ersetzt, nicht nur der Benutzername darin.
 #[test]
