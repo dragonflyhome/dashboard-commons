@@ -962,12 +962,15 @@ fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + 
         let snap = snap.clone();
         async move {
             let s = snap.read().await;
+            // Auf beiden Kanälen wie `/api/pc`: statt der Namen der Datenträger der Platzhalter.
+            let mut disks = s.disks.clone();
+            crate::datenschutz::platten_verbergen(&mut disks);
             let tick = PcTick {
                 at: s.taken_at,
                 cpu_percent: s.cpu_percent,
                 mem_used: s.mem_used,
                 mem_total: s.mem_total,
-                disks: s.disks.clone(),
+                disks,
                 uptime_secs: s.uptime_secs,
                 cpu_belegung: s.cpu_belegung,
                 mem_belegung: s.mem_belegung,
@@ -1283,6 +1286,24 @@ mod tests {
             let text = als_text(tokio_stream::once(Some(e))).await;
             assert!(text.contains(r#""mount":"%USERPROFILE%\\Laufwerk""#), "{text}");
             assert!(!text.contains("beispiel-konto") && !text.contains(r"Users\\"), "{text}");
+        }
+    }
+
+    /// Der PC-Takt nennt auf beiden Kanälen statt des Namens eines
+    /// Datenträgers den Platzhalter; ein leerer Name bleibt leer.
+    #[tokio::test]
+    async fn pc_takt_ohne_namen_der_datentraeger() {
+        let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
+        let platte =
+            |name: &str, mount: &str| crate::pc::system::DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
+        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte"), platte("", r"C:\")];
+        for frei in [true, false] {
+            let mut strom = Box::pin(pc_takt(&state, frei));
+            let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
+            let text = als_text(tokio_stream::once(Some(e))).await;
+            assert!(text.contains(r#""name":"%VOLUME%","mount":"/Volumes/%VOLUME%""#), "{text}");
+            assert!(text.contains(r#""name":"","mount":"C:\\""#), "{text}");
+            assert!(!text.contains("Beispiel") && !text.contains("Platte"), "{text}");
         }
     }
 

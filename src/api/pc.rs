@@ -41,9 +41,12 @@ use crate::vertrag::bedeutung::Bedeutung;
 use crate::vertrag::verlauf::{self, Art, Ereignis, Genauigkeit, Quelle, Verlauf, VerlaufHinweis, VerlaufHinweisArt as HinweisArt};
 
 /// `GET /api/pc` (frei). Profilpfade und der Benutzername sind verborgen
-/// (`datenschutz`), etwa in `sysapps.errors` und `data_error`.
+/// (`datenschutz`), etwa in `sysapps.errors` und `data_error`. Statt des
+/// Rechnernamens und der Namen der Datenträger stehen Platzhalter.
 pub async fn bericht(State(state): State<AppState>) -> Json<serde_json::Value> {
-    crate::datenschutz::als_json(&bericht_bauen(&state).await)
+    let mut bericht = bericht_bauen(&state).await;
+    crate::datenschutz::rechner_verbergen(&mut bericht.snapshot);
+    crate::datenschutz::als_json(&bericht)
 }
 
 /// Der Bericht für `/api/pc`, noch mit allen Texten.

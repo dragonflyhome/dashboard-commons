@@ -20,9 +20,10 @@ Ein Pull Request würde auf dem Server zusammengeführt, an der Prüfung vorbei,
 3. **Issue eröffnen.** Nutze das Formular „Merge-Angebot“ (`.github/ISSUE_TEMPLATE/merge-angebot.yml`). Beschreibe darin, was sich ändert und warum. Nenne dazu:
    - die Adresse deines Forks (Fork-URL),
    - die Ref, die geprüft werden soll: Zweigname oder, am genauesten, die volle Commit-Kennung,
-   - wie du die Änderung geprüft hast.
-4. **Rückfragen beantworten.** Die Betreuer antworten im Issue. Besserst du nach, kommen die Änderungen als weitere Commits auf denselben Zweig; nenne dort die neue Commit-Kennung. Schreibe einen schon angebotenen Zweig nicht um, außer die Betreuer bitten darum.
-5. **Merge.** Die Betreuer holen den genannten Stand aus deinem Fork, nennen im Issue die Commit-Kennung, die sie gelesen haben, bauen daraus einen Merge-Commit, ohne Code deines Forks auszuführen, und prüfen ihn. Gebaut und getestet wird erst danach. Nach der Annahme kommt genau dieser Merge-Commit auf `main`. Das Issue wird danach geschlossen.
+   - wie du die Änderung geprüft hast,
+   - die Zeilen für den Changelog (siehe „CHANGELOG.txt ändern nur die Betreuer“).
+4. **Rückfragen beantworten.** Die Betreuer antworten im Issue. Besserst du nach, kommen die Änderungen als weitere Commits auf denselben Zweig; nenne dort die neue Commit-Kennung. Schreibe einen schon angebotenen Zweig nicht um, außer die Betreuer bitten darum. Weist das Werkzeug etwas in einem Commit ab, kommt die Nachbesserung als neuer Zweig (siehe „Was einmal in einem Commit stand, geht mit“).
+5. **Merge.** Die Betreuer holen den genannten Stand aus deinem Fork, nennen im Issue die Commit-Kennung, die sie gelesen haben, bauen daraus einen Merge-Commit, ohne Code deines Forks auszuführen, und prüfen ihn. Gebaut und getestet wird erst danach. Nach der Annahme kommt genau dieser Merge-Commit auf `main`. Danach tragen die Betreuer die Zeilen für den Changelog aus dem Merge-Angebot in einem eigenen Commit ein, zusammen mit etwaigen eigenen Korrekturen der Betreuer. Das Issue wird danach geschlossen.
 
 Kleine Hinweise, Fehlerberichte und Fragen sind ebenfalls als Issue willkommen, auch ohne Fork.
 
@@ -62,10 +63,11 @@ Vor jedem Hochladen prüft ein Werkzeug die ganze Geschichte, die hinausgeht. Es
   git -c commit.gpgsign=false rebase --force-rebase --exec "git commit --amend --no-edit --no-gpg-sign --reset-author" upstream/main
   ```
 
-- **Keine Änderungen an den Prüfpfaden:** alles unter `scripts/`, `.cargo/` und `.github/` sowie `tests/vor_push.rs` und `KONTAKT-PGP.asc`, dazu jede `.gitattributes` und jede `.npmrc`, auch in Unterordnern, und jeder Pfad mit einem 8.3-Kurznamen wie `GITATT~1`, in jeder Groß- und Kleinschreibung. Ein Commit mit fremdem Autor oder Committer, der dort etwas ändert, wird abgewiesen, auch ein Merge-Commit im Fork. Wer dort etwas braucht, beschreibt es im Issue; die Betreuer übernehmen solche Änderungen selbst, in einem eigenen Merge ohne fremde Commits.
+- **Keine Änderungen an den Prüfpfaden:** alles unter `scripts/`, `.cargo/` und `.github/` sowie `tests/vor_push.rs` und `KONTAKT-PGP.asc`, dazu jede `.gitattributes` und jede `.npmrc`, auch in Unterordnern, und jeder Pfad mit einem 8.3-Kurznamen wie `GITATT~1`, in jeder Groß- und Kleinschreibung. Ein Commit mit fremdem Autor oder Committer, der dort etwas ändert, wird abgewiesen, auch ein Merge-Commit im Fork. Wer dort etwas braucht, beschreibt es im Issue; die Betreuer übernehmen solche Änderungen selbst, in einem eigenen Merge ohne fremde Commits. Für `CHANGELOG.txt` gilt dasselbe (nächster Punkt).
+- **CHANGELOG.txt ändern nur die Betreuer.** Ein Commit mit fremdem Autor oder Committer, der `CHANGELOG.txt` ändert, wird abgewiesen wie eine Änderung an den Prüfpfaden: in jeder Groß- und Kleinschreibung, auch beim Umbenennen und auch als Merge-Commit im Fork. Die Zeilen gehören ins Merge-Angebot (Feld „Zeilen für den Changelog“), mit dem Abschnitt Hinzugefügt, Geändert, Entfernt oder Behoben (ein Bruch als „- Bruch: …“) und im Stil der vorhandenen Einträge. Die Betreuer tragen sie nach dem Merge in einem eigenen Commit ein.
 - **Keine persönlichen Angaben.** Namen, Adressen, Pfade des eigenen Rechners, Rechner- und Netzwerknamen und Zugangsdaten gehören weder in Code noch in Texte, Tests oder Commit-Meldungen. Beispiele nur mit erfundenen Werten. Pfade unter `/Users`, `/home` oder `C:\Users` stehen nur mit Platzhalter, etwa `/home/<name>/`; übliche Beispielnamen wie `user` oder `me` an dieser Stelle weist das Werkzeug ab.
 - **Nur Orte, die das Repo schon hat.** Keine weiteren Markdown-Dateien, keine gebauten Dateien (`target`, `web/build`, `node_modules`), keine Archive.
-- **Was einmal in einem Commit stand, geht mit.** Ein späterer Commit, der etwas entfernt, hilft nicht. Bereinige deinen Zweig, bevor du ihn anbietest.
+- **Was einmal in einem Commit stand, geht mit.** Das Werkzeug liest jeden Commit des Zweigs, nicht nur den Endstand; ein späterer Commit, der etwas entfernt, hilft nicht. Bereinige deinen Zweig, bevor du ihn anbietest. Weist das Werkzeug einen Inhalt in einem schon angebotenen Zweig ab, bitten die Betreuer um einen neuen Zweig von `main` mit dem bereinigten Stand; der alte Zweig bleibt, wie er ist.
 - **Prüfwerkzeuge** laufen vor dem Commit: `rustfmt` und `clippy` für Rust, `prettier`, `eslint`, `stylelint` und `svelte-check` für die Oberfläche.
 - **Tests** gehören zu jeder neuen Logik.
 - **Kleine Änderungen** sind leichter zu prüfen als große. Ein Issue je Anliegen; bei einem größeren Vorhaben vorher ein Issue mit der Idee.
