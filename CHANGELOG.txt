@@ -39,6 +39,8 @@ Geändert
 - Leitfaden für Mitwirkende und Anleitung (Abschnitt 15, Teil 5): Das
   Werkzeug liest jeden Commit; weist es einen Inhalt in einem schon
   angebotenen Zweig ab, kommt die Nachbesserung als neuer Zweig von main.
+
+Behoben
 - Der Name des Rechners geht nicht mehr hinaus: /api/pc nennt im Feld
   host fest %COMPUTERNAME%, auf jeder Plattform und auch mit Anmeldung;
   das Cockpit zeigt nur noch das Betriebssystem. In jedem anderen Text
