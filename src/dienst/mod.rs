@@ -397,11 +397,54 @@ pub fn mit_laufzeit<T>(f: impl Future<Output = Result<T, StartFehler>>) -> Resul
 
 /// Strg+C als Zukunft (bleibt offen, wenn es sich nicht abfangen lässt);
 /// liefert die Frist für offene Antworten (`BEENDEN_HOECHSTENS`).
+///
+/// Unter macOS und Linux zählen daneben SIGTERM (so beendet launchd einen
+/// Agenten, ebenso `kill` und das Abmelden) und SIGHUP (Terminal
+/// geschlossen): Das erste der drei Signale beendet geordnet (`erstes_signal`).
+/// Grenze: Das Abfangen hebt ein geerbtes Ignorieren von SIGHUP auf. Wer den
+/// Server mit `nohup` startet, bekommt beim Schließen des Terminals darum ein
+/// geordnetes Ende, kein Weiterlaufen.
 async fn strg_c() -> Duration {
+    #[cfg(not(unix))]
     if tokio::signal::ctrl_c().await.is_err() {
         std::future::pending::<()>().await;
     }
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let unterbrechen = async {
+            if tokio::signal::ctrl_c().await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        };
+        // Lässt sich ein Signal nicht abfangen, bleibt seine Quelle offen, wie bei Strg+C.
+        let warten = |art: SignalKind| async move {
+            match signal(art) {
+                Ok(mut s) => {
+                    s.recv().await;
+                }
+                Err(_) => std::future::pending::<()>().await,
+            }
+        };
+        erstes_signal(vec![Box::pin(unterbrechen), Box::pin(warten(SignalKind::terminate())), Box::pin(warten(SignalKind::hangup()))]).await;
+    }
     BEENDEN_HOECHSTENS
+}
+
+/// Eine Quelle eines Signals zum Beenden. Unter Windows nur im Test: Dort
+/// wartet der Server allein auf Strg+C.
+#[cfg(any(unix, test))]
+type SignalQuelle = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+
+/// Wartet auf die erste von mehreren Quellen; gibt ihre Stelle zurück. Ohne
+/// Quelle bleibt die Zukunft offen. Als reine Funktion über Zukünfte, damit
+/// die Auswahl auf jeder Plattform prüfbar ist, ohne ein Signal zu schicken.
+#[cfg(any(unix, test))]
+async fn erstes_signal(quellen: Vec<SignalQuelle>) -> usize {
+    if quellen.is_empty() {
+        return std::future::pending().await;
+    }
+    futures_util::future::select_all(quellen).await.1
 }
 
 /// Exit-Code aus dem Ergebnis; den Satz bekommt die Konsole und das Protokoll.
@@ -556,6 +599,27 @@ mod tests {
 
     fn args(s: &[&str]) -> Vec<String> {
         s.iter().map(|a| a.to_string()).collect()
+    }
+
+    /// Das erste von mehreren Signalen zählt, an welcher Stelle es auch steht;
+    /// ohne Quelle und ohne Signal bleibt die Zukunft offen. Geprüft über
+    /// Zukünfte, ohne dem Testprozess ein Signal zu schicken.
+    #[tokio::test]
+    async fn erstes_signal_nimmt_die_erste_quelle() {
+        use std::future::{pending, ready};
+        let spaeter = |ms: u64| async move { tokio::time::sleep(Duration::from_millis(ms)).await };
+        for stelle in 0..3 {
+            let quellen: Vec<SignalQuelle> = (0..3).map(|n| if n == stelle { Box::pin(spaeter(20)) as SignalQuelle } else { Box::pin(pending()) }).collect();
+            assert_eq!(tokio::time::timeout(Duration::from_secs(5), erstes_signal(quellen)).await, Ok(stelle));
+        }
+        // Zwei kommen: das frühere gewinnt.
+        let quellen: Vec<SignalQuelle> = vec![Box::pin(spaeter(300)), Box::pin(pending()), Box::pin(spaeter(10))];
+        assert_eq!(tokio::time::timeout(Duration::from_secs(5), erstes_signal(quellen)).await, Ok(2));
+        assert_eq!(erstes_signal(vec![Box::pin(ready(()))]).await, 0);
+        // Kein Signal und keine Quelle: offen.
+        let offen: Vec<SignalQuelle> = vec![Box::pin(pending()), Box::pin(pending())];
+        assert!(tokio::time::timeout(Duration::from_millis(80), erstes_signal(offen)).await.is_err());
+        assert!(tokio::time::timeout(Duration::from_millis(80), erstes_signal(Vec::new())).await.is_err());
     }
 
     #[test]

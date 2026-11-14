@@ -101,7 +101,9 @@ fn vollstaendig(wert: &str) -> bool {
 ///
 /// Außerhalb von Windows nie im Datenbaum. Ohne vollständigen Wert gibt es
 /// keinen Ort (`None`): kein Rückfall auf den Arbeitsordner, der unter
-/// launchd `/` wäre. Die Anmeldung mit Passkey bleibt dann aus.
+/// launchd `/` wäre. Die Anmeldung mit Passkey bleibt dann aus. Unter macOS
+/// zählt nur `HOME`; unter Linux genügt ein vollständiges `XDG_DATA_HOME`,
+/// auch wenn `HOME` fehlt, denn der Ort hängt dann nicht an `HOME`.
 pub fn ort_ohne_einstellungen(plattform: Plattform, daten: &Path, home: Option<&str>, xdg_data_home: Option<&str>) -> Option<std::path::PathBuf> {
     let home = home.filter(|h| vollstaendig(h)).map(|h| h.trim_end_matches('/'));
     let ordner = match plattform {
@@ -211,6 +213,22 @@ pub fn laden_oder_anlegen(pfad: &Path) -> Result<JwtSchluessel, String> {
 /// Schlüsselordner von der Sicherung aus (in Tests eine eigene Funktion).
 #[cfg(unix)]
 pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(), String>) -> Result<JwtSchluessel, String> {
+    laden_oder_anlegen_versuch(pfad, ausnehmen, true)
+}
+
+/// Ob der Schlüsselordner von der Sicherung ausgenommen wird: nur ein Ordner,
+/// der in diesem Aufruf neu entstanden ist, und nur mit vollständigem Pfad.
+/// Ein relativer Pfad, der mit `-` beginnt, ginge sonst als Option an das
+/// Programm. Reine Funktion, damit die Bedingung auf jeder Plattform prüfbar
+/// ist; unter Windows gibt es sie nur im Test.
+#[cfg(any(unix, test))]
+fn ausnahme_setzen(neu_angelegt: bool, ordner: &Path) -> bool {
+    neu_angelegt && ordner.is_absolute()
+}
+
+/// `nochmal`: Kommt ein anderer Lauf beim Anlegen zuvor, wird genau einmal neu geladen, nicht beliebig tief.
+#[cfg(unix)]
+fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(), String>, nochmal: bool) -> Result<JwtSchluessel, String> {
     use std::io::Read;
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
     let zeigen = |p: &Path| crate::datenschutz::verbergen(&p.display().to_string());
@@ -221,6 +239,7 @@ pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> R
     let satz = |m: Mangel| mangel_satz(m, &zeigen(ordner), &zeigen(pfad));
     let eigene_uid = crate::unix::eigene_uid();
     // Der Ordner: anlegen, wenn er fehlt (0700, auch für fehlende Ordner darüber).
+    let mut neu_angelegt = false;
     if let Err(e) = std::fs::symlink_metadata(ordner) {
         if e.kind() != std::io::ErrorKind::NotFound {
             return Err(format!("Der Schlüsselordner {} ist nicht lesbar: {e}", zeigen(ordner)));
@@ -230,14 +249,20 @@ pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> R
             .mode(0o700)
             .create(ordner)
             .map_err(|e| format!("Der Schlüsselordner {} ließ sich nicht anlegen: {e}", zeigen(ordner)))?;
-        // Zusätzliche Absicherung, kein Schutz: Schutz sind Ort und Rechte.
-        if let Err(e) = ausnehmen(ordner) {
-            tracing::warn!("Ausnahme für Time Machine nicht gesetzt ({e}).");
-        }
+        neu_angelegt = true;
     }
     // Derselbe Blick vor dem Laden und vor dem Anlegen: beim ersten und beim zweiten Start dasselbe Urteil.
     let m = std::fs::symlink_metadata(ordner).map_err(|e| format!("Der Schlüsselordner {} ist nicht lesbar: {e}", zeigen(ordner)))?;
     ordner_urteil(Stand { richtige_art: m.file_type().is_dir(), uid: m.uid(), modus: m.mode(), groesse: 0 }, eigene_uid).map_err(satz)?;
+    // Die Ausnahme für die Sicherung erst nach dem Urteil und nur für einen
+    // vollständigen Pfad: Ein relativer Pfad aus der Umgebung, der mit `-`
+    // beginnt, ginge sonst als Option an das Programm. Zusätzliche
+    // Absicherung, kein Schutz: Schutz sind Ort und Rechte.
+    if ausnahme_setzen(neu_angelegt, ordner)
+        && let Err(e) = ausnehmen(ordner)
+    {
+        tracing::warn!("Ausnahme für Time Machine nicht gesetzt ({e}).");
+    }
     // Die Datei: nie einer Verknüpfung folgen; ohne Blockieren, falls dort ein FIFO liegt.
     let oeffnen = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(pfad);
     let mut datei = match oeffnen {
@@ -245,18 +270,19 @@ pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> R
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let mut b = [0u8; 32];
             b.copy_from_slice(&super::zufall(32));
-            let neu = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(pfad);
-            return match neu.and_then(|mut d| d.write_all(&b).and_then(|()| d.sync_all())) {
+            return match ohne_halbstand_anlegen(ordner, pfad, &b) {
                 Ok(()) => {
                     tracing::info!("Schlüssel für die Ausweise neu angelegt: {}", zeigen(pfad));
                     Ok(JwtSchluessel::aus_bytes(&b))
                 }
-                // Ein anderer Lauf war schneller: dessen Datei gilt.
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => laden_oder_anlegen_mit(pfad, ausnehmen),
+                // Ein anderer Lauf war schneller: dessen Datei gilt. Höchstens ein erneuter Versuch.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && nochmal => laden_oder_anlegen_versuch(pfad, ausnehmen, false),
                 Err(e) => Err(format!("{} ließ sich nicht anlegen: {e}", zeigen(pfad))),
             };
         }
-        // Eine Verknüpfung an dieser Stelle (ELOOP) oder ein FIFO ohne Schreiber.
+        // Eine Verknüpfung an dieser Stelle (ELOOP mit O_NOFOLLOW), auch eine ohne
+        // Ziel. Ein FIFO kommt nicht hierher: Er lässt sich öffnen und wird unten
+        // über die Art abgelehnt.
         Err(e) if e.raw_os_error() == Some(libc::ELOOP) => return Err(satz(Mangel::DateiKeineDatei)),
         Err(e) => return Err(format!("{} ist nicht lesbar: {e}", zeigen(pfad))),
     };
@@ -273,12 +299,51 @@ pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> R
     }
 }
 
+/// Legt den Schlüssel ohne Halbstand an: Die 32 Bytes gehen in eine
+/// Zwischendatei im selben Ordner (neu, 0600, bis auf die Platte geschrieben),
+/// dann bekommt sie mit einer harten Verknüpfung den endgültigen Namen. Das
+/// ist ein einziger Schritt: Unter dem Namen steht nie eine leere oder halbe
+/// Datei, auch nicht für einen zweiten Prozess, der gleichzeitig startet, und
+/// auch nicht, wenn das Schreiben scheitert. Gibt es den Namen schon, meldet
+/// die Verknüpfung `AlreadyExists`, und die vorhandene Datei bleibt, wie sie
+/// ist. Die Zwischendatei wird in jedem Fall entfernt.
+#[cfg(unix)]
+fn ohne_halbstand_anlegen(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let zusatz: String = super::zufall(8).iter().map(|b| format!("{b:02x}")).collect();
+    let zwischen = ordner.join(format!(".{SCHLUESSEL_DATEI}.neu-{}-{zusatz}", std::process::id()));
+    let geschrieben = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&zwischen)
+        .and_then(|mut d| d.write_all(bytes).and_then(|()| d.sync_all()));
+    // Ohne harte Verknüpfungen (FAT, exFAT, manches Netzlaufwerk) entsteht kein
+    // Schlüssel; kein Rückfall auf direktes Schreiben, aber der Satz nennt die Ursache.
+    let ergebnis = geschrieben.and_then(|()| {
+        std::fs::hard_link(&zwischen, pfad).map_err(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => e,
+            art => std::io::Error::new(
+                art,
+                format!("harte Verknüpfung nicht möglich ({e}); der Ort braucht ein Dateisystem mit harten Verknüpfungen, sonst DASHBOARD_JWT_SCHLUESSEL an einen anderen Ort legen"),
+            ),
+        })
+    });
+    let _ = std::fs::remove_file(&zwischen);
+    ergebnis
+}
+
 /// Nimmt den Schlüsselordner von Time Machine aus. Nur unter macOS, nur das
 /// eine Programm vom festen Ort (`/usr/bin/tmutil`) mit festen Argumenten, ohne Shell, mit
 /// kurzer Frist; seine Ausgabe geht nirgendwohin. Auf anderen Systemen ohne Wirkung.
 #[cfg(unix)]
 fn time_machine_ausnehmen(ordner: &Path) -> Result<(), String> {
-    // In Tests nie das echte Programm: Dort wird die Ausnahme eingespeist (`laden_oder_anlegen_mit`).
+    // In den Unit-Tests der Bibliothek nie das echte Programm: Dort wird die
+    // Ausnahme eingespeist (`laden_oder_anlegen_mit`). Die Integrationstests
+    // starten dagegen das echte Programm mit einem Schlüsselordner in einem
+    // Temp-Ordner; dort läuft `tmutil` unter macOS wirklich. Das ist harmlos,
+    // die Ausnahme verschwindet mit dem Ordner.
     if !cfg!(target_os = "macos") || cfg!(test) {
         return Ok(());
     }
@@ -496,6 +561,20 @@ mod tests {
         }
     }
 
+    /// Die Ausnahme für die Sicherung gilt nur für einen neu angelegten Ordner
+    /// mit vollständigem Pfad; ein relativer Pfad, der mit `-` beginnt, nie.
+    #[test]
+    fn ausnahme_nur_neu_und_vollstaendig() {
+        let voll = std::env::temp_dir().join("dashboard-schluessel");
+        assert!(voll.is_absolute());
+        assert!(ausnahme_setzen(true, &voll));
+        assert!(!ausnahme_setzen(false, &voll), "nur beim Anlegen");
+        for relativ in ["-dashboard-relativ", "-rf/dashboard-schluessel", "dashboard-schluessel", ""] {
+            assert!(!ausnahme_setzen(true, Path::new(relativ)), "{relativ}");
+            assert!(!ausnahme_setzen(false, Path::new(relativ)), "{relativ}");
+        }
+    }
+
     /// Wo der Schlüssel ohne Einstellungsdatei liegt, je Plattform: unter
     /// Windows wie bisher neben dem Datenspeicher, sonst nie im Datenbaum.
     #[test]
@@ -523,7 +602,15 @@ mod tests {
             ort(Plattform::Unix, Some("/home/beispiel"), Some("/home/beispiel/daten/")),
             Some(PathBuf::from("/home/beispiel/daten/dashboard-schluessel/jwt-schluessel"))
         );
-        // Ohne vollständiges HOME kein Ort, kein Rückfall auf den Arbeitsordner.
+        // Unter Linux genügt ein vollständiges XDG_DATA_HOME, auch ohne HOME.
+        for home in [None, Some(""), Some("heim")] {
+            assert_eq!(
+                ort(Plattform::Unix, home, Some("/daten")),
+                Some(PathBuf::from("/daten/dashboard-schluessel/jwt-schluessel")),
+                "Linux mit HOME {home:?}"
+            );
+        }
+        // Sonst ohne vollständiges HOME kein Ort, kein Rückfall auf den Arbeitsordner.
         for home in [None, Some(""), Some("heim"), Some("./heim"), Some("~")] {
             assert_eq!(ort(Plattform::MacOs, home, None), None, "macOS mit HOME {home:?}");
             assert_eq!(ort(Plattform::MacOs, home, Some("/x")), None, "macOS mit HOME {home:?}, XDG zählt dort nicht");
@@ -604,7 +691,8 @@ mod tests {
         let o = ordner("unix-rechte");
         let pfad = o.join("ueber").join(SCHLUESSEL_ORDNER).join(SCHLUESSEL_DATEI);
         let k = laden_oder_anlegen_mit(&pfad, &|_| Ok(())).unwrap();
-        for (was, modus) in [(pfad.parent().unwrap(), 0o700), (pfad.as_path(), 0o600)] {
+        // Auch der fehlende Ordner darüber (`ueber`) entsteht mit 0700.
+        for (was, modus) in [(o.join("ueber").as_path(), 0o700), (pfad.parent().unwrap(), 0o700), (pfad.as_path(), 0o600)] {
             let m = std::fs::symlink_metadata(was).unwrap();
             assert_eq!(m.mode() & 0o777, modus, "{}", was.display());
             assert_eq!(m.uid(), crate::unix::eigene_uid());
@@ -695,11 +783,98 @@ mod tests {
         std::os::unix::fs::symlink(echt.parent().unwrap(), &ueber).unwrap();
         let e = abgelehnt(laden_oder_anlegen_mit(&ueber.join(SCHLUESSEL_DATEI), &|_| Ok(())), "Verknüpfung statt des Ordners");
         assert!(e.contains("kein Ordner oder eine Verknüpfung"), "{e}");
+        // Eine Verknüpfung ohne Ziel statt der Datei: abgelehnt, und am Ziel entsteht nichts.
+        std::fs::remove_file(&pfad).unwrap();
+        let ohne_ziel = o.join("gibt-es-nicht");
+        std::os::unix::fs::symlink(&ohne_ziel, &pfad).unwrap();
+        let e = abgelehnt(laden_oder_anlegen_mit(&pfad, &|_| Ok(())), "Verknüpfung ohne Ziel statt der Datei");
+        assert!(e.contains("keine gewöhnliche Datei"), "{e}");
+        assert!(!ohne_ziel.exists(), "über die Verknüpfung wird nichts angelegt");
+        // Eine Verknüpfung ohne Ziel statt des Ordners: abgelehnt, und es entsteht kein Ordner.
+        let haengt = o.join("haengt");
+        std::os::unix::fs::symlink(o.join("auch-nicht"), &haengt).unwrap();
+        let e = abgelehnt(laden_oder_anlegen_mit(&haengt.join(SCHLUESSEL_DATEI), &|_| Ok(())), "Verknüpfung ohne Ziel statt des Ordners");
+        assert!(e.contains("kein Ordner oder eine Verknüpfung"), "{e}");
+        assert!(!o.join("auch-nicht").exists());
         // Ein Ordner an der Stelle der Datei.
         std::fs::remove_file(&pfad).unwrap();
         std::fs::create_dir(&pfad).unwrap();
         let e = abgelehnt(laden_oder_anlegen_mit(&pfad, &|_| Ok(())), "Ordner statt der Datei");
         assert!(e.contains("keine gewöhnliche Datei"), "{e}");
+        let _ = std::fs::remove_dir_all(&o);
+    }
+
+    /// Anlegen ohne Halbstand: Unter dem Namen steht sofort der ganze
+    /// Schlüssel, im Ordner bleibt keine Zwischendatei, und ein vorhandener
+    /// Name wird nie überschrieben.
+    #[cfg(unix)]
+    #[test]
+    fn unix_anlegen_ohne_halbstand() {
+        let o = ordner("unix-halbstand");
+        let pfad = o.join(SCHLUESSEL_ORDNER).join(SCHLUESSEL_DATEI);
+        let dir = pfad.parent().unwrap().to_path_buf();
+        laden_oder_anlegen_mit(&pfad, &|_| Ok(())).unwrap();
+        let namen = |d: &Path| -> Vec<String> { std::fs::read_dir(d).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect() };
+        assert_eq!(namen(&dir), [SCHLUESSEL_DATEI], "keine Zwischendatei bleibt liegen");
+        assert_eq!(std::fs::read(&pfad).unwrap().len(), 32);
+        // Gibt es den Namen schon, bleibt die vorhandene Datei, wie sie ist, und die Zwischendatei verschwindet.
+        let vorher = std::fs::read(&pfad).unwrap();
+        let e = ohne_halbstand_anlegen(&dir, &pfad, &[9u8; 32]).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&pfad).unwrap(), vorher);
+        assert_eq!(namen(&dir), [SCHLUESSEL_DATEI]);
+        // Scheitert das Anlegen (kein Ordner), bleibt nichts zurück.
+        let fehlt = o.join("fehlt");
+        assert!(ohne_halbstand_anlegen(&fehlt, &fehlt.join(SCHLUESSEL_DATEI), &[9u8; 32]).is_err());
+        assert!(!fehlt.exists());
+        let _ = std::fs::remove_dir_all(&o);
+    }
+
+    /// Viele Läufe zugleich: Alle bekommen denselben Schlüssel, keiner liest
+    /// eine leere oder halbe Datei.
+    #[cfg(unix)]
+    #[test]
+    fn unix_gleichzeitig_derselbe_schluessel() {
+        let o = ordner("unix-gleichzeitig");
+        let pfad = o.join(SCHLUESSEL_ORDNER).join(SCHLUESSEL_DATEI);
+        // Der Ordner steht schon, damit alle Läufe am Anlegen der Datei zusammentreffen.
+        laden_oder_anlegen_mit(&pfad, &|_| Ok(())).unwrap();
+        std::fs::remove_file(&pfad).unwrap();
+        let ausweis = crate::passkey::jwt::Ausweis::neu("c", 1_793_000_000);
+        // Alle Läufe warten an der Schranke und starten zusammen, damit sie sich auch dort treffen, wo `fsync` fast nichts kostet.
+        let schranke = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let laeufe: Vec<_> = (0..16)
+            .map(|_| {
+                let pfad = pfad.clone();
+                let schranke = schranke.clone();
+                std::thread::spawn(move || {
+                    schranke.wait();
+                    laden_oder_anlegen_mit(&pfad, &|_| Ok(())).map_err(|e| e.to_string())
+                })
+            })
+            .collect();
+        let schluessel: Vec<JwtSchluessel> = laeufe.into_iter().map(|l| l.join().unwrap().expect("jeder Lauf bekommt einen Schlüssel")).collect();
+        let t = schluessel[0].ausstellen(&ausweis);
+        assert!(schluessel.iter().all(|k| k.pruefen(&t, 1_793_000_001).is_ok()), "alle haben denselben Schlüssel");
+        assert_eq!(std::fs::read_dir(pfad.parent().unwrap()).unwrap().count(), 1, "keine Zwischendatei bleibt liegen");
+        let _ = std::fs::remove_dir_all(&o);
+    }
+
+    /// Die Ausnahme für die Sicherung kommt erst nach dem Urteil über den
+    /// Ordner und nur für einen vollständigen Pfad.
+    #[cfg(unix)]
+    #[test]
+    fn unix_ausnahme_nur_fuer_vollstaendige_pfade() {
+        use std::cell::Cell;
+        let gerufen = Cell::new(0);
+        let zaehlen = |_: &Path| {
+            gerufen.set(gerufen.get() + 1);
+            Ok(())
+        };
+        // Ein vollständiger Pfad: genau einmal. Den relativen Fall prüft `ausnahme_nur_neu_und_vollstaendig` ohne Platte.
+        let o = ordner("unix-ausnahme-pfad");
+        laden_oder_anlegen_mit(&o.join(SCHLUESSEL_ORDNER).join(SCHLUESSEL_DATEI), &zaehlen).unwrap();
+        assert_eq!(gerufen.get(), 1);
         let _ = std::fs::remove_dir_all(&o);
     }
 

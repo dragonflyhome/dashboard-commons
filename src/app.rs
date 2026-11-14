@@ -322,7 +322,9 @@ impl AppState {
                 }
             },
             None => {
-                error!("Anmeldung mit Passkey aus: Für den Schlüssel der Ausweise gibt es keinen Ort (HOME fehlt oder ist kein vollständiger Pfad).");
+                error!(
+                    "Anmeldung mit Passkey aus: Für den Schlüssel der Ausweise gibt es keinen Ort (HOME ist kein vollständiger Pfad, unter Linux auch XDG_DATA_HOME nicht)."
+                );
                 None
             }
         };
@@ -989,7 +991,8 @@ pub fn daten_datei() -> PathBuf {
 /// Ort nach `passkey::geheim::ort_ohne_einstellungen`: unter Windows
 /// `geheim\jwt-schluessel` neben der Datei des Datenspeichers, unter macOS und
 /// Linux ein eigener Schlüsselordner außerhalb des Datenbaums. `None`: Es
-/// gibt keinen Ort (außerhalb von Windows ohne vollständiges `HOME`).
+/// gibt keinen Ort (unter macOS ohne vollständiges `HOME`, unter Linux ohne
+/// vollständiges `XDG_DATA_HOME` und ohne vollständiges `HOME`).
 pub fn jwt_schluessel_datei(daten: &Path) -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("DASHBOARD_JWT_SCHLUESSEL") {
         return Some(PathBuf::from(p));

@@ -1619,6 +1619,10 @@ async fn npm_lauf(ort: &BauOrt, builds: &Path, limit: Duration, zeiger: bool) ->
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // Unter macOS und Linux gibt es kein Job-Objekt: npm bekommt eine eigene
+    // Prozessgruppe, die nach dem Zeitlimit als Ganzes endet (siehe unten).
+    #[cfg(unix)]
+    cmd.process_group(0);
     let mut kind = cmd.spawn().map_err(|e| Fehlschlag::neu(format!("npm ließ sich nicht starten: {e}."), None))?;
     // Alles, was npm startet (cmd.exe, vite), hängt am Job und endet mit ihm.
     #[cfg(windows)]
@@ -1628,6 +1632,17 @@ async fn npm_lauf(ort: &BauOrt, builds: &Path, limit: Duration, zeiger: bool) ->
     let ergebnis = tokio::time::timeout(limit, kind.wait()).await;
     let abgelaufen = ergebnis.is_err();
     if abgelaufen {
+        // Die ganze Gruppe (npm, vite, esbuild), bevor das Kind abgeholt ist:
+        // Bis dahin hält es die Gruppennummer, die seine Prozessnummer ist.
+        // Grenzen: Endet der Server hart, laufen Enkel weiter; nach einem
+        // gelungenen Bau räumt nichts übrig gebliebene Enkel ab; Strg+C oder
+        // SIGTERM an den Server erreichen diese Gruppe nicht.
+        #[cfg(unix)]
+        if let Some(gruppe) = kind.id().and_then(|pid| i32::try_from(pid).ok())
+            && let Err(satz) = crate::unix::gruppe_beenden(gruppe)
+        {
+            tracing::warn!("Bau: {satz}");
+        }
         let _ = kind.start_kill();
         #[cfg(windows)]
         drop(_job);

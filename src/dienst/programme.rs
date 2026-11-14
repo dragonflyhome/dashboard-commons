@@ -37,6 +37,11 @@ pub enum Werkzeug {
     /// `/usr/bin/tmutil`, nur unter macOS: nimmt den Schlüsselordner von Time
     /// Machine aus (`passkey::geheim`). Unter Windows und Linux gibt es keinen Ort.
     Tmutil,
+    /// `/bin/sh`, nur unter macOS und Linux und nur in Tests (ein Kind mit
+    /// Enkel für die Prozessgruppe, ein Kind für die Priorität). Die Variante
+    /// gibt es nur im Testbau: Im Betrieb führt kein Weg zu einer Shell.
+    #[cfg(test)]
+    Sh,
 }
 
 impl Werkzeug {
@@ -53,6 +58,8 @@ impl Werkzeug {
             Werkzeug::Node => "node",
             Werkzeug::Explorer => "explorer.exe",
             Werkzeug::Tmutil => "tmutil",
+            #[cfg(test)]
+            Werkzeug::Sh => "sh",
         }
     }
 }
@@ -100,6 +107,8 @@ impl Orte {
             return match w {
                 Werkzeug::Git => vec![PathBuf::from("/usr/bin/git")],
                 Werkzeug::Tmutil if cfg!(target_os = "macos") => vec![PathBuf::from("/usr/bin/tmutil")],
+                #[cfg(test)]
+                Werkzeug::Sh => vec![PathBuf::from("/bin/sh")],
                 _ => Vec::new(),
             };
         }
@@ -125,6 +134,8 @@ impl Orte {
             Werkzeug::Node => vec![unter(&self.program_files, &["nodejs", "node.exe"])],
             Werkzeug::Explorer => vec![unter(&self.system_root, &["explorer.exe"])],
             Werkzeug::Tmutil => Vec::new(),
+            #[cfg(test)]
+            Werkzeug::Sh => Vec::new(),
         };
         liste.into_iter().flatten().filter(|p| p.is_absolute()).collect()
     }
@@ -236,6 +247,8 @@ pub fn befehl_niedrig(w: Werkzeug) -> Result<std::process::Command, String> {
         use std::os::windows::process::CommandExt;
         c.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
     }
+    #[cfg(unix)]
+    crate::unix::niedrige_prioritaet(&mut c);
     Ok(c)
 }
 
@@ -244,6 +257,8 @@ pub fn befehl_niedrig_async(w: Werkzeug) -> Result<tokio::process::Command, Stri
     let mut c = befehl_async(w)?;
     #[cfg(windows)]
     c.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
+    #[cfg(unix)]
+    crate::unix::niedrige_prioritaet_async(&mut c);
     Ok(c)
 }
 
@@ -251,6 +266,8 @@ pub fn befehl_niedrig_async(w: Werkzeug) -> Result<tokio::process::Command, Stri
 pub fn niedrig_async(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
+    #[cfg(unix)]
+    crate::unix::niedrige_prioritaet_async(cmd);
     cmd
 }
 
@@ -273,6 +290,14 @@ pub fn npm_befehl_async() -> Result<tokio::process::Command, String> {
 pub fn npm_cli(node: &Path) -> PathBuf {
     let ordner = node.parent().map(Path::to_path_buf).unwrap_or_default();
     ordner.join("node_modules").join("npm").join("bin").join("npm-cli.js")
+}
+
+/// Darf die Prozessgruppe `gruppe` beendet werden? Nie eine Nummer bis 1
+/// (0 hieße die eigene Gruppe, 1 gehört dem System, Negatives ist keine
+/// Gruppe) und nie die eigene Gruppe: Das träfe den Server selbst. Als reine
+/// Funktion, damit das Urteil überall prüfbar ist.
+pub fn gruppe_erlaubt(gruppe: i32, eigene_gruppe: i32) -> bool {
+    gruppe > 1 && gruppe != eigene_gruppe
 }
 
 /// Befehl für ein eigenes Programm mit bekanntem vollem Pfad (`current_exe`,
@@ -460,6 +485,27 @@ mod tests {
         assert_eq!(orte.kandidaten(Werkzeug::Tmutil), erwartet);
         assert_eq!(Orte::default().kandidaten(Werkzeug::Tmutil), erwartet);
         assert_eq!(Werkzeug::Tmutil.name(), "tmutil");
+    }
+
+    /// Welche Prozessgruppe beendet werden darf: nie eine Nummer bis 1, nie
+    /// die eigene Gruppe. Auf jeder Plattform geprüft.
+    #[test]
+    fn gruppe_erlaubt_nie_die_eigene_und_nie_bis_eins() {
+        for gruppe in [i32::MIN, -4711, -1, 0, 1] {
+            assert!(!gruppe_erlaubt(gruppe, 4711), "{gruppe}");
+        }
+        assert!(!gruppe_erlaubt(4711, 4711), "die eigene Gruppe");
+        for gruppe in [2, 4710, 4712, i32::MAX] {
+            assert!(gruppe_erlaubt(gruppe, 4711), "{gruppe}");
+        }
+    }
+
+    /// `sh` gibt es nur unter macOS und Linux, vom festen Ort; unter Windows keinen Kandidaten.
+    #[test]
+    fn sh_nur_ausserhalb_von_windows() {
+        let erwartet = if cfg!(windows) { Vec::new() } else { vec![PathBuf::from("/bin/sh")] };
+        assert_eq!(Orte::default().kandidaten(Werkzeug::Sh), erwartet);
+        assert_eq!(Werkzeug::Sh.name(), "sh");
     }
 
     /// Wächter gegen neue Stellen: Außerhalb dieser Datei entsteht kein
