@@ -3274,6 +3274,234 @@ fn beitraege_aus_forks_ohne_pruefer() {
     abgewiesen("scripts/ im Seitenzweig eines Beitrags", "der Merge übernimmt fremde Commits und ändert den Prüfpfad scripts/p.ps1", gemischt(false));
 }
 
+/// Ein fremder Commit ändert CHANGELOG.txt nicht (Groß/Klein egal, auch beim Umbenennen
+/// hinein und hinaus, auch als Merge im Fork): Die Zeilen stehen im Merge-Angebot, die
+/// Betreuer tragen sie ein. Gegenproben: dieselbe Änderung von Ranke, main mit einer
+/// Änderung am Changelog in den Fork geholt.
+#[test]
+fn beitraege_aus_forks_ohne_changelog() {
+    if !bereit() {
+        return;
+    }
+    let satz = "CHANGELOG.txt ändern nur die Betreuer; die Zeilen gehören ins Merge-Angebot";
+    for pfad in ["CHANGELOG.txt", "changelog.TXT"] {
+        abgewiesen(pfad, &format!("ein fremder Commit ändert {pfad}; {satz}"), |o| {
+            beitrag(o, "docs: Changelog", "Beitrag", NOREPLY, |o| o.datei(pfad, b"Unreleased\n"))
+        });
+        frei(pfad, |o| o.ueber_merge(|o| o.datei(pfad, b"Unreleased\n")));
+    }
+    abgewiesen("umbenannt hinein", &format!("ein fremder Commit ändert Changelog.txt; {satz}"), |o| {
+        beitrag(o, "docs: verschoben", "Beitrag", NOREPLY, |o| {
+            o.git(&["mv", "LIESMICH.txt", "Changelog.txt"]);
+        })
+    });
+    abgewiesen("umbenannt hinaus", &format!("ein fremder Commit ändert CHANGELOG.txt; {satz}"), |o| {
+        o.ueber_merge(|o| o.datei("CHANGELOG.txt", b"Unreleased\n"));
+        beitrag(o, "docs: verschoben", "Beitrag", NOREPLY, |o| {
+            o.git(&["mv", "CHANGELOG.txt", "src/alt.txt"]);
+        })
+    });
+    let mail = NOREPLY.replace('§', "");
+    // Der Fork holt main, auf dem die Betreuer den Changelog geändert haben.
+    let fork_merge = |boese: bool| {
+        let mail = mail.clone();
+        move |o: &Ort| {
+            o.git(&["checkout", "-q", "-b", "zweig"]);
+            o.datei("src/a.rs", b"// a\n");
+            o.commit("feat: a", &als_beitrag(&mail));
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["checkout", "-q", "-b", "pflege"]);
+            o.datei("CHANGELOG.txt", b"Unreleased\n");
+            o.commit("docs: Changelog", &[]);
+            o.git(&["checkout", "-q", "main"]);
+            o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "pflege", "-m", "chore(merge): pflege"]);
+            o.git(&["checkout", "-q", "zweig"]);
+            let wer = ["-c", "user.name=Beitrag", "-c", &format!("user.email={mail}")];
+            o.git(&[&wer[..], &["merge", "-q", "--no-ff", "--no-commit", "main"]].concat());
+            if boese {
+                o.datei("CHANGELOG.txt", b"Unreleased\n- im Merge geaendert\n");
+                o.git(&["add", "-A"]);
+            }
+            o.git(&[&wer[..], &["commit", "-q", "-m", "chore(merge): main"]].concat());
+            zusammenfuehren(o);
+        }
+    };
+    frei("Fork holt main mit Changelog", fork_merge(false));
+    // Der Fund am Fork-Merge selbst, nicht nur der allgemeine Satz am Merge der Linie.
+    abgewiesen("Merge im Fork ändert den Changelog", &format!("ein fremder Commit ändert CHANGELOG.txt; {satz}"), fork_merge(true));
+    // Eine eigene Änderung am Changelog im selben Seitenzweig wie ein Beitrag: Fund am Merge
+    // der Linie (die Zeilen kommen in einem eigenen Commit nach dem Merge).
+    abgewiesen("Changelog im Seitenzweig eines Beitrags", &format!("der Merge übernimmt fremde Commits und ändert CHANGELOG.txt; {satz}"), |o| {
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("CHANGELOG.txt", b"Unreleased\n");
+        o.commit("docs: Changelog", &[]);
+        o.datei("src/b.rs", b"// b\n");
+        o.commit("feat: b", &als_beitrag(&mail));
+        zusammenfuehren(o);
+    });
+}
+
+/// Der Bestand vor der Regel zu CHANGELOG.txt (ein übernommener Fork-Commit und sein
+/// Merge, schon veröffentlicht) ist ausgenommen: genau diese zwei vollen Kennungen, nur
+/// für CHANGELOG.txt. Ein Test-Repo kann keine Commits mit diesen Kennungen bauen. Darum
+/// liest der Test die Menge wörtlich aus dem Prüfer und setzt in einer Kopie die
+/// Kennungen einer nachgebauten Geschichte ein, die erst beim Bau entstehen. Der Prüfer
+/// selbst hat dafür keinen Schalter (keine Umgebungsvariable, kein Parameter), der ihn
+/// im Betrieb abschwächen könnte.
+#[test]
+fn changelog_bestand_vor_der_regel() {
+    if !bereit() {
+        return;
+    }
+    const BESTAND: [&str; 2] = ["8b10863c62ebf05c63bf12b25d918cb648c562ed", "84cd764e5be14be991b65b51176eaff18a48ccc4"];
+    let quelle = std::fs::read_to_string(skript()).unwrap();
+    // Ohne Sigil und ohne Groß/Klein, weil PowerShell auch $script:…, ${…} und andere Schreibung annimmt.
+    let zeilen: Vec<&str> = quelle.lines().filter(|z| z.to_lowercase().contains("changelogbestand")).collect();
+    let definition: Vec<&str> = zeilen.iter().copied().filter(|z| z.starts_with("$changelogBestand = ")).collect();
+    assert_eq!(definition.len(), 1, "genau eine Festlegung der Menge:\n{zeilen:#?}");
+    let kennungen: Vec<&str> = definition[0].split(|c: char| !c.is_ascii_hexdigit()).filter(|t| t.len() == 40).collect();
+    assert_eq!(kennungen, BESTAND, "die Menge enthält genau diese zwei Commits");
+    // Nur an den zwei Stellen der Regel zu CHANGELOG.txt (fremder Commit, Merge der Linie).
+    let nutzung = "$changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)";
+    assert_eq!(zeilen.iter().filter(|z| z.contains(nutzung)).count(), 2, "{zeilen:#?}");
+    assert_eq!(zeilen.len(), 3, "die Menge gilt für keine andere Regel:\n{zeilen:#?}");
+    for k in BESTAND {
+        assert_eq!(quelle.matches(k).count(), 1, "{k} steht nur in der Menge");
+    }
+    let satz = "CHANGELOG.txt ändern nur die Betreuer; die Zeilen gehören ins Merge-Angebot";
+    let mail = NOREPLY.replace('§', "");
+    // Ein Fork-Commit mit eigenen Changelog-Zeilen (optional auch an scripts/) und der Merge der Linie.
+    let bau = |datum: &str, pruefpfad: bool| {
+        let o = Ort::neu();
+        o.git(&["checkout", "-q", "-B", "zweig"]);
+        o.datei("CHANGELOG.txt", b"Unreleased\n\nBehoben\n- eigene Zeile des Beitrags\n");
+        if pruefpfad {
+            o.datei("scripts/p.ps1", b"# p\n");
+        }
+        let mut wer = als_beitrag(&mail).to_vec();
+        wer.extend([("GIT_AUTHOR_DATE", datum), ("GIT_COMMITTER_DATE", datum)]);
+        let fork = o.commit("fix: Beitrag mit Changelog", &wer);
+        zusammenfuehren(&o);
+        let merge = o.git(&["rev-parse", "main"]);
+        (o, fork, merge)
+    };
+    // Eine Kopie des Prüfers, in der die Menge genau diese zwei Kennungen enthält.
+    let kopie = |o: &Ort, fork: &str, merge: &str| {
+        let ordner = o.wurzel.join("kopie");
+        prueferdateien_kopieren(&ordner);
+        let p = ordner.join("Vor-Push.ps1");
+        std::fs::write(&p, quelle.replacen(BESTAND[0], fork, 1).replacen(BESTAND[1], merge, 1)).unwrap();
+        p
+    };
+    let args = ["-Baum", "main", "-Commits", "main", "-AufMain"];
+    let changelog = |text: &str| -> Vec<String> { text.lines().filter(|z| z.contains(satz)).map(str::to_string).collect() };
+    let (a, a_fork, a_merge) = bau("2001-01-02T00:00:00+0000", false);
+    // Gegenprobe: Ohne Eintrag in der Menge sind beide ein Fund.
+    let (code, text) = a.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let funde = changelog(&text);
+    assert_eq!(funde.len(), 2, "{text}");
+    assert!(funde.iter().any(|z| z.contains(&format!("Commit {}", &a_fork[..10])) && z.contains("ein fremder Commit ändert CHANGELOG.txt")), "{text}");
+    assert!(funde.iter().any(|z| z.contains(&format!("Commit {}", &a_merge[..10])) && z.contains("der Merge übernimmt fremde Commits")), "{text}");
+    // In der Menge: frei.
+    let pruefer_a = kopie(&a, &a_fork, &a_merge);
+    let (code, text) = a.lauf_mit(&pruefer_a, &a.cache(), &args, None);
+    assert_eq!(code, 0, "Bestand bleibt frei:\n{text}");
+    // Derselbe Inhalt mit anderer Kennung (anderes Datum): Fund, auch mit der Menge von oben.
+    let (b, b_fork, b_merge) = bau("2001-01-03T00:00:00+0000", false);
+    assert_ne!(a_fork, b_fork);
+    assert_eq!(a.git(&["rev-parse", "main^{tree}"]), b.git(&["rev-parse", "main^{tree}"]), "derselbe Inhalt");
+    let (code, text) = b.lauf_mit(&pruefer_a, &b.cache(), &args, None);
+    assert_eq!(code, 1, "{text}");
+    let funde = changelog(&text);
+    assert_eq!(funde.len(), 2, "{text}");
+    assert!(
+        funde.iter().any(|z| z.contains(&format!("Commit {}", &b_fork[..10]))) && funde.iter().any(|z| z.contains(&format!("Commit {}", &b_merge[..10]))),
+        "{text}"
+    );
+    // Nur für CHANGELOG.txt: Ein Bestands-Commit, der auch scripts/ ändert, bleibt dort ein Fund.
+    let (c, c_fork, c_merge) = bau("2001-01-04T00:00:00+0000", true);
+    let pruefer_c = kopie(&c, &c_fork, &c_merge);
+    let (code, text) = c.lauf_mit(&pruefer_c, &c.cache(), &args, None);
+    assert_eq!(code, 1, "{text}");
+    assert!(changelog(&text).is_empty(), "{text}");
+    assert!(text.contains(&format!("Commit {}", &c_fork[..10])) && text.contains("ein fremder Commit ändert den Prüfpfad scripts/p.ps1"), "{text}");
+    assert!(text.contains("der Merge übernimmt fremde Commits und ändert den Prüfpfad scripts/p.ps1"), "{text}");
+}
+
+/// Ein Fund aus einem älteren Commit nennt am Ende der Zeile den ältesten Commit des
+/// Bereichs, der dieses Paar (Pfad, Blob) einführt, mit 10 Zeichen; dasselbe Paar in einem
+/// späteren Commit ergibt keinen zweiten Fund. Ein Fund aus dem Baum (Endstand) bleibt
+/// ohne Kennung.
+#[test]
+fn fund_im_verlauf_nennt_commit() {
+    if !bereit() {
+        return;
+    }
+    let geheim: &[u8] = b"// geheim\xc2\xa7projekt\n";
+    let o = Ort::neu();
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    o.datei("src/kurz.rs", geheim);
+    let eins = o.commit("feat: kurz da", &[]);
+    std::fs::remove_file(o.repo().join("src/kurz.rs")).unwrap();
+    o.commit("fix: weg", &[]);
+    o.datei("src/kurz.rs", geheim);
+    o.commit("feat: wieder da", &[]);
+    std::fs::remove_file(o.repo().join("src/kurz.rs")).unwrap();
+    o.commit("fix: wieder weg", &[]);
+    zusammenfuehren(&o);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let zeilen: Vec<&str> = text.lines().map(str::trim_end).filter(|z| z.contains("src/kurz.rs")).collect();
+    assert_eq!(zeilen.len(), 1, "ein Fund je Paar:\n{text}");
+    assert!(zeilen[0].ends_with(&format!(" (Commit {})", &eins[..10])), "Kennung von Commit 1:\n{text}");
+    // Zwei Zweige führen dasselbe Paar unabhängig ein, der Seitenzweig früher (nach Datum);
+    // nach dem Merge ist es wieder weg. Genannt wird der ältere (--topo-order nennte hier den jüngeren).
+    let datum = |d: &'static str| [("GIT_AUTHOR_DATE", d), ("GIT_COMMITTER_DATE", d)];
+    let o = Ort::neu();
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    o.git(&["checkout", "-q", "-b", "seite"]);
+    o.datei("src/doppelt.rs", geheim);
+    let alt = o.commit("feat: doppelt auf der Seite", &datum("2001-01-02T00:00:00+0000"));
+    o.git(&["checkout", "-q", "zweig"]);
+    o.datei("src/doppelt.rs", geheim);
+    let jung = o.commit("feat: doppelt im Zweig", &datum("2001-01-03T00:00:00+0000"));
+    o.git(&["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me", "merge", "-q", "--no-ff", "seite", "-m", "chore(merge): seite"]);
+    std::fs::remove_file(o.repo().join("src/doppelt.rs")).unwrap();
+    o.commit("fix: doppelt weg", &[]);
+    zusammenfuehren(&o);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let zeilen: Vec<&str> = text.lines().map(str::trim_end).filter(|z| z.contains("src/doppelt.rs")).collect();
+    assert_eq!(zeilen.len(), 1, "ein Fund je Paar:\n{text}");
+    assert!(zeilen[0].ends_with(&format!(" (Commit {})", &alt[..10])), "Kennung des älteren Commits {alt}, nicht {jung}:\n{text}");
+    // Endstand: Der Fund steht im Baum und trägt keine Kennung.
+    let o = Ort::neu();
+    o.ueber_merge(|o| o.datei("src/bleibt.rs", geheim));
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let zeilen: Vec<&str> = text.lines().filter(|z| z.contains("src/bleibt.rs")).collect();
+    assert!(!zeilen.is_empty() && zeilen.iter().all(|z| !z.contains("(Commit ")), "Fund im Baum ohne Kennung:\n{text}");
+    // Derselbe Blob am selben Pfad erst als Datei, dann als Verknüpfung: Der Fund zur
+    // Verknüpfung nennt den Commit der Verknüpfung (das Paar zählt mit seinem Modus).
+    let o = Ort::neu();
+    o.git(&["checkout", "-q", "-B", "zweig"]);
+    o.datei("src/v.rs", b"// v\n");
+    o.commit("feat: v als Datei", &[]);
+    let blob = o.git(&["rev-parse", "HEAD:src/v.rs"]);
+    o.git(&["update-index", "--cacheinfo", &format!("120000,{blob},src/v.rs")]);
+    commit_wie_index(&o, "test: v als Verknüpfung");
+    let verknuepfung = o.git(&["rev-parse", "HEAD"]);
+    o.git(&["rm", "-q", "--cached", "src/v.rs"]);
+    commit_wie_index(&o, "test: v weg");
+    zusammenfuehren(&o);
+    let (code, text) = o.pruefen();
+    assert_eq!(code, 1, "{text}");
+    let zeilen: Vec<&str> = text.lines().map(str::trim_end).filter(|z| z.contains("src/v.rs") && z.contains("Verknüpfung (Symlink)")).collect();
+    assert_eq!(zeilen.len(), 1, "ein Fund zur Verknüpfung:\n{text}");
+    assert!(zeilen[0].ends_with(&format!(" (Commit {})", &verknuepfung[..10])), "Kennung des Commits mit der Verknüpfung:\n{text}");
+}
+
 /// Hook, Hochladen (-Commits fern..main), -Pruefen und -Bundle bestimmen die Linie
 /// gleich: ein Beitrag im Seitenzweig geht überall durch, derselbe Beitrag als
 /// Fast-Forward auf main (auf der Linie) nirgends.
@@ -3940,6 +4168,16 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         assert!(leitfaden.contains(&satz), "der Leitfaden nennt „{satz}“ nicht mehr");
     }
     assert!(!leitfaden.contains("<ref>:"), "der Leitfaden holt mit Ziel-Ref (überschriebe eine lokale Ref)");
+    // Die Regeln für Mitwirkende sagen, was der Prüfer durchsetzt: jeder Commit zählt, CHANGELOG.txt nur von den Betreuern.
+    // Mit den ** der Regel selbst: Der Querverweis in Ablauf Punkt 3 nennt den Satz ohne sie.
+    let regeln = include_str!("../CONTRIBUTING.md");
+    for satz in ["liest jeden Commit", "**CHANGELOG.txt ändern nur die Betreuer.**", "neuen Zweig von `main` mit dem bereinigten Stand"] {
+        assert!(regeln.contains(satz), "CONTRIBUTING.md nennt „{satz}“ nicht mehr");
+    }
+    let committen = include_str!("../docs/anleitung/contributing-05-5-committen.toml");
+    assert!(committen.contains("Ein Beitrag aus einem Fork ändert CHANGELOG.txt nicht"), "Abschnitt 5 nennt die Changelog-Regel für Beiträge nicht mehr");
+    assert!(leitfaden.contains("hilft kein weiterer Commit"), "der Leitfaden sagt nicht mehr, dass nach einem Fund im Commit kein weiterer Commit hilft");
+    assert!(leitfaden.contains("neuen Zweig von main mit dem bereinigten Stand"), "der Leitfaden nennt den neuen Zweig nach einem Fund im Commit nicht mehr");
     // Im Projekt-Repo mit dessen Adresse: ohne -RemoteUrl prüfte der Prüfer als Basis-Repo.
     let projekt =
         format!("scripts/Vor-Push.ps1 -Repo <projekt-repo> -RemoteUrl <adresse des projekt-repos, wie in repos.toml> -Art Projekt {}", pruefen.join(" "));

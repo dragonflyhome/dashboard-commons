@@ -14,6 +14,32 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Der Prüfer nennt zu jedem Fund aus einem älteren Commit am Ende der
+  Zeile dessen Kennung mit 10 Zeichen, als „(Commit <kennung>)“: den
+  ältesten Commit im geprüften Bereich (nach Datum; ein Vorfahre
+  zählt immer als älter), der diesen Blob an diesem Pfad mit diesem Modus
+  einführt. Derselbe Blob am selben Pfad in mehreren Commits bleibt ein
+  Fund. Funde aus dem Endstand tragen keine Kennung. Die Zuordnung kommt
+  aus dem schon gelesenen git log, ohne weiteren git-Aufruf je Fund.
+
+Geändert
+- Ein fremder Commit (Autor oder Committer nicht die Betreuer), der
+  CHANGELOG.txt ändert, ist ein Fund des Prüfers wie bei den Prüfpfaden:
+  in jeder Groß- und Kleinschreibung, beim Umbenennen hinein und hinaus
+  und auch als Merge-Commit im Fork. Die Betreuer ändern CHANGELOG.txt
+  weiter selbst. Ausgenommen sind nur die Beiträge vor dieser Regel
+  (8b10863 und sein Merge 84cd764), als feste Menge über die volle
+  Kennung, damit ein Lauf über die ganze Geschichte grün bleibt.
+- Leitfaden für Mitwirkende, Zielbild und Anleitung (Abschnitt 5, 14 und
+  15, Teil 5): Bei einem Beitrag aus einem Fork stehen die Zeilen für den
+  Changelog im Merge-Angebot, die Betreuer
+  tragen sie nach dem Merge in einem eigenen Commit ein. Das Formular für
+  Merge-Angebote hat dafür das Feld „Zeilen für den Changelog“.
+- Leitfaden für Mitwirkende und Anleitung (Abschnitt 15, Teil 5): Das
+  Werkzeug liest jeden Commit; weist es einen Inhalt in einem schon
+  angebotenen Zweig ab, kommt die Nachbesserung als neuer Zweig von main.
+
 Behoben
 - Schwärzen auch für Pfade in den Formen von macOS und Linux. Im Server
   (src/datenschutz.rs): /Users/<name> und /home/<name> (auch hinter
