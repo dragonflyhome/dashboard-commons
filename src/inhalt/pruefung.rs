@@ -777,8 +777,28 @@ pub fn ist_http_adresse(u: &str) -> bool {
         && rechner.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']' | '@' | '%'))
 }
 
+/// Ordner direkt unter der Wurzel, die unter macOS und Linux ein lokaler Ort
+/// sind (Profile und System). Dieselbe Liste wie `POSIX_WURZELN` in
+/// `web/src/lib/pfade.ts`; der Test `lokale_wurzeln_wie_in_der_oberflaeche`
+/// hält beide gleich.
+pub const LOKALE_WURZELN: [&str; 17] =
+    ["Users", "home", "root", "Volumes", "System", "Library", "Applications", "private", "var", "tmp", "opt", "usr", "etc", "mnt", "media", "run", "srv"];
+
+/// Ein Pfad in der Form von macOS und Linux unter einer Profil- oder
+/// Systemwurzel (`/Users/<name>/Projekte`, `/Volumes/<x>`, `/usr/bin`)?
+/// Groß und Klein zählen, wie in der Oberfläche (`istLokalerPfad`).
+pub fn ist_lokaler_posix_pfad(u: &str) -> bool {
+    let Some(rest) = u.strip_prefix('/') else {
+        return false;
+    };
+    let erste = rest.split('/').next().unwrap_or("");
+    LOKALE_WURZELN.contains(&erste)
+}
+
 /// Was in `[[links]]` als `url` stehen darf: eine Web-Adresse, `mailto:`,
-/// `file:///…`, ein Laufwerkspfad (`C:/…`) oder ein Weg im Dashboard (`/…`).
+/// `file:///…`, ein lokaler Pfad (mit Laufwerk `C:/…` oder unter einer Wurzel
+/// von macOS und Linux, [`ist_lokaler_posix_pfad`]) oder ein Weg im Dashboard
+/// (`/…`). Ein lokaler Pfad darf Leerzeichen tragen, ein Weg im Dashboard nicht.
 pub fn ist_link_adresse(u: &str) -> bool {
     if u.trim().is_empty() || u.trim() != u || u.chars().any(char::is_control) {
         return false;
@@ -794,6 +814,9 @@ pub fn ist_link_adresse(u: &str) -> bool {
     }
     let b = u.as_bytes();
     if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'/' || b[2] == b'\\') {
+        return true;
+    }
+    if ist_lokaler_posix_pfad(u) {
         return true;
     }
     u.starts_with('/') && !u.starts_with("//") && !u.contains(char::is_whitespace)
@@ -1888,6 +1911,51 @@ mod tests {
         assert!(ist_http_adresse("http://127.0.0.1:9/"));
         assert!(!ist_http_adresse("127.0.0.1:9"));
         assert!(!ist_http_adresse("C:/x"));
+    }
+
+    /// Ein lokaler Pfad unter einer Wurzel von macOS oder Linux ist eine
+    /// Link-Adresse, auch mit Leerzeichen; ein Weg im Dashboard mit
+    /// Leerzeichen bleibt abgewiesen. Beim Zeigen wird das Profil verborgen.
+    #[test]
+    fn lokale_pfade_ohne_laufwerk() {
+        for gut in [
+            "/Users/beispiel/Projekte/x",
+            "/Users/beispiel zwei/Meine Projekte",
+            "/home/beispiel/dev",
+            "/Volumes/Beispiel Platte/Ablage",
+            "/Applications",
+            "/usr/local/bin",
+            "/tmp",
+        ] {
+            assert!(ist_link_adresse(gut) && ist_lokaler_posix_pfad(gut), "{gut}");
+        }
+        // Wege im Dashboard: gültig ohne Leerzeichen, aber nie ein lokaler Pfad.
+        for weg in ["/projects/x", "/pc", "/anstehend", "/Userspace/x", "/users/beispiel", "/homepage"] {
+            assert!(ist_link_adresse(weg) && !ist_lokaler_posix_pfad(weg), "{weg}");
+        }
+        for falsch in ["/projects/mein projekt", "/users/beispiel zwei", "//Users/beispiel", "Users/beispiel", " /Users/beispiel", "/Users/beispiel\tzwei"] {
+            assert!(!ist_link_adresse(falsch), "{falsch}");
+        }
+        // Ein Name mit Leerzeichen wird beim Zeigen ganz ersetzt, wenn danach ein Trenner kommt.
+        let b = crate::datenschutz::Bekannt::default();
+        assert_eq!(crate::datenschutz::verbergen_mit("/Users/beispiel zwei/Meine Projekte", &b), "%USERPROFILE%/Meine Projekte");
+    }
+
+    /// Die Wurzeln hier und `POSIX_WURZELN` in `web/src/lib/pfade.ts` sind
+    /// dieselbe Menge: Server und Oberfläche urteilen gleich, was ein lokaler
+    /// Pfad ist.
+    #[test]
+    fn lokale_wurzeln_wie_in_der_oberflaeche() {
+        let quelle = include_str!("../../web/src/lib/pfade.ts");
+        let anfang = quelle.find("const POSIX_WURZELN = [").expect("POSIX_WURZELN in pfade.ts");
+        let liste = &quelle[anfang..];
+        let liste = &liste[liste.find('[').unwrap() + 1..liste.find("];").expect("Ende der Liste")];
+        let mut oberflaeche: Vec<&str> = liste.split(',').map(|t| t.trim().trim_matches('\'')).filter(|t| !t.is_empty()).collect();
+        assert!(oberflaeche.iter().all(|w| w.chars().all(|c| c.is_ascii_alphabetic())), "{oberflaeche:?}");
+        let mut server = LOKALE_WURZELN.to_vec();
+        oberflaeche.sort_unstable();
+        server.sort_unstable();
+        assert_eq!(server, oberflaeche);
     }
 
     /// Etappe A1: schwerpunkte.toml der Beispiele: keine Fehler; ein
