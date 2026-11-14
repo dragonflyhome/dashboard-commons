@@ -1132,6 +1132,7 @@ async fn anmeldung_wer_meldet_das_paket() {
 }
 
 /// Die Anfrage kommt über die Verbindung `v` (wie `into_make_service_with_connect_info`).
+#[cfg(windows)]
 fn ueber(mut req: Request<Body>, v: crate::anmeldung::verbindung::Verbindung) -> Request<Body> {
     req.extensions_mut().insert(axum::extract::ConnectInfo(v));
     req

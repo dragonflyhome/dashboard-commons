@@ -6,7 +6,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, FixedOffset, Local, TimeZone, Timelike};
+#[cfg(windows)]
+use chrono::TimeZone;
+use chrono::{DateTime, FixedOffset, Local, Timelike};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{info, warn};

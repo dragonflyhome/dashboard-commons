@@ -5,8 +5,11 @@
 //! Lesen), nicht für die Schritte der Anmeldung (SSPI, lokal); jeder Fehler ist
 //! ein Satz, den der Herzschlag als „durchlassen“ nimmt.
 
+#[cfg(windows)]
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
+#[cfg(windows)]
+use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -18,6 +21,7 @@ pub const FRIST: Duration = Duration::from_secs(5);
 /// Standard: das Dashboard auf dem eigenen Rechner.
 pub const SERVER: &str = "127.0.0.1:8787";
 /// Höchstens so viele Bytes Antwort (Kopf und Körper).
+#[cfg(windows)]
 const ANTWORT_HOECHSTENS: usize = 256 * 1024;
 
 /// Form einer Sitzungskennung (wie der Dienst sie annimmt).
@@ -102,18 +106,21 @@ pub fn kuerzen(s: &str, max: usize) -> String {
     format!("{}…", &rein[..ende])
 }
 
+#[cfg(windows)]
 fn rest(ende: Instant) -> Result<Duration, String> {
     let r = ende.saturating_duration_since(Instant::now());
     if r.is_zero() { Err("Frist abgelaufen".into()) } else { Ok(r) }
 }
 
 /// Eine Antwort: Code, Kopfzeilen (Name klein), Körper.
+#[cfg(windows)]
 struct Antwort {
     code: u16,
     kopf: Vec<(String, String)>,
     koerper: Vec<u8>,
 }
 
+#[cfg(windows)]
 impl Antwort {
     fn kopf(&self, name: &str) -> Option<&str> {
         self.kopf.iter().find(|(n, _)| n == name).map(|(_, w)| w.as_str())
@@ -155,6 +162,7 @@ fn holen(_ziel: SocketAddr, _host: &str, _pfad: &str, _ende: Instant) -> Result<
 
 /// Liest eine Antwort mit `Content-Length` bis zur Frist.
 // shortcut: kein Transfer-Encoding chunked (der Dienst schickt JSON mit Länge); aufrüsten, wenn sich das ändert.
+#[cfg(windows)]
 fn lesen(s: &mut TcpStream, ende: Instant) -> Result<Antwort, String> {
     let mut puffer = Vec::new();
     let mut stueck = [0u8; 8192];
@@ -180,6 +188,7 @@ fn lesen(s: &mut TcpStream, ende: Instant) -> Result<Antwort, String> {
     Ok(Antwort { code, kopf, koerper })
 }
 
+#[cfg(windows)]
 fn mehr(s: &mut TcpStream, puffer: &mut Vec<u8>, stueck: &mut [u8], ende: Instant) -> Result<(), String> {
     s.set_read_timeout(Some(rest(ende)?)).map_err(|e| e.to_string())?;
     let n = s.read(stueck).map_err(|e| format!("lesen: {e}"))?;

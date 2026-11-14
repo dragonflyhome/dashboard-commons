@@ -133,6 +133,7 @@ pub async fn offen(State(state): State<AppState>, Path(sitzung): Path<String>) -
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
     use std::time::Duration;
 
     use axum::body::Body;

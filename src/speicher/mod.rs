@@ -18,10 +18,15 @@ pub mod aufgaben;
 pub mod export;
 pub mod meldungen;
 pub mod migration;
+/// Mischform für die Links außerhalb von Windows; unter Windows nur in Tests.
+#[cfg(any(not(windows), test))]
+pub mod mischform;
 pub mod passkeys;
 pub mod pc_ereignisse;
 pub mod pc_verlauf;
 pub mod projekte;
+#[cfg(all(target_os = "macos", not(test)))]
+mod schluesselbund;
 pub mod schritte;
 pub mod sicherung;
 pub mod tabellen;

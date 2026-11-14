@@ -79,7 +79,18 @@ fn dashboard_mit_arbeit() -> (String, JoinHandle<String>) {
     let l = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let server = l.local_addr().unwrap().to_string();
     let h = std::thread::spawn(move || {
-        let (mut s, _) = l.accept().unwrap();
+        // Mit Frist: Kommt keine Verbindung (außerhalb von Windows baut der
+        // Herzschlag noch keine auf), scheitert der Test, statt für immer zu warten.
+        l.set_nonblocking(true).unwrap();
+        let ende = std::time::Instant::now() + Duration::from_secs(20);
+        let mut s = loop {
+            match l.accept() {
+                Ok((s, _)) => break s,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < ende => std::thread::sleep(Duration::from_millis(20)),
+                Err(e) => panic!("keine Verbindung zum Test-Dashboard innerhalb der Frist: {e}"),
+            }
+        };
+        s.set_nonblocking(false).unwrap();
         s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let mut puffer = [0u8; 16384];
         let n = s.read(&mut puffer).unwrap();
