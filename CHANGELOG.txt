@@ -1,4 +1,4 @@
-﻿CHANGELOG
+CHANGELOG
 =========
 
 Alle nennenswerten Änderungen an diesem Repo stehen in dieser Datei. Das
@@ -24,9 +24,6 @@ Hinzugefügt
   auch in JSON nicht (Domänen wie example.com\/home bleiben frei).
 - Vor-Push.ps1 -Beitrag <kennung>: Jeder Commit eines Beitrags mit dem
   Namen oder der Adresse der Betreuer als Autor oder Committer ist ein Fund.
-- Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
-  hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
-  Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.
 - Beiträge aus Forks: Der Prüfer nimmt Commits außerhalb der
   First-Parent-Linie von main (Seitenzweige, Beiträge aus Forks) mit fremdem
   Autor und Committer an, wenn die Adresse eine GitHub-noreply-Adresse ist
@@ -69,7 +66,21 @@ Geändert
 - Vor-Push.ps1, Hochladen.ps1 und Freigeben.ps1 starten git über den vollen
   Pfad aus PATH. Der Prüfer startete git über den Namen, und Windows sucht
   dabei zuerst im aktuellen Ordner, der beim Hook die Wurzel des geprüften
+  Arbeitsbaums ist: Eine git.exe aus einem Beitrag wäre dort gelaufen. Liegt
+  das gefundene git im geprüften Repo oder im aktuellen Ordner, bricht der
+  Prüfer mit Exit 2 ab.
 
+0.5.0 - 2026-11-14
+------------------
+
+Hinzugefügt
+- Mac-Probe in der Freigabe: cargo check der Bibliothek für
+  aarch64-apple-darwin, nur Ergebnis, nie ein Abbruch (scripts/Mac-Probe.ps1).
+- Gemeinsamer Baustein scripts/Laufzeit.ps1: Laufzeit und Auslastung der
+  Rechenkerne am Ende eines Skripts.
+- Anleitung: Abschnitt „Was nur unter Windows läuft“ mit dem, was an Windows
+  hängt (Dienst, Anmeldung, Verschlüsselung, Sicherheit, Bote, PC-Seite,
+  Schwärzen, Orte, Chat-Wege, Skripte) und was ohne Windows geht.
 
 0.4.0 - 2026-11-13
 ------------------
