@@ -1303,8 +1303,8 @@ function ChangelogStand([string]$c) {
 # merge-tree schreibt den Ergebnisbaum als lose Objekte ins geprüfte Repo (gc räumt sie weg).
 function ChangelogVerworfen([string]$c, [string[]]$eltern) {
     if ($eltern.Count -ne 2) { return ChangelogAbweichend $c $eltern $false }
-    $baum = ((Git @('-c', 'merge.renames=true', '-c', $ohneAttribute, 'merge-tree', '--write-tree', '--no-messages', '--allow-unrelated-histories', $eltern[0], $eltern[1]) -EinsOhneMeldung) -split "`n")[0]
-    return (ChangelogStand $c) -cne (ChangelogStand $baum)
+    $sollBaum = ((Git @('-c', 'merge.renames=true', '-c', $ohneAttribute, 'merge-tree', '--write-tree', '--no-messages', '--allow-unrelated-histories', $eltern[0], $eltern[1]) -EinsOhneMeldung) -split "`n")[0]
+    return (ChangelogStand $c) -cne (ChangelogStand $sollBaum)
 }
 
 # Die Zeilen von CHANGELOG.txt (alle Schreibweisen in der Wurzel) in einem Commit oder Baum.
