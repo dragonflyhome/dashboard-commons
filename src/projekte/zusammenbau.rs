@@ -201,9 +201,6 @@ pub fn erwartete_lib(vorlage: &str, liste: &Liste) -> String {
 /// Ist `p` eine Verknüpfung (Symlink, Junction, anderer Reparse-Punkt)?
 fn ist_reparse(p: &Path) -> bool {
     let Ok(m) = std::fs::symlink_metadata(p) else { return false };
-    if m.file_type().is_symlink() {
-        return true;
-    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -212,7 +209,7 @@ fn ist_reparse(p: &Path) -> bool {
             return true;
         }
     }
-    false
+    m.file_type().is_symlink()
 }
 
 /// Alle Dateien unter `ordner` (relativ, mit `/`), ohne einer Verknüpfung zu
