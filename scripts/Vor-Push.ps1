@@ -50,11 +50,16 @@
                  Commits hereinholt, ändert gegenüber seinem ersten
                  Elternteil keinen Prüfpfad: Änderungen am Prüfer übernimmt der
                  Betreuer selbst, in einem eigenen Merge ohne fremde Commits.
+                 Ebenso CHANGELOG.txt in der Wurzel (Groß/Klein egal): Die
+                 Zeilen stehen im Merge-Angebot, die Betreuer tragen sie ein.
                  Grenze: Die Regel hängt an der Angabe von Autor und
                  Committer, die niemanden nachweist; ein Fork-Commit, der die
                  feste Angabe fälscht, gilt als eigener; dagegen steht
                  -Beitrag im Probelauf vor dem Merge (Anleitung Abschnitt
-                 15). Mit -AufMain und einem Bereich
+                 15). Beiträge vor der Regel zu CHANGELOG.txt: 8b10863 und
+                 sein Merge 84cd764; nur für diese Regel ausgenommen, als
+                 feste Menge über die volle Kennung, nicht über ein Datum.
+                 Mit -AufMain und einem Bereich
                  a..b setzt die Linie a fort (erster Elternteil des ältesten
                  neuen Linien-Commits ist a). Für alle Commits: eine erste Zeile nicht
                  nach Conventional Commits (wie bei Nachricht, auch für
@@ -112,7 +117,11 @@
                  Bereichs hinzufügt oder ändert (git log --raw -m --root
                  --no-renames alt..neu), nicht nur für die Spitze; beim ersten
                  Push mit neuer Wurzel (alt = 0000…) und bei -Commits ohne
-                 „..“ für die ganze erreichbare Geschichte.
+                 „..“ für die ganze erreichbare Geschichte. Ein Fund daraus
+                 endet mit „(Commit <10 Zeichen>)“: dem ältesten Commit des
+                 Bereichs, der dieses Paar einführt (einmal je Paar, aus
+                 demselben git log, ohne weiteren git-Aufruf). Funde aus dem
+                 Baum selbst (Endstand) tragen keine Kennung.
       Kodierung  jede Git-Ausgabe (Pfade, Baum-Einträge,
                  Commit-Meldungen, Autor und Committer, Tag-Texte) und jede
                  Textdatei, die kein gültiges UTF-8 ist (UTF-8 mit BOM geht;
@@ -1083,9 +1092,11 @@ function BaumPruefen([string]$stand) {
 # Pfad, Art, Binärdatei (Positivliste, Metadaten, Struktur) oder Text.
 function EintraegePruefen($eintraege) {
     foreach ($e in $eintraege) {
+        $n = $script:funde.Count
         PfadPruefen $e.Pfad
         if ($e.Art -ne 'blob') { Fund $e.Pfad 0 'kein normaler Dateieintrag (Submodul?)' }
         if ($e.Modus -eq '120000') { Fund $e.Pfad 0 'Verknüpfung (Symlink)' }
+        Kennung $e $n
     }
     # Cache: Ein Treffer (genau dieser Blob an genau diesem Pfad) überspringt nur die Inhaltsprüfung; ohne -MitCache ist die Menge leer.
     $offen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -1098,7 +1109,7 @@ function EintraegePruefen($eintraege) {
             $erlaubt = $false
             foreach ($r in $binaerErlaubt) { if ($r.IsMatch($e.Pfad)) { $erlaubt = $true; break } }
             # Die Positivliste der Binärdateien gilt nur im Basis-Repo, die Metadaten überall.
-            if (-not $erlaubt -and $script:istBasis) { Fund $e.Pfad 0 'Binärdatei außerhalb der Positivliste'; continue }
+            if (-not $erlaubt -and $script:istBasis) { Fund $e.Pfad 0 'Binärdatei außerhalb der Positivliste'; Kennung $e ($script:funde.Count - 1); continue }
         }
         $schluessel = "$($e.Sha)`t$($e.Pfad)"
         if ($script:sauber.Contains($schluessel)) { $script:ausCache++; continue }
@@ -1113,7 +1124,14 @@ function EintraegePruefen($eintraege) {
         $script:inhaltGeprueft++
         # Gemerkt wird nur ein Blob ohne Fund; ein Pfad mit Zeilenumbruch passte nicht in eine Zeile der Cache-Datei.
         if ($script:cacheDatei -and $script:funde.Count -eq $vorher -and $e.Pfad.IndexOfAny([char[]]"`r`n") -lt 0) { [void]$script:neuSauber.Add($schluessel) }
+        Kennung $e $vorher
     }
+}
+
+# Funde ab Index $ab gehören zu Eintrag $e: Aus dem Verlauf (VerlaufPruefen setzt Commit) enden sie mit dessen Kennung.
+function Kennung($e, [int]$ab) {
+    if (-not $e.Commit) { return }
+    for ($i = $ab; $i -lt $script:funde.Count; $i++) { $script:funde[$i] += " (Commit $($e.Commit))" }
 }
 
 # Alle Einträge ALLER neuen Commits eines Bereichs alt..neu: Was in einem Zwischenstand stand und an der Spitze
@@ -1131,13 +1149,19 @@ function VerlaufPruefen([string]$bereich) {
         $teile = $bereich -split '\.\.', 2
         if (-not $teile[0] -or $teile[0] -eq $NULL_SHA) { $ziel = $teile[1] }
     }
-    $ausgabe = Git @('log', '--raw', '-m', '--root', '--no-renames', '--no-abbrev', '--format=', '-z', $ziel)
+    # Je Commit „\x01<sha>“ vor seinen Einträgen; --date-order: Kinder vor Eltern, sonst nach Datum (--topo-order
+    # nennte bei zwei Zweigen mit demselben Paar den jüngeren); der zuletzt gesehene Commit eines Paars ist der älteste.
+    $ausgabe = Git @('log', '--raw', '-m', '--root', '--no-renames', '--no-abbrev', '--date-order', '--format=%x01%H', '-z', $ziel)
     $stuecke = $ausgabe -split "`0"
     $gesehen = New-Object 'System.Collections.Generic.HashSet[string]'
     $eintraege = New-Object System.Collections.Generic.List[object]
+    # Pfad, Blob und Modus → ältester Commit, der sie einführt (für die Kennung im Fund; Schlüssel wie bei gesehen).
+    $eingefuehrt = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    $verlaufCommit = ''
     for ($k = 0; $k -lt $stuecke.Count - 1; $k++) {
         # Je Eintrag „:altmodus neumodus altsha neusha status“, dann der Pfad.
         $kopf = $stuecke[$k].Trim()
+        if ($kopf.StartsWith([char]1)) { $verlaufCommit = $kopf.Substring(1, 10); continue }
         if (-not $kopf.StartsWith(':')) { continue }
         $pfad = $stuecke[$k + 1]
         $k++
@@ -1146,10 +1170,12 @@ function VerlaufPruefen([string]$bereich) {
         $modus = $f[1]
         $sha = $f[3]
         if ($script:imBaum.Contains("$pfad`0$sha")) { continue }
+        $eingefuehrt["$pfad`0$sha`0$modus"] = $verlaufCommit
         if (-not $gesehen.Add("$pfad`0$sha`0$modus")) { continue }
         $eintragsArt = if ($modus -eq '160000') { 'commit' } else { 'blob' }
-        $eintraege.Add([pscustomobject]@{ Modus = $modus; Art = $eintragsArt; Sha = $sha; Pfad = $pfad })
+        $eintraege.Add([pscustomobject]@{ Modus = $modus; Art = $eintragsArt; Sha = $sha; Pfad = $pfad; Commit = $null })
     }
+    foreach ($e in $eintraege) { $e.Commit = $eingefuehrt["$($e.Pfad)`0$($e.Sha)`0$($e.Modus)"] }
     if ($eintraege.Count -gt 0) { EintraegePruefen $eintraege.ToArray() }
     return $eintraege.Count
 }
@@ -1182,6 +1208,13 @@ $beitragsMail = Rx ('^(?:(?:[0-9]+\+)?[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}@u
 # Grenze: Fremd heißt hier nur „Angabe nicht genau Ranke“. Ein Fork-Commit mit gefälschter
 # Ranke-Angabe ist für den Prüfer ein eigener; im Probelauf meldet ihn -Beitrag.
 $pruefPfad = Rx '^(?:scripts/|\.cargo/|\.github/|tests/vor_push\.rs$|KONTAKT-PGP\.asc$)|(?:^|/)\.(?:gitattributes|npmrc)$|(?:^|/)[^/~]{1,6}~[0-9]+(?:\.[^/]{0,3})?(?:/|$)'
+# Wie ein Prüfpfad, mit eigenem Satz: Die Zeilen für den Changelog stehen im Merge-Angebot,
+# die Betreuer tragen sie nach der Übernahme in einem eigenen Commit ein.
+$changelogPfad = Rx '^CHANGELOG\.txt$'
+$changelogSatz = 'CHANGELOG.txt ändern nur die Betreuer; die Zeilen gehören ins Merge-Angebot'
+# Bestand vor dieser Regel, schon veröffentlicht: der übernommene Fork-Commit und sein Merge. Genau diese zwei,
+# über die volle Kennung (ein Datum ließe sich fälschen), und nur für CHANGELOG.txt, nie für die Prüfpfade.
+$changelogBestand = [Collections.Generic.HashSet[string]]::new([string[]]@('8b10863c62ebf05c63bf12b25d918cb648c562ed', '84cd764e5be14be991b65b51176eaff18a48ccc4'), [StringComparer]::Ordinal)
 
 # Was ein Commit selbst ändert: ohne Eltern alles, sonst die Pfade, die sich
 # gegen JEDEN Elternteil unterscheiden. Was ein Merge unverändert von einem
@@ -1235,6 +1268,7 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         if ($fremd) {
             foreach ($p in (EigenePfade $c)) {
                 if ($pruefPfad.IsMatch($p)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
+                elseif ($changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)) { Fund "Commit $kurz" 0 "ein fremder Commit ändert $p; $changelogSatz" }
             }
         }
         # Das rohe Objekt: Die Nachricht ganz, auch hinter
@@ -1274,6 +1308,7 @@ function CommitsPruefen([string]$bereich, [bool]$nurMain) {
         if (-not @($wer | Where-Object { $_ -cne $ranke }).Count) { continue }
         foreach ($p in @((Git @('diff-tree', '-r', '--no-renames', '--name-only', '-z', $eltern[0], $c)) -split "`0" | Where-Object { $_ })) {
             if ($pruefPfad.IsMatch($p)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert den Prüfpfad $p; Änderungen am Prüfer übernimmt der Betreuer selbst, in einem eigenen Merge ohne fremde Commits" }
+            elseif ($changelogPfad.IsMatch($p) -and -not $changelogBestand.Contains($c)) { Fund "Commit $($c.Substring(0, 10))" 0 "der Merge übernimmt fremde Commits und ändert $p; $changelogSatz" }
         }
     }
     if ($nurMain) {

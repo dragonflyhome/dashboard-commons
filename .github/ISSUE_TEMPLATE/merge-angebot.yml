@@ -29,6 +29,13 @@ body:
       description: Was ändert sich, und warum? Wie wurde es geprüft?
     validations:
       required: true
+  - type: textarea
+    id: changelog
+    attributes:
+      label: Zeilen für den Changelog
+      description: Bei feat, fix oder einem Bruch (!) der Abschnitt (Hinzugefügt, Geändert, Entfernt oder Behoben) und die Zeilen im Stil von CHANGELOG.txt. Die Betreuer tragen sie nach dem Merge ein; der Beitrag selbst ändert CHANGELOG.txt nicht.
+    validations:
+      required: false
   - type: checkboxes
     id: regeln
     attributes:
