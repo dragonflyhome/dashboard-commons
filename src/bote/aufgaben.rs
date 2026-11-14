@@ -201,6 +201,14 @@ pub const FREMDES_REPO: &str = "Das Repo gehört nicht diesem Konto.";
 /// der Besitzer des Ordners (`GetNamedSecurityInfoW`, OWNER) mit der SID des
 /// Boten. Gibt es den Ordner nicht, bleibt es beim Satz von `git::inspect`
 /// („Ordner nicht gefunden“, dort läuft kein git).
+///
+/// Unter macOS und Linux gibt es keine SID: Verglichen wird die
+/// Benutzernummer des Ordners mit der dieses Prozesses ([`besitzer_gleich`]).
+/// Der einzige Aufrufer im Betrieb übergibt die Kennung des eigenen
+/// Prozesses, der Vergleich ist darum gleichwertig. `eigene_sid` bleibt dort
+/// ungenutzt; welche Kennung ein Konto ohne SID trägt, legt Schritt 5 der
+/// Portierung fest (DB03). Grenze: Läuft der Server später unter einem
+/// eigenen Konto, passt die eigene Benutzernummer nicht mehr.
 // Antwort ist der Vertragstyp des Boten und wird gleich gesendet; eine Box nur fürs Err brächte nichts.
 #[allow(clippy::result_large_err)]
 fn besitzer_pruefen(pfad: &str, eigene_sid: &str) -> Result<(), Antwort> {
@@ -208,12 +216,19 @@ fn besitzer_pruefen(pfad: &str, eigene_sid: &str) -> Result<(), Antwort> {
         return Ok(());
     }
     #[cfg(windows)]
-    let besitzer = ordner_besitzer(pfad);
-    #[cfg(not(windows))]
-    let besitzer: Result<String, String> = Err("nur unter Windows".to_string());
-    match besitzer {
-        Ok(sid) if crate::anmeldung::ist_inhaber(&sid, eigene_sid) => Ok(()),
-        Ok(_) => {
+    let gehoert = ordner_besitzer(pfad).map(|sid| crate::anmeldung::ist_inhaber(&sid, eigene_sid));
+    #[cfg(unix)]
+    let gehoert: Result<bool, String> = {
+        use std::os::unix::fs::MetadataExt;
+        // Unter Unix ungenutzt: Schritt 5 (DB03) legt die Kennung ohne SID fest.
+        let _ = eigene_sid;
+        std::fs::metadata(pfad).map(|m| besitzer_gleich(m.uid(), crate::unix::eigene_uid())).map_err(|e| e.kind().to_string())
+    };
+    #[cfg(not(any(windows, unix)))]
+    let gehoert: Result<bool, String> = Err("nur unter Windows, macOS und Linux".to_string());
+    match gehoert {
+        Ok(true) => Ok(()),
+        Ok(false) => {
             tracing::warn!("Git-Stand abgelehnt: der Repo-Ordner gehört einem anderen Konto.");
             Err(Antwort::fehler(FREMDES_REPO))
         }
@@ -222,6 +237,12 @@ fn besitzer_pruefen(pfad: &str, eigene_sid: &str) -> Result<(), Antwort> {
             Err(Antwort::fehler(FREMDES_REPO))
         }
     }
+}
+
+/// Gehört ein Ordner mit der Benutzernummer `ordner_uid` dem Konto mit
+/// `eigene_uid`? Als reine Funktion, damit das Urteil überall prüfbar ist.
+pub fn besitzer_gleich(ordner_uid: u32, eigene_uid: u32) -> bool {
+    ordner_uid == eigene_uid
 }
 
 /// SID des Besitzers eines Ordners als Text.
@@ -495,6 +516,36 @@ mod tests {
         let windows = besitzer_pruefen(r"C:\Windows", &ich);
         assert!(matches!(&windows, Err(Antwort::Fehler { satz }) if satz == FREMDES_REPO), "{windows:?}");
         assert!(besitzer_pruefen(r"C:\gibt-es-nicht\beispiel-repo", &ich).is_ok(), "fehlt: Satz von git::inspect");
+        let _ = std::fs::remove_dir(&ordner);
+    }
+
+    /// Der Vergleich der Benutzernummern, auf jeder Plattform.
+    #[test]
+    fn besitzer_gleich_vergleicht_die_benutzernummer() {
+        assert!(besitzer_gleich(501, 501));
+        assert!(besitzer_gleich(0, 0));
+        assert!(!besitzer_gleich(0, 501), "ein Ordner von root gehört nicht dem Konto");
+        assert!(!besitzer_gleich(502, 501));
+    }
+
+    /// Wie `git_nur_in_eigenen_ordnern`, unter macOS und Linux: der eigene
+    /// Temp-Ordner ja, die Wurzel (gehört root) nicht, ein fehlender Ordner
+    /// bleibt beim Satz von `git::inspect`. Die übergebene Kennung zählt dort
+    /// nicht.
+    #[cfg(unix)]
+    #[test]
+    fn git_nur_in_eigenen_ordnern_unix() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-besitzer-{}", std::process::id()));
+        std::fs::create_dir_all(&ordner).unwrap();
+        let eigen = ordner.display().to_string();
+        for kennung in ["", "S-1-5-21-9", "beispiel"] {
+            assert!(besitzer_pruefen(&eigen, kennung).is_ok(), "eigener Temp-Ordner mit Kennung „{kennung}“");
+        }
+        if crate::unix::eigene_uid() != 0 {
+            let wurzel = besitzer_pruefen("/", "");
+            assert!(matches!(&wurzel, Err(Antwort::Fehler { satz }) if satz == FREMDES_REPO), "{wurzel:?}");
+        }
+        assert!(besitzer_pruefen("/gibt-es-nicht/beispiel-repo", "").is_ok(), "fehlt: Satz von git::inspect");
         let _ = std::fs::remove_dir(&ordner);
     }
 
