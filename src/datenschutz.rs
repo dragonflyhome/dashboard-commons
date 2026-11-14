@@ -128,6 +128,10 @@ impl Bekannt {
         let Some(ganz) = name.map(str::trim).filter(|n| !n.is_empty()) else {
             return self;
         };
+        // `localhost` ist kein Name dieses Rechners, sondern jedes; ihn zu ersetzen verstümmelte Links.
+        if ganz.split('.').next().is_some_and(|n| n.eq_ignore_ascii_case("localhost")) {
+            return self;
+        }
         for n in [Some(ganz), ganz.split('.').next()].into_iter().flatten() {
             if n.chars().count() >= NAME_MINDESTENS && !self.rechner.iter().any(|m| m.to_lowercase() == n.to_lowercase()) {
                 self.rechner.push(n.to_string());
@@ -169,6 +173,12 @@ impl Bekannt {
         }
         b
     }
+}
+
+/// Was der Dienst zum Verbergen kennt: Profil und Name des Inhabers aus der
+/// SID und der Name dieses Rechners (`oeffnen::dienst_einrichten`).
+pub fn bekannt_fuer_dienst(profil: Option<&Path>, name: Option<&str>) -> Bekannt {
+    Bekannt::aus(profil, name).mit_rechner(rechnername().as_deref())
 }
 
 /// Der Name dieses Rechners, wie ihn das System nennt; `None`, wenn es keinen nennt.

@@ -14,6 +14,17 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Der Name des Rechners geht nicht mehr hinaus: /api/pc nennt im Feld
+  host fest %COMPUTERNAME%, auf jeder Plattform und auch mit Anmeldung;
+  das Cockpit zeigt nur noch das Betriebssystem. In jedem anderen Text
+  wird der bekannte Rechnername als ganzes Wort ersetzt.
+- Der Name eines Datenträgers (DiskInfo.name) ist auf /api/pc und im
+  Live-Kanal %VOLUME%, ein leerer Name bleibt leer. Ein Einhängepunkt
+  direkt unter /Volumes wird ganz zu /Volumes/%VOLUME%.
+- localhost gilt nicht als Name des Rechners (Adressen auf localhost
+  bleiben, wie sie sind).
+
 0.7.2 - 2026-11-14
 ------------------
 

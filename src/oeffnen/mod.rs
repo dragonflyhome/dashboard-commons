@@ -600,7 +600,7 @@ pub fn dienst_einrichten(e: &crate::dienst::einstellungen::Einstellungen) -> Opt
     let _ = PRUEF_VERBOTEN.set(ordner_des_dienstes(Some(e)));
     let name = crate::datenschutz::name_aus_sid(&e.konten.inhaber_sid);
     // Ein zweites, abweichendes Setzen meldet `inhaber_setzen` selbst als Fehler im Protokoll.
-    let bekannt = crate::datenschutz::Bekannt::aus(profil.as_deref(), name.as_deref()).mit_rechner(crate::datenschutz::rechnername().as_deref());
+    let bekannt = crate::datenschutz::bekannt_fuer_dienst(profil.as_deref(), name.as_deref());
     let _ = crate::datenschutz::inhaber_setzen(bekannt);
     if profil.is_none() {
         tracing::warn!("Das Profil des Inhabers ist unbekannt (konten.inhaber_sid leer oder ohne Profil): Kein Ort geht auf.");
