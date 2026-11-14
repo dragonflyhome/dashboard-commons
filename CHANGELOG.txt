@@ -19,6 +19,9 @@ Behoben
   lesen lässt (falsche TOML-Schreibweise, kein UTF-8, zu groß), als Fehler mit
   Datei und Zeile; vorher fiel sie still aus und fehlte nur auf
   /entscheidungen.
+- /api/pruefung (und damit der Prüfbericht im Dashboard) zählt diese Fehler
+  und unbekannte Projekte im Feld projekte einer Entscheidung beim Projekt
+  dashboard mit, wie dashboard pruefe.
 
 0.7.0 - 2026-11-14
 ------------------

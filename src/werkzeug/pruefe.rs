@@ -189,7 +189,7 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
 /// unbekannte Slugs sind Fehler (die Entscheidung fehlte sonst still in der
 /// Zeitleiste). Eine unlesbare Datei ist ein Fehler mit Zeile (sonst fehlte
 /// sie still); Dateien ohne das Feld meldet hier nichts; fehlt der Ordner, nichts.
-fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> {
+pub fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> {
     use crate::api::system_seiten as sys;
     let Ok((namen, _)) = sys::toml_namen(ordner) else { return Vec::new() };
     let q = crate::quellen::Quellen::aus_liste(quellen.to_vec());
