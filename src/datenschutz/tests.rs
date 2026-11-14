@@ -554,3 +554,16 @@ fn langer_text_ohne_leerraum() {
 fn name_endet_am_kodierten_doppelpunkt() {
     assert_eq!(v("/Users/a und C%3A%5CUsers%5Cbeispiel"), "%USERPROFILE% und %USERPROFILE%");
 }
+
+/// Ein Name endet vor einem Laufwerk: Ein POSIX-Vorsatz direkt davor nimmt
+/// den Laufwerksbuchstaben nicht als Kontonamen.
+#[test]
+fn name_endet_vor_einem_laufwerk() {
+    assert_eq!(v(r"/Users/C:\Users\beispiel"), "/Users/%USERPROFILE%");
+    assert_eq!(v(r"/home/C:\Users\beispiel"), "/home/%USERPROFILE%");
+    assert_eq!(v(r"/Volumes/C:\Users\beispiel"), "/Volumes/%USERPROFILE%");
+    assert_eq!(v(r"-x/Users/C:\Users\beispiel"), "-x/Users/%USERPROFILE%");
+    assert_eq!(v(r#"{"p":"\/Users\/C:\\Users\\beispiel"}"#), r#"{"p":"\/Users\/%USERPROFILE%"}"#);
+    assert_eq!(v("%2FUsers%2FC%3A%5CUsers%5Cbeispiel"), "%2FUsers%2F%USERPROFILE%");
+    assert_eq!(v(r"C:\Users\beispiel-D:\Users\beispiel2"), "%USERPROFILE%%USERPROFILE%");
+}

@@ -109,7 +109,7 @@ const SCHALTER = '(?<=(?:^|[^\\w.@-])--?[a-z]{1,16})';
  */
 const GRENZE =
 	`(?:(?<![\\w.:/\\\\%-])|${SCHALTER}` +
-	'|(?<=:)(?<!(?:^|[^a-z])[a-z]:)(?<=(?:^|[\\s=]|:(?!//))[^\\s=:]*[/$~%{][^\\s=:]*:)' +
+	'|(?<=:)(?<!(?:^|[^a-z]|%(?:25)?[0-9a-f]{2})[a-z]:)(?<=(?:^|[\\s=]|:(?!//))[^\\s=:]*[/$~%{][^\\s=:]*:)' +
 	'|(?<=file:\\\\?/\\\\?/localhost))';
 /** `file:` mit keinem, einem oder zwei Schrägstrichen vor dem des Pfads, auch als `\/`. */
 const FILE = '(?:file:(?:\\\\?/){0,2})?';
