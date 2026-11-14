@@ -14,6 +14,32 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Die Vorprüfung in scripts/Hochladen.ps1 (auch -Pruefen und damit die
+  Freigabe) merkt sich saubere Blobs je Pfad unter einem Regel-Schlüssel aus
+  Prüfer, Listen, Art und PowerShell-Fassung und prüft beim nächsten Lauf nur
+  Neues (Vor-Push.ps1 -MitCache). Der Hook beim Push prüft immer kalt.
+- Bruch: Der Prüfweg (Vor-Push.ps1, Hochladen.ps1, Freigeben.ps1,
+  Fassung-Festschreiben.ps1, Mac-Probe.ps1, Laufzeit.ps1) verlangt
+  PowerShell 7.7; die Hooks commit-msg und pre-push rufen nur pwsh, ohne
+  Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
+  Ende Laufzeit und Auslastung der Rechenkerne.
+
+Behoben
+- Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
+  scheitert, cargo startet nicht) mit Exit 0, einem Satz und der
+  Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie sucht
+  llvm-dlltool.exe nach %USERPROFILE%\.cargo\bin auch im sysroot der aktiven
+  Toolchain (lib\rustlib\<host>\bin) und schreibt ihre Sätze als UTF-8.
+- Mac-Probe: Fehlt Laufzeit.ps1 oder wirft sie, bleibt es bei einem Satz,
+  Exit 0 und einer Ersatzzeile zur Laufzeit; endet rustup rot, nennt der
+  Satz das statt „Ziel nicht installiert“.
+- Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
+  im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
+
+0.6.0 - 2026-11-14
+------------------
+
 Hinzugefügt
 - Der Prüfer erkennt Heimatpfade unter macOS und Linux (/Users/<name>,
   /home/<name>, auch als file:/// und URL-kodiert) wie die Windows-Formen,
@@ -69,27 +95,16 @@ Geändert
   Arbeitsbaums ist: Eine git.exe aus einem Beitrag wäre dort gelaufen. Liegt
   das gefundene git im geprüften Repo oder im aktuellen Ordner, bricht der
   Prüfer mit Exit 2 ab.
-- Die Vorprüfung in scripts/Hochladen.ps1 (auch -Pruefen und damit die
-  Freigabe) merkt sich saubere Blobs je Pfad unter einem Regel-Schlüssel aus
-  Prüfer, Listen, Art und PowerShell-Fassung und prüft beim nächsten Lauf nur
-  Neues (Vor-Push.ps1 -MitCache). Der Hook beim Push prüft immer kalt.
-- Bruch: Der Prüfweg (Vor-Push.ps1, Hochladen.ps1, Freigeben.ps1,
-  Fassung-Festschreiben.ps1, Mac-Probe.ps1, Laufzeit.ps1) verlangt
-  PowerShell 7.7; die Hooks commit-msg und pre-push rufen nur pwsh, ohne
-  Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
-  Ende Laufzeit und Auslastung der Rechenkerne.
 
 Behoben
-- Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
-  scheitert, cargo startet nicht) mit Exit 0, einem Satz und der
-  Laufzeitzeile; ein cargo ohne Exit-Code gilt nicht mehr als grün. Sie sucht
-  llvm-dlltool.exe nach %USERPROFILE%\.cargo\bin auch im sysroot der aktiven
-  Toolchain (lib\rustlib\<host>\bin) und schreibt ihre Sätze als UTF-8.
-- Mac-Probe: Fehlt Laufzeit.ps1 oder wirft sie, bleibt es bei einem Satz,
-  Exit 0 und einer Ersatzzeile zur Laufzeit; endet rustup rot, nennt der
-  Satz das statt „Ziel nicht installiert“.
-- Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
-  im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
+- Die Übernahme eines Beitrags mergt genau die gelesene Commit-Kennung,
+  nicht einen Zweignamen, der sich nach dem Lesen noch ändern kann.
+- Beiträge aus Forks werden enger geprüft: Name und Adresse fremder Autoren
+  laufen durch die Textprüfung, die noreply-Regel ist verankert.
+- Der Prüfer startete git über den Namen; unter Windows konnte so eine
+  git.exe aus dem geprüften Arbeitsbaum laufen.
+- Ein Windows-Pfad mit / zählte als Heimatpfad doppelt, auch mit mehreren
+  Trennern nach dem Laufwerk.
 
 0.5.0 - 2026-11-14
 ------------------
