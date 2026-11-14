@@ -187,6 +187,8 @@ describe('pc', () => {
 });
 
 const benutzer: PcBenutzer = {
+	rechner: 'beispiel-rechner',
+	platten: [],
 	inventory: {
 		root: '',
 		computed_at: null,

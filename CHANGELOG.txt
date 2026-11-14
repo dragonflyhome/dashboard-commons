@@ -14,6 +14,31 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- /api/pc/benutzer nennt den Namen des Rechners (rechner) und die
+  Datenträger mit Namen (platten). Das Cockpit zeigt angemeldet den
+  Rechnernamen und den Namen des Datenträgers neben dem Laufwerk;
+  /api/pc behält die Platzhalter.
+
+Geändert
+- Geschützte Wege zeigen angemeldet Pfade und Namen im Klartext:
+  /api/pc/benutzer, /api/pc/verlauf/voll, /api/betrieb/voll, /api/daten,
+  /api/meldungen, /api/projekte/<slug>/verlauf und der PC-Takt im
+  geschützten Live-Kanal. Ohne Anmeldung antworten sie weiter mit 401;
+  freie Wege und Fehlerantworten verbergen wie bisher.
+- Die PC-Seite zeigt in Ordnern, Systemanwendungen, Systemmeldungen und
+  im Abschnitt „Dashboard“, was der Server liefert, ohne eigenes
+  Verbergen.
+- Nach dem Abmelden (auch Widerruf und Ablauf) lädt die Seite neu, was
+  im Klartext kam: Rechnername, Datenträgername, Ordner,
+  Systemanwendungen, Systemmeldungen, die Seite „Daten“, die Glocke, die
+  Zeitleiste einer Projektseite, die Aufgaben „Für dich“, die Fristenliste
+  unter „Anstehend“ und die Seiten Vorgänge, Entscheidungen, Zielbild,
+  Anleitung und Schlüssel. Es verschwindet ohne Neuladen der Seite; die
+  Platte folgt wieder dem freien Takt.
+- Unter macOS steht der Name eines Datenträgers unter /Volumes im
+  Cockpit nur einmal da.
+
 0.10.0 - 2026-11-15
 -------------------
 

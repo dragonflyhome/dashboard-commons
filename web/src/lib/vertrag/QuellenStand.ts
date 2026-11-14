@@ -4,7 +4,7 @@
  * Woher der Server den privaten Inhalt liest (Teil von [`Betrieb`], nur in
  * `/api/betrieb/voll`). Der zweite Durchgang von Inhalt-Umziehen.ps1 prüft
  * damit, dass der Dienst schon aus `dashboard-inhalt` liest. Pfade im
- * Benutzerordner wie überall als `%USERPROFILE%\…`.
+ * Klartext (geschützter Weg).
  */
 export type QuellenStand = { 
 /**

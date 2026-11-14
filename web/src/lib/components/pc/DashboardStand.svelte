@@ -19,7 +19,6 @@
 	import { live } from '#lib/live.svelte.ts';
 	import { LIVE_TEXT, liveFarbe, type LiveZustand } from '#lib/verbindung.ts';
 	import StatusDot from '#lib/components/StatusDot.svelte';
-	import { profilVerbergen } from '#lib/pfade.ts';
 	import type { Bedeutung, Betrieb, OrdnerStand } from '$vertrag';
 
 	interface Props {
@@ -120,7 +119,7 @@
 		{/if}
 		{#if b.einstellungen}
 			<dt>Einstellungen</dt>
-			<dd class="pfad">{profilVerbergen(b.einstellungen)}</dd>
+			<dd class="pfad">{b.einstellungen}</dd>
 		{/if}
 		<dt>Fassung</dt>
 		<dd>
@@ -139,7 +138,7 @@
 				{#each b.ordner as o (o.name)}
 					<li>
 						<StatusDot bedeutung={ordnerBedeutung(o)} decorative />
-						{o.name}: {profilVerbergen(o.stand)}
+						{o.name}: {o.stand}
 					</li>
 				{/each}
 			</ul>

@@ -8,8 +8,11 @@
  * `benutzen()` an und beim Verlassen wieder ab. Live: ein `change` mit
  * Bereich `aufgaben` oder ein Nachholen lädt die Zahl neu, die Liste nur,
  * wenn jemand sie benutzt. Um Mitternacht (lokal) lädt beides neu: die
- * Frist-Stufe jeder Aufgabe rechnet der Server am Tag der Anfrage.
+ * Frist-Stufe jeder Aufgabe rechnet der Server am Tag der Anfrage. Nach dem
+ * Abmelden (auch Widerruf, Ablauf) lädt beides neu: Titel und Links kamen im
+ * Klartext, ohne Anmeldung bleibt davon nichts stehen.
  */
+import { freierKanal } from './freikanal.svelte.ts';
 import { live } from './live.svelte.ts';
 import { beiTageswechsel } from './tageswechsel.ts';
 import { abhaken, ladeAnzahl, ladeAufgaben, type AufgabenStand } from './aufgaben.ts';
@@ -196,10 +199,18 @@ export class Aufgaben {
 		const offTag = beiTageswechsel(() => {
 			this.#neu();
 		});
+		// `ladenFuer` schreibt nur bei Erfolg; darum das Archiv leeren und dann neu holen.
+		const offAbgemeldet = freierKanal.onAbgemeldet(() => {
+			const archiviert = Object.keys(this.archiv);
+			this.archiv = {};
+			this.#neu();
+			for (const p of archiviert) void this.ladenFuer(p);
+		});
 		return () => {
 			offChange();
 			offNachholen();
 			offTag();
+			offAbgemeldet();
 		};
 	}
 }

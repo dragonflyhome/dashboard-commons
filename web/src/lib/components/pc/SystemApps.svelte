@@ -4,7 +4,6 @@
 	import { scrollShadow } from '#lib/scrollschatten.ts';
 	import type { Benutzerdaten } from '#lib/pc.ts';
 	import BenutzerHinweis from './BenutzerHinweis.svelte';
-	import { profilVerbergen } from '#lib/pfade.ts';
 
 	interface Props {
 		/** Rechner-Teil aus `/api/pc`: Dienste, Fehler, Stand. */
@@ -57,8 +56,8 @@
 				{#each b.autostart as a, i (i)}
 					<li>
 						<b>{a.name}</b> <span class="muted small">· {a.source}</span><br />
-						<!-- Keine rohen Pfade mit dem Kontonamen. -->
-						<code class="small">{short(profilVerbergen(a.command), 110)}</code>
+						<!-- Geschützt (/api/pc/benutzer), darum im Klartext. -->
+						<code class="small">{short(a.command, 110)}</code>
 					</li>
 				{/each}
 			</ul>

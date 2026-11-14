@@ -13,7 +13,7 @@ use chrono::Utc;
 use super::vertrag::{DatenBericht, PcVerlaufAntwort, PcVerlaufEckdaten, SicherungAntwort, TabelleInfo};
 use crate::app::AppState;
 use crate::fehler::AppError;
-use crate::speicher::{self, Speicher, SpeicherFehler, pc_verlauf, sicherung};
+use crate::speicher::{Speicher, SpeicherFehler, pc_verlauf, sicherung};
 
 /// Standard und Obergrenze für `?stunden=`.
 pub const STUNDEN_STANDARD: u32 = 24;
@@ -40,12 +40,12 @@ fn lesefehler(e: SpeicherFehler) -> AppError {
 fn bericht_ohne_speicher(state: &AppState) -> DatenBericht {
     let datei = state.daten_datei.as_path();
     DatenBericht {
-        pfad: speicher::anzeige_pfad(datei),
+        pfad: datei.display().to_string(),
         groesse_bytes: std::fs::metadata(datei).map(|m| m.len()).unwrap_or(0),
         schema: 0,
         letzte_sicherung: None,
         sicherung_klasse: "bad",
-        sicherungs_ordner: speicher::anzeige_pfad(&state.sicherungs_ordner()),
+        sicherungs_ordner: state.sicherungs_ordner().display().to_string(),
         tabellen: Vec::new(),
         pc_verlauf: PcVerlaufEckdaten { erster: None, letzter: None, eintraege: 0 },
         fehler: Some(state.speicher_satz()),
@@ -61,12 +61,12 @@ pub async fn bericht(State(state): State<AppState>) -> Result<Json<DatenBericht>
         let heute = chrono::Local::now().date_naive();
         let (erster, letzter, eintraege) = s.pc_verlauf_eckdaten()?;
         Ok(DatenBericht {
-            pfad: speicher::anzeige_pfad(s.pfad()),
+            pfad: s.pfad().display().to_string(),
             groesse_bytes: s.groesse_bytes(),
             schema: s.schema()?,
             sicherung_klasse: sicherung::klasse(letzte_sicherung.as_deref(), heute),
             letzte_sicherung,
-            sicherungs_ordner: speicher::anzeige_pfad(s.sicherungs_ordner()),
+            sicherungs_ordner: s.sicherungs_ordner().display().to_string(),
             tabellen: s.tabellen_info()?.into_iter().map(|(name, beschreibung, eintraege)| TabelleInfo { name, beschreibung, eintraege }).collect(),
             pc_verlauf: PcVerlaufEckdaten { erster, letzter, eintraege },
             fehler: None,
@@ -172,15 +172,8 @@ mod tests {
         assert_eq!(v["pc_verlauf"]["eintraege"], 0);
         assert!(v["pfad"].as_str().unwrap().contains("dashboard-test-"), "nie die echte Datei: {body}");
         assert_eq!(v["fehler"], serde_json::Value::Null);
-        // Liegt der Temp-Ordner im Benutzerordner, steht dort kein Benutzername.
-        if let Some(heim) = std::env::var_os("USERPROFILE")
-            && std::env::temp_dir().starts_with(&heim)
-        {
-            for feld in ["pfad", "sicherungs_ordner"] {
-                assert!(v[feld].as_str().unwrap().starts_with("%USERPROFILE%\\"), "{feld}: {body}");
-            }
-            assert!(!body.contains(&*heim.to_string_lossy().replace('\\', "\\\\")), "{body}");
-        }
+        // Geschützt, darum im Klartext (Schritt E1), auch wenn der Temp-Ordner im Benutzerordner liegt.
+        assert!(!body.contains("%USERPROFILE%"), "{body}");
     }
 
     const SATZ: &str = "Ein Eintrag im Datenspeicher ist beschädigt.";
@@ -190,10 +183,16 @@ mod tests {
     }
 
     /// Auflage aus der Abnahme 2a: ohne Datenspeicher zeigt /api/daten rot mit
-    /// einem Satz, der den Sicherungsordner nennt.
+    /// einem Satz, der den Sicherungsordner nennt. Schritt E1: Ort und Ordner
+    /// im Klartext (geschützt); der Satz bleibt wie jede Fehlerantwort verborgen.
     #[tokio::test]
     async fn bericht_ohne_speicher_nennt_den_sicherungsordner() {
-        let state = ohne_speicher();
+        // Ein erfundenes Profil, das `datenschutz::verbergen` immer ersetzen würde.
+        const NAME: &str = "probekonto";
+        let profil = if cfg!(windows) { format!(r"C:\Users\{NAME}\") } else { format!("/Users/{NAME}/") };
+        let datei = if cfg!(windows) { format!(r"{profil}.var\dashboard\dashboard.redb") } else { format!("{profil}.var/dashboard/dashboard.redb") };
+        let mut state = ohne_speicher();
+        state.daten_datei = std::sync::Arc::new(PathBuf::from(&datei));
         let (status, body) = lesen(router(state.clone()).oneshot(get("/api/daten")).await.unwrap()).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -201,9 +200,12 @@ mod tests {
         assert_eq!(v["schema"], 0);
         assert_eq!(v["groesse_bytes"], 0, "die Datei gibt es im Test nicht");
         assert!(v["tabellen"].as_array().unwrap().is_empty());
-        let ordner = speicher::anzeige_pfad(&state.sicherungs_ordner());
+        assert_eq!(v["pfad"], datei.as_str());
+        let ordner = state.sicherungs_ordner().display().to_string();
+        assert!(ordner.starts_with(&profil), "{ordner}");
         assert_eq!(v["sicherungs_ordner"], ordner.as_str());
-        assert_eq!(v["fehler"].as_str().unwrap(), format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {ordner}. {SATZ}"));
+        let verborgen = crate::speicher::anzeige_pfad(&state.sicherungs_ordner());
+        assert_eq!(v["fehler"].as_str().unwrap(), format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {verborgen}. {SATZ}"));
     }
 
     /// Ohne Datenspeicher: 503 als JSON auf allen anderen Daten-Wegen.

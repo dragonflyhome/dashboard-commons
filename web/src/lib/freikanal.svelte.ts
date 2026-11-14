@@ -22,7 +22,8 @@
  *   geschützter schließt, sobald der freie sein erstes Ereignis hat. Der
  *   Anmeldestand der Seite (`zugang`) wird neu erfragt. Während des Wechsels
  *   bleibt der Zustand „live“ (nie „nicht gefunden“), das Schloss geht
- *   sofort zu.
+ *   sofort zu. Wer Klartext aus geschützten Wegen zeigt, hört `onAbgemeldet`
+ *   und lädt neu.
  *
  * Aus dem gerade gültigen Kanal kommt der Verbindungszustand: `sucht` (erster
  * Versuch, höchstens `SUCHEN_MS`), `nie`, `offen`, `weg` (stand und ist weg;
@@ -75,6 +76,9 @@ export type KanalFassungListener = (fassung: FassungEvent, kanal: Kanal) => void
 /** Ein Kanal steht nach dem Start oder einem Wechsel (sein erstes Ereignis ist da). */
 export type BereitListener = (kanal: Kanal) => void;
 
+/** Abmelden, Widerruf oder Ablauf: der Wechsel geschützt → frei. */
+export type AbgemeldetListener = () => void;
+
 /** JSON aus dem Kanal; die Form garantiert der Rust-Server (siehe $vertrag). */
 function lesen(data: string): unknown {
 	try {
@@ -108,6 +112,7 @@ export class FreierKanal {
 	#inhaltListeners = new SvelteSet<InhaltListener>();
 	#fassungListeners = new SvelteSet<KanalFassungListener>();
 	#bereitListeners = new SvelteSet<BereitListener>();
+	#abgemeldetListeners = new SvelteSet<AbgemeldetListener>();
 	/** Nach Start oder Wechsel: dieser Kanal meldet sein erstes Ereignis als „bereit“. */
 	#bereitMelden: Kanal | null = null;
 	#kontoGefragt = false;
@@ -198,6 +203,7 @@ export class FreierKanal {
 
 	/** Abmelden erkannt: Zustand zurück, den freien öffnen, der geschützte schließt danach. */
 	#zuFrei(): void {
+		const vorher = this.aktiv;
 		this.aktiv = 'frei';
 		this.#bereitMelden = 'frei';
 		this.#zumGeschuetzten = false;
@@ -230,6 +236,8 @@ export class FreierKanal {
 			live.stop();
 			this.#zumFreien = false;
 		}
+		// Nach `zugang.vergessen()`: wer jetzt neu lädt, fragt den Server und bekommt 401.
+		if (vorher === 'geschuetzt') for (const l of this.#abgemeldetListeners) l();
 	}
 
 	/** Was der geschützte Kanal meldet. */
@@ -408,6 +416,16 @@ export class FreierKanal {
 	onBereit(listener: BereitListener): () => void {
 		this.#bereitListeners.add(listener);
 		return () => this.#bereitListeners.delete(listener);
+	}
+
+	/**
+	 * Meldet sich beim Wechsel geschützt → frei (Abmelden, Widerruf, Ablauf),
+	 * nicht beim Start und nicht beim Anmelden: Wer Klartext aus geschützten
+	 * Wegen zeigt, lädt dann neu. Gibt die Abmeldung zurück.
+	 */
+	onAbgemeldet(listener: AbgemeldetListener): () => void {
+		this.#abgemeldetListeners.add(listener);
+		return () => this.#abgemeldetListeners.delete(listener);
 	}
 
 	/** Für Tests. */

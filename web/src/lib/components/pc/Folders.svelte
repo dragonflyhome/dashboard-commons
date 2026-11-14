@@ -3,7 +3,6 @@
 	import { fmtBytes, fmtDateTime } from '#lib/format.ts';
 	import { scrollShadow } from '#lib/scrollschatten.ts';
 	import { reihe } from '#lib/reihen.ts';
-	import { profilVerbergen } from '#lib/pfade.ts';
 
 	interface Props {
 		inv: Inventory;
@@ -38,7 +37,7 @@
 	</p>
 {:else}
 	<p class="muted small">
-		{fmtBytes(total)} in <code>{profilVerbergen(inv.root)}</code>
+		{fmtBytes(total)} in <code>{inv.root}</code>
 		{#if diskTotal > 0}· das sind {Math.round((total * 100) / diskTotal)} % der Platte{/if}
 		· gezählt {fmtDateTime(inv.computed_at)} in {inv.duration_secs} s · alle 6 Stunden neu
 	</p>

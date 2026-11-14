@@ -7,18 +7,19 @@
  *   und Linux `/Users/<name>`, `/home/<name>`, `/Volumes/<x>` und die Ordner
  *   des Systems) ist nie ein Link. Öffnen geht nur über „Orte“
  *   (`daten/orte.toml`, Knopf „Öffnen“, Entscheidung lokal-oeffnen).
- * - Der Teil `C:\Users\<name>` (auch „Benutzer“, auch mit `/`) wird beim
- *   Zeigen zu `%USERPROFILE%`: der Name des Kontos steht nirgends im Bild.
- *   Ebenso `/Users/<name>` und `/home/<name>` (auch hinter
- *   `/System/Volumes/Data` und `/Volumes/<x>`), `/root` und `/var/root`, je
- *   auch hinter `file:`, in einer Liste mit Doppelpunkt (`PATH`) und mit
- *   `\/` wie in JSON.
- *   Der Server (`src/datenschutz.rs`) ist die eine Stelle, hier steht die
- *   zweite Sicherung. Sie kennt weniger Formen als der Server: nicht
- *   `/run/user/<n>`, nicht den Temp-Ordner je Konto unter `/var/folders`,
- *   keine URL-kodierten Pfade (mit oder ohne Laufwerk), nicht die Formen
- *   `/c/Users/<name>` (Git Bash, WSL, Cygwin) und keine Netzwerkpfade
- *   (`\\rechner\c$\Users\<name>`).
+ * - In Linklisten (`LinksListe`) wird der Teil `C:\Users\<name>` (auch
+ *   „Benutzer“, auch mit `/`) beim Zeigen zu `%USERPROFILE%`. Ebenso
+ *   `/Users/<name>` und `/home/<name>` (auch hinter `/System/Volumes/Data`
+ *   und `/Volumes/<x>`), `/root` und `/var/root`, je auch hinter `file:`, in
+ *   einer Liste mit Doppelpunkt (`PATH`) und mit `\/` wie in JSON.
+ *   Nur dort verbirgt die Oberfläche noch; was die geschützten Wege
+ *   angemeldet im Klartext liefern (Ordner, Systemanwendungen, Meldungen),
+ *   zeigt sie so. Für die freien Wege verbirgt der Server
+ *   (`src/datenschutz.rs`). Die Linklisten kennen weniger Formen als der
+ *   Server: nicht `/run/user/<n>`, nicht den Temp-Ordner je Konto unter
+ *   `/var/folders`, keine URL-kodierten Pfade (mit oder ohne Laufwerk),
+ *   nicht die Formen `/c/Users/<name>` (Git Bash, WSL, Cygwin) und keine
+ *   Netzwerkpfade (`\\rechner\c$\Users\<name>`).
  * - Jedes Muster liest einen Text nur einmal: Die Prüfung einer Liste läuft
  *   nur direkt hinter einem Doppelpunkt und nur bis zum Doppelpunkt davor.
  */

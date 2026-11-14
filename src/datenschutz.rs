@@ -1,7 +1,9 @@
 //! Profilpfad und Benutzername verbergen, bevor ein Text den Server verlässt
 //! (Auftrag der Architektur vor dem ersten Push: `/api/pc` ist ohne Anmeldung
-//! erreichbar). Die eine Stelle dafür ist [`verbergen`]; die Oberfläche
-//! (`web/src/lib/pfade.ts`, `profilVerbergen`) ist nur die zweite Sicherung.
+//! erreichbar). Die eine Stelle dafür ist [`verbergen`], für die freien Wege
+//! und den freien Kanal; die geschützten Wege liefern angemeldet im Klartext.
+//! Die Oberfläche verbirgt nur noch in Linklisten (`LinksListe`,
+//! `profilVerbergen` aus `web/src/lib/pfade.ts`).
 //!
 //! Ersetzt wird der Teil bis einschließlich des Profilordners durch
 //! `%USERPROFILE%`, der Rest des Pfads bleibt, damit man den Ort erkennt:

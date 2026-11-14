@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import { createRawSnippet, type ComponentProps } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as LiveModul from '#lib/live.svelte.ts';
@@ -69,12 +69,18 @@ vi.mock('#lib/live.svelte.ts', async (original) => {
 	};
 });
 vi.mock('#lib/assets.svelte.ts', () => ({ assetStand: { start: () => () => undefined } }));
-// Kopfleiste, Fassung 2: der freie Kanal als Platzhalter (angemeldet).
+// Kopfleiste, Fassung 2: der freie Kanal als Platzhalter (angemeldet). Die Hörer von
+// `onAbgemeldet` stehen in `abgemeldet`, damit ein Test das Abmelden auslösen kann.
+const { abgemeldet } = vi.hoisted(() => ({ abgemeldet: new Set<() => void>() }));
 vi.mock('#lib/freikanal.svelte.ts', () => ({
 	freierKanal: {
 		start: vi.fn(),
 		stop: vi.fn(),
 		onInhalt: () => () => undefined,
+		onAbgemeldet: (l: () => void) => {
+			abgemeldet.add(l);
+			return () => abgemeldet.delete(l);
+		},
 		zustand: 'angemeldet',
 		aktiv: 'geschuetzt',
 		pc: null
@@ -279,7 +285,8 @@ function geladen(aufruf: unknown): string[] {
 		'api:vorgaenge',
 		'api:schluessel',
 		'api:entscheidungen',
-		'api:zielbild'
+		'api:zielbild',
+		'api:anleitung'
 	].filter((k) => fn(new URL(k)));
 }
 
@@ -325,6 +332,27 @@ describe('Live-Lücken im Layout: gezielt statt refreshAll', () => {
 		expect(nav.refreshAll).not.toHaveBeenCalled();
 		expect(nav.invalidate).toHaveBeenCalledTimes(1);
 		expect(geladen(nav.invalidate.mock.calls[0]?.[0])).toEqual(['api:projects']);
+	});
+
+	it('Abmelden, Widerruf, Ablauf: lädt Benutzer-Daten und die geschützt geladenen Seiten neu; nach dem Schließen nichts mehr', () => {
+		zeige('/daten');
+		expect(abgemeldet.size).toBe(1);
+		nav.invalidate.mockClear();
+		for (const l of abgemeldet) l();
+		expect(nav.refreshAll).not.toHaveBeenCalled();
+		expect(nav.invalidate).toHaveBeenCalledTimes(1);
+		// Nicht die freien: Projektliste, PC-Werte, Verlauf.
+		expect(geladen(nav.invalidate.mock.calls[0]?.[0]).sort()).toEqual([
+			'api:anleitung',
+			'api:daten',
+			'api:entscheidungen',
+			'api:pc:benutzer',
+			'api:schluessel',
+			'api:vorgaenge',
+			'api:zielbild'
+		]);
+		cleanup();
+		expect(abgemeldet.size).toBe(0);
 	});
 
 	it('nachholen lädt weiter alles (refreshAll)', () => {

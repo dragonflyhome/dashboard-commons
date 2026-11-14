@@ -1,7 +1,7 @@
 //! `GET /api/betrieb`: wie der Server läuft (Dienst, Konsole, Umgebung), seit
 //! wann, mit welcher Einstellungsdatei, ob der Bote antwortet und ob der
 //! Datenspeicher offen ist. Für Skripte (Dienst.ps1) und später die Seite
-//! /betrieb. Pfade im Benutzerordner stehen als `%USERPROFILE%\…` da.
+//! /betrieb. Pfade stehen nur in `/api/betrieb/voll` (geschützt), dort im Klartext.
 //!
 //! Der Weg ist frei (ohne Windows-Anmeldung). Darum steht in `speicher` nur,
 //! ob er offen ist, das Schema und der Satz aus `SpeicherFehler`, nie ein Pfad
@@ -15,23 +15,24 @@ use axum::Json;
 use axum::extract::State;
 
 use crate::app::AppState;
-use crate::speicher::{self, Speicher, migration};
+use crate::speicher::{Speicher, migration};
 use crate::vertrag::api::{Betrieb, InhaltStand, OrdnerStand, QuellenStand, SpeicherStand};
 
 /// `GET /api/betrieb` (frei): ohne Pfade und ohne den Anmeldestand des
 /// Inhabers (`einstellungen`, `bote_seit` und `sitzung` sind `null`; `bote` nur
 /// `vorgesehen` oder `nicht vorgesehen`, nie `verbunden` oder `getrennt`). Für
 /// Skripte, die ohne Anmeldung fragen (Dienst.ps1, Dienst-Einrichten.ps1).
-/// Beide Wege verbergen Profil und Namen in allen Texten (`datenschutz`),
-/// auch in `speicher.fehler` und `ordner[].stand`.
+/// Verbirgt Profil und Namen in allen Texten (`datenschutz`), auch in
+/// `speicher.fehler` und `ordner[].stand`.
 pub async fn betrieb(State(state): State<AppState>) -> Json<serde_json::Value> {
     crate::datenschutz::als_json(&bericht(&state, false).await)
 }
 
-/// `GET /api/betrieb/voll` (geschützt wie `/api/daten`): alles, auch die
-/// Einstellungsdatei, seit wann der Bote verbunden ist und die Sitzungsabfrage.
-pub async fn betrieb_voll(State(state): State<AppState>) -> Json<serde_json::Value> {
-    crate::datenschutz::als_json(&bericht(&state, true).await)
+/// `GET /api/betrieb/voll` (geschützt wie `/api/daten`): alles im Klartext
+/// (Schritt E1), auch die Einstellungsdatei, die Quellen, seit wann der Bote
+/// verbunden ist und die Sitzungsabfrage.
+pub async fn betrieb_voll(State(state): State<AppState>) -> Json<Betrieb> {
+    Json(bericht(&state, true).await)
 }
 
 /// Der Bericht; `voll` nur auf dem geschützten Weg.
@@ -57,7 +58,7 @@ pub async fn bericht(state: &AppState, voll: bool) -> Betrieb {
         // Zur Bauzeit gesetzt (`DASHBOARD_COMMIT`), sonst null.
         commit: option_env!("DASHBOARD_COMMIT").filter(|c| !c.is_empty()).map(String::from),
         gestartet: state.lauf.gestartet.to_rfc3339(),
-        einstellungen: state.einstellungen.as_ref().filter(|_| voll).map(|e| speicher::anzeige_pfad(&e.datei)),
+        einstellungen: state.einstellungen.as_ref().filter(|_| voll).map(|e| e.datei.display().to_string()),
         // Frei nur, ob ein Bote vorgesehen ist: Er läuft nur in der Sitzung des Inhabers, „verbunden“
         // verriete also, ob sie an der Konsole angemeldet ist (Abnahme Kopfleiste 2, Nachbesserung 1).
         bote: if voll || bote == "nicht vorgesehen" { bote.to_string() } else { "vorgesehen".to_string() },
@@ -98,9 +99,9 @@ fn quellen_stand(state: &AppState) -> QuellenStand {
     };
     QuellenStand {
         inhalt_abschnitt: state.einstellungen.as_ref().is_some_and(|e| e.inhalt.abschnitt),
-        projekte: state.quellen.iter().map(|q| speicher::anzeige_pfad(q)).collect(),
-        daten: speicher::anzeige_pfad(&daten),
-        entscheidungen: speicher::anzeige_pfad(&state.entscheidungen_dir),
+        projekte: state.quellen.iter().map(|q| q.display().to_string()).collect(),
+        daten: daten.display().to_string(),
+        entscheidungen: state.entscheidungen_dir.display().to_string(),
     }
 }
 

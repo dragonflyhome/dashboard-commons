@@ -14,7 +14,11 @@
  *
  * Kopfleiste, Fassung 3: Das Band ist weg; dieselbe Liste speist die Glocke
  * (`glocke`) und die Zähler „wartet“ der Seitenleiste (`wartet`).
+ *
+ * Nach dem Abmelden (auch Widerruf, Ablauf) lädt sie neu: Liste und Meldungen
+ * kamen im Klartext, ohne Anmeldung bleibt davon nichts stehen.
  */
+import { freierKanal } from './freikanal.svelte.ts';
 import { live } from './live.svelte.ts';
 import { beiTageswechsel } from './tageswechsel.ts';
 import {
@@ -169,11 +173,15 @@ export class Anstehend {
 		const offTag = beiTageswechsel(() => {
 			void this.laden();
 		});
+		const offAbgemeldet = freierKanal.onAbgemeldet(() => {
+			void this.laden();
+		});
 		return () => {
 			offChange();
 			offBereich();
 			offNachholen();
 			offTag();
+			offAbgemeldet();
 		};
 	}
 }

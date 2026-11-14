@@ -3,8 +3,8 @@ import type { PcVerlaufEckdaten } from "./PcVerlaufEckdaten";
 import type { TabelleInfo } from "./TabelleInfo";
 
 /**
- * `/api/daten`: Ort, Größe und Stand des Datenspeichers. Pfade im
- * Benutzerordner stehen als `%USERPROFILE%\…` da.
+ * `/api/daten` (geschützt): Ort, Größe und Stand des Datenspeichers, Pfade im
+ * Klartext. Nur der Satz in `fehler` verbirgt das Profil (wie jede Fehlerantwort).
  */
 export type DatenBericht = { pfad: string, groesse_bytes: number, schema: number, 
 /**

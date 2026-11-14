@@ -87,14 +87,18 @@ pub async fn bericht_bauen(state: &AppState) -> PcReport {
     PcReport { snapshot, sysapps, data, data_error, backup_stand, project_backups }
 }
 
-/// `GET /api/pc/benutzer` (geschützt). Auch hier ohne Profil und Namen
-/// (`inventory.root`, `inventory.hinweis`, `autostart.command`, `winget_error`).
-pub async fn benutzer(State(state): State<AppState>) -> Json<serde_json::Value> {
-    crate::datenschutz::als_json(&benutzer_bauen(&state).await)
+/// `GET /api/pc/benutzer` (geschützt): im Klartext, auch der Name des Rechners
+/// und die Namen der Datenträger (auf `/api/pc` stehen dort Platzhalter).
+pub async fn benutzer(State(state): State<AppState>) -> Json<PcBenutzer> {
+    Json(benutzer_bauen(&state).await)
 }
 
-/// Die Benutzer-Daten für `/api/pc/benutzer`, noch mit allen Texten.
+/// Die Benutzer-Daten für `/api/pc/benutzer`, mit allen Texten.
 pub async fn benutzer_bauen(state: &AppState) -> PcBenutzer {
+    let (rechner, platten) = {
+        let s = state.snapshot.read().await;
+        (s.host.clone(), s.disks.clone())
+    };
     let inventory = state.inventory.read().await.clone();
     let schluessel = schluessel_stand(state).await;
     let s = state.sysapps.read().await;
@@ -106,7 +110,7 @@ pub async fn benutzer_bauen(state: &AppState) -> PcBenutzer {
         ("da", s.refreshed_at)
     };
     let sysapps = SysAppsBenutzer { autostart: s.autostart.clone(), tools: s.tools.clone(), winget: s.winget.clone(), winget_error: s.winget_error.clone() };
-    PcBenutzer { inventory, sysapps, schluessel, bote, stand }
+    PcBenutzer { rechner, platten, inventory, sysapps, schluessel, bote, stand }
 }
 
 /// Stand der Schlüssel. Mit Boten über ihn; antwortet er nicht (getrennt
@@ -164,8 +168,8 @@ pub async fn verlauf_voll(State(state): State<AppState>, uri: Uri, angemeldet: O
         return super::anmeldung::bitte_anmelden(None);
     }
     match verlauf_bauen(&state, &uri, Umfang::Pc { mit_anmeldung: true }).await {
-        // Meldungstexte und Hinweise ohne Profil und Namen (`datenschutz`).
-        Ok(v) => crate::datenschutz::als_json(&v).into_response(),
+        // Geschützt, darum im Klartext (Schritt E1); der freie Weg verbirgt weiter.
+        Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
     }
 }
