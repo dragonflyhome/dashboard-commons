@@ -24,6 +24,9 @@ Geändert
   PowerShell 7.7; die Hooks commit-msg und pre-push rufen nur pwsh, ohne
   Rückfall auf Windows PowerShell. Vor-Push.ps1 und Hochladen.ps1 nennen am
   Ende Laufzeit und Auslastung der Rechenkerne.
+- Anleitung, Abschnitt 15, Teil 5: der Probelauf eines Beitrags im
+  Projekt-Repo mit -Repo, -RemoteUrl und -Art Projekt ausgeschrieben; ohne
+  Adresse prüft der Prüfer als Basis-Repo.
 
 Behoben
 - Die Mac-Probe endet auch bei einer Ausnahme (rustup fehlt, Kopieren
@@ -36,6 +39,13 @@ Behoben
   Satz das statt „Ziel nicht installiert“.
 - Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, wenn das erste git
   im PATH im Repo oder im aktuellen Ordner liegt, bevor sie es starten.
+- Prüfer, Hochladen.ps1 und Freigeben.ps1 brechen mit Exit 2 ab, sobald ein
+  Eintrag im PATH nicht voll qualifiziert ist (etwa „.“); vorher hing der
+  Schutz allein am Ort des gefundenen git, auch einer git.cmd.
+- Das Muster für Heimatpfade unter macOS und Linux lief auf langen Zeilen
+  aus / quadratisch (20 000 Zeichen etwa 5 s); es prüft jetzt zuerst das
+  Literal. Es erkennt auch /var/home/<name>, /export/home/<name> und mehrere
+  oder gemischte Trenner nach dem Ordner (/home//<name>, /home\<name>).
 
 0.6.0 - 2026-11-14
 ------------------

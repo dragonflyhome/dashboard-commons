@@ -504,7 +504,8 @@ fn mac_probe_ohne_abbruch() {
     probe_rot("dlltool nur im sysroot", (code, text));
 }
 
-/// Liegt das erste git im PATH im Repo (etwa über „.“), bricht die Freigabe ab, bevor sie es startet.
+/// Liegt das erste git im PATH im Repo, bricht die Freigabe ab, bevor sie es startet;
+/// ebenso bei „.“ (oder einem anderen nicht voll qualifizierten Eintrag) im PATH.
 #[test]
 fn kein_git_aus_dem_repo() {
     if !bereit() {
@@ -513,22 +514,30 @@ fn kein_git_aus_dem_repo() {
     let o = Probe::neu();
     let fremd = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("hostname.exe");
     std::fs::copy(fremd, o.repo().join("git.exe")).unwrap();
-    let pfad = std::env::join_paths(std::iter::once(o.repo()).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
     let vorher = o.stand();
-    let a = pwsh()
-        .unwrap()
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(o.repo().join("scripts").join("Freigeben.ps1"))
-        .arg("-Inhalt")
-        .arg(o.inhalt())
-        .arg("-Pruefen")
-        .env("PATH", pfad)
-        .env("LOCALAPPDATA", o.lokal())
-        .output()
-        .unwrap();
-    let text = format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr));
-    assert_eq!(a.status.code(), Some(2), "{text}");
+    let lauf = |pfad: std::ffi::OsString| {
+        let a = pwsh()
+            .unwrap()
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(o.repo().join("scripts").join("Freigeben.ps1"))
+            .arg("-Inhalt")
+            .arg(o.inhalt())
+            .arg("-Pruefen")
+            .current_dir(o.repo())
+            .env("PATH", pfad)
+            .env("LOCALAPPDATA", o.lokal())
+            .output()
+            .unwrap();
+        (a.status.code(), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let mit = |vorn: PathBuf| std::env::join_paths(std::iter::once(vorn).chain(std::env::split_paths(&std::env::var_os("PATH").unwrap()))).unwrap();
+    let (code, text) = lauf(mit(o.repo()));
+    assert_eq!(code, Some(2), "{text}");
     assert!(text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("cargo fmt"), "{text}");
+    // „.“ vorn im PATH (aktueller Ordner ist das Repo): Jeder nicht voll qualifizierte Eintrag bricht ab.
+    let (code, text) = lauf(mit(PathBuf::from(".")));
+    assert_eq!(code, Some(2), "{text}");
+    assert!(text.contains("PATH enthält nicht voll qualifizierte Einträge") && !text.contains("cargo fmt"), "{text}");
     std::fs::remove_file(o.repo().join("git.exe")).unwrap();
     assert_eq!(o.stand(), vorher);
 }

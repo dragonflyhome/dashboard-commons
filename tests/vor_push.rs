@@ -3198,9 +3198,10 @@ fn beitraege_aus_forks_ohne_pruefer() {
     }
     // 8.3-Kurznamen landen unter Windows in der Datei mit langem Namen (CARGO~1/config.toml
     // in .cargo/config.toml). In Unterordnern weist sie schon das Muster für Kurznamen ab,
-    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst
+    // für jeden; an der Wurzel die Positivliste, und M1 meldet sie dort selbst, ebenso
+    // verschachtelt (web/NPMRC~1 ist unter Windows web/.npmrc)
     // (§ hält den Prüfer über dieser Datei frei).
-    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC"] {
+    for kurz in ["CAR§GO~1/config.toml", "GIT§ATT~1", "KONTAK§~1.ASC", "web/NPM§RC~1", "a/KONT§AK~1.ASC", "src/LONG§NA~1/x"] {
         let kurz = kurz.replace('§', "");
         abgewiesen(&kurz, &format!("ein fremder Commit ändert den Prüfpfad {kurz}"), |o| {
             beitrag(o, "fix: Prüfer", "Beitrag", NOREPLY, |o| o.datei(&kurz, b"# anders\n"))
@@ -3881,6 +3882,10 @@ fn laufzeit_kaputt_aendert_nichts() {
 /// aktuellen Ordner (bei Hooks die Wurzel des Arbeitsbaums).
 const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
 
+/// Die Marke des eigenen post-checkout von main.
+const MAIN_MARKE: &str = "main-hook-lief.txt";
+const MAIN_HOOK: &str = "#!/bin/sh\necho lief > main-hook-lief.txt\n";
+
 /// Der Probe-Merge nach Abschnitt 15, Teil 5: ohne Arbeitsbaum und ohne Hooks
 /// (git merge-tree --write-tree, git commit-tree als Ranke, git branch probe), geprüft
 /// mit dem Prüfer aus main (hier dem des Code-Repos) und -Beitrag. Ein Fork, der
@@ -3891,19 +3896,58 @@ const FORK_HOOK: &str = "#!/bin/sh\necho lief > hook-lief.txt\n";
 /// mit git merge --ff-only probe genau auf den geprüften Merge-Commit. Gegenproben: Der
 /// alte Weg (git merge im Arbeitsbaum) ruft die Hooks des Forks und legt dessen Prüfer
 /// in den Arbeitsbaum; ein Checkout der Kennung vor dem grünen Lauf ruft post-checkout
-/// des Forks.
+/// des Forks. Die Befehle kommen aus dem Text des Leitfadens (include_str!), und main hat
+/// einen eigenen post-checkout mit eigener Marke, die der Arbeitsbaum der Probe schreibt.
 #[test]
 fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
     if !bereit() {
         return;
     }
+    // Die Befehle dieses Tests sind die des Leitfadens (Abschnitt 15, Teil 5), mit dessen
+    // Platzhaltern; der Test setzt sie ein und prüft, dass der Text sie wörtlich nennt.
+    let leitfaden = include_str!("../docs/anleitung/contributing-15-15-im-team-an-einem-projekt-repo.toml");
+    const K: &str = "<kennung>";
+    let holen = ["rev-parse", "FETCH_HEAD"];
+    let merge_tree = ["merge-tree", "--write-tree", "main", K];
+    let commit_tree = ["commit-tree", "$t", "-p", "main", "-p", K, "-m"];
+    let branch = ["branch", "probe", "$m"];
+    let pruefen = ["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", K];
+    let bauen = ["worktree", "add", "--detach", "<ordner>", "probe"];
+    let vorspulen = ["merge", "--ff-only", "probe"];
+    for (vorn, befehl) in [
+        ("git ", &holen[..]),
+        ("git ", &merge_tree),
+        // Davor stehen im Leitfaden die -c für Name und Adresse der Betreuer.
+        ("", &commit_tree),
+        ("git ", &branch),
+        ("scripts/Vor-Push.ps1 ", &pruefen),
+        ("git ", &bauen),
+        ("git ", &vorspulen),
+    ] {
+        let text = format!("{vorn}{}", befehl.join(" "));
+        assert!(leitfaden.contains(&text), "der Leitfaden nennt „{text}“ nicht mehr");
+    }
+    assert!(!leitfaden.contains(&format!("git merge --no-ff {K}")), "der Leitfaden fällt auf git merge im Arbeitsbaum zurück");
+    // Im Projekt-Repo mit dessen Adresse: ohne -RemoteUrl prüfte der Prüfer als Basis-Repo.
+    let projekt =
+        format!("scripts/Vor-Push.ps1 -Repo <projekt-repo> -RemoteUrl <adresse des projekt-repos, wie in repos.toml> -Art Projekt {}", pruefen.join(" "));
+    assert!(leitfaden.contains(&projekt), "der Leitfaden nennt den Probelauf für ein Projekt-Repo nicht mehr");
+    // Platzhalter einsetzen; ergibt die Argumente für git oder den Prüfer.
+    fn setzen(befehl: &[&str], werte: &[(&str, &str)]) -> Vec<String> {
+        befehl.iter().map(|a| werte.iter().find(|(p, _)| p == a).map_or(a.to_string(), |(_, w)| w.to_string())).collect()
+    }
+    fn als_str(v: &[String]) -> Vec<&str> {
+        v.iter().map(String::as_str).collect()
+    }
     let mail = NOREPLY.replace('§', "");
     let ranke = ["-c", "user.name=Ranke", "-c", "user.email=ranke2@proton.me"];
     for fall in ["sauber", "Fork ändert Hooks und Prüfer", "alter Weg"] {
         let o = Ort::neu();
-        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer.
+        // main hat eigene Hooks (relativ eingehängt wie im Code-Repo) und einen eigenen Prüfer;
+        // sein post-checkout schreibt eine eigene Marke (so ist „kein Hook des Forks“ nicht leer).
         o.ueber_merge(|o| {
             o.datei("scripts/hooks/post-merge", b"#!/bin/sh\nexit 0\n");
+            o.datei("scripts/hooks/post-checkout", MAIN_HOOK.as_bytes());
             o.datei("scripts/Vor-Push.ps1", b"# Pruefer von main\n");
         });
         o.git(&["config", "core.hooksPath", "scripts/hooks"]);
@@ -3930,7 +3974,7 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
         fg(&["add", "-A"]);
         fg(&["commit", "-q", "-m", "feat: b"]);
         o.git(&["fetch", "-q", &fork.to_string_lossy(), "beitrag"]);
-        let kennung = o.git(&["rev-parse", "FETCH_HEAD"]);
+        let kennung = o.git(&holen);
         let marker = o.repo().join("hook-lief.txt");
         let pruefer_im_baum = || std::fs::read_to_string(o.repo().join("scripts").join("Vor-Push.ps1")).unwrap();
         if fall == "alter Weg" {
@@ -3940,23 +3984,25 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
             assert!(pruefer_im_baum().contains("des Forks"), "der alte Weg legt den Prüfer des Forks in den Arbeitsbaum");
             continue;
         }
-        let baum = o.git(&["merge-tree", "--write-tree", "main", &kennung]).lines().next().unwrap().to_string();
-        let probe = o.git(&[&ranke[..], &["commit-tree", &baum, "-p", "main", "-p", &kennung, "-m", "chore(merge): beitrag nach main"]].concat());
-        o.git(&["branch", "probe", &probe]);
+        let baum = o.git(&als_str(&setzen(&merge_tree, &[(K, &kennung)]))).lines().next().unwrap().to_string();
+        let commit_tree = setzen(&commit_tree, &[("$t", &baum), (K, &kennung)]);
+        let probe = o.git(&[&ranke[..], &als_str(&commit_tree), &["chore(merge): beitrag nach main"]].concat());
+        o.git(&als_str(&setzen(&branch, &[("$m", &probe)])));
         assert!(!marker.exists(), "{fall}: beim Bau der Probe läuft kein Hook");
         assert_eq!(o.git(&["rev-parse", "HEAD"]), alt, "{fall}: der Arbeitsbaum bleibt auf main");
         assert!(pruefer_im_baum().contains("von main"), "{fall}: im Arbeitsbaum liegt der Prüfer von main");
-        let (code, text) = o.lauf(&["-Baum", "probe", "-Commits", "main..probe", "-AufMain", "-Beitrag", &kennung], None);
+        let (code, text) = o.lauf(&als_str(&setzen(&pruefen, &[(K, &kennung)])), None);
         assert!(!marker.exists(), "{fall}: auch der Prüflauf führt nichts aus dem Fork aus");
         // Bauen und Testen in einem eigenen Arbeitsbaum: nach grünem Lauf auf dem Probe-Commit.
         let bau = o.wurzel.join("probe-bau");
         let bau_marker = bau.join("hook-lief.txt");
         if fall == "sauber" {
             assert_eq!(code, 0, "{text}");
-            o.git(&["worktree", "add", "-q", "--detach", &bau.to_string_lossy(), "probe"]);
+            o.git(&als_str(&setzen(&bauen, &[("<ordner>", &bau.to_string_lossy())])));
             assert!(!bau_marker.exists(), "nach grünem Lauf führt der Arbeitsbaum der Probe keinen Hook des Forks aus");
+            assert!(bau.join(MAIN_MARKE).exists(), "der Arbeitsbaum der Probe ruft den post-checkout von main");
             o.git(&["worktree", "remove", "--force", &bau.to_string_lossy()]);
-            o.git(&["merge", "-q", "--ff-only", "probe"]);
+            o.git(&vorspulen);
             assert_eq!(o.git(&["rev-parse", "main"]), probe, "main ist genau der geprüfte Merge-Commit");
             let (code, text) = o.lauf(&["-Baum", "main", "-Commits", &format!("{alt}..main"), "-AufMain"], None);
             assert_eq!(code, 0, "nach dem Merge: {text}");
@@ -3984,7 +4030,10 @@ fn probe_merge_ohne_arbeitsbaum_nach_leitfaden() {
 /// im Prüfer noch in Hochladen.ps1; beide prüfen wie sonst. Ohne die Umgebungsvariable
 /// NoDefaultCurrentDirectoryInExePath, die die Suche im aktuellen Ordner abschaltete.
 /// Gegenprobe: Ein Start über den Namen (ProcessStartInfo „git“) nimmt dort die fremde.
-/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann bricht der Prüfer ab (Exit 2).
+/// Steht „.“ im PATH, nimmt auch Get-Command die fremde: Dann brechen Prüfer und
+/// Hochladen.ps1 ab (Exit 2, jeder nicht voll qualifizierte PATH-Eintrag), ebenso mit dem
+/// Repo als vollem Pfad im PATH (Ortsvergleich). Dasselbe mit einer git.cmd, die eine
+/// Marke schriebe; die Marke entsteht nie, außer in der Gegenprobe mit „& git“.
 #[test]
 fn kein_git_aus_dem_arbeitsordner() {
     if !bereit() {
@@ -4057,14 +4106,48 @@ fn kein_git_aus_dem_arbeitsordner() {
         text.trim().to_lowercase().replace('/', "\\").ends_with(&format!("{}\\git.exe", repo.to_lowercase().replace('/', "\\"))),
         "Gegenprobe: mit . im PATH nimmt Get-Command die fremde git.exe:\n{text}"
     );
+    // Ohne Umlaut: Hochladen.ps1 schreibt in eine Pipe in der Codepage der Konsole.
+    let relativ = "nicht voll qualifizierte";
     let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
-    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH: {text}");
+    assert!(c == 2 && text.contains(relativ), "Prüfer mit . im PATH: {text}");
     // Auch mit vollem Cache (die Hochladen-Läufe oben haben ihn gefüllt): der Abbruch kommt vor dem Cache.
     let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain", "-MitCache"]].concat());
-    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit . im PATH und -MitCache: {text}");
+    assert!(c == 2 && text.contains(relativ), "Prüfer mit . im PATH und -MitCache: {text}");
     // Hochladen bricht ab, bevor es git aus dem Arbeitsordner startet.
     let (c, text) = mit_punkt(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
-    assert!(c == 2 && text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("ginge so"), "Hochladen mit . im PATH: {text}");
+    assert!(c == 2 && text.contains(relativ) && !text.contains("ginge so"), "Hochladen mit . im PATH: {text}");
+    // Das Repo mit vollem Pfad vorn im PATH: Der Ortsvergleich bricht ab.
+    let mit_repo = |args: &[&str]| {
+        let a = pwsh()
+            .unwrap()
+            .args(args)
+            .current_dir(o.repo())
+            .env("DASHBOARD_INHALT", &inhalt)
+            .env("DASHBOARD_PRUEFER_CACHE", o.cache())
+            .env("PATH", format!("{repo};{}", std::env::var("PATH").unwrap_or_default()))
+            .output()
+            .unwrap();
+        (a.status.code().unwrap_or(-1), format!("{}{}", String::from_utf8_lossy(&a.stdout), String::from_utf8_lossy(&a.stderr)))
+    };
+    let (c, text) = mit_repo(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains("git liegt im geprüften Repo oder im aktuellen Ordner"), "Prüfer mit dem Repo im PATH: {text}");
+    let (c, text) = mit_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains("git liegt im Repo oder im aktuellen Ordner") && !text.contains("ginge so"), "Hochladen mit dem Repo im PATH: {text}");
+    // git.cmd statt git.exe: Sie schriebe eine Marke, die nie entstehen darf.
+    std::fs::remove_file(o.repo().join("git.exe")).unwrap();
+    let marke = o.wurzel.join("fremdes-git-lief.txt");
+    std::fs::write(o.repo().join("git.cmd"), format!("@echo lief> \"{}\"\r\n@exit /b 0\r\n", marke.display())).unwrap();
+    std::fs::write(o.repo().join(".git").join("info").join("exclude"), "/scripts/\n/git.cmd\n").unwrap();
+    let (c, text) = mit_punkt(&[&start[..], &[&vor_push, "-Repo", &repo, "-Baum", "main", "-Commits", "main", "-AufMain"]].concat());
+    assert!(c == 2 && text.contains(relativ) && !marke.exists(), "Prüfer mit git.cmd und . im PATH: {text}");
+    let (c, text) = mit_punkt(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 2 && text.contains(relativ) && !text.contains("ginge so") && !marke.exists(), "Hochladen mit git.cmd und . im PATH: {text}");
+    // Ohne . im PATH gilt git.cmd nie: CreateProcess sucht im aktuellen Ordner nur git.exe.
+    let (c, text) = im_repo(&[&start[..], &[&hochladen, "-Pruefen"]].concat());
+    assert!(c == 0 && text.contains("main ginge so nach main") && !marke.exists(), "Hochladen mit git.cmd im Repo: {text}");
+    // Gegenprobe: Mit . im PATH nimmt PowerShell die git.cmd, und sie schreibt die Marke.
+    let (_, text) = mit_punkt(&["-NoProfile", "-NonInteractive", "-Command", "& git --version"]);
+    assert!(marke.exists(), "Gegenprobe: mit . im PATH läuft die git.cmd im aktuellen Ordner:\n{text}");
 }
 
 /// -Beitrag: Ein Commit des Beitrags (main..<kennung>) mit dem Namen oder der Adresse
@@ -4150,7 +4233,8 @@ fn pruefpfade_loeschen_umbenennen_modus() {
 }
 
 /// Heimatpfade unter macOS und Linux in weiteren Formen (PATH-Liste, scp-Ziel,
-/// Schalter -L und -I, JSON mit \/, WSL-Freigabe), je genau ein Fund; die
+/// Schalter -L und -I, JSON mit \/, WSL-Freigabe, /var/home, /export/home, mehrere
+/// oder gemischte Trenner nach dem Ordner), je genau ein Fund; die
 /// Windows-Formen mit / zählen nur einmal (nicht zusätzlich als macOS/Linux).
 /// Gegenproben bleiben frei: /home und /users hinter einer Domäne, "/home" ohne Namen,
 /// /usr/home/<x> (nach einem Buchstaben; FreeBSD gehört nicht zu den Zielsystemen) und
@@ -4191,6 +4275,12 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
         "cc -isystem/h§ome/zora",
         // WSL-Freigabe in JSON: nur die WSL-Form meldet.
         r"\/\/wsl$\/U\/h§ome\/zora",
+        // Mehrere oder gemischte Trenner nach dem Ordner, /var/home (Fedora Silverblue) und /export/home.
+        "/h§ome//zora",
+        r"/h§ome\zora",
+        "/var/h§ome/zora",
+        "/export/h§ome/zora",
+        r#"{"p": "\/var\/h§ome\/zora"}"#,
     ] {
         let text = abgewiesen(form, "Benutzerpfad", |o| o.ueber_merge(|o| o.datei("src/pfad.rs", format!("// {form}\n").as_bytes())));
         assert_eq!(fundzeilen(&text).len(), 1, "{form}: genau ein Fund:\n{text}");
@@ -4202,11 +4292,91 @@ fn heimatpfade_weitere_formen_je_ein_fund() {
                 r#"// https://example.com/h§ome/zora https://api.github.com/u§sers/zora Path::new("/h§ome") "/h§ome/" /usr/h§ome/zora
 // https:\/\/example.com\/h§ome\/zora foo-bar/h§ome/zora
 // \\wsl$\Ubuntu\h§ome\<name> \/h§ome\/<name> -L/h§ome/<name> PATH=/usr/bin:/h§ome/$USER/bin
+// /var/h§ome/<name> /h§ome//<name> /h§ome\<name> x/var/h§ome/zora /variable/h§ome/zora /var/h§omes/zora
 "#
                 .as_bytes(),
             )
         })
     });
+}
+
+/// Liest die Muster „Benutzerpfad…“ aus Vor-Push.ps1 (Zeilen `'name' = Rx ('…')`, der
+/// Platzhalter eingesetzt), dazu das Muster aus $env:ALT, und misst jedes an langen Zeilen.
+/// Ausgabe je Paar: `ZEIT|<muster>|<eingabe>|<ms>`.
+const MUSTER_MESSEN: &str = r#"
+$t = [IO.File]::ReadAllText($env:PRUEFER)
+$opt = [Text.RegularExpressions.RegexOptions]'IgnoreCase, CultureInvariant'
+$platz = [regex]::Match($t, "(?m)^\`$platzhalter = '(.*)'\r?$").Groups[1].Value.Replace("''", "'")
+if (-not $platz) { throw 'Platzhalter nicht gefunden' }
+$muster = [ordered]@{}
+foreach ($m in [regex]::Matches($t, "(?m)^\s*'(Benutzerpfad[^']*)'\s*=\s*Rx \('(.*)'\)\r?$")) {
+    $teile = $m.Groups[2].Value -split "' \+ \`$platzhalter \+ '"
+    $muster[$m.Groups[1].Value] = [regex]::new((($teile | ForEach-Object { $_.Replace("''", "'") }) -join $platz), $opt)
+}
+$muster['alt'] = [regex]::new($env:ALT.Replace('PLATZ', $platz), $opt)
+$n = 20000
+$h = '/h' + 'ome'
+$eingaben = [ordered]@{
+    'slash' = '/' * $n
+    'gemischt' = '\/' * ($n / 2)
+    'home' = ($h + '/') * ($n / 6)
+    'home-trenner' = $h + ('/' * $n)
+    'laufwerk' = 'c:' + ('/' * $n) + 'u'
+    'wsl' = ('/' * $n) + 'wsl$/'
+    'kodiert' = 'home' + ('%2f' * ($n / 3)) + '/'
+    'var' = '/var' * ($n / 4)
+}
+foreach ($k in $muster.Keys) {
+    foreach ($e in $eingaben.Keys) {
+        if ($k -eq 'alt' -and $e -ne 'slash') { continue }
+        $null = $muster[$k].Matches('/x').Count
+        $uhr = [Diagnostics.Stopwatch]::StartNew()
+        $null = $muster[$k].Matches($eingaben[$e]).Count
+        "ZEIT|$k|$e|$($uhr.ElapsedMilliseconds)"
+    }
+}
+"#;
+
+/// Das Muster „Benutzerpfad (macOS/Linux)“ vor der Behebung: Der Lookbehind über die
+/// Trenner stand vor dem Literal und lief hinter jedem / zurück (quadratisch).
+const ALTES_MAC_MUSTER: &str =
+    r#"(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+))/(?:(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*)[u]sers|[h]ome)\\?/(?!PLATZ)[^\\/\s"'<>*|:]+"#;
+
+/// Die Heimatpfad-Muster laufen auf einer Zeile aus 20 000 Zeichen linear: Je Muster und
+/// Eingabe (lauter /, \/ im Wechsel, viele Stücke /home und /, /home mit langen Trennern,
+/// Laufwerk mit langen Trennern, WSL- und URL-kodierte Formen) unter 500 ms (gemessen etwa
+/// 1 ms; großzügig gegen Last). Gegenprobe: das alte Muster braucht auf 20 000 / über 1 s
+/// (gemessen etwa 5 s).
+#[test]
+fn heimatpfad_muster_ohne_quadratische_laufzeit() {
+    if !bereit() {
+        return;
+    }
+    let aus = pwsh()
+        .unwrap()
+        .args(["-NoProfile", "-NonInteractive", "-Command", MUSTER_MESSEN])
+        .env("PRUEFER", skript())
+        .env("ALT", ALTES_MAC_MUSTER)
+        .output()
+        .unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&aus.stdout), String::from_utf8_lossy(&aus.stderr));
+    assert!(aus.status.success(), "{text}");
+    let mut namen = std::collections::BTreeSet::new();
+    for zeile in text.lines().filter_map(|z| z.trim().strip_prefix("ZEIT|")) {
+        let teile: Vec<&str> = zeile.split('|').collect();
+        let (muster, eingabe, ms) = (teile[0], teile[1], teile[2].parse::<u64>().unwrap());
+        if muster == "alt" {
+            assert!(ms >= 1000, "Gegenprobe: das alte Muster läuft auf 20 000 / quadratisch, gemessen {ms} ms");
+        } else {
+            assert!(ms < 500, "{muster} auf {eingabe}: {ms} ms\n{text}");
+        }
+        namen.insert(muster.to_string());
+    }
+    for name in
+        ["alt", "Benutzerpfad", "Benutzerpfad (Git-Bash-Form)", "Benutzerpfad (macOS/Linux)", "Benutzerpfad (WSL-Freigabe)", "Benutzerpfad (URL-kodiert)"]
+    {
+        assert!(namen.contains(name), "{name} nicht gemessen:\n{text}");
+    }
 }
 
 /// Ein Fall: Name, erwarteter Fund, die Änderung (gibt die Kennung für -Beitrag).

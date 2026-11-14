@@ -123,7 +123,8 @@
       Text       Benutzerpfade in allen
                  Schreibformen (\, \\, /, /c/Users, /mnt/c/Users (WSL),
                  /cygdrive/c/Users, \\rechner\c$\Users, /Users/<name> (macOS),
-                 /home/<name> (Linux; auch hinter : wie in PATH-Listen und
+                 /home/<name> (Linux, auch /var/home und /export/home und
+                 mit mehreren Trennern; auch hinter : wie in PATH-Listen und
                  scp-Zielen, hinter Schaltern wie -L oder -isystem und als
                  JSON \/home\/<name>; nicht hinter Buchstabe oder Ziffer,
                  also nicht in URLs mit Host davor),
@@ -318,6 +319,8 @@ try { [Console]::OutputEncoding = $utf8 } catch { }
 # Die Zeile zur Laufzeit ändert nie das Ergebnis der Prüfung: Scheitert Laufzeit.ps1, fehlt nur sie.
 try { . $script:prueferDateien[1]; $uhr = UhrStart } catch { Write-Host 'HINWEIS Laufzeit.ps1 ließ sich nicht laden; die Zeile zur Laufzeit fehlt.' }
 # Ein „.“ oder relativer Eintrag im PATH holte git doch aus dem aktuellen Ordner oder dem geprüften Repo.
+$relativ = @($env:PATH -split ';' | Where-Object { $_.Trim() -and -not [IO.Path]::IsPathFullyQualified($_.Trim().Trim('"')) })
+if ($relativ) { throw "PATH enthält nicht voll qualifizierte Einträge ($($relativ -join ';')); PATH nur mit vollen Pfaden setzen" }
 $gitOrt = Split-Path -Parent $gitExe
 if ($gitOrt -eq (Get-Location).ProviderPath -or ($gitOrt + '\').StartsWith($Repo.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw "git liegt im geprüften Repo oder im aktuellen Ordner ($gitExe); PATH ohne . und ohne relative Einträge setzen"
@@ -697,7 +700,9 @@ $muster = [ordered]@{
     # /c/Users, /usr/home), außer einem Schalter wie -L oder -isystem. Users nicht nach einem
     # Laufwerk C:, c$ oder c%3A mit beliebigen Trennern (das meldet die Windows-Form oben, sonst
     # zählte derselbe Pfad doppelt); /home dort schon, die Windows-Form kennt nur Users.
-    'Benutzerpfad (macOS/Linux)'         = Rx ('(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+))/(?:(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*)[u]sers|[h]ome)\\?/(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
+    # Auch /var/home und /export/home und beliebige Trenner nach dem Ordner (/home//<name>, /home\<name>).
+    # Das Literal steht vor dem Lookbehind über die Trenner: sonst lief er hinter jedem / zurück (quadratisch).
+    'Benutzerpfad (macOS/Linux)'         = Rx ('(?:(?<![a-z0-9]\\?)|(?<=(?<![a-z0-9])-[a-z]+)|(?<=(?<![a-z0-9])\\?/(?:var|export)\\?)(?=/[h]ome))/(?:[u]sers(?<!(?<![a-z0-9])[a-z](?::|\$|%3a)[\\/]*/[u]sers)|[h]ome)(?>[\\/]+)(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # WSL von Windows aus: \\wsl.localhost\<distro>\home\<name> und \\wsl$\<distro>\home\<name>, auch mit / und doppelten Trennern.
     'Benutzerpfad (WSL-Freigabe)'        = Rx ('[\\/]{2,}wsl(?:\.localhost|\$)[\\/]+[^\\/\s]+[\\/]+[h]ome[\\/]+(?!' + $platzhalter + ')[^\\/\s"''<>*|:]+')
     # Der Name ganz (bis zum nächsten %, Trenner oder Leerraum), damit Maskiert ihn ganz ersetzt.
