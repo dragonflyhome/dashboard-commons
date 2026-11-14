@@ -37,6 +37,13 @@
 //! Der Benutzername allein (etwa in `DOMÄNE\name` oder einem Satz) wird zu
 //! `%USERNAME%`, wenn er bekannt ist und als ganzes Wort dasteht.
 //!
+//! Der Name des Rechners wird zu `%COMPUTERNAME%`: Er trägt oft den Namen der
+//! Person (etwa `<name>s-MacBook`). Das Feld `host` der Rechner-Werte bekommt
+//! fest den Platzhalter ([`rechner_verbergen`]), und in jedem anderen Text
+//! wird der bekannte Name als ganzes Wort ersetzt (etwa `\\<rechner>\…`). Der
+//! Name eines Datenträgers (`DiskInfo.name`) wird zu `%VOLUME%`, wenn er
+//! nicht leer ist: Er ist auf jeder Plattform frei vergeben.
+//!
 //! Ohne bekannten Inhaber (Konsole, Tests) gelten das eigene Profil
 //! (`USERPROFILE`, sonst `HOME`) und der eigene Name (`USERNAME`, sonst
 //! `USER` und `LOGNAME`): Dann läuft der Prozess als Inhaber. Im Dienst setzt der Start beides aus der SID, nie das
@@ -52,7 +59,9 @@ use serde_json::Value;
 pub const PROFIL_PLATZHALTER: &str = "%USERPROFILE%";
 /// Platzhalter für den Benutzernamen allein.
 pub const NAME_PLATZHALTER: &str = "%USERNAME%";
-/// Platzhalter für den Namen eines Datenträgers unter `/Volumes`.
+/// Platzhalter für den Namen des Rechners.
+pub const RECHNER_PLATZHALTER: &str = "%COMPUTERNAME%";
+/// Platzhalter für den Namen eines Datenträgers (unter `/Volumes` und in `DiskInfo.name`).
 pub const VOLUME_PLATZHALTER: &str = "%VOLUME%";
 /// Platzhalter für die Benutzernummer in `/run/user/<n>`.
 pub const UID_PLATZHALTER: &str = "%UID%";
@@ -70,6 +79,8 @@ pub struct Bekannt {
     pub profile: Vec<String>,
     /// Benutzernamen (Konto, Name des Profilordners).
     pub namen: Vec<String>,
+    /// Namen des Rechners (ganz und ohne den Teil ab dem ersten Punkt).
+    pub rechner: Vec<String>,
 }
 
 impl Bekannt {
@@ -110,11 +121,26 @@ impl Bekannt {
         }
     }
 
+    /// Dazu der Name des Rechners: ganz und, wenn er Punkte hat, auch der Teil
+    /// vor dem ersten (`<name>.local`, `<name>.beispiel.example`). Leeres und
+    /// Namen unter drei Zeichen fallen weg, wie beim Benutzernamen.
+    pub fn mit_rechner(mut self, name: Option<&str>) -> Bekannt {
+        let Some(ganz) = name.map(str::trim).filter(|n| !n.is_empty()) else {
+            return self;
+        };
+        for n in [Some(ganz), ganz.split('.').next()].into_iter().flatten() {
+            if n.chars().count() >= NAME_MINDESTENS && !self.rechner.iter().any(|m| m.to_lowercase() == n.to_lowercase()) {
+                self.rechner.push(n.to_string());
+            }
+        }
+        self
+    }
+
     /// Aus dieser Umgebung: für Konsole und Tests. Siehe [`Bekannt::aus_werten`].
     pub fn aus_umgebung() -> Bekannt {
         let pfad = |n: &str| std::env::var_os(n).map(PathBuf::from);
         let text = |n: &str| std::env::var(n).ok();
-        Bekannt::aus_werten(pfad("USERPROFILE"), pfad("HOME"), text("USERNAME"), &[text("USER"), text("LOGNAME")])
+        Bekannt::aus_werten(pfad("USERPROFILE"), pfad("HOME"), text("USERNAME"), &[text("USER"), text("LOGNAME")]).mit_rechner(rechnername().as_deref())
     }
 
     /// Aus den Werten der Umgebung. Unter Windows stehen Profil und Name in
@@ -143,6 +169,11 @@ impl Bekannt {
         }
         b
     }
+}
+
+/// Der Name dieses Rechners, wie ihn das System nennt; `None`, wenn es keinen nennt.
+pub fn rechnername() -> Option<String> {
+    sysinfo::System::host_name().filter(|n| !n.trim().is_empty())
 }
 
 /// Liegt `home` direkt unter `/Users` oder `/home` (`/Users/<name>`)?
@@ -194,7 +225,8 @@ pub fn bekannt() -> &'static Bekannt {
     BEKANNT.get_or_init(Bekannt::aus_umgebung)
 }
 
-/// Verbirgt Profilpfade und den Benutzernamen des Inhabers (siehe Kopf).
+/// Verbirgt Profilpfade, den Benutzernamen des Inhabers und den Namen des
+/// Rechners (siehe Kopf).
 pub fn verbergen(text: &str) -> String {
     verbergen_mit(text, bekannt())
 }
@@ -202,7 +234,9 @@ pub fn verbergen(text: &str) -> String {
 /// Wie [`verbergen`], mit ausdrücklich angegebenem Inhaber (Tests, Werkzeuge).
 pub fn verbergen_mit(text: &str, b: &Bekannt) -> String {
     let ohne_pfade = pfade_ersetzen(text, b);
-    namen_ersetzen(&ohne_pfade, &b.namen)
+    // Zuerst der Rechner: Sein Name kann den Benutzernamen als Wort enthalten (`<name>-rechner`).
+    let ohne_rechner = rechner_ersetzen(&ohne_pfade, &b.rechner);
+    namen_ersetzen(&ohne_rechner, &b.namen)
 }
 
 /// Jeder Text in einem JSON-Wert (auch Schlüssel) durch [`verbergen`].
@@ -253,6 +287,32 @@ pub fn projekt_verbergen(p: &mut crate::vertrag::projekt::Projekt) {
     }
     for n in &mut p.processes {
         *n = verbergen(n);
+    }
+}
+
+/// Die Rechner-Werte für jede Antwort: Der Name des Rechners wird fest der
+/// Platzhalter, auf jeder Plattform und auch mit Anmeldung (wie Profil und
+/// Kontoname), die Namen der Datenträger nach [`platten_verbergen`].
+pub fn rechner_verbergen(s: &mut crate::pc::system::Snapshot) {
+    s.host = RECHNER_PLATZHALTER.to_string();
+    platten_verbergen(&mut s.disks);
+}
+
+/// Der Name jedes Datenträgers wird der Platzhalter. Ein leerer Name bleibt
+/// leer, damit nichts vorgetäuscht wird. `mount` bleibt und läuft wie jeder
+/// Text durch [`verbergen`]; nur ein Einhängepunkt direkt unter `/Volumes`
+/// wird hier schon ganz ersetzt, weil der Name dort Leerzeichen tragen kann
+/// (`/Volumes/<zwei Wörter>`) und [`verbergen`] einen Namen am Leerraum beendet.
+pub fn platten_verbergen(platten: &mut [crate::pc::system::DiskInfo]) {
+    const VOLUMES: &str = "/Volumes/";
+    for p in platten.iter_mut() {
+        if !p.name.is_empty() {
+            p.name = VOLUME_PLATZHALTER.to_string();
+        }
+        let unter_volumes = p.mount.get(..VOLUMES.len()).is_some_and(|v| v.eq_ignore_ascii_case(VOLUMES));
+        if unter_volumes && !p.mount[VOLUMES.len()..].trim_end_matches('/').contains('/') && p.mount.len() > VOLUMES.len() {
+            p.mount = format!("{}{VOLUME_PLATZHALTER}", &p.mount[..VOLUMES.len()]);
+        }
     }
 }
 
@@ -894,17 +954,18 @@ fn pfade_ersetzen(text: &str, b: &Bekannt) -> String {
 fn namen_ersetzen(text: &str, namen: &[String]) -> String {
     let mut aus = text.to_string();
     for n in namen.iter().filter(|n| n.chars().count() >= NAME_MINDESTENS) {
-        aus = ein_name(&aus, n);
+        aus = ein_name(&aus, n, NAME_PLATZHALTER, char::is_alphanumeric);
     }
     aus
 }
 
-fn ein_name(text: &str, name: &str) -> String {
+/// Ersetzt `name` durch `platzhalter`, wo er als ganzes Wort dasteht (ohne
+/// Groß/Klein). Was zu einem Wort gehört, sagt `wortzeichen`.
+fn ein_name(text: &str, name: &str, platzhalter: &str, wortzeichen: fn(char) -> bool) -> String {
     let klein_name: String = name.to_lowercase();
     let erstes = klein_name.chars().next();
     let mut aus = String::with_capacity(text.len());
     let mut kopiert = 0;
-    let wortzeichen = |c: char| c.is_alphanumeric();
     let it = text.char_indices().peekable();
     let mut vorher: Option<char> = None;
     for (i, c) in it {
@@ -919,13 +980,28 @@ fn ein_name(text: &str, name: &str) -> String {
             let danach = text[ende..].chars().next();
             if !danach.is_some_and(wortzeichen) {
                 aus.push_str(&text[kopiert..i]);
-                aus.push_str(NAME_PLATZHALTER);
+                aus.push_str(platzhalter);
                 kopiert = ende;
             }
         }
         vorher = Some(c);
     }
     aus.push_str(&text[kopiert..]);
+    aus
+}
+
+/// Jeder bekannte Name des Rechners als ganzes Wort (ohne Groß/Klein) wird
+/// `%COMPUTERNAME%`. Ein Bindestrich gehört hier zum Wort: `<name>-alt` ist
+/// ein anderer Rechner.
+fn rechner_ersetzen(text: &str, rechner: &[String]) -> String {
+    let wortzeichen: fn(char) -> bool = |c| c.is_alphanumeric() || c == '-';
+    let mut aus = text.to_string();
+    // Der längere Name zuerst (`<name>.local` vor `<name>`).
+    let mut namen: Vec<&String> = rechner.iter().filter(|n| n.chars().count() >= NAME_MINDESTENS).collect();
+    namen.sort_by_key(|n| std::cmp::Reverse(n.len()));
+    for n in namen {
+        aus = ein_name(&aus, n, RECHNER_PLATZHALTER, wortzeichen);
+    }
     aus
 }
 
