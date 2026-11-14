@@ -451,7 +451,9 @@ mod tests {
     #[test]
     fn ohne_bote_laedt() {
         let ort = Ort::neu("ohne-bote");
-        let ohne = ort.gut().split("\n[bote]").next().unwrap().to_string();
+        let block = "\n[bote]\npipe = \"dashboard-bote\"\nprogramm = \"C:/ProgramData/Dashboard/bin/dashboard-bote.exe\"\n";
+        assert!(ort.gut().contains(block), "{}", ort.gut());
+        let ohne = ort.gut().replace(block, "\n");
         assert!(!ohne.contains("[bote]") && ohne.contains("[konten]"), "{ohne}");
         let e = ort.laden(&ohne).unwrap();
         assert_eq!(e.bote.pipe, "dashboard-bote");
@@ -488,14 +490,18 @@ mod tests {
     fn unvollstaendiges_bote_programm_taucht_nirgends_auf() {
         let ort = Ort::neu("bote-ordner");
         let mut e = ort.laden(&ort.gut()).unwrap();
+        // Ein gültiger, vollständiger Wert unter dem Testordner: Sein Ordner ist dabei (auf jeder Plattform).
+        let bin = ort.ordner.join("bin");
+        e.bote.programm = bin.join("dashboard-bote");
         let mit = crate::oeffnen::ordner_des_dienstes(Some(&e));
+        assert!(mit.contains(&bin), "{mit:?}");
         e.bote.programm = PathBuf::from("bin/dashboard-bote");
         let ordner = crate::oeffnen::ordner_des_dienstes(Some(&e));
         assert!(ordner.iter().all(|p| p.is_absolute()), "{ordner:?}");
-        assert!(!ordner.iter().any(|p| p == Path::new("bin")), "{ordner:?}");
-        // Gegenprobe: Die übrigen Ordner des Dienstes sind dieselben wie mit dem gültigen Wert,
-        // nur der Ordner des Boten fehlt (wo er vorher als vollständiger Pfad dabei war).
-        let ohne_bote: Vec<&PathBuf> = mit.iter().filter(|p| !p.ends_with("Dashboard/bin")).collect();
+        assert!(!ordner.contains(&bin) && !ordner.iter().any(|p| p.ends_with("bin")), "{ordner:?}");
+        // Gegenprobe: Die übrigen Ordner des Dienstes sind dieselben, nur der Ordner des Boten fehlt.
+        assert_eq!(ordner.len(), mit.len() - 1, "{mit:?} / {ordner:?}");
+        let ohne_bote: Vec<&PathBuf> = mit.iter().filter(|p| **p != bin).collect();
         assert_eq!(ordner.iter().collect::<Vec<_>>(), ohne_bote);
     }
 

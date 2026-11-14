@@ -45,6 +45,11 @@ private = false                       # true: nur Zahlen, keine Commit-Texte
 name = "Doku"
 url = "https://example.org"           # http(s) wird anklickbar, Pfade nur angezeigt
 
+[[links]]
+name = "Ordner"
+url = "/Users/<name>/Projekte/mein projekt"  # lokaler Pfad: mit Laufwerk (C:/...) oder unter /Users, /home, /Volumes
+                                            # und weiteren Wurzeln; Leerzeichen erlaubt, nur angezeigt
+
 [[checks]]                            # optional: antwortet eine Adresse? (grün/rot)
 name = "Server lokal"
 url = "http://127.0.0.1:8080/"        # geprüft wird nur http://, kein https'''
