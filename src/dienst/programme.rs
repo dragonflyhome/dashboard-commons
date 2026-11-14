@@ -34,6 +34,9 @@ pub enum Werkzeug {
     Node,
     /// `explorer.exe` aus `%SystemRoot%` (Bote: Ordner öffnen, Entscheidung lokal-oeffnen).
     Explorer,
+    /// `/usr/bin/tmutil`, nur unter macOS: nimmt den Schlüsselordner von Time
+    /// Machine aus (`passkey::geheim`). Unter Windows und Linux gibt es keinen Ort.
+    Tmutil,
 }
 
 impl Werkzeug {
@@ -49,6 +52,7 @@ impl Werkzeug {
             Werkzeug::Rustc => "rustc",
             Werkzeug::Node => "node",
             Werkzeug::Explorer => "explorer.exe",
+            Werkzeug::Tmutil => "tmutil",
         }
     }
 }
@@ -95,6 +99,7 @@ impl Orte {
         if cfg!(not(windows)) {
             return match w {
                 Werkzeug::Git => vec![PathBuf::from("/usr/bin/git")],
+                Werkzeug::Tmutil if cfg!(target_os = "macos") => vec![PathBuf::from("/usr/bin/tmutil")],
                 _ => Vec::new(),
             };
         }
@@ -119,6 +124,7 @@ impl Orte {
             Werkzeug::Rustc => vec![unter(&self.user_profile, &[".cargo", "bin", "rustc.exe"])],
             Werkzeug::Node => vec![unter(&self.program_files, &["nodejs", "node.exe"])],
             Werkzeug::Explorer => vec![unter(&self.system_root, &["explorer.exe"])],
+            Werkzeug::Tmutil => Vec::new(),
         };
         liste.into_iter().flatten().filter(|p| p.is_absolute()).collect()
     }
@@ -443,6 +449,17 @@ mod tests {
             let args: Vec<_> = c.as_std().get_args().collect();
             assert!(Path::new(args[0]).ends_with(r"npm\bin\npm-cli.js"), "{args:?}");
         }
+    }
+
+    /// `tmutil` kommt nur unter macOS in Frage, und dort nur vom festen Ort
+    /// des Systems; unter Windows und Linux gibt es keinen Kandidaten.
+    #[test]
+    fn tmutil_nur_unter_macos_vom_festen_ort() {
+        let orte = Orte { system_root: Some(PathBuf::from(r"C:\Windows")), ..Orte::default() };
+        let erwartet = if cfg!(target_os = "macos") { vec![PathBuf::from("/usr/bin/tmutil")] } else { Vec::new() };
+        assert_eq!(orte.kandidaten(Werkzeug::Tmutil), erwartet);
+        assert_eq!(Orte::default().kandidaten(Werkzeug::Tmutil), erwartet);
+        assert_eq!(Werkzeug::Tmutil.name(), "tmutil");
     }
 
     /// Wächter gegen neue Stellen: Außerhalb dieser Datei entsteht kein

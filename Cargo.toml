@@ -70,6 +70,11 @@ base64 = { version = "=0.22.1", default-features = false, features = ["std"] }
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
 getrandom = { version = "=0.2.17", default-features = false }
 
+# libc nur außerhalb von Windows, exakt auf der Fassung, die tokio und sysinfo schon in die
+# Sperrdatei bringen (kein neues Paket). Aufrufe: getuid (Besitz von Schlüsselordner und Repo-Ordner).
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
 # windows-service bleibt bei 0.8.1: Dienst-Modus (`--dienst`, Etappe 7a). Bauprobe bestanden.

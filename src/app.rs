@@ -307,16 +307,22 @@ impl AppState {
         api::events::spawn_watcher(events.clone(), inhalt.clone(), git.clone(), bote.clone(), weitere, aus);
         // Etappe 7c: Schlüssel der Ausweise; beim ersten Start mit enger Freigabe angelegt.
         let jwt_datei = match &einstellungen {
-            Some(e) => e.jwt_schluessel_datei(),
+            Some(e) => Some(e.jwt_schluessel_datei()),
             None => jwt_schluessel_datei(&daten),
         };
-        let jwt = match crate::passkey::geheim::laden_oder_anlegen(&jwt_datei) {
-            Ok(k) => {
-                info!("Schlüssel für Ausweise (Passkey): {}", jwt_datei.display());
-                Some(Arc::new(k))
-            }
-            Err(e) => {
-                error!("Anmeldung mit Passkey aus: {e}");
+        let jwt = match &jwt_datei {
+            Some(datei) => match crate::passkey::geheim::laden_oder_anlegen(datei) {
+                Ok(k) => {
+                    info!("Schlüssel für Ausweise (Passkey): {}", crate::datenschutz::verbergen(&datei.display().to_string()));
+                    Some(Arc::new(k))
+                }
+                Err(e) => {
+                    error!("Anmeldung mit Passkey aus: {e}");
+                    None
+                }
+            },
+            None => {
+                error!("Anmeldung mit Passkey aus: Für den Schlüssel der Ausweise gibt es keinen Ort (HOME fehlt oder ist kein vollständiger Pfad).");
                 None
             }
         };
@@ -979,13 +985,17 @@ pub fn daten_datei() -> PathBuf {
 }
 
 /// Schlüssel der Ausweise (Etappe 7c) ohne Einstellungsdatei: Umgebungsvariable
-/// `DASHBOARD_JWT_SCHLUESSEL` (Dateipfad, etwa für den Testserver), sonst
-/// `geheim\jwt-schluessel` neben der Datei des Datenspeichers.
-pub fn jwt_schluessel_datei(daten: &Path) -> PathBuf {
+/// `DASHBOARD_JWT_SCHLUESSEL` (Dateipfad, etwa für den Testserver), sonst der
+/// Ort nach `passkey::geheim::ort_ohne_einstellungen`: unter Windows
+/// `geheim\jwt-schluessel` neben der Datei des Datenspeichers, unter macOS und
+/// Linux ein eigener Schlüsselordner außerhalb des Datenbaums. `None`: Es
+/// gibt keinen Ort (außerhalb von Windows ohne vollständiges `HOME`).
+pub fn jwt_schluessel_datei(daten: &Path) -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("DASHBOARD_JWT_SCHLUESSEL") {
-        return PathBuf::from(p);
+        return Some(PathBuf::from(p));
     }
-    daten.parent().map(Path::to_path_buf).unwrap_or_default().join("geheim").join("jwt-schluessel")
+    let wert = |n: &str| std::env::var(n).ok();
+    crate::passkey::geheim::ort_ohne_einstellungen(crate::passkey::geheim::Plattform::diese(), daten, wert("HOME").as_deref(), wert("XDG_DATA_HOME").as_deref())
 }
 
 /// `data/pc.toml`: neben dem Projektordner, sonst im Repo.
