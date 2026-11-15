@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.10.0 - 2026-11-15
+-------------------
+
 Hinzugefügt
 - Das Dashboard lässt sich unter macOS und Linux bauen. Unter macOS
   werden die Links der Aufgaben mit XChaCha20-Poly1305 verschlüsselt;
