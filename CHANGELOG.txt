@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.13.0 - 2026-11-15
+-------------------
+
 Geändert
 - Bruch: Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite, den
   Zustand, die Fassung und das Changelog. Öffentlich ist nur eine feste
