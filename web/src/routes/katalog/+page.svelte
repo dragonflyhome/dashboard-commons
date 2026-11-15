@@ -610,7 +610,7 @@
 			<Beispiel
 				id="orte"
 				name="Orte"
-				beschreibung="Dateien und Ordner auf diesem PC aus daten/orte.toml, je mit dem Knopf „Öffnen“ (der Pfad steht nie auf der Seite). Im Katalog öffnet der Knopf nichts."
+				beschreibung="Dateien und Ordner auf diesem PC aus daten/orte.toml, je mit dem Knopf „Öffnen“ (angemeldet steht unter einem geprüften Ort sein Pfad, im Katalog nie). Im Katalog öffnet der Knopf nichts."
 				code={SCHNIPSEL.orte}
 			>
 				<Orte daten={orte()} projekt="beispiel" fetchFn={katalogFetch} />

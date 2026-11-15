@@ -211,7 +211,7 @@ export const FLUSS: Fluss = {
 	]
 };
 
-/** Erfundene Orte; den Pfad bekommt die Oberfläche ohnehin nie. */
+/** Erfundene Orte ohne Pfad: angemeldet steht unter einem geprüften Ort sein Pfad, im Katalog nie. */
 export function orte(): Orte {
 	return {
 		ort: [

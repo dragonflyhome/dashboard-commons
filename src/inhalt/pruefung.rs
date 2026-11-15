@@ -638,7 +638,7 @@ pub fn orte_befunde(
     regeln: &crate::oeffnen::Regeln,
     befunde: &mut Vec<Befund>,
 ) {
-    use crate::oeffnen::{Abweisung, VERBOTENE_ENDUNGEN, vorpruefen};
+    use crate::oeffnen::Abweisung;
     let alle: Vec<_> = orte.inhalte().into_iter().flat_map(|t| &t.ort).collect();
     if alle.is_empty() {
         return;
@@ -655,21 +655,29 @@ pub fn orte_befunde(
     }
     for o in alle {
         let zeile = zeile_mit(quelle, "kennung", &o.kennung);
-        // Eine Endung außerhalb der Positivliste ist ein Fehler, auch wenn es
-        // die Datei (noch) nicht gibt (wie im Boten: `ENDUNGEN`, zip als Ordner).
-        let endung = ort_endung(&o.pfad);
-        let ergebnis = match endung {
-            Some(e) if VERBOTENE_ENDUNGEN.contains(&e.as_str()) => Err((Abweisung::Endung(e), "")),
-            Some(e) if !regeln.endungen.contains(&e) && !regeln.explorer_endungen.contains(&e) => Err((Abweisung::Endung(e), SATZ_ORDNER_MIT_PUNKT)),
-            _ => match vorpruefen(&o.pfad, regeln) {
-                // Ohne bekanntes Profil lässt sich die Lage nicht sagen (der Hinweis oben sagt, was dann gilt).
-                Err(Abweisung::AusserhalbWurzel) if regeln.profil.is_none() => Ok(()),
-                r => r.map_err(|a| (a, "")),
-            },
+        let ergebnis = match ort_pruefen(&o.pfad, regeln) {
+            // Ohne bekanntes Profil lässt sich die Lage nicht sagen (der Hinweis oben sagt, was dann gilt).
+            Err((Abweisung::AusserhalbWurzel, _)) if regeln.profil.is_none() => Ok(()),
+            r => r,
         };
         if let Err((a, dazu)) = ergebnis {
             befunde.push(Befund::fehler(datei, zeile, format!("Der Ort „{}“ geht nie auf: {}{dazu}", o.kennung, a.satz())));
         }
+    }
+}
+
+/// Die Prüfung eines Orts, wie `pruefe` sie macht (nur der Text: Endung,
+/// Form, Tabu, Lage), streng: Ohne bekanntes Profil scheitert ein Ort im
+/// Profil an der Lage. Fehler mit Abweisung und Zusatz zum Satz. Auch für das
+/// Kennzeichen `geprueft` in `GET /api/projekte/<slug>/orte` (Schritt E1b).
+pub fn ort_pruefen(pfad: &str, regeln: &crate::oeffnen::Regeln) -> Result<(), (crate::oeffnen::Abweisung, &'static str)> {
+    use crate::oeffnen::{Abweisung, VERBOTENE_ENDUNGEN, vorpruefen};
+    // Eine Endung außerhalb der Positivliste ist ein Fehler, auch wenn es
+    // die Datei (noch) nicht gibt (wie im Boten: `ENDUNGEN`, zip als Ordner).
+    match ort_endung(pfad) {
+        Some(e) if VERBOTENE_ENDUNGEN.contains(&e.as_str()) => Err((Abweisung::Endung(e), "")),
+        Some(e) if !regeln.endungen.contains(&e) && !regeln.explorer_endungen.contains(&e) => Err((Abweisung::Endung(e), SATZ_ORDNER_MIT_PUNKT)),
+        _ => vorpruefen(pfad, regeln).map_err(|a| (a, "")),
     }
 }
 

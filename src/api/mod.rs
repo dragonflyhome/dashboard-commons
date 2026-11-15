@@ -57,6 +57,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/bauen", get(bauen::liste))
         // Entscheidung lokal-oeffnen: nur POST, nur der Inhaber im eigenen Windows-Konto.
         .route("/api/oeffnen", post(oeffnen::oeffnen))
+        // Schritt E1b: die Orte eines Projekts mit Pfad (geschützt; die Daten-Wege ohne Pfad).
+        .route("/api/projekte/{slug}/orte", get(oeffnen::orte))
         .route("/api/pruefung", get(pruefung::alle))
         .route("/api/pruefung/{slug}", get(pruefung::eines))
         // Etappe 4d: System-Seiten /entscheidungen und /zielbild, aus docs/ (nur lesend).

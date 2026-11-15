@@ -402,3 +402,124 @@ fn weg_ist_geschuetzt() {
     assert!(crate::sicherheit::geschuetzt("/api/oeffnen"));
     assert!(crate::sicherheit::geschuetzt("/API/Oeffnen"));
 }
+
+// ----- Schritt E1b: GET /api/projekte/<slug>/orte -----
+
+/// Erfundenes Profil in der Form von Windows: nur Text, nie auf der Platte
+/// (die Prüfung des Servers liest nur den Text), darum auch auf macOS gleich.
+fn profil() -> String {
+    format!(r"C:\Users\{KONTO}")
+}
+
+/// Das erfundene Konto.
+const KONTO: &str = "probekonto";
+
+/// Projekt `probe` mit Orten aller Arten in einem Temp-Ordner, Regeln des
+/// Servers mit dem erfundenen Profil und der erfundenen Tabu-Liste.
+fn orte_aufbau(name: &str) -> (AppState, Projekte) {
+    let projekte = std::env::temp_dir().join(format!("dashboard-orte-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&projekte);
+    let probe = projekte.join("probe");
+    std::fs::create_dir_all(probe.join("daten")).unwrap();
+    std::fs::write(probe.join("projekt.toml"), "schema = 3\ntitle = \"Probe\"\nstatus = \"aktiv\"\nsummary = \"Für den Test.\"\n").unwrap();
+    let p = profil();
+    let mut orte = String::new();
+    orte += &ort("plan", &format!(r"{p}\Dokumente\plan.pdf"));
+    orte += &ort("fotos", &format!(r"{p}\Dokumente\Fotos"));
+    orte += &ort("unc", r"\\server\freigabe\plan.pdf");
+    orte += &ort("unc-strich", "//server/freigabe/plan.pdf");
+    orte += &ort("geraet", &format!(r"\\?\{p}\Dokumente\plan.pdf"));
+    orte += &ort("geraet-punkt", &format!(r"\\.\{p}\Dokumente\plan.pdf"));
+    orte += &ort("draussen", r"D:\Fremd\plan.pdf");
+    orte += &ort("tabu", &format!(r"{p}\Geheim Ablage\brief.pdf"));
+    orte += &ort("programm", &format!(r"{p}\Dokumente\start.exe"));
+    std::fs::write(probe.join("daten").join("orte.toml"), orte).unwrap();
+    let state = AppState::fuer_tests(&beispiel_fuer_tests()).mit_projekten(projekte.clone());
+    let tabu = crate::pc::inventory::Ausschluss::aus(&[crate::oeffnen::tests::TABU]);
+    *state.oeffnen.regeln.lock().unwrap() = Some(Regeln { profil: Some(PathBuf::from(&p)), tabu, ..Regeln::default() });
+    (state, Projekte(projekte))
+}
+
+/// GET mit dem Host der Oberfläche; Status, `WWW-Authenticate` und Körper als Text.
+async fn hole_orte(app: Router, pfad: &str) -> (StatusCode, String, String) {
+    let req = Request::get(pfad).header(header::HOST, "localhost:8787").body(Body::empty()).unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    let status = res.status();
+    let www = res.headers().get(header::WWW_AUTHENTICATE).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, www, String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// Angemeldet: alle Orte in Reihenfolge der Datei; den Pfad im Klartext und
+/// `geprueft` nur bei Orten, die die Prüfung von `pruefe` bestehen. UNC,
+/// Gerätepfade, Orte außerhalb, im Tabu-Ordner oder mit verbotener Endung:
+/// ohne Pfad. Ein unbekanntes Projekt: 404.
+#[tokio::test]
+async fn orte_angemeldet_mit_pfad_nur_wenn_geprueft() {
+    let (state, _p) = orte_aufbau("klartext");
+    let (s, _, t) = hole_orte(router_angemeldet(state.clone()), "/api/projekte/probe/orte").await;
+    assert_eq!(s, StatusCode::OK, "{t}");
+    let v: serde_json::Value = serde_json::from_str(&t).unwrap();
+    let orte = v["orte"].as_array().unwrap();
+    let kennungen: Vec<&str> = orte.iter().map(|o| o["kennung"].as_str().unwrap()).collect();
+    assert_eq!(kennungen, ["plan", "fotos", "unc", "unc-strich", "geraet", "geraet-punkt", "draussen", "tabu", "programm"]);
+    assert_eq!(orte[0]["pfad"], format!(r"{}\Dokumente\plan.pdf", profil()), "Klartext, nicht verborgen");
+    assert_eq!(orte[1]["pfad"], format!(r"{}\Dokumente\Fotos", profil()));
+    assert_eq!(orte[0]["titel"], "Ort plan");
+    for o in &orte[..2] {
+        assert_eq!(o["geprueft"], true, "{o}");
+    }
+    for o in &orte[2..] {
+        assert_eq!((&o["geprueft"], &o["pfad"]), (&serde_json::Value::Bool(false), &serde_json::Value::Null), "{o}");
+    }
+    for nie in ["server", "freigabe", r"\\?", r"\\.", "Fremd", "Geheim", "start.exe"] {
+        assert!(!t.contains(nie), "{nie} in {t}");
+    }
+    let (s, _, t) = hole_orte(router_angemeldet(state), "/api/projekte/gibt-es-nicht/orte").await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "{t}");
+}
+
+/// Ohne Anmeldung: 401 mit `Negotiate`, ohne Pfad. Hält mit der Sperrliste
+/// allein und mit der Prüfung im Handler allein (Gegenproben).
+#[tokio::test]
+async fn orte_ohne_anmeldung_401() {
+    let (state, _p) = orte_aufbau("ohne");
+    let (s, www, t) = hole_orte(router(state), "/api/projekte/probe/orte").await;
+    assert_eq!((s, www.as_str()), (StatusCode::UNAUTHORIZED, "Negotiate"), "{t}");
+    assert!(!t.contains(KONTO) && t.contains("\"anmeldung\""), "{t}");
+}
+
+/// Der Handler selbst, ohne Schleusen davor: ohne Anmeldung 401.
+#[tokio::test]
+async fn orte_handler_prueft_die_anmeldung_selbst() {
+    let (state, _p) = orte_aufbau("handler");
+    let res = orte(State(state), Path("probe".to_string()), None).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(res.headers().get(header::WWW_AUTHENTICATE).unwrap(), "Negotiate");
+    let t = String::from_utf8_lossy(&res.into_body().collect().await.unwrap().to_bytes()).to_string();
+    assert!(!t.contains(KONTO), "{t}");
+}
+
+/// Andere Schreibweise: 401 wie der kanonische Weg (die Sperrliste zählt
+/// Groß/Klein nicht). Prozentkodiert: 400 „fehlerhaft“ von der ersten Wand
+/// (`sicherheit::prozent_im_pfad`), ohne und mit Anmeldung; nie ein Pfad.
+#[tokio::test]
+async fn orte_andere_schreibweise_401_kodiert_400() {
+    let (state, _p) = orte_aufbau("schreibweise");
+    let frei = router(state.clone());
+    for pfad in ["/API/projekte/probe/orte", "/api/Projekte/probe/orte", "/api/projekte/probe/ORTE", "/Api/Projekte/Probe/Orte", "/api/projekte/probe/orte/"] {
+        let (s, www, t) = hole_orte(frei.clone(), pfad).await;
+        assert_eq!((s, www.as_str()), (StatusCode::UNAUTHORIZED, "Negotiate"), "{pfad}: {t}");
+        assert!(!t.contains(KONTO), "{pfad}: {t}");
+    }
+    let an = router_angemeldet(state);
+    for pfad in
+        ["/api/projekte/probe/%6Frte", "/api/projekte/probe/%6frte", "/api/projekte/probe%2Forte", "/api/projekte/probe%2forte", "/api/projekte/%70robe/orte"]
+    {
+        for app in [frei.clone(), an.clone()] {
+            let (s, _, t) = hole_orte(app, pfad).await;
+            assert_eq!(s, StatusCode::BAD_REQUEST, "{pfad}: {t}");
+            assert!(t.contains("\"fehlerhaft\"") && !t.contains(KONTO), "{pfad}: {t}");
+        }
+    }
+}
