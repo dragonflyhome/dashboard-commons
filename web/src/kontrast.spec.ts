@@ -18,6 +18,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Bedeutung } from '$vertrag';
 import { BEDEUTUNGEN, klasse } from '#lib/bedeutung.ts';
+import { THEMEN as THEMEN_DER_WAHL } from '#lib/thema.ts';
 
 type Rgba = [number, number, number, number];
 type Token = Record<string, string>;
@@ -223,6 +224,56 @@ describe('Schalter Hell/Dunkel (Etappe 3b): gewählte Themen haben dieselben Wer
 		expect(CSS).toMatch(
 			/:root\[data-theme='dunkel'\],\s*\[data-thema-vorschau='dunkel'\]\s*\{\s*color-scheme: dark;/
 		);
+	});
+});
+
+/**
+ * Etappe S1: Die Prüfungen laufen über die Liste THEMEN aus thema.ts. Jeder
+ * Wert außer `system` braucht seinen Block in app.css, und der muss die
+ * Kontraste bestehen. Jeder Block außer `hell` (der nimmt die Werte aus :root)
+ * setzt genau dieselben Token wie der dunkle Block für das System: Sonst erbte
+ * ein späteres Schema ein fehlendes Token still vom hellen.
+ */
+describe('Themen der Liste (Etappe S1): Block je Wert, Kontrast, dieselben Token', () => {
+	const gewaehlt = THEMEN_DER_WAHL.map((t) => t.wert).filter((w) => w !== 'system');
+	const blockVon = (wert: string): Token =>
+		token(
+			block(
+				CSS,
+				new RegExp(
+					`^:root\\[data-theme='${wert}'\\],\\s*\\[data-thema-vorschau='${wert}'\\]\\s*\\{`,
+					'm'
+				)
+			)
+		);
+
+	it.each(gewaehlt)('„%s“: der Block steht in app.css', (wert) => {
+		expect(() => blockVon(wert)).not.toThrow();
+	});
+
+	it('ein Wert ohne Block fiele auf', () => {
+		expect(() => blockVon('kein-thema-der-liste')).toThrow(/fehlt in app\.css/);
+	});
+
+	it.each(gewaehlt)('„%s“: alle Paare erreichen ihren Mindestwert', (wert) => {
+		const t: Token = { ...HELL, ...blockVon(wert) };
+		const zeilen = PAARE.map(([vorne, flaeche, mindest, wofuer]) => {
+			const k = kontrast(t, vorne, flaeche);
+			return { paar: `${vorne} auf ${flaeche}`, kontrast: Number(k.toFixed(2)), mindest, wofuer };
+		});
+		expect(zeilen.filter((z) => z.kontrast < z.mindest)).toEqual([]);
+	});
+
+	it.each(gewaehlt.filter((w) => w !== 'hell'))(
+		'„%s“: setzt genau die Token des dunklen Blocks für das System',
+		(wert) => {
+			expect(Object.keys(blockVon(wert)).sort()).toEqual(Object.keys(DUNKEL_NUR_BLOCK).sort());
+		}
+	);
+
+	it('blockVon findet dieselben Blöcke wie die festen Konstanten', () => {
+		expect(blockVon('hell')).toEqual(HELL_BLOCK);
+		expect(blockVon('dunkel')).toEqual(DUNKEL_GEWAEHLT_BLOCK);
 	});
 });
 
