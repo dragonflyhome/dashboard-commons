@@ -14,6 +14,24 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Bruch: Unter macOS liegt der Schlüssel der Aufgaben-Links nicht mehr
+  im Anmelde-Schlüsselbund, sondern als Datei aufgaben-links-schluessel
+  im Schlüsselordner, neben dem Schlüssel der Ausweise. Der Eintrag im
+  Schlüsselbund überstand keinen Neubau des Programms. Ein mit 0.10.0
+  bis 0.14.1 gespeicherter Link ist nicht mehr lesbar und läuft nur ab;
+  der alte Eintrag (Dienst dashboard-commons, Konto aufgaben-links-v1)
+  wird von Hand entfernt.
+
+Hinzugefügt
+- Unter Linux lassen sich Aufgaben mit Link speichern: Der Schlüssel
+  dafür liegt wie unter macOS als Datei im Schlüsselordner.
+- Gibt es für den Schlüssel der Aufgaben-Links keinen Ort, steht das
+  beim Start im Protokoll, und Aufgaben mit Link werden abgelehnt.
+
+Entfernt
+- Die Kiste security-framework und die Anbindung an den Schlüsselbund
+  von macOS.
 0.14.1 - 2026-11-15
 -------------------
 
