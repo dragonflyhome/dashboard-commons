@@ -271,7 +271,7 @@ describe('Themen der Liste (Etappe S1): Block je Wert, Kontrast, dieselben Token
 		}
 	);
 
-	it('die Liste nennt die zwei Themen, für die es heute Blöcke gibt', () => {
+	it('blockVon findet dieselben Blöcke wie die festen Konstanten', () => {
 		expect(blockVon('hell')).toEqual(HELL_BLOCK);
 		expect(blockVon('dunkel')).toEqual(DUNKEL_GEWAEHLT_BLOCK);
 	});
