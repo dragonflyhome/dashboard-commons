@@ -14,6 +14,23 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Das Dashboard lässt sich unter macOS und Linux bauen. Unter macOS
+  werden die Links der Aufgaben mit XChaCha20-Poly1305 verschlüsselt;
+  der Schlüssel liegt im Anmelde-Schlüsselbund (Dienst
+  dashboard-commons, Konto aufgaben-links-v1). Er entsteht, wenn zum
+  ersten Mal ein Link gespeichert wird, wird nie ersetzt und nie mit
+  einem Dialog erfragt.
+- Ohne feste Signatur ist der Schlüssel unter macOS nach einem Neubau
+  des Programms nicht lesbar: Aufgaben mit Link werden dann mit einem
+  Satz abgelehnt, gespeicherte Links bleiben erhalten.
+- Unter Linux werden Aufgaben mit Link mit einem Satz abgelehnt, bis
+  ein Ort für den Schlüssel festgelegt ist.
+
+Behoben
+- Der Test des Herzschlags gegen ein Test-Dashboard wartet mit einer
+  Frist auf die Verbindung und hängt außerhalb von Windows nicht mehr.
+
 0.9.3 - 2026-11-14
 ------------------
 
