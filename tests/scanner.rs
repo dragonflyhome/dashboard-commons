@@ -792,7 +792,7 @@ fn dienst_ps1_spielt_die_oberflaeche_mit_den_programmen_ein() {
     let neustart = ps1.split("# -Neustart\n").nth(1).expect("Abschnitt -Neustart");
     let stelle = |s: &str| neustart.find(s).unwrap_or_else(|| panic!("{s} fehlt im Neustart"));
     let (bau, bereit, aus, tausch) = (
-        stelle("if ($code -ne 0) { Ende 1 'npm run build ist gescheitert."),
+        stelle("if ($code -ne 0) { Ende 1 $probenSaetze[$befund].Ende }"),
         stelle("$f = OberflaecheBereitlegen (Join-Path $web 'build') (Join-Path $quelle 'web')\n"),
         stelle("$dienstAus = $true\n"),
         stelle("$fehler = TauscheProgramme $quelle $oberflaeche\n"),
