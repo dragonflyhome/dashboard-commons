@@ -2,7 +2,9 @@
  * Etappe B2: Die Liste der geschützten Dateien in `daten/`, die die
  * Oberfläche ohne Anmeldung gar nicht erst anfragt (`GESCHUETZTE_DATEN` in
  * laden.svelte.ts), ist dieselbe wie im Server (`sicherheit::GESCHUETZTE_DATEIEN`,
- * die Liste hinter `geschuetzt`). Eine Liste aus
+ * bis E3 die zweite Wand im Handler `daten`; seit Schritt E2 ist der ganze Weg
+ * ohne Anmeldung zu, die Seiten dazu leiten zur Anmeldung, siehe
+ * routes/zur-anmeldung.svelte.spec.ts). Eine Liste aus
  * dem Vertrag gibt es dafür nicht (die Regel ist eine Funktion, kein Typ);
  * darum liest dieser Test die Quelle des Servers.
  */
@@ -18,8 +20,7 @@ const SICHERHEIT = readFileSync(
 
 /**
  * Die geschützten Dateien des Servers: seit dem Hotfix Prozent die eine Liste
- * `GESCHUETZTE_DATEIEN` in sicherheit.rs (aus ihr lesen `geschuetzt`, der
- * Handler `daten` und `/api/projects/<slug>`). Einträge sind Texte oder Namen
+ * `GESCHUETZTE_DATEIEN` in sicherheit.rs (aus ihr liest der Handler `daten`). Einträge sind Texte oder Namen
  * von Konstanten (etwa `FRAGEN_DATEI`); ein unbekannter Eintrag bleibt ein Fehler.
  */
 function serverDaten(): string[] {
@@ -38,7 +39,7 @@ function serverDaten(): string[] {
 }
 
 describe('Geschützte Daten: Server und Oberfläche gleich', () => {
-	it('dieselben Dateien wie sicherheit::geschuetzt', () => {
+	it('dieselben Dateien wie sicherheit::GESCHUETZTE_DATEIEN', () => {
 		const server = serverDaten();
 		expect(server.length).toBeGreaterThan(0);
 		expect([...GESCHUETZTE_DATEN].sort()).toEqual([...server].sort());
@@ -48,25 +49,5 @@ describe('Geschützte Daten: Server und Oberfläche gleich', () => {
 		for (const name of GESCHUETZTE_DATEN) {
 			expect(datenAdresse('beispiel', name)).toBe(`/api/projekte/beispiel/daten/${name}`);
 		}
-	});
-});
-
-/** Die Wurzeln, unter denen der Server nur mit Windows-Anmeldung antwortet (`WURZELN` in `geschuetzt`). */
-function serverWurzeln(): string[] {
-	const liste = /const WURZELN: \[&str; \d+\] = \[([\s\S]*?)\];/.exec(SICHERHEIT);
-	return [...(liste?.[1] ?? '').matchAll(/^\s*"([^"]+)",/gm)].map((m) => m[1] ?? '');
-}
-
-describe('System-Seiten: Daten geschützt, die Seiten zeigen ohne Anmeldung den Weg über Edge', () => {
-	it.each([
-		['entscheidungen', '/api/entscheidungen'],
-		['zielbild', '/api/zielbild'],
-		// Etappe 6b: die Anleitung aus docs/anleitung, geschützt wie das Zielbild.
-		['anleitung', '/api/anleitung']
-	])('/%s lädt %s, und der Weg ist geschützt', (seite, weg) => {
-		expect(serverWurzeln()).toContain(weg);
-		const laden = readFileSync(join(import.meta.dirname, 'routes', seite, '+page.ts'), 'utf8');
-		expect(laden).toMatch(/e\.status === 401/);
-		expect(laden).toMatch(/anmelden: SATZ_[A-Z]+_ANMELDEN/);
 	});
 });

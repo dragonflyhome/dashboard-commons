@@ -3,40 +3,57 @@
 //! Datenspeicher offen ist. Für Skripte (Dienst.ps1) und später die Seite
 //! /betrieb. Pfade stehen nur in `/api/betrieb/voll` (geschützt), dort im Klartext.
 //!
-//! Der Weg ist frei (ohne Windows-Anmeldung). Darum steht in `speicher` nur,
-//! ob er offen ist, das Schema und der Satz aus `SpeicherFehler`, nie ein Pfad
-//! oder ein Inhalt; in `sitzung` (Etappe A3) nur, ob die Sitzungsabfrage geht,
-//! ob der Inhaber angemeldet ist, die Fehlerart und wann gefragt wurde, nie SID oder Name.
-//! Seit der Kopfleiste, Fassung 2, dazu die Fassung der Oberfläche (nur der
-//! Ordnername) und ob sich die gelesenen Ordner lesen lassen (nur kurze Namen)
-//! für den Abschnitt „Dashboard“ auf /pc.
+//! Der Weg ist öffentlich (Schritt E2: verschmälert, eigener Vertragstyp
+//! `BetriebFrei`): Modus, Fassung mit Datum, Startzeit, der Ordnername der
+//! Oberfläche, ob ein Bote vorgesehen ist, und vom Speicher nur, ob er offen
+//! ist, das Schema und der Satz aus `SpeicherFehler`, nie ein Pfad. Alles
+//! andere (Commit, Bauzeit, Ordner, Inhalt, Störungen, Einstellungen, Bote
+//! seit, Sitzung, Quellen) nur in `/api/betrieb/voll`.
 
 use axum::Json;
 use axum::extract::State;
 
 use crate::app::AppState;
 use crate::speicher::{Speicher, migration};
-use crate::vertrag::api::{Betrieb, InhaltStand, OrdnerStand, QuellenStand, SpeicherStand};
+use crate::vertrag::api::{Betrieb, BetriebFrei, InhaltStand, OrdnerStand, QuellenStand, SpeicherStand};
 
-/// `GET /api/betrieb` (frei): ohne Pfade und ohne den Anmeldestand des
-/// Inhabers (`einstellungen`, `bote_seit` und `sitzung` sind `null`; `bote` nur
-/// `vorgesehen` oder `nicht vorgesehen`, nie `verbunden` oder `getrennt`). Für
-/// Skripte, die ohne Anmeldung fragen (Dienst.ps1, Dienst-Einrichten.ps1).
-/// Verbirgt Profil und Namen in allen Texten (`datenschutz`), auch in
-/// `speicher.fehler` und `ordner[].stand`.
+/// `GET /api/betrieb` (öffentlich): der schmale Zustand (`BetriebFrei`). Für
+/// Skripte, die ohne Anmeldung fragen (Dienst.ps1, Dienst-Einrichten.ps1,
+/// Freigeben.ps1) und den Fuß der Oberfläche. `bote` nur `vorgesehen` oder
+/// `nicht vorgesehen`. Verbirgt als zweite Sicherung Profil und Namen in allen
+/// Texten (`datenschutz`), etwa in `speicher.fehler`.
 pub async fn betrieb(State(state): State<AppState>) -> Json<serde_json::Value> {
-    crate::datenschutz::als_json(&bericht(&state, false).await)
+    crate::datenschutz::als_json(&bericht_frei(&state).await)
+}
+
+/// Der öffentliche Bericht, noch mit allen Texten.
+pub async fn bericht_frei(state: &AppState) -> BetriebFrei {
+    let (version_datum, unveroeffentlicht) = crate::fassungen::betrieb_angaben();
+    let s = state.clone();
+    let fassung = tokio::task::spawn_blocking(move || fassung_name(&s)).await.unwrap_or_else(|_| "build".to_string());
+    BetriebFrei {
+        modus: state.lauf.modus.wort().to_string(),
+        version: crate::fassungen::LAUFEND.to_string(),
+        version_datum,
+        unveroeffentlicht,
+        gestartet: state.lauf.gestartet.to_rfc3339(),
+        fassung,
+        // Nur, ob ein Bote vorgesehen ist: „verbunden“ verriete, ob der Inhaber an der Konsole
+        // angemeldet ist (Abnahme Kopfleiste 2, Nachbesserung 1).
+        bote: if state.bote.is_some() { "vorgesehen" } else { "nicht vorgesehen" }.to_string(),
+        speicher: speicher_stand(state).await,
+    }
 }
 
 /// `GET /api/betrieb/voll` (geschützt wie `/api/daten`): alles im Klartext
 /// (Schritt E1), auch die Einstellungsdatei, die Quellen, seit wann der Bote
 /// verbunden ist und die Sitzungsabfrage.
 pub async fn betrieb_voll(State(state): State<AppState>) -> Json<Betrieb> {
-    Json(bericht(&state, true).await)
+    Json(bericht(&state).await)
 }
 
-/// Der Bericht; `voll` nur auf dem geschützten Weg.
-pub async fn bericht(state: &AppState, voll: bool) -> Betrieb {
+/// Der volle Bericht (nur auf dem geschützten Weg).
+pub async fn bericht(state: &AppState) -> Betrieb {
     let state = state.clone();
     let (bote, bote_seit) = match &state.bote {
         None => ("nicht vorgesehen", None),
@@ -58,18 +75,16 @@ pub async fn bericht(state: &AppState, voll: bool) -> Betrieb {
         // Zur Bauzeit gesetzt (`DASHBOARD_COMMIT`), sonst null.
         commit: option_env!("DASHBOARD_COMMIT").filter(|c| !c.is_empty()).map(String::from),
         gestartet: state.lauf.gestartet.to_rfc3339(),
-        einstellungen: state.einstellungen.as_ref().filter(|_| voll).map(|e| e.datei.display().to_string()),
-        // Frei nur, ob ein Bote vorgesehen ist: Er läuft nur in der Sitzung des Inhabers, „verbunden“
-        // verriete also, ob sie an der Konsole angemeldet ist (Abnahme Kopfleiste 2, Nachbesserung 1).
-        bote: if voll || bote == "nicht vorgesehen" { bote.to_string() } else { "vorgesehen".to_string() },
-        bote_seit: bote_seit.filter(|_| voll),
+        einstellungen: state.einstellungen.as_ref().map(|e| e.datei.display().to_string()),
+        bote: bote.to_string(),
+        bote_seit,
         speicher: speicher_stand(&state).await,
-        sitzung: voll.then(|| state.sitzung.lock().map(|w| w.stand()).unwrap_or_default()),
+        sitzung: Some(state.sitzung.lock().map(|w| w.stand()).unwrap_or_default()),
         inhalt: inhalt_stand(&state),
         fassung,
         fassung_gebaut,
         ordner,
-        quellen: voll.then(|| quellen_stand(&state)),
+        quellen: Some(quellen_stand(&state)),
         stoerungen: stoerungen(&state),
     }
 }
@@ -115,8 +130,8 @@ fn fassung_stand(state: &AppState) -> (String, Option<String>) {
     (name, gebaut)
 }
 
-/// Nur der Name der Fassung (Kopfleiste, Fassung 3: `/api/stand`). Blockiert
-/// kaum (Eckdaten des Zeigers `web/builds/aktuell`).
+/// Nur der Name der Fassung (`/api/stand`, öffentliches `/api/betrieb`).
+/// Blockiert kaum (Eckdaten des Zeigers `web/builds/aktuell`).
 pub fn fassung_name(state: &AppState) -> String {
     fassung_name_von(state, &state.web.ordner())
 }
@@ -201,9 +216,9 @@ mod tests {
         v["speicher"].clone()
     }
 
-    /// Kopfleiste, Fassung 2: Der freie Bericht nennt keine
-    /// Pfade und nicht, ob der Inhaber angemeldet ist (`einstellungen`, `bote_seit`,
-    /// `sitzung` sind `null`); der volle ist geschützt und nennt die Sitzung.
+    /// Schritt E2: Der öffentliche Bericht hat genau die Felder aus dem
+    /// Auftrag (`BetriebFrei`), keine Pfade und nicht, ob der Inhaber
+    /// angemeldet ist; der volle ist geschützt und nennt Sitzung und Quellen.
     #[tokio::test]
     async fn freier_bericht_ohne_pfade_und_anmeldestand() {
         let state = AppState::fuer_tests(&beispiel());
@@ -212,9 +227,12 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
         let text = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-        for feld in ["einstellungen", "bote_seit", "sitzung", "quellen"] {
-            assert!(v[feld].is_null(), "{feld}: {text}");
-        }
+        let mut felder: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        felder.sort();
+        assert_eq!(felder, ["bote", "fassung", "gestartet", "modus", "speicher", "unveroeffentlicht", "version", "version_datum"], "{text}");
+        let mut speicher: Vec<&str> = v["speicher"].as_object().unwrap().keys().map(String::as_str).collect();
+        speicher.sort();
+        assert_eq!(speicher, ["fehler", "offen", "programm_schema", "schema", "zu_neu"], "{text}");
         assert!(!text.contains("inhaber_angemeldet"), "{text}");
         // Der Bote nur „vorgesehen“ oder „nicht vorgesehen“, nie verbunden oder getrennt.
         assert!(matches!(v["bote"].as_str(), Some("vorgesehen" | "nicht vorgesehen")), "{text}");
@@ -233,6 +251,7 @@ mod tests {
             assert_eq!(res.status(), StatusCode::OK);
             let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
             assert!(v["sitzung"].is_object(), "{v}");
+            assert!(v["inhalt"].is_object() && v["ordner"].is_array() && v["stoerungen"].is_array(), "{v}");
             // Umzug des Inhalts: woher gelesen wird (ohne Einstellungsdatei kein [inhalt]).
             assert_eq!(v["quellen"]["inhalt_abschnitt"], false, "{v}");
             assert!(v["quellen"]["projekte"].as_array().is_some_and(|a| !a.is_empty()), "{v}");
@@ -241,14 +260,14 @@ mod tests {
     }
 
     /// Kleinkram 2, Wächter: Weicht die Fassung des Bau-Prüfers (Bote, aus
-    /// seinem Hallo) von der des Dienstes ab, steht in `/api/betrieb` eine
+    /// seinem Hallo) von der des Dienstes ab, steht in `/api/betrieb/voll` eine
     /// Störung; gleich ist keine, vor dem ersten Hallo und ohne Boten auch nicht.
+    /// Seit Schritt E2 über den Bericht selbst (der Weg ist geschützt; unter
+    /// macOS gibt es angemeldet ohne Datenspeicher keinen Router).
     #[tokio::test]
     async fn betrieb_meldet_abweichenden_bau_pruefer() {
         let stoerungen = |state: AppState| async move {
-            let req = Request::get("/api/betrieb").header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
-            let res = crate::app::router(state).oneshot(req).await.unwrap();
-            let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
+            let v = serde_json::to_value(bericht(&state).await).unwrap();
             v["stoerungen"].as_array().unwrap().iter().map(|s| s.as_str().unwrap().to_string()).collect::<Vec<_>>()
         };
         let ohne = AppState::fuer_tests(&beispiel());

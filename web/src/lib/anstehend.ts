@@ -652,7 +652,7 @@ export function weitereFragenSatz(n: number): string {
  * übrigen. Alle anderen Einträge bleiben. Welche sichtbar ist, sagt der
  * Server (`warteschlange.platz` 1, `crate::anstehend::fragen_warteschlange`:
  * wirksame Stufe, dann Frist, dann Reihenfolge in fragen.toml); dieselbe Stelle nehmen
- * Frist-Meldungen, die Zahlen ohne Anmeldung und das Backlog. Fehlt der
+ * Frist-Meldungen und das Backlog. Fehlt der
  * Platz (Beispieldaten von vor B2), gilt die alte Regel: höchste wirksame
  * Stufe, dann die älteste (`gestellt`), dann nach Kennung.
  */
@@ -842,9 +842,8 @@ function fruehesteDateiFrist(zeilen: readonly FristZeile[]): FristZeile | null {
 }
 
 /**
- * Dieselben Zahlen, die der Server ohne Anmeldung als Fakt schickt
- * (`zahlen`), aus den Einträgen und Aktualisierungen mit Anmeldung. Ein
- * vitest-Fall hält beide gleich. Etappe B3: die nächste Frist auch aus den
+ * Die Zahlen des Unter-Dashboards aus den Einträgen und Aktualisierungen
+ * (bis Schritt E2 schickte der Server sie ohne Anmeldung selbst). Etappe B3: die nächste Frist auch aus den
  * Fristen aus fristen.toml (`stand.fristen`), wenn sie früher ist (bei
  * gleichem Datum bleibt der Eintrag); nie aus zeitstrahl.toml. Etappe B8:
  * Fertige Arbeiten stehen nicht in den Einträgen; ihre Zahl kommt als Fakt
@@ -965,8 +964,8 @@ function gruppe(eintraege: AnstehendEintrag[], hoechstens: number): ArbeitsGrupp
 /**
  * Das Unter-Dashboard aus dem Stand des Servers. Mit Anmeldung (`eintraege`
  * aus der Liste oder `stand.eintraege`) ordnet, wählt und zählt diese
- * Funktion; ohne Anmeldung nimmt sie die Zahlen des Servers (`stand.zahlen`)
- * und zeigt keine Einträge.
+ * Funktion; ohne Einträge (`stand.sichtbar` falsch, seit Schritt E2 nicht
+ * mehr vom Server) zeigt sie keine Einträge und nur Nullen.
  */
 export function standAnsicht(
 	stand: ProjektStand,
@@ -1002,9 +1001,9 @@ export function standAnsicht(
 			als_naechstes: gruppe(zustand('als-naechstes'), STAND_ARBEITEN)
 		};
 		kurz = { ...kurzAus(z), frist_bald_tage: stand.frist_bald_tage };
-		meldungen = akt === null ? (stand.zahlen?.meldungen ?? { neu: 0, gesamt: 0 }) : z.meldungen;
+		meldungen = akt === null ? { neu: 0, gesamt: 0 } : z.meldungen;
 	} else {
-		const z: StandZahlen = stand.zahlen ?? {
+		const z: StandZahlen = {
 			wartet_auf_dich: 0,
 			aufgaben: 0,
 			fragen: 0,
@@ -1017,7 +1016,7 @@ export function standAnsicht(
 			tage_bis: null,
 			frist_stufe: null
 		};
-		// Ohne Anmeldung keine Einträge (Grenze aus 7b): nur die Zahlen.
+		// Ohne Einträge (Grenze aus 7b): nur Nullen.
 		aufgaben = { offen: [], anzahl: z.aufgaben, weitere: 0, sichtbar: false };
 		arbeiten = {
 			laufen: { ...leer, weitere: z.laeuft },
@@ -1042,7 +1041,7 @@ export function standAnsicht(
 		arbeiten,
 		notizen: stand.notizen,
 		notizen_zahl: stand.notizen_zahl ?? stand.notizen.length,
-		fertig_7_tage: stand.fertig_7_tage ?? stand.zahlen?.fertig_7_tage ?? 0,
+		fertig_7_tage: stand.fertig_7_tage ?? 0,
 		speicher_fehlt: stand.speicher_fehlt,
 		fristen: stand.fristen ?? []
 	};
@@ -1121,7 +1120,7 @@ export interface UnterDashboardAnsicht {
 	aktualisierungen: Aktualisierung[];
 	/** Ungelesene Meldungen, die nicht unter den fünf stehen (damit jeder Anker ein Ziel hat). */
 	weitereMeldungen: AnstehendEintrag[];
-	/** Nur ohne Anmeldung: die Zahlen der Meldungen vom Server (dann ohne Titel). */
+	/** Nur im Zweig ohne Anmeldung, seit Schritt E2 toter Code (fällt in E3). */
 	meldungsZahlen: MeldungsZahlen | null;
 	/** Alle ungelesenen Meldungen des Projekts, nicht nur die angezeigten fünf. */
 	ungelesen: number;
@@ -1154,8 +1153,8 @@ const ARBEITS_GRUPPEN: readonly (readonly [string, string, keyof StandAnsicht['a
  * Das Unter-Dashboard aus den Antworten des Servers: `/stand` (oder
  * `/stand/voll`), mit Anmeldung dazu die Einträge des Projekts und seine
  * Aktualisierungen aus `/api/anstehend?projekt=` (jeweils alle, roh). Ohne
- * Einträge (`roh` null und `stand.sichtbar` falsch) zeigt es nur die Zahlen
- * des Servers. Hier wird ausgewählt, gezählt und gruppiert; die Komponente
+ * Einträge (`roh` null) zählt es nichts: Seit Schritt E2 schickt der Server
+ * keine Zahlen mehr, der Zweig ist tot und fällt in E3. Hier wird ausgewählt, gezählt und gruppiert; die Komponente
  * zeigt nur an.
  */
 export function unterDashboardAnsicht(

@@ -6,8 +6,7 @@ import type { SitzungsStand } from "./SitzungsStand";
 import type { SpeicherStand } from "./SpeicherStand";
 
 /**
- * `GET /api/betrieb`: wie der Server läuft. Lebenszeichen für Skripte
- * (neben `/healthz`) und später die Seite /betrieb.
+ * `GET /api/betrieb/voll` (geschützt): wie der Server läuft, im Klartext.
  */
 export type Betrieb = { 
 /**
@@ -39,23 +38,18 @@ commit: string | null,
 gestartet: string, 
 /**
  * Die Einstellungsdatei (`dienst.toml`); `null` im Modus `umgebung`.
- * Nur in `/api/betrieb/voll` (geschützt); auf dem freien Weg immer `null`
- * (ein Pfad, Kopfleiste Fassung 2, Abnahme).
  */
 einstellungen: string | null, 
 /**
  * Zustand des Boten: `verbunden` (letzte Anfrage beantwortet),
  * `getrennt` (Bote vorgesehen, aber nicht erreichbar) oder
- * `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). Auf dem freien Weg
- * statt `verbunden` und `getrennt` nur `vorgesehen`: Der Bote läuft nur in
- * der Sitzung des Inhabers (Abnahme Kopfleiste 2); den Zustand nennt `/api/betrieb/voll`.
+ * `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). `vorgesehen` steht
+ * nur in [`BetriebFrei`]; der Typ bleibt bis zum Umbau der Oberfläche breit.
  */
 bote: "verbunden" | "getrennt" | "vorgesehen" | "nicht vorgesehen", 
 /**
  * Bei `verbunden`: seit wann; bei `getrennt`: wann er zuletzt antwortete
- * (RFC 3339, `null` wenn nie). Sonst `null`. Nur in `/api/betrieb/voll`
- * (der Bote läuft in der Sitzung des Inhabers; seine Zeiten sagen, wann sie sich
- * an- oder abgemeldet hat); auf dem freien Weg immer `null`.
+ * (RFC 3339, `null` wenn nie). Sonst `null`.
  */
 bote_seit: string | null, 
 /**
@@ -65,9 +59,8 @@ bote_seit: string | null,
  */
 speicher: SpeicherStand, 
 /**
- * Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3). Nur in
- * `/api/betrieb/voll` (geschützt: ob der Inhaber an der Konsole angemeldet
- * ist); auf dem freien Weg `null`.
+ * Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3); immer
+ * gesetzt (der Typ bleibt bis zum Umbau der Oberfläche optional).
  */
 sitzung: SitzungsStand | null, 
 /**
@@ -91,8 +84,8 @@ fassung_gebaut: string | null,
  */
 ordner: Array<OrdnerStand>, 
 /**
- * Woher der Server den Inhalt liest (Umzug des Inhalts). Nur in
- * `/api/betrieb/voll` (Pfade); auf dem freien Weg immer `null`.
+ * Woher der Server den Inhalt liest (Umzug des Inhalts); immer gesetzt
+ * (der Typ bleibt bis zum Umbau der Oberfläche optional).
  */
 quellen: QuellenStand | null, 
 /**

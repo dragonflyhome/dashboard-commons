@@ -4,13 +4,13 @@
 	 * Live-Punkts, `/pc#dashboard`): wie es dem Dashboard selbst geht. Der
 	 * Live-Kanal (freier und geschützter), der Bote, die Fassung von Server
 	 * und Oberfläche und ob sich die Ordner lesen lassen (Startprüfung aus
-	 * Hotfix 4d). Alles aus `/api/betrieb` (frei, ohne Pfade) und dem Kanal;
-	 * neu geladen bei einer neuen Fassung und jede Minute. Angemeldet kommt
-	 * der volle Bericht `/api/betrieb/voll` (geschützt, Abnahme): dazu
-	 * die Einstellungsdatei, seit wann der Bote verbunden ist und ob der Inhaber an
-	 * der Konsole angemeldet ist. Ohne Anmeldung steht davon nichts da.
+	 * Hotfix 4d). Alles aus dem vollen Bericht `/api/betrieb/voll` (geschützt;
+	 * Schritt E2: /pc gibt es nur angemeldet) und dem Kanal, mit der
+	 * Einstellungsdatei, seit wann der Bote verbunden ist und ob der Inhaber an
+	 * der Konsole angemeldet ist; neu geladen bei einer neuen Fassung und jede
+	 * Minute.
 	 *
-	 * `laden` nur für Tests; sonst `/api/betrieb` oder `/api/betrieb/voll`.
+	 * `laden` nur für Tests; sonst `/api/betrieb/voll`.
 	 */
 	import { onMount } from 'svelte';
 	import { fehlerText } from '#lib/api/client.ts';
@@ -29,8 +29,7 @@
 	let { laden = holen, zustand: vorgegeben }: Props = $props();
 
 	async function holen(): Promise<Betrieb> {
-		const voll = freierKanal.geschuetztOk;
-		const res = await fetch(voll ? '/api/betrieb/voll' : '/api/betrieb', {
+		const res = await fetch('/api/betrieb/voll', {
 			headers: { accept: 'application/json' }
 		});
 		if (!res.ok) throw new Error(`Der Server antwortet mit ${res.status}.`);
@@ -80,14 +79,6 @@
 		if (l === undefined || l === null) return null;
 		return l ? 'Du bist an diesem PC angemeldet' : 'Du bist an diesem PC nicht angemeldet';
 	}
-
-	// Beim Wechsel zwischen angemeldet und nicht angemeldet neu laden (voll oder frei).
-	let warVoll: boolean | null = null;
-	$effect(() => {
-		const voll = freierKanal.geschuetztOk;
-		if (warVoll !== null && warVoll !== voll) void neu();
-		warVoll = voll;
-	});
 
 	onMount(() => {
 		void neu();

@@ -12,6 +12,9 @@
  * Mal `/voll` zu versuchen. Seit 3a+ höchstens 5 Minuten oder bis der
  * Live-Kanal angemeldet öffnet; dann wieder `/voll`. Eine Anmeldung mit
  * Passkey lädt die Seite ohnehin neu (`/anmelden` mit `location.assign`).
+ *
+ * Schritt E2: `/api/pc/verlauf` ist geschützt und gleich `/voll`; der Rückfall
+ * bekommt dort ebenfalls 401 und ist toter Code, bis E3 ihn entfernt.
  */
 import type { Verlauf, VerlaufHinweis } from '$vertrag';
 import { ApiError, api, fehlerText } from '../api/client.ts';

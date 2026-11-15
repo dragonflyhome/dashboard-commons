@@ -377,10 +377,11 @@ mod tests {
         assert_eq!(ids, ["ar-20261102-0102", "ar-20261102-0101", "ar-20261102-0103", "ar-20261102-0006"]);
     }
 
-    /// Etappe B8, Gleichheit von Stand und Backlog: Die Zahlen des Stands
-    /// sind die Größen der Gruppen im Backlog (läuft, als Nächstes, wartet auf
-    /// dich); `fertig_7_tage` zählt die fertigen Arbeiten, die das Backlog nicht
-    /// mehr zeigt (heute bis sechs Tage zurück, nicht sieben).
+    /// Etappe B8, Gleichheit von Stand und Backlog: Die Zahlen, die die
+    /// Oberfläche aus dem Stand zählt, sind die Größen der Gruppen im Backlog
+    /// (läuft, als Nächstes, wartet auf dich); `fertig_7_tage` zählt die
+    /// fertigen Arbeiten, die das Backlog nicht mehr zeigt (heute bis sechs
+    /// Tage zurück, nicht sieben).
     #[test]
     fn stand_zahlen_gleich_backlog() {
         let mut i = inhalt();
@@ -391,13 +392,10 @@ mod tests {
         i.speicher.arbeiten.push(alt);
         let b = backlog(&i, "beispiel", false, &BTreeMap::new()).unwrap();
         let groesse = |a: BacklogSpaltenArt| b.spalten.iter().find(|s| s.art == a).unwrap().karten.len() as u64;
-        for sichtbar in [false, true] {
-            let s = crate::anstehend::stand(&i, "beispiel", sichtbar).unwrap();
-            assert_eq!(s.fertig_7_tage, 1, "sichtbar {sichtbar}");
-        }
-        let z = crate::anstehend::stand(&i, "beispiel", false).unwrap().zahlen.unwrap();
+        let s = crate::anstehend::stand(&i, "beispiel").unwrap();
+        let z = crate::anstehend::tests::zahlen_wie_oberflaeche(&s);
         assert_eq!(
-            (z.laeuft, z.als_naechstes, z.wartet_auf_dich, z.fertig_7_tage),
+            (z.laeuft, z.als_naechstes, z.wartet_auf_dich, s.fertig_7_tage),
             (groesse(BacklogSpaltenArt::Laeuft), groesse(BacklogSpaltenArt::AlsNaechstes), groesse(BacklogSpaltenArt::FuerDich), 1)
         );
     }

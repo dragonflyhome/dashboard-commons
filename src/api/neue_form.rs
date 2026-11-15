@@ -9,10 +9,10 @@
 //! Funktionen wie vorher, nur einmal je Änderung statt je Anfrage. Das
 //! Abgeleitete rechnet weiter jede Anfrage mit dem Datum von heute.
 //!
-//! Wie alle `/api`-Wege frei lesbar (keine Anmeldepflicht), aber hinter der
-//! Herkunftsprüfung. Fehler: 404 `nicht-gefunden`; bricht eine Datei den
-//! Vertrag, 422 mit `art = "vertrag"`, Datei, Zeile und Satz
-//! (`vertrag::api::VertragsFehler`).
+//! Seit Schritt E2 geschützt (`sicherheit::oeffentlich` nennt sie nicht) und
+//! im Klartext, hinter der Herkunftsprüfung. Fehler: 404 `nicht-gefunden`;
+//! bricht eine Datei den Vertrag, 422 mit `art = "vertrag"`, Datei, Zeile und
+//! Satz (`vertrag::api::VertragsFehler`).
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -35,21 +35,6 @@ pub enum Fehler {
     Vertrag(LeseFehler),
 }
 
-impl Fehler {
-    /// Etappe B2: Ohne Windows-Anmeldung kein Satz, der Inhalt zitieren kann
-    /// (Befund-Sätze nur mit Anmeldung). Datei und Zeile bleiben; der Satz ist neutral.
-    fn frei(self, angemeldet: bool) -> Self {
-        if angemeldet {
-            return self;
-        }
-        match self {
-            Self::Vertrag(e) => Self::Vertrag(LeseFehler { text: super::frei::SATZ_DATEI_KAPUTT.to_string(), ..e }),
-            Self::App(e) if e.status == StatusCode::UNPROCESSABLE_ENTITY => Self::App(AppError::unlesbar(super::frei::SATZ_SEITE_KAPUTT)),
-            andere => andere,
-        }
-    }
-}
-
 impl From<AppError> for Fehler {
     fn from(e: AppError) -> Self {
         Self::App(e)
@@ -67,16 +52,14 @@ impl IntoResponse for Fehler {
         match self {
             Self::App(e) => e.into_response(),
             Self::Vertrag(e) => {
-                // Wie `AppError`: ohne Profil und Namen (`datenschutz`). Der Satz eines
-                // TOML-Fehlers zitiert die Zeile, etwa einen `repos`-Eintrag mit Profilpfad.
-                use crate::datenschutz::verbergen;
-                let ganz = verbergen(&e.to_string());
+                // Geschützt (Schritt E2), darum im Klartext.
+                let ganz = e.to_string();
                 let koerper = VertragsFehler {
                     fehler: ganz.clone(),
                     art: "vertrag".to_string(),
-                    datei: verbergen(&e.datei),
+                    datei: e.datei.clone(),
                     zeile: e.zeile.and_then(|z| u32::try_from(z).ok()),
-                    satz: verbergen(&e.text),
+                    satz: e.text.clone(),
                 };
                 let mut res = (StatusCode::UNPROCESSABLE_ENTITY, Json(koerper)).into_response();
                 res.extensions_mut().insert(FehlerSatz(ganz));
@@ -87,18 +70,11 @@ impl IntoResponse for Fehler {
 }
 
 /// `GET /api/projekte/<slug>`. Ohne `projekt.toml` gibt es das Projekt nicht (404).
-pub async fn kopf(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<ProjektAntwort>, Fehler> {
-    let angemeldet = angemeldet.is_some();
-    kopf_lesen(&state, slug)
-        .map(|mut a| {
-            // Etappe B2: open[] ist persönlicher Text; ohne Anmeldung nur die Zahl.
-            a.open_zahl = a.kopf.open.len() as u64;
-            if !angemeldet {
-                a.kopf.open.clear();
-            }
-            Json(a)
-        })
-        .map_err(|e| e.frei(angemeldet))
+pub async fn kopf(State(state): State<AppState>, Path(slug): Path<String>) -> Result<Json<ProjektAntwort>, Fehler> {
+    kopf_lesen(&state, slug).map(|mut a| {
+        a.open_zahl = a.kopf.open.len() as u64;
+        Json(a)
+    })
 }
 
 fn kopf_lesen(state: &AppState, slug: String) -> Result<ProjektAntwort, Fehler> {
@@ -106,9 +82,7 @@ fn kopf_lesen(state: &AppState, slug: String) -> Result<ProjektAntwort, Fehler> 
     projekt_da(&b, &slug)?;
     let p = b.projekt(&slug).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))?;
     let daten = p.namen.clone()?;
-    // Links und Repos können lokale Pfade nennen: ohne Profil und Namen (`datenschutz`).
-    let (mut kopf, _) = p.kopf.clone().ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))??;
-    crate::datenschutz::projekt_verbergen(&mut kopf);
+    let (kopf, _) = p.kopf.clone().ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))??;
     Ok(ProjektAntwort { kopf, daten, slug, open_zahl: 0 })
 }
 
@@ -123,15 +97,14 @@ fn projekt_da(b: &Bestand, slug: &str) -> Result<(), AppError> {
 /// `GET /api/projekte/<slug>/daten/<name>`, geprüft mit dem Vertrag.
 pub async fn daten(State(state): State<AppState>, Path((slug, name)): Path<(String, String)>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
     let angemeldet = angemeldet.is_some();
-    // Hotfix Prozent, zweite Wand: Die Schleuse prüft den rohen Pfad, axum gibt
-    // hier den dekodierten Namen. Eine geschützte Datei (`sicherheit::GESCHUETZTE_DATEIEN`,
-    // dieselbe Liste wie `geschuetzt`) geht nur mit Anmeldung hinaus; sonst 401 mit
-    // demselben Satz wie die Schleuse.
+    // Hotfix Prozent, zweite Wand (bis Schritt E3): Die Schleuse prüft den Pfad, axum
+    // gibt hier den dekodierten Namen. Eine geschützte Datei (`sicherheit::GESCHUETZTE_DATEIEN`)
+    // geht nur mit Anmeldung hinaus; sonst 401 mit demselben Satz wie die Schleuse.
     if !angemeldet && crate::sicherheit::datei_geschuetzt(&name) {
         tracing::warn!("Geschützte Datei ohne Anmeldung am Handler abgewiesen");
         return super::anmeldung::bitte_anmelden(None);
     }
-    daten_lesen(state, slug, name).await.map_err(|e| e.frei(angemeldet)).into_response()
+    daten_lesen(state, slug, name).await.into_response()
 }
 
 async fn daten_lesen(state: AppState, slug: String, name: String) -> Result<Json<DatenAntwort>, Fehler> {
@@ -183,7 +156,7 @@ async fn daten_lesen(state: AppState, slug: String, name: String) -> Result<Json
 /// Die Handeingabe mit dem Begrüßungstext des Reiters „Hallo“.
 pub const HALLO_DATEN: &str = "eigen-hallo";
 
-/// `GET /api/hallo` (frei wie die Projektseiten): welches Projekt den
+/// `GET /api/hallo` (geschützt wie die Projektseiten): welches Projekt den
 /// Begrüßungstext trägt. Das Code-Repo nennt kein Projekt; es ist das erste
 /// Projekt (nach Slug) im Inhalt mit `daten/eigen-hallo.toml`, sonst `null`.
 pub async fn hallo(State(state): State<AppState>) -> Json<HalloOrt> {
@@ -204,12 +177,12 @@ mod tests {
     use serde_json::Value;
     use tower::ServiceExt;
 
-    use crate::app::{AppState, beispiel_fuer_tests, router};
+    use crate::app::{AppState, beispiel_fuer_tests, router, router_angemeldet};
     use crate::vertrag::abgeleitet::{heute, tage_wort};
 
-    /// Ohne Anmeldung: diese Wege sind frei lesbar wie die anderen unter /api.
+    /// Angemeldet: seit Schritt E2 sind diese Wege geschützt.
     fn app() -> Router {
-        router(AppState::fuer_tests(&beispiel_fuer_tests()))
+        router_angemeldet(AppState::fuer_tests(&beispiel_fuer_tests()))
     }
 
     async fn hole_mit(app: &Router, pfad: &str) -> (StatusCode, Value) {
@@ -239,7 +212,7 @@ mod tests {
             std::fs::write(p.join("projekt.toml"), format!("schema = 3\ntitle = \"{slug}\"\nstatus = \"aktiv\"\nsummary = \"Probe\"\n")).unwrap();
             std::fs::write(p.join("daten").join(datei), "text = \"Hallo\"\n").unwrap();
         }
-        let (s, v) = hole_mit(&router(AppState::fuer_tests(&dir)), "/api/hallo").await;
+        let (s, v) = hole_mit(&router_angemeldet(AppState::fuer_tests(&dir)), "/api/hallo").await;
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(s, StatusCode::OK);
         assert_eq!(v["projekt"].as_str(), Some("b-mit"), "{v}");
@@ -351,15 +324,10 @@ mod tests {
 
     #[tokio::test]
     async fn vertragsfehler_mit_datei_und_zeile() {
-        // Etappe B2: ohne Anmeldung Datei und Zeile, aber nur ein neutraler Satz.
-        let (status, v) = hole("/api/projekte/neu-kaputt").await;
-        assert_eq!(
-            (status, v["datei"].as_str(), v["zeile"].as_u64()),
-            (StatusCode::UNPROCESSABLE_ENTITY, Some("projects/neu-kaputt/projekt.toml"), Some(4)),
-            "{v}"
-        );
-        assert_eq!(v["satz"], crate::api::frei::SATZ_DATEI_KAPUTT);
-        assert!(!v.to_string().contains("aktief"), "{v}");
+        // Schritt E2: ohne Anmeldung 401 ohne Datei, Zeile und Satz.
+        let (status, v) = hole_mit(&router(AppState::fuer_tests(&beispiel_fuer_tests())), "/api/projekte/neu-kaputt").await;
+        assert_eq!((status, v["art"].as_str()), (StatusCode::UNAUTHORIZED, Some("anmeldung")), "{v}");
+        assert!(!v.to_string().contains("aktief") && !v.to_string().contains("projekt.toml"), "{v}");
         let app = crate::app::router_angemeldet(AppState::fuer_tests(&beispiel_fuer_tests()));
         let (status, v) = hole_mit(&app, "/api/projekte/neu-kaputt").await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
@@ -383,12 +351,6 @@ mod tests {
         std::fs::write(daten.join("fortschritt.toml"), "[[zeile]]\ntitel = \"F\"\nprozent = 10\n").unwrap();
         std::fs::write(daten.join("notizen.md"), "nicht im Vertrag").unwrap();
         let state = AppState::fuer_tests(&beispiel_fuer_tests()).mit_projekten(basis.clone());
-        let frei = router(state.clone());
-        let (_, gantt_frei) = hole_mit(&frei, "/api/projekte/p/daten/gantt").await;
-        assert_eq!(
-            (gantt_frei["satz"].as_str(), gantt_frei["datei"].as_str()),
-            (Some(crate::api::frei::SATZ_DATEI_KAPUTT), Some("projects/p/daten/gantt.toml"))
-        );
         let app = crate::app::router_angemeldet(state);
         let (s_gantt, gantt) = hole_mit(&app, "/api/projekte/p/daten/gantt").await;
         let (s_kz, kz) = hole_mit(&app, "/api/projekte/p/daten/kennzahlen").await;
@@ -421,7 +383,7 @@ mod tests {
         std::fs::write(basis.join("alt").join("page.md"), "+++\ntitle = \"Alt\"\nstatus = \"aktiv\"\n+++\n\nText.\n").unwrap();
         std::fs::write(daten.join("eigen-hallo.toml"), "titel = \"Hallo\"\n").unwrap();
         let state = AppState::fuer_tests(&beispiel_fuer_tests()).mit_projekten(basis.clone());
-        let app = router(state);
+        let app = router_angemeldet(state);
         let (s, v) = hole_mit(&app, "/api/projekte/alt/daten/eigen-hallo").await;
         let (s_kopf, _) = hole_mit(&app, "/api/projekte/alt").await;
         let _ = std::fs::remove_dir_all(&basis);
@@ -449,7 +411,7 @@ mod tests {
         assert!(v["abgeleitet"].get("ereignisse").is_none(), "{v}");
     }
 
-    /// Nur lesend, frei lesbar, aber hinter der Herkunftsprüfung; schnell.
+    /// Nur lesend, hinter Anmeldung und Herkunftsprüfung; schnell.
     #[tokio::test]
     async fn lesend_schnell_und_mit_herkunftspruefung() {
         let app = app();

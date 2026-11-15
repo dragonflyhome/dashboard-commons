@@ -11,7 +11,7 @@
 //!
 //! Die Zuordnung liegt nur im Arbeitsspeicher. Nach einem Neustart ist jede
 //! Sitzung unbekannt, bis ihr Chat wieder schreibt; eine unbekannte Sitzung
-//! hält nichts auf. Geschützt wie `/api/arbeiten` (`sicherheit::geschuetzt`).
+//! hält nichts auf. Geschützt wie `/api/arbeiten` (nicht in `sicherheit::oeffentlich`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -244,8 +244,9 @@ mod tests {
         let state = AppState::fuer_tests(&beispiel_fuer_tests());
         let (status, _) = schicke(&state, get("/api/sitzungen/a.b/offen")).await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(crate::sicherheit::geschuetzt("/api/sitzungen/s1/offen"));
-        assert!(crate::sicherheit::geschuetzt("/API/Sitzungen/s1/offen"));
+        for p in ["/api/sitzungen/s1/offen", "/API/Sitzungen/s1/offen"] {
+            assert!(!crate::sicherheit::oeffentlich(&axum::http::Method::GET, p, &|_| true), "{p}");
+        }
         // Im echten Router: ohne Anmeldung 401, aus fremder Herkunft 403 (auch angemeldet).
         let res = crate::app::router(state.clone()).oneshot(get("/api/sitzungen/s1/offen")).await.unwrap();
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);

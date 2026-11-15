@@ -2,8 +2,8 @@
  * Live-Lücken, Punkt 5: Version der Dateien in `assets/` je Projekt.
  *
  * Ändert sich ein Bild oder eine Vorschau in `projects/<slug>/assets/`,
- * schickt der Server `projekt` mit `assets: true` (beide Kanäle; die Dateien
- * sind frei). Die Seite merkt sich die Version dazu und hängt sie als
+ * schickt der Server `projekt` mit `assets: true` (geschützter Kanal; seit
+ * Schritt E2 auch die Dateien nur mit Anmeldung). Die Seite merkt sich die Version dazu und hängt sie als
  * `?v=<version>` an die Adresse (`mitVersion`): Die Adresse ist neu, also
  * holt der Browser die Datei neu, ohne dass die Seite neu lädt. Bis zur
  * ersten Änderung bleibt die Adresse ohne Version.
@@ -11,13 +11,12 @@
  * Je Datei (Kleinigkeit aus der Abnahme live-luecken): Auf dem geschützten
  * Kanal nennt `projekt` dazu die geänderten Dateien (`dateien`). Ein Bild
  * bekommt dann nur eine neue Version, wenn seine Datei dabei war; die anderen
- * Bilder des Projekts bleiben im Browser-Cache. Ohne Namen (freier Kanal,
- * sehr viele Dateien) gilt die Version für alle Dateien des Projekts. Die
+ * Bilder des Projekts bleiben im Browser-Cache. Ohne Namen (sehr viele
+ * Dateien) gilt die Version für alle Dateien des Projekts. Die
  * Vorschau fragt ohne Dateinamen und bekommt die neueste Version des
  * Projekts: Sie kann andere Dateien aus `assets/` einbinden.
  */
 import { SvelteMap } from 'svelte/reactivity';
-import { freierKanal } from './freikanal.svelte.ts';
 import { live, type InhaltAenderung } from './live.svelte.ts';
 
 export class AssetStand {
@@ -53,18 +52,11 @@ export class AssetStand {
 		}
 	}
 
-	/** Hört auf beide Kanäle; gibt die Abmeldung zurück. */
+	/** Hört auf den geschützten Kanal (der freie trägt seit Schritt E2 keinen Inhalt); gibt die Abmeldung zurück. */
 	start(): () => void {
-		const offLive = live.onInhalt((a) => {
+		return live.onInhalt((a) => {
 			this.aufnehmen(a);
 		});
-		const offFrei = freierKanal.onInhalt((a) => {
-			this.aufnehmen(a);
-		});
-		return () => {
-			offLive();
-			offFrei();
-		};
 	}
 
 	/** Für Tests. */

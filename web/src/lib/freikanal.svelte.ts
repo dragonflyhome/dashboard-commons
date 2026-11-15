@@ -2,11 +2,11 @@
  * Der freie Kanal `/api/events/frei` und die Wahl des einen Kanals je Seite
  * (Kopfleiste, Fassung 2, mit Nachbesserung aus der Abnahme).
  *
- * Der freie Kanal steht auch ohne Anmeldung und trägt nur das Lebenszeichen,
- * den Anmeldestand (`anmeldung`, ein Wort vom Server) und Ereignisse zu
- * Daten, die ohnehin frei sind (`projekt`, `daten` für pc und schwerpunkte, `inhalt`, `pc`,
- * `fassung`, `nachholen`). Vorgänge, Antworten und Schlüssel bleiben im
- * geschützten Kanal (`live.svelte.ts`).
+ * Der freie Kanal steht auch ohne Anmeldung und trägt seit Schritt E2 nur
+ * das Lebenszeichen, den Anmeldestand (`anmeldung`, ein Wort vom Server),
+ * `fassung` und `nachholen`. Alles mit Inhalt (Projekte, Daten, PC-Werte,
+ * Vorgänge, Antworten, Schlüssel) kommt nur im geschützten Kanal
+ * (`live.svelte.ts`).
  *
  * Nur EIN Kanal je Seite: Edge erlaubt über HTTP/1.1 sechs Verbindungen je
  * Host über alle Tabs; zwei Kanäle je Seite ließen ab dem vierten Tab
@@ -43,13 +43,7 @@
  */
 import { SvelteSet } from 'svelte/reactivity';
 import { API } from './api/client';
-import {
-	alsAenderung,
-	live,
-	wartezeit,
-	type InhaltListener,
-	type KanalMeldung
-} from './live.svelte.ts';
+import { live, wartezeit, type KanalMeldung } from './live.svelte.ts';
 import {
 	anmeldewort,
 	liveZustand,
@@ -59,7 +53,7 @@ import {
 } from './verbindung.ts';
 import { bauLage } from './bau.svelte.ts';
 import { zugang } from './zugang.ts';
-import type { AnmeldungEvent, Anmeldewort, EigeneAntraege, FassungEvent, PcTick } from '$vertrag';
+import type { AnmeldungEvent, Anmeldewort, EigeneAntraege, FassungEvent } from '$vertrag';
 
 /** Die Adresse des freien Kanals. */
 export const FREIER_KANAL = `${API}/events/frei`;
@@ -101,15 +95,12 @@ export class FreierKanal {
 	wort = $state<Anmeldewort | null>(null);
 	/** Das Wort von `/api/passkey/antrag` (nur bei einem fremden Windows-Konto). */
 	kontoWort = $state<Anmeldewort | null>(null);
-	/** Die letzten PC-Werte vom freien Kanal (frei wie `/api/pc`). */
-	pc = $state<PcTick | null>(null);
 	/** Welcher Kanal gilt: der freie, der geschützte oder (vor dem Start) keiner. */
 	aktiv = $state<Aktiv>(null);
 
 	#source: EventSource | null = null;
 	#versuch = 0;
 	#timer: ReturnType<typeof setTimeout> | null = null;
-	#inhaltListeners = new SvelteSet<InhaltListener>();
 	#fassungListeners = new SvelteSet<KanalFassungListener>();
 	#bereitListeners = new SvelteSet<BereitListener>();
 	#abgemeldetListeners = new SvelteSet<AbgemeldetListener>();
@@ -330,17 +321,6 @@ export class FreierKanal {
 				});
 			}
 		});
-		source.addEventListener('pc', (ev: MessageEvent<string>) => {
-			const t = lesen(ev.data) as PcTick | null;
-			if (t !== null) this.pc = t;
-		});
-		for (const name of ['projekt', 'daten', 'inhalt']) {
-			source.addEventListener(name, (ev: MessageEvent<string>) => {
-				const a = alsAenderung(name, lesen(ev.data));
-				if (a === null) return;
-				for (const l of this.#inhaltListeners) l(a);
-			});
-		}
 		source.addEventListener('fassung', (ev: MessageEvent<string>) => {
 			const f = lesen(ev.data) as FassungEvent | null;
 			if (f === null) return;
@@ -396,12 +376,6 @@ export class FreierKanal {
 		}
 	}
 
-	/** Meldet sich bei jeder Änderung am freien Inhalt; gibt die Abmeldung zurück. */
-	onInhalt(listener: InhaltListener): () => void {
-		this.#inhaltListeners.add(listener);
-		return () => this.#inhaltListeners.delete(listener);
-	}
-
 	/** Meldet sich bei jeder neuen Fassung der Oberfläche (beide Kanäle); gibt die Abmeldung zurück. */
 	onFassung(listener: KanalFassungListener): () => void {
 		this.#fassungListeners.add(listener);
@@ -434,7 +408,6 @@ export class FreierKanal {
 		this.kanal = 'sucht';
 		this.wort = null;
 		this.kontoWort = null;
-		this.pc = null;
 		this.#kontoGefragt = false;
 	}
 }

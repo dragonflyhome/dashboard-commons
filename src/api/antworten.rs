@@ -37,7 +37,7 @@
 //! schon herausgenommen): 404. Steht dort inzwischen eine neu gestellte Frage
 //! mit derselben Kennung (anderes `gestellt`): 409.
 //!
-//! Alle Wege sind geschützt (Windows-Anmeldung, `sicherheit::geschuetzt`) und
+//! Alle Wege sind geschützt (Windows-Anmeldung, nicht in `sicherheit::oeffentlich`) und
 //! wie `/api/vorgaenge` ohne Herkunftskopf für curl erlaubt; fremde Seiten
 //! bleiben 403. Eine Antwort ist kein Nachweis gegenüber einem anderen Chat
 //! und gibt nie allein eine riskante Handlung frei (Anleitung, „Antworten auf Fragen“).

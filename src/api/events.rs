@@ -27,12 +27,11 @@
 //! Kopfleiste, Fassung 2 (`kopfleiste`,
 //! `[fassung_2_live_zustaende]`): Daneben gibt es den freien Kanal
 //! `/api/events/frei`, ohne Anmeldung, hinter allen übrigen Schleusen. Er
-//! trägt nur das Lebenszeichen (Kommentar `lebenszeichen` alle 15 s), den
-//! Anmeldestand des Anfragenden (`anmeldung`, ein Wort vom Server) und
-//! Ereignisse zu Daten, die ohnehin frei sind: `projekt`, `inhalt`, `daten`
-//! nur für `pc` und `schwerpunkte`, die PC-Werte (`pc`), `fassung` und `nachholen`. Welche Art
-//! wohin darf, steht an einer Stelle ([`Art::frei`], Liste [`FREIER_KANAL`]);
-//! der Wächter-Test prüft das.
+//! trägt seit Schritt E2 nur das Lebenszeichen (Kommentar `lebenszeichen`
+//! alle 15 s), den Anmeldestand des Anfragenden (`anmeldung`, ein Wort vom
+//! Server), `fassung` und `nachholen`; kein Projekt, keine Daten, keine
+//! PC-Werte. Welche Art wohin darf, steht an einer Stelle ([`Art::frei`],
+//! Liste [`FREIER_KANAL`]); der Wächter-Test prüft das.
 //!
 //! Live-Lücken (`immer-aktuell`, Punkt 2):
 //! Der geschützte Kanal trägt dazu `speicher`, `pc-benutzer` und `docs`, je mit
@@ -181,8 +180,7 @@ pub struct ProjektEreignis {
     /// Namen der geänderten Dateien in `assets/` (höchstens
     /// [`ASSET_DATEIEN_HOECHSTENS`]); die Seite erneuert dann nur deren
     /// Adressen. Fehlt das Feld, gilt die Änderung für alle Dateien des
-    /// Projekts. Nur auf dem geschützten Kanal; der freie bekommt es nie
-    /// ([`InhaltEreignis::nur_frei`]).
+    /// Projekts. Nur auf dem geschützten Kanal (wie jedes `projekt`).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub dateien: Option<Vec<String>>,
@@ -226,13 +224,13 @@ pub enum Art {
     Bau,
     /// Neue Fassung der Oberfläche.
     Fassung,
-    /// Ein Projekt ist neu gelesen.
+    /// Ein Projekt ist neu gelesen (nur geschützt).
     Projekt,
-    /// `data/<name>.toml` ist neu (auf dem freien Kanal nur [`FREIE_DATEN`]).
+    /// `data/<name>.toml` ist neu (nur geschützt).
     Daten,
-    /// Viele Projekte auf einmal.
+    /// Viele Projekte auf einmal (nur geschützt).
     Inhalt,
-    /// PC-Werte alle 5 s.
+    /// PC-Werte alle 5 s (nur geschützt wie `/api/pc`).
     Pc,
     /// Ereignisse verloren, bitte neu laden.
     Nachholen,
@@ -305,27 +303,16 @@ impl Art {
     }
 }
 
-/// Die Erlaubnisliste des freien Kanals `/api/events/frei`: Anmeldestand und
-/// Ereignisse zu Daten, die schon frei sind (Projektliste und Kopf, freie
-/// PC-Werte, Fassung), dazu `nachholen`; das Lebenszeichen ist ein Kommentar.
-/// Keine Vorgänge, Antworten, Aufgaben, Schlüssel, Entscheidungen, Unterlagen
-/// oder Verlauf. Eine neue Art kommt nur nach Entscheidung hierher.
-pub const FREIER_KANAL: [Art; 7] = [Art::Fassung, Art::Projekt, Art::Daten, Art::Inhalt, Art::Pc, Art::Nachholen, Art::Anmeldung];
-
-/// Dateien aus `data/`, deren Ereignis `daten` auf den freien Kanal darf:
-/// die PC-Werte (`/api/pc` ist frei) und die Schwerpunkte (Auflage aus der
-/// Abnahme der Kopfleiste 3: Namen und Reihenfolge stehen schon frei in
-/// `/api/projects`, je Projekt `schwerpunkt` und `schwerpunkt_reihenfolge`;
-/// so lädt die Seitenleiste auch ohne Anmeldung live nach). Das Ereignis
-/// nennt nur Name und Version, nie den Inhalt. `schluessel` und alles andere nie.
-/// Dazu die Projektgruppen (Entscheidung projektgruppe): Titel und
-/// Teile stehen ebenso frei in `/api/projects` (Feld `gruppen`).
-pub const FREIE_DATEN: [&str; 3] = ["pc", "schwerpunkte", "gruppen"];
+/// Die Erlaubnisliste des freien Kanals `/api/events/frei` (Schritt E2):
+/// Fassung, `nachholen` und der Anmeldestand; das Lebenszeichen ist ein
+/// Kommentar. Kein Projekt, keine Daten, keine PC-Werte, keine Vorgänge,
+/// Antworten, Aufgaben, Schlüssel, Entscheidungen oder Verlauf. Eine neue Art
+/// kommt nur nach Entscheidung hierher.
+pub const FREIER_KANAL: [Art; 3] = [Art::Fassung, Art::Nachholen, Art::Anmeldung];
 
 /// Ein SSE-Ereignis der Art `art`; auf dem freien Kanal (`frei`) nur, wenn
 /// die Art dort erlaubt ist. Alle Ereignisse beider Kanäle entstehen hier.
-/// Auf dem freien Kanal geht jeder Text durch `datenschutz` (etwa die
-/// Laufwerke im PC-Takt), wie `/api/pc`.
+/// Auf dem freien Kanal geht jeder Text als zweite Sicherung durch `datenschutz`.
 fn ereignis<T: Serialize>(art: Art, frei: bool, daten: &T) -> Option<Event> {
     if frei && !art.frei() {
         return None;
@@ -361,25 +348,12 @@ impl InhaltEreignis {
         self.art().name()
     }
 
-    fn als_sse(&self, frei: bool) -> Option<Event> {
+    /// Als SSE-Ereignis, nur auf dem geschützten Kanal.
+    fn als_sse(&self) -> Option<Event> {
         match self {
-            Self::Projekt(p) => ereignis(self.art(), frei, p),
-            Self::Daten(d) => ereignis(self.art(), frei, d),
-            Self::Sammel(s) => ereignis(self.art(), frei, s),
-        }
-    }
-
-    /// Was davon auf den freien Kanal darf: `projekt` ohne die Dateinamen
-    /// aus `assets/` (nur das Bit `assets`), `daten` nur für [`FREIE_DATEN`];
-    /// ein Sammelereignis ohne die übrigen Dateien (bleibt nichts, gar nicht).
-    pub fn nur_frei(&self) -> Option<InhaltEreignis> {
-        match self {
-            Self::Projekt(p) => Some(Self::Projekt(ProjektEreignis { dateien: None, ..p.clone() })),
-            Self::Daten(d) => FREIE_DATEN.contains(&d.name.as_str()).then(|| self.clone()),
-            Self::Sammel(s) => {
-                let daten: Vec<String> = s.daten.iter().filter(|n| FREIE_DATEN.contains(&n.as_str())).cloned().collect();
-                (!s.projekte.is_empty() || !daten.is_empty()).then(|| Self::Sammel(SammelEreignis { version: s.version, projekte: s.projekte.clone(), daten }))
-            }
+            Self::Projekt(p) => ereignis(self.art(), false, p),
+            Self::Daten(d) => ereignis(self.art(), false, d),
+            Self::Sammel(s) => ereignis(self.art(), false, s),
         }
     }
 }
@@ -934,14 +908,12 @@ pub(crate) fn change_strom(state: &AppState) -> impl Stream<Item = Option<Event>
     })
 }
 
-/// Die Ereignisse des ContentStores (`projekt`, `daten`, `inhalt`); läuft
-/// der Kanal über, kommt einmal `nachholen`. Auf dem freien Kanal nur, was
-/// [`InhaltEreignis::nur_frei`] durchlässt.
-fn inhalt_strom(rx: broadcast::Receiver<InhaltEreignis>, frei: bool) -> impl Stream<Item = Option<Event>> {
+/// Die Ereignisse des ContentStores (`projekt`, `daten`, `inhalt`) für den
+/// geschützten Kanal; läuft der Kanal über, kommt einmal `nachholen`.
+fn inhalt_strom(rx: broadcast::Receiver<InhaltEreignis>) -> impl Stream<Item = Option<Event>> {
     BroadcastStream::new(rx).map(move |r| match r {
-        Ok(e) if frei => e.nur_frei().and_then(|e| e.als_sse(true)),
-        Ok(e) => e.als_sse(false),
-        Err(BroadcastStreamRecvError::Lagged(n)) => nachholen("inhalt", n, frei),
+        Ok(e) => e.als_sse(),
+        Err(BroadcastStreamRecvError::Lagged(n)) => nachholen("inhalt", n, false),
     })
 }
 
@@ -955,19 +927,14 @@ fn bereich_strom(rx: broadcast::Receiver<crate::aenderungen::BereichEreignis>, f
     })
 }
 
-/// Die PC-Werte alle 5 s (frei wie `/api/pc`).
-fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + use<> {
+/// Die PC-Werte alle 5 s, nur auf dem geschützten Kanal (wie `/api/pc`), im Klartext.
+fn pc_takt(state: &AppState) -> impl Stream<Item = Option<Event>> + use<> {
     let snap = state.snapshot.clone();
     IntervalStream::new(tokio::time::interval(Duration::from_secs(5))).then(move |_| {
         let snap = snap.clone();
         async move {
             let s = snap.read().await;
-            // Frei wie `/api/pc`: statt der Namen der Datenträger der Platzhalter, alle Texte
-            // verborgen (`ereignis`). Geschützt im Klartext (Schritt E1).
-            let mut disks = s.disks.clone();
-            if frei {
-                crate::datenschutz::platten_verbergen(&mut disks);
-            }
+            let disks = s.disks.clone();
             let tick = PcTick {
                 at: s.taken_at,
                 cpu_percent: s.cpu_percent,
@@ -978,7 +945,7 @@ fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + 
                 cpu_belegung: s.cpu_belegung,
                 mem_belegung: s.mem_belegung,
             };
-            ereignis(Art::Pc, frei, &tick)
+            ereignis(Art::Pc, false, &tick)
         }
     })
 }
@@ -995,12 +962,12 @@ fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + 
 pub async fn sse(State(state): State<AppState>, inhaber: Option<Extension<Inhaber>>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let erstes = tokio_stream::once(ereignis(Art::Anmeldung, false, &AnmeldungEreignis { stand: Anmeldewort::Angemeldet }));
     let changes = change_strom(&state);
-    let ticks = pc_takt(&state, false);
+    let ticks = pc_takt(&state);
     let vorgaenge = ohne_archiv_strom(&state, state.vorgang_events.subscribe(), Art::Vorgang, |v: &VorgangEreignis| v.slug.as_str());
     let bauten = ohne_archiv_strom(&state, state.bau_events.subscribe(), Art::Bau, |b: &BauEreignis| b.slug.as_str());
     let fassungen = kanal_strom(state.fassung_events.subscribe(), Art::Fassung, false);
     let fortschritte = kanal_strom(state.bau_fortschritt.subscribe(), Art::BauFortschritt, false);
-    let inhalt = inhalt_strom(state.inhalt.abonnieren(), false);
+    let inhalt = inhalt_strom(state.inhalt.abonnieren());
     let bereiche = bereich_strom(state.aenderungen.abonnieren(), false);
     let stream = erstes.chain(changes.merge(vorgaenge).merge(bauten).merge(fortschritte).merge(fassungen).merge(inhalt).merge(bereiche).merge(ticks));
     let sitzung = match inhaber {
@@ -1080,14 +1047,11 @@ where
 }
 
 /// Der Strom des freien Kanals ohne Lebenszeichen: zuerst `anmeldung`, dann
-/// nur Arten aus [`FREIER_KANAL`]. Die Kanäle der Änderungen (`change`), der
-/// Vorgänge und der Bauten abonniert er gar nicht erst; was trotzdem käme,
-/// hielte [`ereignis`] zurück.
+/// nur `fassung` (und `nachholen`, wenn dieser Kanal überläuft). Die übrigen
+/// Kanäle abonniert er gar nicht erst; was trotzdem käme, hielte [`ereignis`] zurück.
 pub fn frei_strom(state: &AppState, wort: Anmeldewort) -> impl Stream<Item = Option<Event>> + use<> {
     let erstes = tokio_stream::once(ereignis(Art::Anmeldung, true, &AnmeldungEreignis { stand: wort }));
-    let fassungen = kanal_strom(state.fassung_events.subscribe(), Art::Fassung, true);
-    let inhalt = inhalt_strom(state.inhalt.abonnieren(), true);
-    erstes.chain(fassungen.merge(inhalt).merge(pc_takt(state, true)))
+    erstes.chain(kanal_strom(state.fassung_events.subscribe(), Art::Fassung, true))
 }
 
 /// Der freie Kanal `/api/events/frei` (Kopfleiste, Fassung 2): ohne
@@ -1172,23 +1136,35 @@ mod tests {
     /// erlaubte Art auf dem freien Kanal zurück.
     #[test]
     fn waechter_erlaubnisliste_des_freien_kanals() {
-        // Live-Lücken: Datenspeicher, Benutzer-Daten und docs/ sind geschützt.
-        for a in [Art::Change, Art::Vorgang, Art::Bau, Art::Speicher, Art::PcBenutzer, Art::Docs, Art::BauFortschritt] {
+        // Live-Lücken: Datenspeicher, Benutzer-Daten und docs/ sind geschützt; seit
+        // Schritt E2 auch Projekte, Daten, Sammelereignisse und PC-Werte.
+        for a in [
+            Art::Change,
+            Art::Vorgang,
+            Art::Bau,
+            Art::Speicher,
+            Art::PcBenutzer,
+            Art::Docs,
+            Art::BauFortschritt,
+            Art::Projekt,
+            Art::Daten,
+            Art::Inhalt,
+            Art::Pc,
+        ] {
             assert!(!a.frei(), "{a:?} gehört nur auf den geschützten Kanal");
             assert!(ereignis(a, true, &"x").is_none(), "{a:?}");
             assert!(ereignis(a, false, &"x").is_some(), "{a:?} geht geschützt");
         }
         let frei: Vec<&str> = FREIER_KANAL.iter().map(|a| a.name()).collect();
-        assert_eq!(frei, ["fassung", "projekt", "daten", "inhalt", "pc", "nachholen", "anmeldung"]);
+        assert_eq!(frei, ["fassung", "nachholen", "anmeldung"]);
         for a in Art::ALLE {
             assert_eq!(a.frei(), FREIER_KANAL.contains(&a), "{a:?}");
         }
-        assert_eq!(FREIE_DATEN, ["pc", "schwerpunkte", "gruppen"], "nur PC-Werte, Schwerpunkte und Gruppen aus data/");
     }
 
     /// Wächter von außen: Alle Kanäle des Servers bekommen je ein Ereignis,
-    /// der freie Strom zeigt davon nur Erlaubtes; `change`, `vorgang` und
-    /// `bau` kommen nie an, `data/schluessel.toml` auch nicht.
+    /// der freie Strom zeigt davon nur `anmeldung` und `fassung` (Schritt E2);
+    /// kein Projekt, keine Daten (auch nicht die Schwerpunkte), keine PC-Werte.
     #[tokio::test]
     async fn waechter_freier_strom_traegt_nichts_geschuetztes() {
         let state = crate::app::AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
@@ -1218,20 +1194,18 @@ mod tests {
             .bau_fortschritt
             .send(crate::vertrag::bote::BauFortschritt { schritt: crate::vertrag::bote::FortschrittSchritt::Pruefung, fertig: 7, gesamt: 21 })
             .unwrap();
-        // Aus data/: die Schwerpunkte frei (Seitenleiste ohne Anmeldung), die Schlüssel nie.
+        // Aus data/ und den Projekten: nichts mehr auf dem freien Kanal (Schritt E2).
         state.inhalt.senden_fuer_tests(InhaltEreignis::Daten(DatenEreignis { name: "schluessel".into(), version: 41 }));
         state.inhalt.senden_fuer_tests(InhaltEreignis::Daten(DatenEreignis { name: "schwerpunkte".into(), version: 42 }));
+        state.inhalt.senden_fuer_tests(InhaltEreignis::Projekt(ProjektEreignis { slug: "beispiel".into(), version: 43, assets: None, dateien: None }));
+        state.inhalt.senden_fuer_tests(InhaltEreignis::Sammel(SammelEreignis { version: 44, projekte: vec!["beispiel".into()], daten: vec!["pc".into()] }));
+        // Ein `pc` käme gleich zu Beginn (der erste Takt sofort).
         let bis = || tokio::time::sleep(Duration::from_millis(400));
         let text = als_text(futures_util::StreamExt::take_until(strom, bis())).await;
         let n = namen(&text);
-        assert!(text.contains("{\"name\":\"schwerpunkte\",\"version\":42}"), "{text}");
-        assert!(!text.contains("\"version\":41"), "{text}");
-        assert_eq!(n.first(), Some(&"anmeldung"), "{text}");
+        assert_eq!(n, ["anmeldung", "fassung"], "{text}");
         assert!(text.contains("data: {\"stand\":\"nicht_angemeldet\"}"), "{text}");
-        assert!(n.contains(&"fassung") && n.contains(&"pc"), "{text}");
-        for name in &n {
-            assert!(FREIER_KANAL.iter().any(|a| a.name() == *name), "{name} auf dem freien Kanal: {text}");
-        }
+        assert!(!text.contains("schwerpunkte") && !text.contains("beispiel") && !text.contains("\"version\""), "{text}");
         assert!(!text.contains("alpha") && !text.contains("schluessel") && !text.contains("aufgaben") && !text.contains("bereich"), "{text}");
         assert!(!text.contains("bau-fortschritt") && !text.contains("\"fertig\"") && !text.contains("\"gesamt\""), "ohne Anmeldung kein Schrittzähler: {text}");
         // Zum Vergleich: Der geschützte Kanal hat sie bekommen.
@@ -1242,9 +1216,9 @@ mod tests {
         assert!(g.contains(r#"{"schritt":"pruefung","fertig":7,"gesamt":21}"#), "{g}");
     }
 
-    /// Bau-Tempo, Zweig C: Ohne Anmeldung kein Schrittzähler, auch nicht in
-    /// der freien Projektliste (frei bleiben Zustand und Zeit). Gegenprobe:
-    /// Der Fortschritt selbst hätte die gesuchten Felder.
+    /// Bau-Tempo, Zweig C: Ohne Anmeldung kein Schrittzähler; seit Schritt E2
+    /// gibt die Projektliste ohne Anmeldung nur 401. Gegenprobe: Der
+    /// Fortschritt selbst hätte die gesuchten Felder.
     #[tokio::test]
     async fn projektliste_ohne_schrittzaehler() {
         use axum::body::Body;
@@ -1260,116 +1234,57 @@ mod tests {
         assert!(felder.iter().all(|x| gegen.contains(x)), "{gegen}");
         let req = Request::get("/api/projects").header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
         let res = crate::app::router(state).oneshot(req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         let text = String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
-        assert!(text.contains("\"projects\""), "{text}");
+        assert!(!text.contains("\"projects\""), "{text}");
         for x in felder {
             assert!(!text.contains(x), "{x} in /api/projects ohne Anmeldung");
         }
     }
 
-    /// Der PC-Takt nennt die Laufwerke auf dem freien Kanal ohne Profil und
-    /// Namen, wie `/api/pc`; auf dem geschützten im Klartext (Schritt E1).
+    /// Schritt E2: Der freie Strom (`frei_strom`, wie `/api/events/frei`)
+    /// trägt keine PC-Werte, auch nicht verborgen. Fällt, wenn `frei_strom`
+    /// den PC-Takt wieder mischte (der erste Takt käme sofort).
     #[tokio::test]
-    async fn pc_takt_ohne_profil_nur_frei() {
-        let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
-        state.snapshot.write().await.disks = vec![crate::pc::system::DiskInfo {
-            name: r"Ablage (C:\Users\beispiel-konto\Laufwerk)".into(),
-            mount: r"C:\Users\beispiel-konto\Laufwerk".into(),
-            total: 10,
-            used: 1,
-            belegung: Default::default(),
-        }];
-        for frei in [true, false] {
-            let mut strom = Box::pin(pc_takt(&state, frei));
-            let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
-            let text = als_text(tokio_stream::once(Some(e))).await;
-            if frei {
-                assert!(text.contains(r#""mount":"%USERPROFILE%\\Laufwerk""#), "{text}");
-                assert!(!text.contains("beispiel-konto") && !text.contains(r"Users\\"), "{text}");
-            } else {
-                assert!(text.contains(r#""mount":"C:\\Users\\beispiel-konto\\Laufwerk""#), "{text}");
-            }
-        }
-    }
-
-    /// Über den ganzen freien Strom (`frei_strom`, wie `/api/events/frei`):
-    /// Das erste `pc`-Ereignis nennt statt des Namens eines Datenträgers den
-    /// Platzhalter und statt des Profils `%USERPROFILE%`. Fällt, wenn
-    /// `frei_strom` den PC-Takt als geschützt aufriefe.
-    #[tokio::test]
-    async fn freier_strom_verbirgt_datentraeger() {
+    async fn freier_strom_ohne_pc_werte() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         let platte =
             |name: &str, mount: &str| crate::pc::system::DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
-        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte"), platte("", r"C:\Users\beispiel-konto\Laufwerk")];
+        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte")];
         let strom = frei_strom(&state, Anmeldewort::NichtAngemeldet);
         let text = als_text(futures_util::StreamExt::take_until(strom, tokio::time::sleep(Duration::from_millis(400)))).await;
-        let pc = text.split("\n\n").find(|e| e.lines().any(|z| z == "event: pc")).unwrap_or_else(|| panic!("kein pc-Ereignis: {text}"));
-        assert!(pc.contains("%VOLUME%") && pc.contains("%USERPROFILE%"), "{pc}");
-        assert!(!pc.contains("Beispiel") && !pc.contains("beispiel-konto"), "{pc}");
+        assert_eq!(namen(&text), ["anmeldung"], "{text}");
+        assert!(!text.contains("Beispiel") && !text.contains("%VOLUME%") && !text.contains("disks"), "{text}");
     }
 
-    /// Der PC-Takt nennt auf dem freien Kanal statt des Namens eines
-    /// Datenträgers den Platzhalter, auf dem geschützten den echten Namen;
-    /// ein leerer Name bleibt leer.
+    /// Der PC-Takt (nur geschützt) nennt die Datenträger im Klartext (Schritt
+    /// E1), ein leerer Name bleibt leer; Profilpfade bleiben stehen.
     #[tokio::test]
     async fn pc_takt_namen_der_datentraeger_nur_geschuetzt() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         let platte =
             |name: &str, mount: &str| crate::pc::system::DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
-        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte"), platte("", r"C:\")];
-        for frei in [true, false] {
-            let mut strom = Box::pin(pc_takt(&state, frei));
-            let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
-            let text = als_text(tokio_stream::once(Some(e))).await;
-            assert!(text.contains(r#""name":"","mount":"C:\\""#), "{text}");
-            if frei {
-                assert!(text.contains(r#""name":"%VOLUME%","mount":"/Volumes/%VOLUME%""#), "{text}");
-                assert!(!text.contains("Beispiel") && !text.contains("Platte"), "{text}");
-            } else {
-                assert!(text.contains(r#""name":"Beispiel Platte","mount":"/Volumes/Beispiel Platte""#), "{text}");
-                assert!(!text.contains("%VOLUME%"), "{text}");
-            }
-        }
-    }
-
-    /// Inhalt auf dem freien Kanal: Projekte ja, `daten` nur für `pc` und
-    /// `schwerpunkte`, im Sammelereignis nur die freien Dateien; bleibt nichts,
-    /// kommt nichts.
-    #[tokio::test]
-    async fn freier_kanal_filtert_daten() {
-        let (tx, rx) = broadcast::channel::<InhaltEreignis>(8);
-        tx.send(InhaltEreignis::Projekt(ProjektEreignis { slug: "alpha".into(), version: 1, assets: None, dateien: None })).unwrap();
-        tx.send(InhaltEreignis::Daten(DatenEreignis { name: "schluessel".into(), version: 2 })).unwrap();
-        tx.send(InhaltEreignis::Daten(DatenEreignis { name: "pc".into(), version: 3 })).unwrap();
-        tx.send(InhaltEreignis::Sammel(SammelEreignis { version: 4, projekte: vec!["a".into()], daten: vec!["schluessel".into(), "pc".into()] })).unwrap();
-        tx.send(InhaltEreignis::Sammel(SammelEreignis { version: 5, projekte: vec![], daten: vec!["schwerpunkte".into(), "schluessel".into()] })).unwrap();
-        tx.send(InhaltEreignis::Daten(DatenEreignis { name: "schwerpunkte".into(), version: 6 })).unwrap();
-        tx.send(InhaltEreignis::Sammel(SammelEreignis { version: 7, projekte: vec![], daten: vec!["schluessel".into()] })).unwrap();
-        drop(tx);
-        let text = als_text(inhalt_strom(rx, true)).await;
-        assert_eq!(namen(&text), ["projekt", "daten", "inhalt", "inhalt", "daten"], "{text}");
-        assert!(text.contains("{\"name\":\"pc\",\"version\":3}"), "{text}");
-        assert!(text.contains("{\"version\":4,\"projekte\":[\"a\"],\"daten\":[\"pc\"]}"), "{text}");
-        // Schwerpunkte frei (nur Name und Version), Schlüssel nie, auch nicht im Sammelereignis.
-        assert!(text.contains("{\"version\":5,\"projekte\":[],\"daten\":[\"schwerpunkte\"]}"), "{text}");
-        assert!(text.contains("{\"name\":\"schwerpunkte\",\"version\":6}"), "{text}");
-        assert!(!text.contains("schluessel") && !text.contains("\"version\":7"), "{text}");
+        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte"), platte("", r"C:\Users\beispiel-konto\Laufwerk")];
+        let mut strom = Box::pin(pc_takt(&state));
+        let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
+        let text = als_text(tokio_stream::once(Some(e))).await;
+        assert!(text.contains(r#""name":"Beispiel Platte","mount":"/Volumes/Beispiel Platte""#), "{text}");
+        assert!(text.contains(r#""name":"","mount":"C:\\Users\\beispiel-konto\\Laufwerk""#), "{text}");
+        assert!(!text.contains("%VOLUME%") && !text.contains("%USERPROFILE%"), "{text}");
     }
 
     /// Asset-Version je Datei: Die Dateinamen gehen nur auf den geschützten
-    /// Kanal; der freie bekommt dasselbe `projekt` nur mit dem Bit `assets`.
+    /// Kanal; der freie bekommt seit Schritt E2 gar kein `projekt`.
     #[tokio::test]
     async fn dateinamen_der_assets_nur_auf_dem_geschuetzten_kanal() {
+        let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
+        let frei = frei_strom(&state, Anmeldewort::NichtAngemeldet);
+        let rx_geschuetzt = state.inhalt.abonnieren();
         let p = ProjektEreignis { slug: "b".into(), version: 9, assets: Some(true), dateien: Some(vec!["bild.png".into()]) };
-        let (tx, rx_frei) = broadcast::channel::<InhaltEreignis>(4);
-        let rx_geschuetzt = tx.subscribe();
-        tx.send(InhaltEreignis::Projekt(p)).unwrap();
-        drop(tx);
-        let frei = als_text(inhalt_strom(rx_frei, true)).await;
-        let geschuetzt = als_text(inhalt_strom(rx_geschuetzt, false)).await;
-        assert!(frei.contains("data: {\"slug\":\"b\",\"version\":9,\"assets\":true}\n"), "{frei}");
+        state.inhalt.senden_fuer_tests(InhaltEreignis::Projekt(p));
+        let frei = als_text(futures_util::StreamExt::take_until(frei, tokio::time::sleep(Duration::from_millis(300)))).await;
+        let geschuetzt = als_text(futures_util::StreamExt::take_until(inhalt_strom(rx_geschuetzt), tokio::time::sleep(Duration::from_millis(300)))).await;
+        assert_eq!(namen(&frei), ["anmeldung"], "{frei}");
         assert!(!frei.contains("bild.png"), "{frei}");
         assert!(geschuetzt.contains("{\"slug\":\"b\",\"version\":9,\"assets\":true,\"dateien\":[\"bild.png\"]}"), "{geschuetzt}");
     }
@@ -1441,7 +1356,7 @@ mod tests {
         tx.send(InhaltEreignis::Daten(DatenEreignis { name: "pc".into(), version: 8 })).unwrap();
         tx.send(InhaltEreignis::Sammel(SammelEreignis { version: 9, projekte: vec!["a".into(), "b".into()], daten: vec![] })).unwrap();
         drop(tx);
-        let text = als_text(inhalt_strom(rx, false)).await;
+        let text = als_text(inhalt_strom(rx)).await;
         assert!(text.contains("event: projekt\ndata: {\"slug\":\"alpha\",\"version\":7}"), "{text}");
         assert!(text.contains("event: daten\ndata: {\"name\":\"pc\",\"version\":8}"), "{text}");
         assert!(text.contains("event: inhalt\ndata: {\"version\":9,\"projekte\":[\"a\",\"b\"],\"daten\":[]}"), "{text}");
@@ -1451,7 +1366,7 @@ mod tests {
             tx.send(InhaltEreignis::Projekt(ProjektEreignis { slug: "x".into(), version: v, assets: None, dateien: None })).unwrap();
         }
         drop(tx);
-        let text = als_text(inhalt_strom(rx, false)).await;
+        let text = als_text(inhalt_strom(rx)).await;
         assert!(text.starts_with("event: nachholen"), "{text}");
     }
 
@@ -1735,10 +1650,8 @@ mod tests {
         let p = &assets[0];
         assert_eq!(p.slug, "b");
         assert_eq!(p.dateien.as_deref(), Some(&["bild.png".to_string()][..]), "Asset-Version je Datei");
-        let frei = InhaltEreignis::Projekt(p.clone()).nur_frei().unwrap();
-        let InhaltEreignis::Projekt(frei) = frei else { panic!("projekt bleibt projekt") };
-        let sse = als_text(tokio_stream::iter(vec![ereignis(Art::Projekt, true, &frei)])).await;
-        assert!(sse.contains(&format!("{{\"slug\":\"b\",\"version\":{},\"assets\":true}}", p.version)), "{sse}");
+        // Schritt E2: kein `projekt` auf dem freien Kanal.
+        assert!(ereignis(Art::Projekt, true, p).is_none());
     }
 
     /// Etappe 4b: Ein Eintrag der Liste, der selbst ein Projekt ist (zweite

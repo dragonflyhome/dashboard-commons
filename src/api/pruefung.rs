@@ -2,10 +2,8 @@
 //! (`inhalt::pruefung`), dieselben wie bei `dashboard pruefe`. Die
 //! Dateiarbeit läuft in `spawn_blocking`, damit sie den Server nicht aufhält.
 
+use axum::Json;
 use axum::extract::{Path, State};
-use axum::{Extension, Json};
-
-use crate::anmeldung::Angemeldet;
 
 use super::vertrag::{PruefungGesamt, PruefungProjekt, PruefungsBericht};
 use crate::app::AppState;
@@ -117,27 +115,18 @@ fn von_der_platte(state: &AppState) -> Vec<(String, Befund)> {
     b
 }
 
-/// `GET /api/pruefung`. Etappe B2: ohne Windows-Anmeldung nur Zahlen (gesamt
-/// und je Projekt), keine Befund-Sätze; sie können Inhalt zitieren.
-pub async fn alle(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<PruefungsBericht>, AppError> {
-    let angemeldet = angemeldet.is_some();
+/// `GET /api/pruefung` (geschützt, Schritt E2): mit allen Befund-Sätzen.
+pub async fn alle(State(state): State<AppState>) -> Result<Json<PruefungsBericht>, AppError> {
     let quellen = state.quellen.to_vec();
     let mut modul = weitere_befunde(&state);
     let s = state.clone();
     modul.extend(im_hintergrund(move || von_der_platte(&s)).await?);
-    let mut bericht = im_hintergrund(move || mit_modul_befunden(bericht_aus(&quellen), modul)).await?;
-    bericht.projekte = bericht.projekte.into_iter().map(|p| p.ohne_saetze(angemeldet)).collect();
+    let bericht = im_hintergrund(move || mit_modul_befunden(bericht_aus(&quellen), modul)).await?;
     Ok(Json(bericht))
 }
 
-/// `GET /api/pruefung/<slug>`: 404, wenn es das Projekt nicht gibt.
-/// Etappe B2: ohne Windows-Anmeldung nur die Zahlen, keine Befund-Sätze.
-pub async fn eines(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    angemeldet: Option<Extension<Angemeldet>>,
-) -> Result<Json<PruefungProjekt>, AppError> {
-    let angemeldet = angemeldet.is_some();
+/// `GET /api/pruefung/<slug>` (geschützt): 404, wenn es das Projekt nicht gibt.
+pub async fn eines(State(state): State<AppState>, Path(slug): Path<String>) -> Result<Json<PruefungProjekt>, AppError> {
     let dir = state.projekt_eltern(&slug);
     let s = slug.clone();
     let mut alle_weiteren = weitere_befunde(&state);
@@ -154,7 +143,7 @@ pub async fn eines(
         Some(PruefungProjekt::neu(s, befunde))
     })
     .await?;
-    ergebnis.map(|p| Json(p.ohne_saetze(angemeldet))).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
+    ergebnis.map(Json).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
 }
 
 #[cfg(test)]
@@ -168,10 +157,11 @@ mod tests {
 
     use crate::app::{AppState, router};
 
-    /// Angemeldet (Etappe B2: die Befund-Sätze nur mit Anmeldung).
+    /// Angemeldet (seit Schritt E2 ist die Prüfung geschützt); mit Datenspeicher,
+    /// damit die Anmeldung auch unter macOS geht.
     async fn hole(pfad: &str) -> (StatusCode, serde_json::Value) {
         let beispiel = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("beispiel");
-        hole_mit(crate::app::router_angemeldet(AppState::fuer_tests_ohne_speicher(&beispiel, "")), pfad).await
+        hole_mit(crate::app::router_angemeldet(AppState::fuer_tests(&beispiel)), pfad).await
     }
 
     /// Ohne Anmeldung.
@@ -210,17 +200,14 @@ mod tests {
         assert_eq!((kaputt["fehler"].as_u64(), kaputt["hinweise"].as_u64()), (Some(1), Some(0)), "{kaputt}");
     }
 
-    /// Etappe B2: ohne Anmeldung nur Zahlen (gesamt und je Projekt), keine Befund-Sätze.
+    /// Schritt E2: ohne Anmeldung 401, weder Zahlen noch Befund-Sätze.
     #[tokio::test]
-    async fn ohne_anmeldung_nur_zahlen() {
-        let (status, v) = hole_frei("/api/pruefung").await;
-        assert_eq!(status, StatusCode::OK, "{v}");
-        assert_eq!((v["gesamt"]["fehler"].as_u64(), v["gesamt"]["projekte"].as_u64()), (Some(3), Some(7)), "{v}");
-        let kaputt = v["projekte"].as_array().unwrap().iter().find(|p| p["slug"] == "neu-kaputt").cloned().unwrap();
-        assert_eq!((kaputt["befunde"].clone(), kaputt["fehler"].as_u64()), (serde_json::json!([]), Some(1)), "{kaputt}");
-        assert!(!v.to_string().contains("aktief"), "{v}");
-        let (status, e) = hole_frei("/api/pruefung/neu-kaputt").await;
-        assert_eq!((status, e["befunde"].clone(), e["fehler"].as_u64()), (StatusCode::OK, serde_json::json!([]), Some(1)), "{e}");
+    async fn ohne_anmeldung_401() {
+        for pfad in ["/api/pruefung", "/api/pruefung/neu-kaputt"] {
+            let (status, v) = hole_frei(pfad).await;
+            assert_eq!((status, v["art"].as_str()), (StatusCode::UNAUTHORIZED, Some("anmeldung")), "{pfad}: {v}");
+            assert!(!v.to_string().contains("aktief") && v.get("gesamt").is_none() && v.get("befunde").is_none(), "{v}");
+        }
     }
 
     #[tokio::test]

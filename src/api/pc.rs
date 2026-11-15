@@ -1,34 +1,27 @@
 //! `/api/pc`: Messwerte, Systemanwendungen (Rechner-Teil), `data/pc.toml`
-//! und Backup je Projekt. Der Weg ist frei, die Rechner-Werte sieht jeder
-//! (`[anmeldung]`).
+//! und Backup je Projekt. Seit Schritt E2 geschützt (`sicherheit::oeffentlich`
+//! nennt ihn nicht), im Klartext.
 //!
 //! `/api/pc/benutzer`: die Benutzer-Daten, die sonst der Bote unter dem Konto des
 //! Konto liest (Ordnergrößen, winget, Autostart, Werkzeuge), und die
-//! Schlüssel-Zähler. Der Weg ist geschützt (`sicherheit::geschuetzt`): Ohne
+//! Schlüssel-Zähler. Der Weg ist geschützt (`sicherheit::oeffentlich`): Ohne
 //! Windows-Anmeldung antwortet die Schleuse 401 mit `WWW-Authenticate:
 //! Negotiate`, erst darauf schickt der Browser seinen Nachweis. Auf einem
 //! freien Weg täte er das nie (Etappe 7b).
 //!
-//! `/api/pc/verlauf` (Etappe 2e): der Verlauf des PCs als Ereignisse
-//! (`vertrag::verlauf`), frei wie `/api/pc`; mit Anmeldung zusätzlich
-//! Starts, Systemmeldungen und die Vorgänge des Dashboards. Der Weg bleibt
-//! für Werkzeuge (curl).
-//!
-//! `/api/pc/verlauf/voll` (Hotfix 3a-1): derselbe Verlauf, immer mit Starts,
-//! Systemmeldungen und Vorgängen, geschützt wie `/api/pc/benutzer`. Die
-//! Oberfläche liest ihn hier: Edge schickt Negotiate nur auf einer
-//! Verbindung, die vorher 401 bekam. Auf dem freien Weg landete die Anfrage
-//! oft auf einer neuen Verbindung ohne Anmeldung, dann fehlten die Starts.
+//! `/api/pc/verlauf` (Etappe 2e) und `/api/pc/verlauf/voll` (Hotfix 3a-1):
+//! der Verlauf des PCs als Ereignisse (`vertrag::verlauf`), mit Starts,
+//! Systemmeldungen und den Vorgängen des Dashboards; seit Schritt E2 beide
+//! geschützt und gleich. Die Oberfläche liest `/voll`; der kurze Weg bleibt
+//! für Werkzeuge (curl, mit Anmeldung).
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::Uri;
-use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json};
 use chrono::{DateTime, FixedOffset, Local, NaiveDate};
 
 use super::vertrag::{PcBenutzer, PcReport, ProjectBackup, SchluesselGrund, SchluesselStand, SysAppsBenutzer, SysAppsRechner};
 use super::vorgaenge::{abfrage, angegeben};
-use crate::anmeldung::Angemeldet;
 use crate::app::AppState;
 use crate::fehler::AppError;
 use crate::pc::pcdata::{self, PcData};
@@ -40,13 +33,9 @@ use crate::vertrag::api::{Vorgang, Zustand as VorgangsZustand};
 use crate::vertrag::bedeutung::Bedeutung;
 use crate::vertrag::verlauf::{self, Art, Ereignis, Genauigkeit, Quelle, Verlauf, VerlaufHinweis, VerlaufHinweisArt as HinweisArt};
 
-/// `GET /api/pc` (frei). Profilpfade und der Benutzername sind verborgen
-/// (`datenschutz`), etwa in `sysapps.errors` und `data_error`. Statt des
-/// Rechnernamens und der Namen der Datenträger stehen Platzhalter.
-pub async fn bericht(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let mut bericht = bericht_bauen(&state).await;
-    crate::datenschutz::rechner_verbergen(&mut bericht.snapshot);
-    crate::datenschutz::als_json(&bericht)
+/// `GET /api/pc` (geschützt): im Klartext, auch Rechnername und Datenträger.
+pub async fn bericht(State(state): State<AppState>) -> Json<PcReport> {
+    Json(bericht_bauen(&state).await)
 }
 
 /// Der Bericht für `/api/pc`, noch mit allen Texten.
@@ -148,38 +137,22 @@ pub(crate) fn schluessel_stand_aus(v: &[crate::schluessel::KeyView], bote_fehlt:
 /// (`seit` ab Tagesanfang, `bis` bis Tagesende) oder RFC 3339; ohne Angabe
 /// die letzten 90 Tage bis jetzt. Falsche Angabe oder mehr als 400 Tage: 422 mit Satz.
 ///
-/// Frei lesbar wie `/api/pc` (Einträge von Hand, Updates, Installation,
-/// Sicherungen); mit Anmeldung zusätzlich die Starts (sie sind ein Profil der
-/// Anwesenheit, Regel aus A1), Systemmeldungen und die Vorgänge des Dashboards
+/// Geschützt wie `/api/pc`: Einträge von Hand, Updates, Installation,
+/// Sicherungen, die Starts, Systemmeldungen und die Vorgänge des Dashboards
 /// (Slug `dashboard`). Das Archiv der Windows-Ereignisse wird gelesen, wenn
 /// `seit` vor der Grenze von 90 Tagen liegt. Beim Standard ist das immer so:
 /// `seit` fällt dann auf den Tagesanfang vor 90 Tagen, die Grenze auf jetzt
 /// minus 90 Tage; das Archiv trägt also die Stunden dazwischen bei.
-pub async fn verlauf(State(state): State<AppState>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<serde_json::Value>, AppError> {
-    verlauf_bauen(&state, &uri, Umfang::Pc { mit_anmeldung: angemeldet.is_some() }).await.map(|v| crate::datenschutz::als_json(&v))
-}
-
-/// `GET /api/pc/verlauf/voll?seit=…&bis=…`: wie [`verlauf`], aber geschützt
-/// (`sicherheit::geschuetzt`), darum immer mit Starts, Systemmeldungen und
-/// Vorgängen. Ohne Anmeldung antwortet schon die Schleuse 401 mit
-/// `WWW-Authenticate: Negotiate`; käme doch eine Anfrage ohne durch, dasselbe hier.
-pub async fn verlauf_voll(State(state): State<AppState>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Response {
-    if angemeldet.is_none() {
-        return super::anmeldung::bitte_anmelden(None);
-    }
-    match verlauf_bauen(&state, &uri, Umfang::Pc { mit_anmeldung: true }).await {
-        // Geschützt, darum im Klartext (Schritt E1); der freie Weg verbirgt weiter.
-        Ok(v) => Json(v).into_response(),
-        Err(e) => e.into_response(),
-    }
+/// Auch `GET /api/pc/verlauf/voll` (derselbe Verlauf, Schritt E2).
+pub async fn verlauf(State(state): State<AppState>, uri: Uri) -> Result<Json<Verlauf>, AppError> {
+    verlauf_bauen(&state, &uri, Umfang::Pc).await.map(Json)
 }
 
 /// Wessen Verlauf [`verlauf_bauen`] baut.
 #[derive(Debug, Clone, Copy)]
 pub enum Umfang<'a> {
-    /// Der PC (`/api/pc/verlauf`); `mit_anmeldung` entscheidet über Starts,
-    /// Systemmeldungen und Vorgänge.
-    Pc { mit_anmeldung: bool },
+    /// Der PC (`/api/pc/verlauf`).
+    Pc,
     /// Ein Projekt (`/api/projekte/<slug>/verlauf`, Etappe B8, immer angemeldet).
     Projekt(&'a str),
 }
@@ -190,7 +163,7 @@ pub enum Umfang<'a> {
 pub async fn verlauf_bauen(state: &AppState, uri: &Uri, umfang: Umfang<'_>) -> Result<Verlauf, AppError> {
     let jetzt = Local::now().fixed_offset();
     let vorschau = match umfang {
-        Umfang::Pc { .. } => 0,
+        Umfang::Pc => 0,
         Umfang::Projekt(_) => VERLAUF_TAGE,
     };
     let (seit, bis) = zeitraum(uri, &jetzt, vorschau)?;
@@ -198,7 +171,7 @@ pub async fn verlauf_bauen(state: &AppState, uri: &Uri, umfang: Umfang<'_>) -> R
     let mut ereignisse = Vec::new();
     let mut hinweise = Vec::new();
     match umfang {
-        Umfang::Pc { mit_anmeldung } => pc_quellen(state, (&seit, &jetzt, heute), mit_anmeldung, &mut ereignisse, &mut hinweise).await?,
+        Umfang::Pc => pc_quellen(state, (&seit, &jetzt, heute), &mut ereignisse, &mut hinweise).await?,
         Umfang::Projekt(slug) => projekt_quellen(state, slug, heute, &mut ereignisse, &mut hinweise).await?,
     }
     ereignisse.retain(|e| verlauf::im_zeitraum(e, &seit, &bis));
@@ -209,7 +182,6 @@ pub async fn verlauf_bauen(state: &AppState, uri: &Uri, umfang: Umfang<'_>) -> R
 async fn pc_quellen(
     state: &AppState,
     zeit: (&DateTime<FixedOffset>, &DateTime<FixedOffset>, NaiveDate),
-    mit_anmeldung: bool,
     ereignisse: &mut Vec<Ereignis>,
     hinweise: &mut Vec<VerlaufHinweis>,
 ) -> Result<(), AppError> {
@@ -227,8 +199,8 @@ async fn pc_quellen(
         Some(s) => {
             let (pc, meldungen, vorgaenge) = Speicher::im_hintergrund(s, move |s| {
                 let pc = s.pc_ereignisse_lesen(mit_archiv)?;
-                let meldungen = if mit_anmeldung { s.meldungen_mit_archiv()? } else { Vec::new() };
-                let vorgaenge = if mit_anmeldung { s.vorgaenge_alle()? } else { Vec::new() };
+                let meldungen = s.meldungen_mit_archiv()?;
+                let vorgaenge = s.vorgaenge_alle()?;
                 Ok((pc, meldungen, vorgaenge))
             })
             .await
@@ -245,8 +217,7 @@ async fn pc_quellen(
                     ),
                 ));
             }
-            // Starts nur mit Anmeldung: 90 Tage Startzeiten zeigen, wann jemand da war.
-            ereignisse.extend(pc.into_iter().map(|a| a.ereignis).filter(|e| mit_anmeldung || e.quelle != Quelle::Start));
+            ereignisse.extend(pc.into_iter().map(|a| a.ereignis));
             ereignisse.extend(meldungen.iter().filter(|m| m.system).map(aus_meldung));
             // Entscheidung archiv-status: kein Merge-Antrag für ein archiviertes Projekt.
             let ohne = state.archivierte();
@@ -261,7 +232,7 @@ async fn pc_quellen(
     match tokio::task::spawn_blocking(move || sicherung::sicherungen_im_ordner(&ordner)).await {
         Ok(Ok(liste)) => ereignisse.extend(liste.iter().map(aus_sicherung)),
         andere => {
-            // Ohne Pfad im Satz: er nennt den Windows-Benutzer, der Weg ist frei.
+            // Der Grund (mit Pfad) nur ins Protokoll; der Satz bleibt kurz.
             let grund = match andere {
                 Ok(Err(e)) => e.to_string(),
                 Err(e) => e.to_string(),
@@ -270,9 +241,6 @@ async fn pc_quellen(
             tracing::warn!("Verlauf: Sicherungsordner nicht lesbar: {grund}");
             hinweise.push(VerlaufHinweis::neu(HinweisArt::SicherungenFehlen, "Die Sicherungen fehlen: Der Sicherungsordner lässt sich nicht lesen."));
         }
-    }
-    if !mit_anmeldung {
-        hinweise.push(VerlaufHinweis::neu(HinweisArt::OhneAnmeldung, SATZ_OHNE_ANMELDUNG));
     }
     Ok(())
 }
@@ -335,8 +303,6 @@ async fn projekt_quellen(
 pub const SATZ_PROJEKT_OHNE_SPEICHER: &str =
     "Der Datenspeicher ist nicht offen: Arbeiten, Schritte, Antworten, Bauten, Vorgänge und Meldungen fehlen, ebenso Fristen aus Aufgaben und Arbeiten.";
 
-/// Hinweis ohne Anmeldung.
-pub const SATZ_OHNE_ANMELDUNG: &str = "Ohne Anmeldung fehlen die Starts, Meldungen und Vorgänge.";
 /// Nur die Vorgänge dieses Chats gehören in den Verlauf des PCs.
 pub const VORGAENGE_SLUG: &str = "dashboard";
 /// Hinweis ohne Datenspeicher.
@@ -571,18 +537,20 @@ mod tests {
         (state, jetzt)
     }
 
-    /// Ohne Anmeldung: frei lesbar, Einträge von Hand und Sicherung, aber keine
-    /// Starts (Anwesenheit), Meldungen und Vorgänge (mit Hinweis). Standard: 90 Tage.
+    /// Schritt E2: ohne Anmeldung 401 ohne Ereignisse; angemeldet Einträge von
+    /// Hand und Sicherung, Standard 90 Tage.
     #[tokio::test]
-    async fn verlauf_ohne_anmeldung_ohne_meldungen_und_vorgaenge() {
+    async fn verlauf_standard_90_tage_und_eintraege_von_hand() {
         let (state, jetzt) = zustand_mit_daten();
-        let app = router(state);
+        let (status, v) = hole(&router(state.clone()), "/api/pc/verlauf").await;
+        assert_eq!((status, v["art"].as_str()), (StatusCode::UNAUTHORIZED, Some("anmeldung")), "{v}");
+        assert!(v.get("ereignisse").is_none(), "{v}");
+        let app = router_angemeldet(state);
         let (status, v) = hole(&app, "/api/pc/verlauf").await;
         assert_eq!(status, StatusCode::OK, "{v}");
         let k = kennungen(&v);
-        assert!(!k.iter().any(|k| k.starts_with("start:") || k.starts_with("meldung:") || k.starts_with("vorgang:")), "{k:?}");
         assert!(k.iter().any(|k| k.starts_with("sicherung:dashboard-")), "{k:?}");
-        assert!(v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung" && h["text"] == SATZ_OHNE_ANMELDUNG), "{v}");
+        assert!(!v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung"), "kein Hinweis mehr: {v}");
         let seit = DateTime::parse_from_rfc3339(v["seit"].as_str().unwrap()).unwrap();
         assert_eq!(seit.date_naive(), jetzt.date_naive() - Duration::days(VERLAUF_TAGE));
         assert_eq!((seit.hour(), seit.minute()), (0, 0));
@@ -619,13 +587,13 @@ mod tests {
         let vorgang = e.iter().find(|e| e["quelle"] == "vorgang").expect("Vorgang");
         assert_eq!(vorgang["art"], "begonnen");
         assert!(vorgang["kennung"].as_str().unwrap().starts_with("vorgang:v-"));
-        assert!(!v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung" && h["text"] == SATZ_OHNE_ANMELDUNG), "{v}");
+        assert!(!v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung"), "{v}");
     }
 
-    /// Hotfix 3a-1: `/api/pc/verlauf/voll` ist geschützt. Ohne Anmeldung 401 mit
-    /// `WWW-Authenticate: Negotiate` (erst darauf schickt Edge den Nachweis),
-    /// angemeldet derselbe Verlauf mit Starts, Meldung und Vorgang, ohne den
-    /// Hinweis; `seit` und `bis` gelten wie auf dem freien Weg.
+    /// Hotfix 3a-1: `/api/pc/verlauf/voll` ist geschützt. Ohne Anmeldung 401
+    /// (unter Windows mit `WWW-Authenticate: Negotiate`, erst darauf schickt Edge
+    /// den Nachweis), angemeldet derselbe Verlauf mit Starts, Meldung und Vorgang
+    /// wie `/api/pc/verlauf` (Schritt E2); `seit` und `bis` gelten gleich.
     #[tokio::test]
     async fn verlauf_voll_nur_mit_anmeldung() {
         let (state, jetzt) = zustand_mit_daten();
@@ -640,9 +608,8 @@ mod tests {
         let k = kennungen(&v);
         assert!(k.contains(&start), "{k:?}");
         assert!(k.iter().any(|k| k.starts_with("meldung:")) && k.iter().any(|k| k.starts_with("vorgang:")), "{k:?}");
-        assert!(!v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung" && h["text"] == SATZ_OHNE_ANMELDUNG), "{v}");
-        let (_, frei) = hole(&app, "/api/pc/verlauf").await;
-        assert_eq!(kennungen(&frei), k, "angemeldet zeigen beide Wege dasselbe");
+        let (_, kurz) = hole(&app, "/api/pc/verlauf").await;
+        assert_eq!(kennungen(&kurz), k, "beide Wege zeigen dasselbe");
         let tag = |d: i64| (jetzt - Duration::days(d)).format("%Y-%m-%d").to_string();
         let (_, v) = hole(&app, &format!("/api/pc/verlauf/voll?seit={}&bis={}", tag(120), tag(50))).await;
         assert!(!kennungen(&v).contains(&start), "{v}");
@@ -684,12 +651,14 @@ mod tests {
         }
     }
 
-    /// Ohne Datenspeicher: Einträge von Hand trotzdem, dazu der Hinweis.
+    /// Ohne Datenspeicher: Einträge von Hand trotzdem, dazu der Hinweis. Direkt
+    /// über `verlauf_bauen` (Schritt E2: der Weg ist geschützt, und unter macOS
+    /// gibt es ohne Datenspeicher keine Anmeldung).
     #[tokio::test]
     async fn verlauf_ohne_speicher() {
         let state = AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), "kaputt");
-        let (status, v) = hole(&router(state), "/api/pc/verlauf?seit=2026-10-01&bis=2026-10-31").await;
-        assert_eq!(status, StatusCode::OK, "{v}");
+        let uri: Uri = "/api/pc/verlauf?seit=2026-10-01&bis=2026-10-31".parse().unwrap();
+        let v = serde_json::to_value(verlauf_bauen(&state, &uri, Umfang::Pc).await.unwrap()).unwrap();
         // Sicherungen kommen aus dem Ordner neben der (nie angelegten) Datei im Temp-Ordner; hier nur die von Hand.
         let hand: Vec<String> = kennungen(&v).into_iter().filter(|k| !k.starts_with("sicherung:")).collect();
         assert_eq!(hand, ["hand:dritter", "hand:erster", "hand:zweiter"]);

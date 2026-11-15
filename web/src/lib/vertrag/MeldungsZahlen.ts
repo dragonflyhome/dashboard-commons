@@ -2,7 +2,7 @@
 
 /**
  * Wie viele Meldungen ein Projekt hat (außerhalb des Archivs), ohne Titel
- * und Texte: Das steht auch ohne Windows-Anmeldung im Stand.
+ * und Texte.
  */
 export type MeldungsZahlen = { 
 /**

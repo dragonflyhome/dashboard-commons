@@ -2,20 +2,21 @@
 //! `projects/<slug>/assets/`. Die Seiten kommen aus dem ContentStore
 //! (Etappe 2d, `state.inhalt`), der Git-Stand aus dem Git-Zwischenspeicher;
 //! keine der beiden Listen liest im Anfragepfad von der Platte.
+//!
+//! Seit Schritt E2 sind alle diese Wege geschützt (`sicherheit::oeffentlich`
+//! nennt keinen); sie liefern im Klartext, ohne Schwärzen.
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
-use axum::{Extension, Json};
 use tracing::error;
 
 use super::vertrag::{ArchivListe, ArchivProjekt, CheckResult, ProcResult, ProjectDetail, ProjectList, ProjectSummary};
-use crate::anmeldung::Angemeldet;
 use crate::app::AppState;
 use crate::fehler::AppError;
 use crate::git::RepoStatus;
 use crate::inhalt::assets;
-use crate::inhalt::seite::Broken;
 use crate::inhalt::seite::{self, Project};
 
 /// Lebenszeichen und Git-Stand eines Projekts einsammeln. Den Git-Stand gibt
@@ -28,25 +29,13 @@ pub async fn extras(state: &AppState, p: &Project) -> (Vec<RepoStatus>, Vec<Chec
             Ok(r) => r,
             Err(_) => Err("keine Antwort (Zeitlimit)".to_string()),
         };
-        CheckResult {
-            name: c.name.clone(),
-            url: crate::datenschutz::verbergen(&c.url),
-            ok: matches!(r, Ok(code) if code < 400),
-            status: r.as_ref().ok().copied(),
-            error: r.err().map(|e| crate::datenschutz::verbergen(&e)),
-        }
+        CheckResult { name: c.name.clone(), url: c.url.clone(), ok: matches!(r, Ok(code) if code < 400), status: r.as_ref().ok().copied(), error: r.err() }
     });
-    let repos = repos_frei(state, p);
+    let repos = state.git.repos_fuer(p);
     let checks = futures_util::future::join_all(pruefungen).await;
     let snap = state.snapshot.read().await;
-    let processes = p.meta.processes.iter().map(|n| ProcResult { name: crate::datenschutz::verbergen(n), running: snap.process_running(n) }).collect();
+    let processes = p.meta.processes.iter().map(|n| ProcResult { name: n.clone(), running: snap.process_running(n) }).collect();
     (repos, checks, processes)
-}
-
-/// Der Git-Stand eines Projekts für die Antwort: Pfad und Fehlertext ohne
-/// Profil und Benutzernamen (`datenschutz`; `/api/projects` ist frei).
-fn repos_frei(state: &AppState, p: &Project) -> Vec<RepoStatus> {
-    state.git.repos_fuer(p).into_iter().map(crate::datenschutz::repo_verbergen).collect()
 }
 
 /// Kopfleiste, Fassung 3: der Schwerpunkt je Projekt für Liste und Einzelseite
@@ -58,43 +47,32 @@ fn schwerpunkte(bestand: &crate::inhalt::store::Bestand) -> crate::vertrag::schw
     }
 }
 
-/// `GET /api/projects`
-///
-/// Etappe B2: Ohne Windows-Anmeldung stehen die offenen Punkte nur als Zahl
-/// (`open_zahl`) da, und kaputte Seiten nur mit einem neutralen Satz (der
-/// Fehlersatz kann Inhalt zitieren; er steht in der Prüfung, mit Anmeldung).
-pub async fn liste(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Json<ProjectList> {
-    let angemeldet = angemeldet.is_some();
+/// `GET /api/projects` (geschützt): mit offenen Punkten und den Sätzen kaputter Seiten.
+pub async fn liste(State(state): State<AppState>) -> Json<ProjectList> {
     let bestand = state.inhalt.bestand();
     // Entscheidung archiv-status: archivierte Projekte fehlen hier
     // (Seitenleiste, Schublade, Startseite); sie stehen nur in `/api/archiv`.
-    let (list, mut broken) = bestand.liste_sichtbar();
-    // Der Satz einer kaputten Seite kann einen Pfad nennen: ohne Profil und Namen.
-    for b in &mut broken {
-        b.error = crate::datenschutz::verbergen(&b.error);
-    }
+    let (list, broken) = bestand.liste_sichtbar();
     let schwerpunkte = schwerpunkte(&bestand);
-    // Etappe 4c: Bau-Stand der Projekte mit eigener Seite (frei, ohne Satz).
+    // Etappe 4c: Bau-Stand der Projekte mit eigener Seite (ohne Satz).
     let s = state.clone();
     let bau = tokio::task::spawn_blocking(move || crate::baustand::alle(&s)).await.unwrap_or_default();
     // Git-Stand nur aus dem Zwischenspeicher: kein git im Anfragepfad.
     let projects = list
         .iter()
         .map(|p| {
-            ProjectSummary::from_project(p, repos_frei(&state, p))
+            ProjectSummary::from_project(p, state.git.repos_fuer(p))
                 .mit_schwerpunkt(schwerpunkte.von(&p.slug))
                 .mit_bau(bau.get(&p.slug).map(crate::baustand::Eintrag::frei))
-                .ohne_texte(angemeldet)
         })
         .collect();
-    let broken = if angemeldet { broken } else { broken.into_iter().map(|b| Broken { error: super::frei::SATZ_SEITE_KAPUTT.to_string(), ..b }).collect() };
     // Entscheidung projektgruppe: die Gruppen mit ihren sichtbaren Teilen.
     let gruppen = bestand.gruppen_sichtbar();
     Json(ProjectList { projects, broken, gruppen })
 }
 
 /// `GET /api/archiv` (Entscheidung archiv-status): die
-/// archivierten Projekte mit Titel und „seit“, nach Titel. Frei wie
+/// archivierten Projekte mit Titel und „seit“, nach Titel. Geschützt wie
 /// `/api/projects`. Ein archiviertes Projekt mit kaputter Hauptseite steht
 /// mit dem Titel aus `projekt.toml` da.
 pub async fn archiv(State(state): State<AppState>) -> Json<ArchivListe> {
@@ -124,42 +102,29 @@ pub fn archiv_liste(bestand: &crate::inhalt::store::Bestand) -> ArchivListe {
     ArchivListe { projekte }
 }
 
-/// `GET /api/projects/<slug>`: eine Seite mit allem, was sie zeigt.
-///
-/// Etappe B2: Die Fragen an den Inhaber (`daten.fragen`) sind persönlicher Inhalt
-/// und stehen nur mit Anmeldung darin; ohne fehlt das Feld (`null`). Die Fragen
-/// selbst kommen über den geschützten Weg `/api/projekte/<slug>/daten/fragen`.
-pub async fn eine(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<ProjectDetail>, AppError> {
+/// `GET /api/projects/<slug>` (geschützt): eine Seite mit allem, was sie zeigt,
+/// auch den Fragen und Fristen in `daten`.
+pub async fn eine(State(state): State<AppState>, Path(slug): Path<String>) -> Result<Json<ProjectDetail>, AppError> {
     let bestand = state.inhalt.bestand();
     let p = match bestand.haupt(&slug) {
         Ok(Some(p)) => p.clone(),
         Ok(None) => return Err(AppError::nicht_gefunden(format!("Kein Projekt „{slug}“"))),
         Err(e) => {
             error!("API Seite {slug}: {e}");
-            // Etappe B2: Der Satz kann Inhalt zitieren; ohne Anmeldung ein neutraler.
-            return Err(AppError::unlesbar(if angemeldet.is_some() { e } else { super::frei::SATZ_SEITE_KAPUTT.to_string() }));
+            return Err(AppError::unlesbar(e));
         }
     };
     let schwerpunkt = schwerpunkte(&bestand).von(&p.slug);
     drop(bestand);
     let (repos, checks, processes) = extras(&state, &p).await;
     Ok(Json(ProjectDetail {
-        head: ProjectSummary::from_project(&p, repos).mit_schwerpunkt(schwerpunkt).ohne_texte(angemeldet.is_some()),
-        // Lokale Pfade sind als Link erlaubt (die Oberfläche zeigt sie ohne Link); ohne Profil.
-        links: p.meta.links.iter().map(|l| crate::vertrag::projekt::Link { name: l.name.clone(), url: crate::datenschutz::verbergen(&l.url) }).collect(),
+        head: ProjectSummary::from_project(&p, repos).mit_schwerpunkt(schwerpunkt),
+        // Lokale Pfade sind als Link erlaubt (die Oberfläche zeigt sie ohne Link).
+        links: p.meta.links.clone(),
         checks,
         processes,
         seiten: p.seiten.clone(),
-        daten: p.daten.clone().map(|mut d| {
-            if angemeldet.is_none() {
-                // Fragen (B2), Fristtitel und Ereignisnamen (B3) sind persönlicher Inhalt;
-                // dieselbe Liste wie `sicherheit::geschuetzt` (Hotfix Prozent).
-                for name in crate::sicherheit::GESCHUETZTE_DATEIEN {
-                    d.nimm(name);
-                }
-            }
-            d
-        }),
+        daten: p.daten.clone(),
     }))
 }
 
@@ -252,6 +217,60 @@ fn asset_lesen(projects: &std::path::Path, slug: &str, file: &str) -> Result<Vec
     Ok(bytes)
 }
 
+/// Die Bilder in `assets/` (einfache Namen, Bildendung).
+fn bildnamen(ordner: &std::path::Path) -> Vec<String> {
+    let Ok(eintraege) = std::fs::read_dir(ordner) else { return Vec::new() };
+    eintraege
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| is_safe_asset_name(n) && asset_mime(std::path::Path::new(n)).starts_with("image/"))
+        .collect()
+}
+
+/// Höchstens so viele Bytes Bilder bettet [`bilder_einbetten`] in eine Antwort ein.
+const EINBETTEN_GRENZE: u64 = 8 * 1024 * 1024;
+
+/// Schritt E2: Ein Entwurf läuft mit undurchsichtiger Herkunft (Rahmen und
+/// CSP `sandbox`); seine Bildanfragen sind `cross-site` und tragen darum kein
+/// Passkey-Cookie (SameSite=Strict), bekämen also 401. Der Server bettet die
+/// Bilder aus `assets/`, die der Entwurf in Anführungszeichen oder `url(…)`
+/// nennt (auch mit `./`), als `data:` ein; die CSP erlaubt `img-src data:`.
+/// Je Antwort höchstens `grenze` Bytes Bilder (ein mehrfach genanntes Bild
+/// zählt je Nennung), in der Reihenfolge, in der der Entwurf sie zuerst nennt;
+/// ab dem ersten Bild, das nicht mehr passt, bleiben die übrigen Adressen.
+/// shortcut: srcset-Listen, Adressen mit `?…`, von Skripten gebaute Namen und Bilder über [`EINBETTEN_GRENZE`] (8 MB je Antwort) bleiben Adressen (401), aufrüsten, wenn ein Entwurf sie braucht.
+fn bilder_einbetten(html: Vec<u8>, namen: &[String], lesen: &dyn Fn(&str) -> Option<Vec<u8>>, grenze: u64) -> Vec<u8> {
+    let mut text = match String::from_utf8(html) {
+        Ok(t) => t,
+        Err(e) => return e.into_bytes(),
+    };
+    const KLAMMERN: [(&str, &str); 3] = [("\"", "\""), ("'", "'"), ("(", ")")];
+    let mut genannt: Vec<_> = namen
+        .iter()
+        .filter_map(|name| {
+            let formen: Vec<(String, &str, &str)> =
+                KLAMMERN.iter().flat_map(|&(auf, zu)| [(format!("{auf}{name}{zu}"), auf, zu), (format!("{auf}./{name}{zu}"), auf, zu)]).collect();
+            let erste = formen.iter().filter_map(|(muster, ..)| text.find(muster.as_str())).min()?;
+            Some((erste, name, formen))
+        })
+        .collect();
+    genannt.sort_by_key(|(erste, ..)| *erste);
+    let mut summe = 0u64;
+    for (_, name, formen) in genannt {
+        let Some(bytes) = lesen(name) else { continue };
+        // Jede Nennung bekommt eine eigene Kopie, also zählt jede gegen die Grenze.
+        let nennungen = formen.iter().map(|(muster, ..)| text.matches(muster.as_str()).count() as u64).sum::<u64>();
+        summe += bytes.len() as u64 * nennungen;
+        if summe > grenze {
+            break;
+        }
+        let daten = format!("data:{};base64,{}", asset_mime(std::path::Path::new(name)), crate::anmeldung::base64::kodieren(&bytes));
+        for (muster, auf, zu) in &formen {
+            text = text.replace(muster.as_str(), &format!("{auf}{daten}{zu}"));
+        }
+    }
+    text.into_bytes()
+}
+
 /// Bilder und andere Dateien aus `projects/<slug>/assets/`, jede mit eigener
 /// CSP: HTML mit [`ASSET_HTML_CSP`], SVG mit [`ASSET_SVG_CSP`],
 /// PDF mit [`ASSET_PDF_CSP`], alles andere mit [`ASSET_SONST_CSP`]. `nosniff`
@@ -261,10 +280,20 @@ pub async fn asset(State(state): State<AppState>, Path((slug, file)): Path<(Stri
         return Err(AppError::nicht_gefunden(format!("Nicht gefunden: {slug}/assets/{file}")));
     }
     let mime = asset_mime(std::path::Path::new(&file));
+    let html = mime.starts_with("text/html");
     // Etappe 4b: bei mehreren Inhaltsquellen aus der Quelle des Projekts.
     let projects = state.projekt_eltern(&slug);
     let (s, f) = (slug.clone(), file.clone());
-    let bytes = tokio::task::spawn_blocking(move || asset_lesen(&projects, &s, &f)).await.map_err(|e| {
+    let bytes = tokio::task::spawn_blocking(move || {
+        let bytes = asset_lesen(&projects, &s, &f)?;
+        if !html {
+            return Ok(bytes);
+        }
+        let namen = bildnamen(&projects.join(&s).join("assets"));
+        Ok(bilder_einbetten(bytes, &namen, &|name| asset_lesen(&projects, &s, name).ok(), EINBETTEN_GRENZE))
+    })
+    .await
+    .map_err(|e| {
         error!("Asset {slug}/{file}: {e}");
         AppError::intern("Die Datei ließ sich nicht lesen. Der Fehler steht im Protokoll.")
     })??;
@@ -310,7 +339,58 @@ mod tests {
         assert_eq!(art("unbekannt.xyz"), "application/octet-stream");
     }
 
-    /// Kopfleiste, Fassung 3: Die Projektliste (frei) nennt je Projekt den
+    /// Schritt E2: Bilder des Entwurfs werden in allen Schreibweisen der
+    /// Anführung eingebettet; ein längerer Name, der den kürzeren enthält,
+    /// bleibt unberührt; HTML, das kein UTF-8 ist, bleibt Byte für Byte gleich.
+    #[test]
+    fn bilder_einbetten_formen_und_grenzen() {
+        let namen = ["a.png".to_string(), "plan.svg".to_string(), "weg.png".to_string()];
+        let lesen = |n: &str| match n {
+            "a.png" => Some(b"A".to_vec()),
+            "plan.svg" => Some(b"<svg/>".to_vec()),
+            _ => None,
+        };
+        let ein = |html: &str| String::from_utf8(bilder_einbetten(html.as_bytes().to_vec(), &namen, &lesen, EINBETTEN_GRENZE)).unwrap();
+        let a = "data:image/png;base64,QQ==";
+        assert_eq!(ein("<img src=\"a.png\">"), format!("<img src=\"{a}\">"));
+        assert_eq!(ein("<img src='./a.png'>"), format!("<img src='{a}'>"));
+        assert_eq!(ein("x{background:url(a.png)}"), format!("x{{background:url({a})}}"));
+        assert_eq!(ein("<img src=\"plan.svg\">"), "<img src=\"data:image/svg+xml;base64,PHN2Zy8+\">");
+        for bleibt in ["<img src=\"ba.png\">", "<img src=\"a.png?v=2\">", "Text a.png", "<img src=\"weg.png\">", "<img src=\"/a.png\">"] {
+            assert_eq!(ein(bleibt), bleibt);
+        }
+        let kein_utf8 = vec![b'"', 0xff, b'"', b'a', b'.', b'p', b'n', b'g', b'"'];
+        assert_eq!(bilder_einbetten(kein_utf8.clone(), &namen, &lesen, EINBETTEN_GRENZE), kein_utf8);
+    }
+
+    /// Abnahme E2 (H2): Eingebettet wird in der Reihenfolge, in der der
+    /// Entwurf die Bilder nennt (nicht in der des Ordners), bis die Grenze
+    /// erreicht ist; ab dem ersten Bild, das nicht passt, bleiben alle übrigen
+    /// Adressen, auch kleinere danach.
+    #[test]
+    fn bilder_einbetten_bis_zur_grenze() {
+        let namen = ["a.png".to_string(), "b.png".to_string(), "c.png".to_string()];
+        let lesen = |n: &str| match n {
+            "a.png" => Some(b"A".to_vec()),
+            "b.png" => Some(b"BBB".to_vec()),
+            "c.png" => Some(b"C".to_vec()),
+            _ => None,
+        };
+        let ein = |html: &str, grenze| String::from_utf8(bilder_einbetten(html.as_bytes().to_vec(), &namen, &lesen, grenze)).unwrap();
+        let (a, c) = ("\"data:image/png;base64,QQ==\"", "\"data:image/png;base64,Qw==\"");
+        assert_eq!(ein("\"c.png\" \"a.png\" \"b.png\"", 2), format!("{c} {a} \"b.png\""), "c und a passen, b nicht");
+        assert_eq!(ein("\"c.png\" \"a.png\" \"b.png\"", 1), format!("{c} \"a.png\" \"b.png\""), "nur das zuerst genannte");
+        assert_eq!(ein("\"c.png\" \"b.png\" \"a.png\"", 2), format!("{c} \"b.png\" \"a.png\""), "nach b bleibt auch a");
+        assert_eq!(ein("\"b.png\" \"c.png\"", 0), "\"b.png\" \"c.png\"");
+        assert!(ein("\"b.png\" \"c.png\"", 5).matches("data:").count() == 2, "unter der Grenze alle");
+        // Gegenprüfung E2 Runde 2: jede Nennung zählt, auch in anderer Form.
+        let dreimal = "\"a.png\" './a.png' url(a.png)";
+        assert_eq!(ein(dreimal, 2), dreimal, "drei Nennungen zu je 1 Byte passen nicht in 2");
+        assert_eq!(ein(dreimal, 3).matches("data:").count(), 3, "genau an der Grenze");
+        assert_eq!(ein("\"a.png\" \"a.png\" \"c.png\"", 2), format!("{a} {a} \"c.png\""), "a zählt doppelt, danach passt c nicht");
+    }
+
+    /// Kopfleiste, Fassung 3: Die Projektliste nennt je Projekt den
     /// Schwerpunkt mit `reihenfolge`, wie „Anstehend“; ohne Zuordnung
     /// „Sonstiges“ mit eins mehr als der letzte Schwerpunkt.
     #[tokio::test]
@@ -321,8 +401,7 @@ mod tests {
         use tower::ServiceExt;
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         let req = Request::get("/api/projects").header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
-        // Ohne Anmeldung: die Liste ist frei.
-        let res = crate::app::router(state).oneshot(req).await.unwrap();
+        let res = crate::app::router_angemeldet(state).oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
         let p = |slug: &str| v["projects"].as_array().unwrap().iter().find(|p| p["slug"] == slug).cloned().unwrap();
@@ -341,7 +420,7 @@ mod tests {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         for (slug, name, reihenfolge) in [("schaufenster", "Chor und Verein", 4), ("dashboard", "Bienen und Honig", 5), ("geflecht", "Sonstiges", 6)] {
             let req = Request::get(format!("/api/projects/{slug}")).header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
-            let res = crate::app::router(state.clone()).oneshot(req).await.unwrap();
+            let res = crate::app::router_angemeldet(state.clone()).oneshot(req).await.unwrap();
             assert_eq!(res.status(), StatusCode::OK, "{slug}");
             let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
             assert_eq!((v["schwerpunkt"].as_str(), v["schwerpunkt_reihenfolge"].as_i64()), (Some(name), Some(reihenfolge)), "{slug}");

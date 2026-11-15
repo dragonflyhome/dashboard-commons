@@ -3,11 +3,10 @@ import type { FristStufe } from "./FristStufe";
 import type { MeldungsZahlen } from "./MeldungsZahlen";
 
 /**
- * Die Zahlen des Unter-Dashboards als Fakt, nur auf dem freien Weg ohne
- * Anmeldung (Ausnahme aus dem Zielbild: dort gehen keine Einträge hinaus,
- * also kann die Oberfläche nicht selbst zählen). Mit Anmeldung zählt die
- * Oberfläche aus `eintraege` und `aktualisierungen` dasselbe; ein Test hält
- * beide Zählungen gleich.
+ * Die Zahlen des Unter-Dashboards. Die Oberfläche zählt sie aus
+ * `eintraege` und `aktualisierungen` des Stands (`standZahlen` in
+ * `web/src/lib/anstehend.ts`); der Server schickt sie seit Schritt E2 nicht
+ * mehr (vorher auf dem freien Weg ohne Anmeldung).
  */
 export type StandZahlen = { 
 /**

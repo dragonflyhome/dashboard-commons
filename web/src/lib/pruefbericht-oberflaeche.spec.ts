@@ -19,12 +19,7 @@ import {
 	zahlKacheln
 } from './anstehend.ts';
 import { SATZ_GEBAUT_STAND_ROT, bauAnzeige, kopfMitStand } from './projekte.ts';
-import {
-	beispielListe,
-	beispielProjektStand,
-	beispielZahlen,
-	eintrag
-} from './anstehend.beispiel.ts';
+import { beispielListe, beispielProjektStand, eintrag } from './anstehend.beispiel.ts';
 import type { Aktualisierung } from '$vertrag';
 
 const JETZT = new Date(2026, 10, 2, 10, 0);
@@ -96,17 +91,6 @@ describe('Archiviertes Projekt: ruhig, ohne Ampel und ohne „neu“', () => {
 		// Aktiv: dieselben drei zählen.
 		const aktiv = beispielProjektStand({ slug: 'ruhig' });
 		expect(unterDashboardAnsicht(aktiv, [], akt).ungelesen).toBe(3);
-	});
-
-	it('ohne Anmeldung: die Zahl der Meldungen ohne „neu“', () => {
-		const frei = {
-			...archiviert,
-			sichtbar: false,
-			zahlen: beispielZahlen({ meldungen: { neu: 3, gesamt: 3 } })
-		};
-		const u = unterDashboardAnsicht(frei, null, null);
-		expect(u.ungelesen).toBe(0);
-		expect(u.meldungsZahlen).toEqual({ neu: 0, gesamt: 3 });
 	});
 });
 

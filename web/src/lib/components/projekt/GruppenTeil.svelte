@@ -1,7 +1,6 @@
 <script lang="ts" module>
 	import { api, ApiError } from '#lib/api/client.ts';
 	import { betrifftProjekt, live, type InhaltAenderung } from '#lib/live.svelte.ts';
-	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import type { ProjectDetail, ProjectSummary, ProjektAntwort } from '$vertrag';
 
 	export type Daten = ProjectDetail & { kopf: ProjektAntwort };
@@ -19,16 +18,11 @@
 		},
 		onInhalt(l) {
 			const aus = live.onInhalt(l);
-			// Ohne geschützten Kanal kommen die Änderungen über den freien.
-			const ausFrei = freierKanal.onInhalt((a) => {
-				if (!live.connected) l(a);
-			});
 			const ausNachholen = live.onNachholen(() => {
 				l({ projekte: [], daten: [], version: 0, sammel: true });
 			});
 			return () => {
 				aus();
-				ausFrei();
 				ausNachholen();
 			};
 		}

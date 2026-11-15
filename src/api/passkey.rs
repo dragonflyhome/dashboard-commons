@@ -54,7 +54,7 @@ const ZEITLIMIT_MS: u32 = 300_000;
 const NAME_HOECHSTENS: usize = 60;
 
 /// Wege, die eine Windows-Anmeldung mit irgendeinem Konto brauchen (die
-/// Anträge), Groß/Klein egal wie bei `sicherheit::geschuetzt`.
+/// Anträge), Groß/Klein egal (strenger als nötig: die Anträge selbst stehen exakt in `sicherheit::oeffentlich`).
 pub fn konto_noetig(pfad: &str) -> bool {
     let pfad = pfad.to_ascii_lowercase();
     pfad.strip_prefix("/api/passkey/antrag").is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))

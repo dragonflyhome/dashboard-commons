@@ -1,7 +1,14 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { BROWSER_ADRESSE, SATZ_FREMDES_KONTO, localhostAdresse } from '#lib/anmeldung.ts';
+	import {
+		SATZ_ANMELDUNG_NOETIG,
+		SATZ_FREMDES_KONTO,
+		anmeldeWeg,
+		localhostAdresse,
+		type AnmeldeWeg
+	} from '#lib/anmeldung.ts';
 	import { statusSatz } from '#lib/api/client.ts';
 	import OldLink from '#lib/components/OldLink.svelte';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
@@ -9,6 +16,11 @@
 	const art = $derived(page.error?.art);
 	// Dieselbe Seite unter localhost (Port bleibt); dort meldet Windows von selbst an.
 	const ziel = $derived(localhostAdresse(page.url.href));
+	/** Schritt E2: unter Windows der Satz zu Edge, sonst der neutrale (`/api/anmeldung/wer`). */
+	let weg = $state<AnmeldeWeg | null>(null);
+	onMount(() => {
+		if (art === 'anmeldung') void anmeldeWeg().then((w) => (weg = w));
+	});
 	// Etappe 7c: zur Anmeldung mit Passkey (immer über localhost), danach zurück hierher.
 	const passkeyZiel = $derived(
 		localhostAdresse(
@@ -47,27 +59,32 @@
 {#if art === 'anmeldung'}
 	<section class="card">
 		<h1>Anmeldung nötig</h1>
-		<p class="big">
-			Diese Seite öffnet sich nur in Microsoft Edge unter
-			<OldLink href={ziel}>{BROWSER_ADRESSE}</OldLink>. Andere Browser schicken deine
-			Windows-Anmeldung nicht mit.
-		</p>
-		<p>
-			<label class="muted" for="anmeldung-adresse"
-				>Adresse zum Kopieren (anklicken, dann Strg+C):</label
-			>
-			<input
-				id="anmeldung-adresse"
-				class="adresse"
-				type="text"
-				readonly
-				value={ziel}
-				onfocus={(e) => {
-					e.currentTarget.select();
-				}}
-			/>
-		</p>
-		<p><OldLink class="button" href={ziel}>Diese Seite über localhost öffnen</OldLink></p>
+		<p class="big">{SATZ_ANMELDUNG_NOETIG}</p>
+		{#if weg === 'windows'}
+			<p>
+				Mit deiner Windows-Anmeldung öffnet sich diese Seite in Microsoft Edge unter
+				<OldLink href={ziel}>{localhostAdresse(page.url.origin)}</OldLink>. Andere Browser schicken
+				deine Windows-Anmeldung nicht mit.
+			</p>
+			<p>
+				<label class="muted" for="anmeldung-adresse"
+					>Adresse zum Kopieren (anklicken, dann Strg+C):</label
+				>
+				<input
+					id="anmeldung-adresse"
+					class="adresse"
+					type="text"
+					readonly
+					value={ziel}
+					onfocus={(e) => {
+						e.currentTarget.select();
+					}}
+				/>
+			</p>
+		{:else if weg === 'passkey'}
+			<p>Anmelden geht hier mit einem Passkey.</p>
+		{/if}
+		<p><OldLink class="button primary" href={passkeyZiel}>Zur Anmeldung</OldLink></p>
 	</section>
 {:else if art === 'passkey'}
 	<section class="card">
@@ -77,17 +94,15 @@
 			trotzdem.
 		</p>
 		<p><OldLink class="button primary" href={passkeyZiel}>Zur Anmeldung mit Passkey</OldLink></p>
-		<p class="muted">Die Projektseiten und die PC-Werte gehen auch ohne Anmeldung.</p>
 	</section>
 {:else if art === 'fremdes-konto'}
 	<section class="card">
 		<h1>Kein Zugang</h1>
 		<p class="big">{SATZ_FREMDES_KONTO}</p>
 		<p class="muted">
-			Diese Seite ist nur für dein Windows-Konto. Die Projektseiten und die PC-Werte gehen auch
-			ohne.
+			Diese Seite ist nur für dein Windows-Konto. Mit einem freigegebenen Passkey geht es auch hier.
 		</p>
-		<p><a class="button" href={resolve('/')}>Zur Übersicht</a></p>
+		<p><OldLink class="button" href={passkeyZiel}>Zur Anmeldung</OldLink></p>
 	</section>
 {:else if page.status === 404}
 	<section class="card">

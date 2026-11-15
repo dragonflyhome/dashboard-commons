@@ -3,7 +3,8 @@
 	 * Vorschau eines Website-Entwurfs: eine HTML-Datei aus projects/<slug>/assets/
 	 * in einem abgeschirmten Rahmen. sandbox ohne allow-same-origin: der Entwurf
 	 * sieht weder das Dashboard noch dessen Daten; der Rust-Server gibt die Datei
-	 * zusätzlich mit einer Content-Security-Policy ohne Netzzugriff aus.
+	 * zusätzlich mit einer Content-Security-Policy ohne Netzzugriff aus und bettet
+	 * die Bilder aus assets/ ein (Schritt E2: der Rahmen schickt keine Anmeldung mit).
 	 */
 	import { seitenTitel } from '#lib/titel.svelte.ts';
 	import { resolve } from '$app/paths';

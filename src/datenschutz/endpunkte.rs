@@ -1,6 +1,7 @@
-//! Tests je Endpunkt: Was ein freier Weg hinausgibt, nennt weder das Profil
-//! noch den Benutzernamen; die geschützten Wege aus Schritt E1 liefern
-//! angemeldet im Klartext und ohne Anmeldung 401. Erfundenes Konto
+//! Tests je Endpunkt: Was ein öffentlicher Weg hinausgibt, nennt weder das
+//! Profil noch den Benutzernamen; die geschützten Wege (Schritt E1, seit E2
+//! auch Projekte, PC-Werte und Prüfung) liefern angemeldet im Klartext und
+//! ohne Anmeldung 401. Erfundenes Konto
 //! `probekonto`; jeder Test legt Texte mit dessen Profil in den Zustand und
 //! prüft die Texte der Antwort.
 
@@ -54,19 +55,23 @@ fn ohne_profil(pfad: &str, v: &Value) {
     }
 }
 
-/// `/api/pc` (frei): `sysapps.errors` aus den Lesefehlern des Sammlers.
+/// `/api/pc` (geschützt seit Schritt E2): `sysapps.errors` aus den
+/// Lesefehlern des Sammlers im Klartext; ohne Anmeldung 401.
 #[tokio::test]
 async fn api_pc() {
     let state = AppState::fuer_tests(&beispiel_fuer_tests());
-    state.sysapps.write().await.lokal_fehler = vec![format!(r"Ereignisse: C:\Users\{NAME}\AppData\Local\x.evtx ist nicht lesbar")];
-    let (status, v) = hole(&router(state), "/api/pc").await;
+    let fehler = format!(r"Ereignisse: C:\Users\{NAME}\AppData\Local\x.evtx ist nicht lesbar");
+    state.sysapps.write().await.lokal_fehler = vec![fehler.clone()];
+    let (status, v) = hole(&router(state.clone()), "/api/pc").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{v}");
+    assert!(!v.to_string().contains(NAME), "{v}");
+    let (status, v) = hole(&router_angemeldet(state), "/api/pc").await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v["sysapps"]["errors"][0], r"Ereignisse: %USERPROFILE%\AppData\Local\x.evtx ist nicht lesbar");
-    ohne_profil("/api/pc", &v);
+    assert_eq!(v["sysapps"]["errors"][0], fehler.as_str());
 }
 
-/// `/api/pc` (frei): nie der Name des Rechners, nie der Name eines
-/// Datenträgers. Der Test setzt erfundene Werte in den Zustand.
+/// `/api/pc` (geschützt seit Schritt E2): der Name des Rechners und die Namen
+/// der Datenträger im Klartext. Der Test setzt erfundene Werte in den Zustand.
 #[tokio::test]
 async fn api_pc_rechner_und_datentraeger() {
     use crate::pc::system::DiskInfo;
@@ -79,29 +84,24 @@ async fn api_pc_rechner_und_datentraeger() {
             DiskInfo { name: String::new(), mount: r"C:\".into(), total: 10, used: 1, belegung: Default::default() },
         ];
     }
-    let (status, v) = hole(&router(state), "/api/pc").await;
+    let (status, v) = hole(&router_angemeldet(state), "/api/pc").await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v["snapshot"]["host"], "%COMPUTERNAME%");
-    assert_eq!(v["snapshot"]["disks"][0]["name"], "%VOLUME%");
-    assert_eq!(v["snapshot"]["disks"][0]["mount"], "/Volumes/%VOLUME%");
+    assert_eq!(v["snapshot"]["host"], "beispiel-rechner");
+    assert_eq!(v["snapshot"]["disks"][0]["name"], "Beispiel Platte");
+    assert_eq!(v["snapshot"]["disks"][0]["mount"], "/Volumes/Beispiel Platte");
     // Ein leerer Name bleibt leer, ein Laufwerksbuchstabe bleibt.
     assert_eq!(v["snapshot"]["disks"][1]["name"], "");
     assert_eq!(v["snapshot"]["disks"][1]["mount"], r"C:\");
-    let mut alle = Vec::new();
-    texte(&v, &mut alle);
-    for t in &alle {
-        let k = t.to_lowercase();
-        assert!(!k.contains("beispiel-rechner") && !k.contains("beispiel platte"), "/api/pc: Name in „{t}“");
-    }
-    ohne_profil("/api/pc", &v);
+    assert!(!v.to_string().contains("%COMPUTERNAME%") && !v.to_string().contains("%VOLUME%"), "{v}");
 }
 
 // ----- Geschützte Wege: angemeldet im Klartext (Schritt E1) -----
 
-/// Die geschützten Wege aus Schritt E1 (und E1b: die Orte). Ohne Anmeldung antworten sie 401
-/// (Schleuse `sicherheit::geschuetzt`, bei einigen zusätzlich der Handler);
-/// nur darum dürfen sie im Klartext liefern.
-const GESCHUETZT_KLARTEXT: [&str; 7] = [
+/// Die geschützten Wege aus Schritt E1 (und E1b: die Orte, E2: Projekte,
+/// PC-Werte, Prüfung). Ohne Anmeldung antworten sie 401 (Schleuse
+/// `sicherheit::oeffentlich`, bei einigen zusätzlich der Handler); nur darum
+/// dürfen sie im Klartext liefern.
+const GESCHUETZT_KLARTEXT: [&str; 15] = [
     "/api/pc/benutzer",
     "/api/pc/verlauf/voll",
     "/api/betrieb/voll",
@@ -109,6 +109,14 @@ const GESCHUETZT_KLARTEXT: [&str; 7] = [
     "/api/meldungen",
     "/api/projekte/dashboard/verlauf",
     "/api/projekte/dashboard/orte",
+    "/api/pc",
+    "/api/pc/verlauf",
+    "/api/projects",
+    "/api/projects/dashboard",
+    "/api/projekte/dashboard",
+    "/api/projekte/dashboard/stand",
+    "/api/projekte/dashboard/daten/orte",
+    "/api/pruefung/dashboard",
 ];
 
 /// Ohne Anmeldung: 401 auf jedem dieser Wege, ohne Inhalt.
@@ -155,7 +163,7 @@ async fn api_pc_benutzer_klartext() {
 }
 
 /// `/api/pc/benutzer` trägt den Namen des Rechners und die Datenträger mit
-/// echten Namen; `/api/pc` (frei) behält die Platzhalter.
+/// echten Namen; `/api/pc` ohne Anmeldung gibt 401 (Schritt E2).
 #[tokio::test]
 async fn api_pc_benutzer_rechner_und_datentraeger() {
     use crate::pc::system::DiskInfo;
@@ -171,9 +179,9 @@ async fn api_pc_benutzer_rechner_und_datentraeger() {
     assert_eq!(v["platten"][0]["name"], "Beispiel Platte");
     assert_eq!(v["platten"][0]["mount"], "/Volumes/Beispiel Platte");
     assert_eq!(v["platten"][0]["total"], 10);
-    let (_, frei) = hole(&router(state), "/api/pc").await;
-    assert_eq!(frei["snapshot"]["host"], "%COMPUTERNAME%");
-    assert_eq!(frei["snapshot"]["disks"][0]["name"], "%VOLUME%");
+    let (status, frei) = hole(&router(state), "/api/pc").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(!frei.to_string().contains("beispiel-rechner") && !frei.to_string().contains("Beispiel Platte"), "{frei}");
 }
 
 /// Eine Systemmeldung mit Pfad im Titel und Text.
@@ -193,22 +201,20 @@ fn meldung_mit_pfad(state: &AppState) {
     state.speicher.clone().unwrap().meldung_melden(n, crate::speicher::meldungen::Wiederholung::Zustand, &jetzt).unwrap();
 }
 
-/// `/api/pc/verlauf/voll` und `/api/projekte/<slug>/verlauf`: die
-/// Meldungstexte im Klartext; der freie `/api/pc/verlauf` verbirgt weiter.
+/// `/api/pc/verlauf/voll`, `/api/pc/verlauf` (seit Schritt E2 gleich) und
+/// `/api/projekte/<slug>/verlauf`: die Meldungstexte im Klartext.
 #[tokio::test]
 async fn verlauf_voll_und_projekt_klartext() {
     let state = AppState::fuer_tests(&beispiel_fuer_tests());
     meldung_mit_pfad(&state);
     let titel = format!(r"C:\Users\{NAME}\dev ist nicht lesbar");
-    for pfad in ["/api/pc/verlauf/voll", "/api/projekte/dashboard/verlauf"] {
+    for pfad in ["/api/pc/verlauf/voll", "/api/pc/verlauf", "/api/projekte/dashboard/verlauf"] {
         let (status, v) = hole(&router_angemeldet(state.clone()), pfad).await;
         assert_eq!(status, StatusCode::OK, "{pfad}: {v}");
         let mut alle = Vec::new();
         texte(&v, &mut alle);
         assert!(alle.contains(&titel), "{pfad}: {v}");
     }
-    let (_, frei) = hole(&router_angemeldet(state), "/api/pc/verlauf").await;
-    ohne_profil("/api/pc/verlauf", &frei);
 }
 
 /// `/api/meldungen` (die PC-Seite liest dort die Systemmeldungen) im Klartext.
@@ -222,8 +228,8 @@ async fn api_meldungen_klartext() {
     assert_eq!(v["meldungen"][0]["text"], format!(r"Zugriff verweigert: \\rechner\c$\Users\{NAME}\dev (os error 5)"));
 }
 
-/// `/api/betrieb` (frei): `ordner[].stand` und Fehlersätze ohne Profil (im
-/// Test liegen die Quellen oft im Profil dieses Prozesses).
+/// `/api/betrieb` (öffentlich): ohne Profil (im Test liegen die Quellen oft
+/// im Profil dieses Prozesses).
 /// `/api/betrieb/voll` (geschützt): `einstellungen` und alle `quellen` genau
 /// im Klartext, unter einem erfundenen Profil.
 #[tokio::test]
@@ -232,7 +238,7 @@ async fn api_betrieb() {
     use std::path::PathBuf;
     use std::sync::Arc;
     let mut state = AppState::fuer_tests(&beispiel_fuer_tests());
-    let (status, v) = hole(&router_angemeldet(state.clone()), "/api/betrieb").await;
+    let (status, v) = hole(&router(state.clone()), "/api/betrieb").await;
     assert_eq!(status, StatusCode::OK, "{v}");
     ohne_profil("/api/betrieb", &v);
     // Ein Pfad unter dem erfundenen Profil, in der Form des Systems.
@@ -268,8 +274,8 @@ async fn api_betrieb() {
     assert_eq!(v["quellen"]["daten"], im_profil("dev/inhalt/data").as_str(), "{v}");
     assert_eq!(v["quellen"]["entscheidungen"], im_profil("dev/inhalt/docs/entscheidungen").as_str(), "{v}");
     assert_eq!(v["quellen"]["inhalt_abschnitt"], true, "{v}");
-    // Der freie Weg verbirgt dieselben Einstellungen weiter.
-    let (status, v) = hole(&router_angemeldet(state), "/api/betrieb").await;
+    // Der öffentliche Weg nennt keine davon.
+    let (status, v) = hole(&router(state), "/api/betrieb").await;
     assert_eq!(status, StatusCode::OK, "{v}");
     ohne_profil("/api/betrieb", &v);
 }
@@ -297,8 +303,10 @@ fn inhalt_mit_pfaden(name: &str) -> std::path::PathBuf {
 }
 
 /// `/api/projects`, `/api/projects/<slug>`, `/api/projekte/<slug>` und
-/// `/api/pruefung/<slug>`: Repo-Pfad und -Fehler (Projektkarte `r.error`),
-/// Links und der Befund, der die Adresse zitiert.
+/// `/api/pruefung/<slug>` (geschützt seit Schritt E2): Repo-Pfad und -Fehler
+/// (Projektkarte `r.error`), Links, Prozesse und Prüfungen im Klartext; der
+/// Befund der Prüfung verbirgt bis E3 weiter (`inhalt::pruefung`). Ohne
+/// Anmeldung 401 ohne Inhalt.
 #[tokio::test]
 async fn api_projekte_und_pruefung() {
     let wurzel = inhalt_mit_pfaden("projekte");
@@ -320,47 +328,50 @@ async fn api_projekte_und_pruefung() {
         chrono::Local::now(),
     );
     let app = router(state.clone());
-    let (status, v) = hole(&app, "/api/projects").await;
+    let angemeldet = router_angemeldet(state);
+    let (status, v) = hole(&angemeldet, "/api/projects").await;
     assert_eq!(status, StatusCode::OK, "{v}");
     let r = &v["projects"].as_array().unwrap().iter().find(|p| p["slug"] == "probe").unwrap()["repos"][0];
-    assert_eq!(r["path"], r"%USERPROFILE%\dev\probe", "{v}");
-    assert_eq!(r["error"], r"fatal: not a git repository: '%USERPROFILE%\dev\probe'", "{v}");
-    ohne_profil("/api/projects", &v);
-    // Befund-Sätze gibt es seit B2 nur mit Anmeldung; ohne Profil sind sie auch dann.
-    let angemeldet = router_angemeldet(state);
-    for pfad in ["/api/projects/probe", "/api/projekte/probe", "/api/pruefung/probe"] {
-        let (_, frei) = hole(&app, pfad).await;
+    assert_eq!(r["path"], repo.as_str(), "{v}");
+    assert_eq!(r["error"], format!("fatal: not a git repository: '{repo}'").as_str(), "{v}");
+    for pfad in ["/api/projects", "/api/projects/probe", "/api/projekte/probe", "/api/pruefung/probe"] {
+        let (status, frei) = hole(&app, pfad).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{pfad}");
         ohne_profil(pfad, &frei);
         let (status, v) = hole(&angemeldet, pfad).await;
         assert_eq!(status, StatusCode::OK, "{pfad}: {v}");
-        ohne_profil(pfad, &v);
         let mut alle = Vec::new();
         texte(&v, &mut alle);
         if pfad == "/api/pruefung/probe" {
             assert!(alle.iter().any(|t| t.contains("„siehe %USERPROFILE%/x“")), "{pfad}: {v}");
-        } else {
-            assert!(alle.iter().any(|t| t == r"%USERPROFILE%\Ablage"), "{pfad}: {v}");
+        } else if pfad != "/api/projects" {
+            assert!(alle.iter().any(|t| *t == format!(r"C:\Users\{NAME}\Ablage")), "{pfad}: {v}");
         }
     }
+    let (_, v) = hole(&angemeldet, "/api/projects/probe").await;
+    assert_eq!(v["processes"][0]["name"], format!(r"C:\Users\{NAME}\werkzeug.exe").as_str(), "{v}");
+    assert_eq!(v["checks"][0]["url"], format!("http://127.0.0.1:1/C:/Users/{NAME}/x").as_str(), "{v}");
     let _ = std::fs::remove_dir_all(&wurzel);
 }
 
-/// Fehlerantworten (`AppError`) auf einem freien Weg: Der Satz nennt den Ort
-/// ohne Profil (hier: das Projekt gibt es nicht, der Satz zitiert den Slug).
+/// Ein Fehlersatz auf einem öffentlichen Weg (Schritt E2: `/api/betrieb`,
+/// `speicher.fehler`, weiter durch `als_json`) nennt den Ort ohne Profil.
 #[tokio::test]
 async fn fehlerantwort_ohne_profil() {
-    let state = AppState::fuer_tests(&beispiel_fuer_tests());
-    let (status, v) = hole(&router(state), "/api/projects/gibt-es-nicht").await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{v}");
-    ohne_profil("/api/projects/gibt-es-nicht", &v);
+    let satz = format!(r"Die Datei C:\Users\{NAME}\.var\dashboard\dashboard.redb ist gesperrt.");
+    let state = AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), &satz);
+    let (status, v) = hole(&router(state), "/api/betrieb").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    assert_eq!(v["speicher"]["fehler"], r"Die Datei %USERPROFILE%\.var\dashboard\dashboard.redb ist gesperrt.", "{v}");
+    ohne_profil("/api/betrieb", &v);
 }
 
-/// Blockierend aus der Abnahme: Der Vertragsfehler (422) der Wege
-/// `/api/projekte/<slug>` und `/daten/<name>` lief an `AppError` vorbei.
-/// Ein Lesefehler zitiert die Zeile, hier einen Profilpfad neben einem
-/// Tippfehler; Körper (`fehler`, `satz`, `datei`) und Satz sind ohne Profil.
+/// Der Vertragsfehler (422) der Wege `/api/projekte/<slug>` und
+/// `/daten/<name>`: Ein Lesefehler zitiert die Zeile, hier einen Profilpfad
+/// neben einem Tippfehler. Seit Schritt E2 sind die Wege geschützt: ohne
+/// Anmeldung 401 ohne Inhalt, angemeldet zitiert der Satz im Klartext.
 #[tokio::test]
-async fn vertragsfehler_ohne_profil() {
+async fn vertragsfehler_klartext() {
     /// Räumt auch auf, wenn der Test scheitert.
     struct Weg(std::path::PathBuf);
     impl Drop for Weg {
@@ -383,15 +394,18 @@ async fn vertragsfehler_ohne_profil() {
     let app = router(state.clone());
     let angemeldet = router_angemeldet(state);
     for pfad in ["/api/projekte/probe", "/api/projekte/probe/daten/orte"] {
-        // Ohne Anmeldung (seit B2) nur ein neutraler Satz, der nichts zitiert.
         let (status, frei) = hole(&app, pfad).await;
-        assert!(status.is_client_error(), "{pfad}: {status} {frei}");
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{pfad}: {frei}");
         ohne_profil(pfad, &frei);
-        // Mit Anmeldung zitiert der Satz die Zeile wirklich, aber ohne Profil.
+        // Mit Anmeldung zitiert der Satz die Zeile wirklich, im Klartext.
         let (status, v) = hole(&angemeldet, pfad).await;
-        assert!(status.is_client_error(), "{pfad}: {status} {v}");
-        ohne_profil(pfad, &v);
-        assert!(v.to_string().contains("%USERPROFILE%"), "{pfad}: {v}");
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{pfad}: {v}");
+        assert!(
+            v["satz"].as_str().unwrap_or_default().contains(&format!(r"C:\Users\{NAME}"))
+                || v["fehler"].as_str().unwrap_or_default().contains(&format!(r"C:\Users\{NAME}")),
+            "{pfad}: {v}"
+        );
+        assert!(!v.to_string().contains("%USERPROFILE%"), "{pfad}: {v}");
     }
     let _ = std::fs::remove_dir_all(&wurzel);
 }

@@ -3,7 +3,6 @@ import { flushSync } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AssetStand, assetStand, mitVersion } from './assets.svelte.ts';
 import { live, type InhaltAenderung } from './live.svelte.ts';
-import { freierKanal } from './freikanal.svelte.ts';
 import BildProbe from './katalog/intern/BildProbe.svelte';
 
 // Live-Lücken, Punkt 5: ein geändertes Bild in assets/ zeigt sich ohne
@@ -57,22 +56,17 @@ describe('AssetStand', () => {
 		expect(s.version('a')).toBe(9);
 	});
 
-	it('hört auf beide Kanäle', () => {
+	it('hört auf den geschützten Kanal (der freie trägt seit Schritt E2 keinen Inhalt)', () => {
 		const hoerer: ((a: InhaltAenderung) => void)[] = [];
 		vi.spyOn(live, 'onInhalt').mockImplementation((l) => {
 			hoerer.push(l);
 			return () => undefined;
 		});
-		vi.spyOn(freierKanal, 'onInhalt').mockImplementation((l) => {
-			hoerer.push(l);
-			return () => undefined;
-		});
 		const s = new AssetStand();
 		const ab = s.start();
-		expect(hoerer).toHaveLength(2);
+		expect(hoerer).toHaveLength(1);
 		hoerer[0]?.(aenderung('a', 5, true));
-		hoerer[1]?.(aenderung('b', 6, true));
-		expect([s.version('a'), s.version('b')]).toEqual([5, 6]);
+		expect(s.version('a')).toBe(5);
 		ab();
 	});
 

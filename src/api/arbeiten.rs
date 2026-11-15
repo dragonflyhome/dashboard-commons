@@ -23,7 +23,7 @@
 //! Zurückwecken legen dabei einen Vorgang der Art `schritt` für den Empfänger
 //! an, der ihn über sein Warten weckt.
 //!
-//! Geschützt wie `/api/vorgaenge` (Windows-Anmeldung, `sicherheit::geschuetzt`)
+//! Geschützt wie `/api/vorgaenge` (Windows-Anmeldung, nicht in `sicherheit::oeffentlich`)
 //! und ohne Herkunftskopf für curl erlaubt (`sicherheit::herkunft_pflicht`);
 //! fremde Seiten bleiben 403. Schreiben nur mit `Content-Type: application/json`.
 //! Grenze: höchstens 30 nicht fertige Arbeiten je Projekt (darüber 429).

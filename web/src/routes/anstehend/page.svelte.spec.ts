@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
 import { SATZ_GESENDET } from '#lib/antworten.ts';
 import { beispielListe, eintrag, json } from '#lib/anstehend.beispiel.ts';
+import { leitetZurAnmeldung } from '../zur-anmeldung.testhilfe.ts';
 
 const { ort, goto } = vi.hoisted(() => ({
 	ort: { url: new URL('http://localhost:8787/anstehend') },
@@ -228,18 +228,10 @@ describe('Seite „Anstehend“', () => {
 		expect(bereich?.contains(titel)).toBe(false);
 	});
 
-	it('zeigt ohne Anmeldung (401) nur den Satz', async () => {
-		netz(401);
-		zeige();
-		// Etappe 3b: die Adresse ist ein Link (auf dieselbe Seite unter localhost).
-		const link = await screen.findByRole('link', { name: 'http://localhost:8787' });
-		expect(link.closest('p')?.textContent).toBe(`${SATZ_OHNE_ANMELDUNG}.`);
-		expect(screen.getAllByText(/Microsoft Edge/)).toHaveLength(1);
-		expect(SATZ_OHNE_ANMELDUNG).toBe(
-			'Anstehendes siehst du in Microsoft Edge unter http://localhost:8787'
+	it('ohne Anmeldung (Schritt E2): leitet auf /anmelden, mit Filtern im Ziel', async () => {
+		expect(await leitetZurAnmeldung('/anstehend?stufe=jetzt')).toBe(
+			'/anmelden?ziel=%2Fanstehend%3Fstufe%3Djetzt'
 		);
-		expect(screen.queryByRole('list', { name: 'Anzahl nach Stufe' })).toBeNull();
-		expect(screen.queryAllByRole('button')).toHaveLength(0);
 	});
 });
 

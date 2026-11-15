@@ -11,7 +11,7 @@
 //! hatte kein Recht auf docs), kommt eine `warnung` statt einer still leeren
 //! Liste. Nach außen geht nur
 //! der Dateiname, kein Pfad. Seit der Abnahme 4d alle drei geschützt
-//! (`sicherheit::geschuetzt`, ohne Anmeldung 401); käme doch eine Anfrage
+//! (nicht in `sicherheit::oeffentlich`, ohne Anmeldung 401); käme doch eine Anfrage
 //! ohne Anmeldung durch, antwortet der Handler selbst 401 (zweite Wand wie
 //! `/api/fristen`).
 
@@ -710,7 +710,7 @@ async fn im_hintergrund<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'stati
     })
 }
 
-/// Zweite Wand hinter der Schleuse (`sicherheit::geschuetzt`): ohne Anmeldung
+/// Zweite Wand hinter der Schleuse (nicht in `sicherheit::oeffentlich`): ohne Anmeldung
 /// 401 mit `WWW-Authenticate: Negotiate`, sonst `lesen` im Hintergrund als JSON.
 async fn nur_angemeldet<T: Serialize + Send + 'static>(angemeldet: Option<Extension<Angemeldet>>, lesen: impl FnOnce() -> T + Send + 'static) -> Response {
     if angemeldet.is_none() {

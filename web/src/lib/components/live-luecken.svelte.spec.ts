@@ -105,9 +105,8 @@ describe('Standardaufbau: Prüfbericht', () => {
 		sammel: false
 	});
 
-	it('holt den Bericht bei projekt zum Slug (beide Kanäle) und nach einer Fassung neu', async () => {
+	it('holt den Bericht bei projekt zum Slug (geschützter Kanal) und nach einer Fassung neu', async () => {
 		const geschuetzt = abfangen<(a: InhaltAenderung) => void>(live, 'onInhalt');
-		const frei = abfangen<(a: InhaltAenderung) => void>(freierKanal, 'onInhalt');
 		const fassung = abfangen<() => void>(freierKanal, 'onFassung');
 		abfangen<() => void>(live, 'onNachholen');
 		const pruefung = vi.spyOn(api, 'pruefung').mockResolvedValue(bericht(null));
@@ -128,16 +127,14 @@ describe('Standardaufbau: Prüfbericht', () => {
 		pruefung.mockResolvedValue(bericht('Unbekannter Baustein.'));
 		for (const l of geschuetzt) l(aenderung('alpha'));
 		expect(await screen.findByText(/Unbekannter Baustein/)).toBeInTheDocument();
-		for (const l of frei) l(aenderung('alpha'));
 		for (const l of fassung) l();
 		await waitFor(() => {
-			expect(pruefung).toHaveBeenCalledTimes(4);
+			expect(pruefung).toHaveBeenCalledTimes(3);
 		});
 	});
 
 	it('Etappe B8: fristen.toml und plan.toml stehen im Rahmen (Zeitleiste, Plan), nicht noch einmal hier', () => {
 		abfangen<(a: InhaltAenderung) => void>(live, 'onInhalt');
-		abfangen<(a: InhaltAenderung) => void>(freierKanal, 'onInhalt');
 		abfangen<() => void>(freierKanal, 'onFassung');
 		abfangen<() => void>(live, 'onNachholen');
 		vi.spyOn(api, 'pruefung').mockResolvedValue(bericht(null));

@@ -11,11 +11,26 @@ export const SATZ_FREMDES_KONTO = 'Dieses Windows-Konto darf hier nicht.';
 export const SATZ_NUR_ANGEMELDET =
 	'Diese Werte zeigt das Dashboard nur nach Windows-Anmeldung (über localhost).';
 
-/** Etappe 4d (Abnahme): ohne Anmeldung auf /entscheidungen und /zielbild, wie bei /anstehend. */
-export const SATZ_ENTSCHEIDUNGEN_ANMELDEN = `Die Entscheidungen siehst du in Microsoft Edge unter ${BROWSER_ADRESSE}`;
-export const SATZ_ZIELBILD_ANMELDEN = `Das Zielbild siehst du in Microsoft Edge unter ${BROWSER_ADRESSE}`;
-/** Etappe 6b: ohne Anmeldung auf /anleitung, wie beim Zielbild. */
-export const SATZ_ANLEITUNG_ANMELDEN = `Die Anleitung siehst du in Microsoft Edge unter ${BROWSER_ADRESSE}`;
+/** Schritt E2: der Satz ohne Anmeldung (wie die 401-Seite des Servers). */
+export const SATZ_ANMELDUNG_NOETIG =
+	'Anmeldung nötig. Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite.';
+
+/** Wie man sich hier anmeldet: mit Windows (Edge unter localhost) oder nur mit Passkey. */
+export type AnmeldeWeg = 'windows' | 'passkey';
+
+/**
+ * Schritt E2: fragt `/api/anmeldung/wer` (öffentlich). 200 heißt Windows,
+ * 501 ein anderes System; sonst (kein Server, anderer Code) `null`. Wirft nie.
+ */
+export async function anmeldeWeg(f: typeof fetch = fetch): Promise<AnmeldeWeg | null> {
+	try {
+		const res = await f('/api/anmeldung/wer', { headers: { accept: 'application/json' } });
+		await res.body?.cancel().catch(() => undefined);
+		return res.status === 200 ? 'windows' : res.status === 501 ? 'passkey' : null;
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Dieselbe Seite unter `localhost`: Host ersetzt, Port, Pfad, Suche und

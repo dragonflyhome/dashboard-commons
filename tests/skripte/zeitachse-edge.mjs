@@ -29,11 +29,20 @@
  *     Antippen eines Tages im Dichtestreifen, Ziehen über mehrere Tage, Ziehen
  *     im Gantt
  *   - Hotfix 3a-1, Verlauf mit Anmeldung: /api/pc/verlauf/voll ohne Nachweis
- *     401 mit `WWW-Authenticate: Negotiate`; /pc fünfmal laden und einmal
+ *     401 mit `WWW-Authenticate: Negotiate` (seit Schritt E2 sind auch
+ *     /api/pc/verlauf und /api/projects geschützt; die Probe liest Projekte
+ *     und Verlauf darum aus dem angemeldeten Edge); /pc fünfmal laden und einmal
  *     live neu laden (data/pc.toml geändert), jedes Mal mit dem Filter
  *     „Starts“ und ohne den Hinweis „nur mit Anmeldung“; die Seiten fragen
- *     /api/pc/verlauf/voll, nie den freien Weg; 8 gleichzeitige Abrufe von
+ *     /api/pc/verlauf/voll, nie /api/pc/verlauf; 8 gleichzeitige Abrufe von
  *     /api/pc/verlauf/voll aus der Seite haben alle Starts
+ *   - Ohne Anmeldung (seit Schritt E2, wie pc-edge.mjs): ein zweites Edge mit
+ *     eigenem Profil, das sich bei localhost nicht bei Windows anmeldet
+ *     (--auth-server-allowlist auf einen Namen, den es nicht gibt;
+ *     Anmelde-Rückfragen bricht die Probe ab). Dort führen die Startseite,
+ *     /pc und die Projektseiten mit Zeitstrahl oder Gantt zur Anmeldung
+ *     (edge-gemeinsam.mjs, ohneAnmeldungPruefen), ohne Projekttitel im DOM;
+ *     /api/projects, /api/pc/verlauf und /api/pc/verlauf/voll antworten 401
  *   - 375 px Breite: keine Seite scrollt seitlich
  *   - keine überlappenden Beschriftungen auf den Achsen (Rechtecke der
  *     Beschriftungen, bei 1280 und 375 px)
@@ -75,7 +84,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { antwortAbwarten } from './cdp-frist.mjs';
-import { beiAbbruch, browserSperren, mitFrist, portePruefen, inhaltOrt } from './edge-gemeinsam.mjs';
+import {
+	beiAbbruch,
+	browserSperren,
+	mitFrist,
+	portePruefen,
+	inhaltOrt,
+	ohneAnmeldungPruefen,
+	projektTitel
+} from './edge-gemeinsam.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -100,14 +117,16 @@ const SAMMLER_SEKUNDEN = Number(argument('sammler-sekunden', '120'));
 /** Nur diese Seiten besuchen (Komma-Liste), zum schnellen Nachprüfen; sonst alle. */
 const NUR = argument('nur', null)?.split(',') ?? null;
 const DEBUG_PORT = PORT + 1000;
+/** Debug-Port des zweiten Edge für den freien Weg (ohne Windows-Anmeldung). */
+const DEBUG_PORT_FREI = DEBUG_PORT + 1;
 const BASIS = `http://localhost:${PORT}`;
 /** Programme aus System32 (nicht die gleichnamigen aus Git Bash). */
 const SYSTEM = (name) => join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', name);
 
 const ordner = mkdtempSync(join(tmpdir(), 'dashboard-zeitachse-e2e-'));
 const prozesse = [];
-/** Ob diese Probe ein Edge gestartet hat (nur das schließt das Aufräumen). */
-let edgeGestartet = false;
+/** Debug-Ports der Edge-Prozesse, die diese Probe selbst gestartet hat (nur die schließt das Aufräumen). */
+const eigeneDebugPorts = new Set();
 // Ein Aufräumen für alle Wege (finally, Strg+C, unbehandelter Fehler).
 const aufraeumen = beiAbbruch(aufraeumenJetzt);
 let bestanden = 0;
@@ -128,12 +147,18 @@ function pruefe(bedingung, satz, einzelheiten = '') {
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function aufraeumenJetzt() {
+/**
+ * Edge über den Debug-Port schließen, jeder Schritt mit Frist. Nur ein Edge,
+ * das diese Probe gestartet hat: Auf einem belegten Port läuft vielleicht die
+ * Probe eines anderen.
+ */
+async function edgeSchliessen(port) {
+	if (!eigeneDebugPorts.has(port)) return;
 	try {
-		// Nur ein Edge, das diese Probe gestartet hat; jeder Schritt mit Frist.
-		if (!edgeGestartet) throw new Error('kein eigenes Edge');
 		const v = await mitFrist(
-			fetch(`http://127.0.0.1:${DEBUG_PORT}/json/version`).then((r) => r.json()),
+			fetch(`http://127.0.0.1:${port}/json/version`, {
+				signal: AbortSignal.timeout(3000)
+			}).then((r) => r.json()),
 			4000,
 			'/json/version'
 		);
@@ -141,8 +166,13 @@ async function aufraeumenJetzt() {
 		await Promise.race([b.senden('Browser.close', {}, 3000).catch(() => {}), pause(3000)]);
 		await pause(1000);
 	} catch {
-		// Edge läuft nicht (mehr)
+		// Edge läuft nicht (mehr) oder antwortet nicht; taskkill räumt auf
 	}
+}
+
+async function aufraeumenJetzt() {
+	await edgeSchliessen(DEBUG_PORT);
+	await edgeSchliessen(DEBUG_PORT_FREI);
 	for (const p of prozesse) {
 		try {
 			execFileSync(SYSTEM('taskkill.exe'), ['/PID', String(p.pid), '/T', '/F'], {
@@ -251,7 +281,7 @@ async function aufSammlerWarten() {
 	const ende = Date.now() + SAMMLER_SEKUNDEN * 1000;
 	while (Date.now() < ende) {
 		try {
-			const v = await (await fetch(`http://127.0.0.1:${PORT}/api/pc/verlauf`)).json();
+			const v = await json('/api/pc/verlauf/voll');
 			const n = (v.ereignisse ?? []).filter((e) => e.quelle === 'update').length;
 			if (n > 0) return n;
 		} catch {
@@ -262,12 +292,15 @@ async function aufSammlerWarten() {
 	return 0;
 }
 
+/** Das angemeldete Edge (gesetzt in main): Seit Schritt E2 liest nur es Projekte und Verlauf. */
+let angemeldet = null;
+
 async function json(pfad) {
-	const r = await fetch(`http://127.0.0.1:${PORT}${pfad}`, {
-		headers: { accept: 'application/json' }
-	});
-	if (!r.ok) throw new Error(`${pfad}: ${r.status}`);
-	return r.json();
+	const v = await angemeldet.auswerten(
+		`fetch(${JSON.stringify(pfad)}, { headers: { accept: 'application/json' } }).then(async (r) => (r.ok ? { ok: await r.json() } : { status: r.status }))`
+	);
+	if (!('ok' in v)) throw new Error(`${pfad}: ${v.status}`);
+	return v.ok;
 }
 
 // ----- Edge über das DevTools-Protokoll -----
@@ -437,15 +470,24 @@ async function druecke(cdp, name, mal = 1) {
 	for (let i = 0; i < mal; i++) await cdp.taste(key, opt);
 }
 
-async function edgeStarten() {
-	const profil = join(ordner, 'edge-profil');
+/**
+ * Edge headless mit Wegwerf-Profil. Ohne Angaben das Profil der Probe mit
+ * Windows-Anmeldung für localhost; `freierWeg.starten()` nimmt ein zweites
+ * Profil auf eigenem Debug-Port ohne Anmeldung.
+ */
+async function edgeStarten({
+	port = DEBUG_PORT,
+	profilName = 'edge-profil',
+	anmeldungFuer = 'localhost,127.0.0.1'
+} = {}) {
+	const profil = join(ordner, profilName);
 	mkdirSync(profil, { recursive: true });
-	edgeGestartet = true;
+	eigeneDebugPorts.add(port);
 	const edge = spawn(
 		EDGE,
 		[
 			'--headless=new',
-			`--remote-debugging-port=${DEBUG_PORT}`,
+			`--remote-debugging-port=${port}`,
 			`--user-data-dir=${profil}`,
 			'--no-first-run',
 			'--no-default-browser-check',
@@ -456,7 +498,7 @@ async function edgeStarten() {
 			'--disable-component-extensions-with-background-pages',
 			'--hide-scrollbars',
 			// Negotiate auch headless ohne Rückfrage (localhost gilt sonst schon als Intranet).
-			'--auth-server-allowlist=localhost,127.0.0.1',
+			`--auth-server-allowlist=${anmeldungFuer}`,
 			'--window-size=1280,900',
 			'about:blank'
 		],
@@ -465,14 +507,14 @@ async function edgeStarten() {
 	prozesse.push(edge);
 	for (let i = 0; i < 100; i++) {
 		try {
-			const liste = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`)).json();
+			const liste = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 			const seite = liste.find((t) => t.type === 'page');
 			if (seite) {
 				const cdp = await Cdp.verbinden(seite.webSocketDebuggerUrl);
 				await cdp.senden('Page.enable');
 				await cdp.netzSperren();
 				// Auch Service-Worker, Worker und weitere Ziele (edge-gemeinsam.mjs).
-				cdp.browserSperre = await browserSperren(DEBUG_PORT, cdp.gesperrt, { ausser: seite.id });
+				cdp.browserSperre = await browserSperren(port, cdp.gesperrt, { ausser: seite.id });
 				await cdp.senden('Runtime.enable');
 				await cdp.senden('Log.enable');
 				return cdp;
@@ -904,11 +946,7 @@ async function verlaufMitAnmeldung(cdp) {
 			'/api/pc/verlauf/voll ohne Anmeldung: 401 mit WWW-Authenticate: Negotiate',
 			`${r.status} ${r.headers.get('www-authenticate')}`
 		);
-		const frei = await json('/api/pc/verlauf');
-		pruefe(
-			!frei.ereignisse.some((e) => e.quelle === 'start'),
-			'/api/pc/verlauf ohne Anmeldung: frei, ohne Starts'
-		);
+		// Ohne Anmeldung im Browser prüft seit Schritt E2 das zweite Edge (freierWeg).
 		for (let i = 1; i <= 5; i++) {
 			anfragen.length = 0;
 			await cdp.oeffnen('/pc');
@@ -957,10 +995,6 @@ async function verlaufMitAnmeldung(cdp) {
 			'8 gleichzeitige Abrufe von /api/pc/verlauf/voll: alle mit Starts',
 			voll.join(', ')
 		);
-		const freiGleichzeitig = await cdp.auswerten(gleichzeitig('/api/pc/verlauf', 8));
-		console.log(
-			`  info  8 gleichzeitige Abrufe des freien /api/pc/verlauf, Starts je Antwort: ${freiGleichzeitig.join(', ')}`
-		);
 	} finally {
 		cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);
 	}
@@ -974,6 +1008,83 @@ async function sicher(satz, f) {
 		pruefe(false, satz, String(e?.message ?? e).slice(0, 300));
 	}
 }
+
+// ----- Ohne Anmeldung im Browser (seit Schritt E2, wie pc-edge.mjs) -----
+
+/** Status der Verlaufswege, die ohne Anmeldung 401 geben. */
+const OHNE_ANMELDUNG_401 = `Promise.all(['/api/pc/verlauf', '/api/pc/verlauf/voll'].map(async (p) => [p, (await fetch(p, { headers: { accept: 'application/json' } })).status]))`;
+
+const freierWeg = {
+	/** Zweites Edge, eigenes Profil, keine Windows-Anmeldung für localhost. */
+	async starten() {
+		const cdp = await edgeStarten({
+			port: DEBUG_PORT_FREI,
+			profilName: 'edge-profil-frei',
+			anmeldungFuer: 'nicht-dieser-pc.invalid'
+		});
+		// Fragt der Browser doch nach einer Anmeldung, bricht die Probe sie ab.
+		cdp.anmeldeRueckfragen = 0;
+		cdp.hoerer.push((m) => {
+			if (m.method !== 'Fetch.authRequired') return;
+			cdp.anmeldeRueckfragen++;
+			cdp
+				.senden('Fetch.continueWithAuth', {
+					requestId: m.params.requestId,
+					authChallengeResponse: { response: 'CancelAuth' }
+				})
+				.catch(() => {});
+		});
+		await cdp.senden('Fetch.enable', {
+			patterns: [{ urlPattern: '*' }],
+			handleAuthRequests: true
+		});
+		return cdp;
+	},
+
+	/**
+	 * Die Startseite, /pc und die Projektseiten mit Zeitstrahl oder Gantt führen
+	 * zur Anmeldung, ohne Projekttitel im DOM; /api/projects und die
+	 * Verlaufswege geben 401.
+	 */
+	async pruefen(cdp, pfade) {
+		await cdp.breite(1280);
+		const fehler = [];
+		const h = (m) => {
+			if (m.method === 'Runtime.exceptionThrown')
+				fehler.push(`Ausnahme: ${m.params.exceptionDetails.text}`.slice(0, 300));
+			else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
+				// 401/403 der geschützten Wege gehören zum Weg ohne Anmeldung.
+				if (!/status of 40[13]/.test(m.params.entry.text ?? ''))
+					fehler.push(`${m.params.entry.text} ${m.params.entry.url ?? ''}`.slice(0, 300));
+			}
+		};
+		cdp.hoerer.push(h);
+		const ergebnis = await ohneAnmeldungPruefen(
+			{ oeffnen: (p) => cdp.oeffnen(p), werte: (a) => cdp.auswerten(a) },
+			pfade,
+			projektTitel(join(ordner, 'repo', 'projects'))
+		);
+		const status = await cdp.auswerten(OHNE_ANMELDUNG_401);
+		cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);
+		for (const e of ergebnis)
+			pruefe(
+				e.maengel.length === 0,
+				`ohne Anmeldung ${e.pfad}: führt zur Anmeldung, ohne Projekttitel, /api/projects 401`,
+				e.maengel.join('; ')
+			);
+		pruefe(
+			status.every(([, st]) => st === 401),
+			'ohne Anmeldung: /api/pc/verlauf und /api/pc/verlauf/voll 401',
+			JSON.stringify(status)
+		);
+		pruefe(
+			fehler.length === 0,
+			'ohne Anmeldung: keine Fehler außer 401/403 in der Konsole',
+			fehler.join(' | ')
+		);
+		console.log(`  (Anmelde-Rückfragen des Browsers abgebrochen: ${cdp.anmeldeRueckfragen})`);
+	}
+};
 
 // ----- Ablauf -----
 
@@ -1012,11 +1123,14 @@ async function main() {
 	console.log(`Temp-Ordner: ${ordner}`);
 
 	const server = await serverStarten(eigeneSid());
+	const cdp = await edgeStarten();
+	await cdp.breite(1280);
+	// Eine öffentliche Seite, damit die Abrufe aus dem Edge die Adresse des Servers haben.
+	await cdp.oeffnen('/fassungen');
+	angemeldet = cdp;
 	console.log('Server läuft; warte auf den Sammler (Windows-Ereignisse) …');
 	const updates = await aufSammlerWarten();
 	console.log(`  ${updates} Update-Ereignisse im Verlauf`);
-	const cdp = await edgeStarten();
-	await cdp.breite(1280);
 
 	const seiten = await seitenListe();
 	const mitTimeline = seiten.filter((s) => s.timeline > 0).length;
@@ -1133,10 +1247,20 @@ async function main() {
 		JSON.stringify({ seiten: alle, bericht }, null, 2)
 	);
 	void server;
+
+	console.log('\n== Ohne Anmeldung (zweites Profil ohne Windows-Anmeldung) ==');
+	let frei = null;
+	await sicher('ohne Anmeldung', async () => {
+		frei = await freierWeg.starten();
+		await freierWeg.pruefen(frei, alle.map((s) => s.pfad));
+	});
+
+	const gesperrt = [...cdp.gesperrt, ...(frei?.gesperrt ?? [])];
+	console.log(`\n${cdp.browserSperre.bericht()}`);
 	pruefe(
-		cdp.gesperrt.length === 0,
+		gesperrt.length === 0,
 		'Netzsperre: die Seiten fragen nur beim eigenen Server an',
-		cdp.gesperrt.slice(0, 5).join(' | ')
+		gesperrt.slice(0, 5).join(' | ')
 	);
 	console.log(
 		`\nSeiten geprüft: ${alle.length} je Breite (${seiten.length} Projektseiten, / und /pc)`

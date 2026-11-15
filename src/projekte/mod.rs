@@ -304,29 +304,13 @@ impl Register {
         self.eintraege.iter().enumerate().find(|(_, e)| e.modul.slug() == slug)
     }
 
-    /// Etappe B2: Darf GET diesen Weg (`/api/projekte/<slug>/x/…`) ohne
-    /// Anmeldung lesen? Nur, wenn das Modul des Projekts ihn in
-    /// `Modul::freie_wege` nennt; `{…}` steht für genau einen Abschnitt.
-    pub fn frei_lesbar(&self, pfad: &str) -> bool {
-        let Some(rest) = pfad.strip_prefix("/api/projekte/") else { return false };
-        let Some((slug, nach)) = rest.split_once('/') else { return false };
-        let weg = match nach.strip_prefix('x') {
-            Some("") => "/",
-            Some(w) if w.starts_with('/') => w,
-            _ => return false,
-        };
-        let Some((_, e)) = self.eintrag(slug) else { return false };
-        e.modul.freie_wege().iter().any(|muster| weg_passt(muster, weg))
-    }
-
     /// Die Router aller Module unter `/api/projekte/<slug>/x`.
     pub fn router<S: Clone + Send + Sync + 'static>(&self) -> Router<S> {
         let mut r = Router::new();
         for e in &self.eintraege {
             let slug = e.modul.slug();
-            // Hotfix Prozent, zweite Wand: Das Modul selbst verlangt die Anmeldung noch
-            // einmal, am Weg nach dem Präfix, roh und dekodiert.
-            let wand = axum::middleware::from_fn_with_state(e.modul.freie_wege(), modul_wand);
+            // Hotfix Prozent, zweite Wand: Das Modul selbst verlangt die Anmeldung noch einmal.
+            let wand = axum::middleware::from_fn(modul_wand);
             r = r.nest(&format!("/api/projekte/{slug}/x"), rahmen::einpacken::<S>(&*e.modul, e.kontext.clone()).layer(wand));
         }
         r
@@ -620,40 +604,17 @@ fn zustand_wort(z: crate::api::vertrag::Zustand) -> &'static str {
     }
 }
 
-/// Ist der Weg im Modul (nach `/api/projekte/<slug>/x`) frei lesbar? Nur, wenn
-/// er roh und dekodiert zu einem freien Weg passt; ein Weg, der sich nicht
-/// dekodieren lässt oder doppelt kodiert ist, ist nie frei.
-pub fn modul_weg_frei(freie_wege: &[&str], weg: &str) -> bool {
-    let weg = if weg.is_empty() { "/" } else { weg };
-    let passt = |w: &str| freie_wege.iter().any(|m| weg_passt(m, w));
-    passt(weg) && crate::sicherheit::pfad_dekodiert(weg).is_some_and(|d| passt(&d))
-}
-
 /// Hotfix Prozent, zweite Wand der Modul-Wege (die erste ist
-/// `sicherheit::anmeldung_pflicht` mit `Register::frei_lesbar`): ohne
-/// `Angemeldet` nur GET/HEAD/OPTIONS auf einen freien Weg, sonst 401 mit
-/// demselben Satz wie die Schleuse (`bitte_anmelden`).
-async fn modul_wand(
-    axum::extract::State(freie_wege): axum::extract::State<&'static [&'static str]>,
-    req: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> axum::response::Response {
-    use axum::http::Method;
-    let lesend = matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
-    let angemeldet = req.extensions().get::<crate::anmeldung::Angemeldet>().is_some();
-    if !angemeldet && !(lesend && modul_weg_frei(freie_wege, req.uri().path())) {
+/// `sicherheit::anmeldung_pflicht` mit der Positivliste `oeffentlich`, die
+/// keinen Modulweg nennt): ohne `Angemeldet` 401 mit demselben Satz wie die
+/// Schleuse (`bitte_anmelden`), für jede Methode. `Modul::freie_wege` wirkt
+/// seit Schritt E2 nicht mehr.
+async fn modul_wand(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
+    if req.extensions().get::<crate::anmeldung::Angemeldet>().is_none() {
         return crate::api::anmeldung::bitte_anmelden(None);
     }
     next.run(req).await
 }
 
-/// Passt der Weg `weg` (ohne Abfrage) zum Muster eines freien Wegs? `{…}`
-/// steht für genau einen nicht leeren Abschnitt; sonst muss alles gleich sein.
-pub fn weg_passt(muster: &str, weg: &str) -> bool {
-    let m: Vec<&str> = muster.trim_end_matches('/').split('/').collect();
-    let w: Vec<&str> = weg.trim_end_matches('/').split('/').collect();
-    m.len() == w.len() && m.iter().zip(&w).all(|(m, w)| if m.starts_with('{') && m.ends_with('}') { !w.is_empty() } else { m == w })
-}
-
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

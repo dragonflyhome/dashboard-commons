@@ -104,7 +104,7 @@ describe('Cockpit', () => {
 		expect(container.textContent).toContain('Platte Beispiel HD (/)');
 	});
 
-	it('angemeldet: der freie Takt überschreibt die Platte nicht, der geschützte schon', () => {
+	it('angemeldet: der geschützte Takt überschreibt die Platte aus /api/pc/benutzer', () => {
 		const platte = (name: string) => ({
 			name,
 			mount: `/Volumes/${name}`,
@@ -136,7 +136,6 @@ describe('Cockpit', () => {
 				report: bericht('%COMPUTERNAME%'),
 				ladung: { benutzer, grund: null }
 			});
-			freierKanal.pc = takt('%VOLUME%');
 			flushSync();
 			expect(container.textContent).toContain('Platte Beispiel Platte');
 			live.pc = takt('Andere Platte');
@@ -144,12 +143,11 @@ describe('Cockpit', () => {
 			expect(container.textContent).toContain('Platte Andere Platte');
 		} finally {
 			freierKanal.aktiv = null;
-			freierKanal.pc = null;
 			live.pc = null;
 		}
 	});
 
-	it('abgemeldet, der geschützte Takt steht noch: seine Platte zählt nicht, nur der freie', () => {
+	it('abgemeldet, der geschützte Takt steht noch: seine Platte zählt nicht (Schritt E2: der freie Kanal trägt keine)', () => {
 		const takt = (name: string, mount: string) =>
 			({
 				at: name,
@@ -164,41 +162,21 @@ describe('Cockpit', () => {
 		try {
 			freierKanal.aktiv = 'frei';
 			live.pc = takt('Beispiel Platte', 'C:\\');
-			freierKanal.pc = takt('%VOLUME%', 'C:\\');
 			const { container } = render(Cockpit, {
 				report: bericht('%COMPUTERNAME%'),
 				ladung: { benutzer: null, grund: 'anmeldung' }
 			});
 			expect(container.textContent).not.toContain('Beispiel Platte');
-			expect(container.textContent).toContain('Platte C: 600 B frei');
+			// Die Platte und der Prozessor aus dem Bericht (Platzhalter, also nur der Ort).
+			expect(container.textContent).toContain('Platte / 600 B frei');
+			expect(container.textContent).toContain('Prozessor13 %');
 			// Gegenprobe: gilt der geschützte, steht sein Name da.
 			freierKanal.aktiv = 'geschuetzt';
 			flushSync();
 			expect(container.textContent).toContain('Platte Beispiel Platte (C:)');
 		} finally {
 			freierKanal.aktiv = null;
-			freierKanal.pc = null;
 			live.pc = null;
-		}
-	});
-
-	it('ohne Anmeldung: die Platte kommt aus dem freien Takt', () => {
-		try {
-			const { container } = render(Cockpit, { report: bericht('%COMPUTERNAME%') });
-			freierKanal.pc = {
-				at: 'frei',
-				cpu_percent: 1,
-				mem_used: 1,
-				mem_total: 2,
-				disks: [{ name: '%VOLUME%', mount: 'X:\\', total: 1_000, used: 400, belegung: 'normal' }],
-				uptime_secs: 1,
-				cpu_belegung: 'normal',
-				mem_belegung: 'normal'
-			} as unknown as PcTick;
-			flushSync();
-			expect(container.textContent).toContain('Platte X: 600 B frei');
-		} finally {
-			freierKanal.pc = null;
 		}
 	});
 
@@ -210,17 +188,6 @@ describe('Cockpit', () => {
 		used,
 		belegung: 'normal' as const
 	});
-	const freierTakt = (used: number) =>
-		({
-			at: `frei-${used}`,
-			cpu_percent: 1,
-			mem_used: 1,
-			mem_total: 2,
-			disks: [windowsPlatte('%VOLUME%', used)],
-			uptime_secs: 1,
-			cpu_belegung: 'normal',
-			mem_belegung: 'normal'
-		}) as unknown as PcTick;
 	const benutzerMit = (platten: unknown[]) =>
 		({
 			rechner: 'beispiel-rechner',
@@ -230,7 +197,7 @@ describe('Cockpit', () => {
 			bote: 'da'
 		}) as unknown as PcBenutzer;
 
-	it('Windows: angemeldet der Name des Datenträgers mit dem Laufwerk, frei nur das Laufwerk', () => {
+	it('Windows: angemeldet der Name des Datenträgers mit dem Laufwerk, ohne Namen nur das Laufwerk', () => {
 		try {
 			const angemeldet = render(Cockpit, {
 				report: bericht('%COMPUTERNAME%'),
@@ -245,40 +212,28 @@ describe('Cockpit', () => {
 			});
 			expect(ohneName.container.textContent).toContain('Platte C: 600 B frei');
 			ohneName.unmount();
-			// Ohne Anmeldung (die echte Ladung): der freie Takt trägt den Platzhalter, er erscheint nicht.
-			const frei = render(Cockpit, {
-				report: bericht('%COMPUTERNAME%'),
-				ladung: { benutzer: null, grund: 'anmeldung' }
-			});
-			freierKanal.pc = freierTakt(400);
-			flushSync();
-			expect(frei.container.textContent).toContain('Platte C: 600 B frei');
-			expect(frei.container.textContent).not.toContain('%VOLUME%');
-			expect(frei.container.textContent).not.toContain('Beispiel Platte');
 		} finally {
-			freierKanal.pc = null;
+			live.pc = null;
 		}
 	});
 
-	it('nach dem Abmelden (neue Ladung ohne Benutzer): kein Rechnername, die Platte folgt dem freien Takt', async () => {
+	it('nach dem Abmelden (neue Ladung ohne Benutzer): kein Rechnername, kein Name der Platte', async () => {
 		try {
 			const { container, rerender } = render(Cockpit, {
 				report: bericht('%COMPUTERNAME%'),
 				ladung: { benutzer: benutzerMit([windowsPlatte('Beispiel Platte')]), grund: null }
 			});
-			freierKanal.pc = freierTakt(100);
 			flushSync();
 			expect(container.textContent).toContain('beispiel-rechner');
 			expect(container.textContent).toContain('Platte Beispiel Platte (C:)');
 			// Das Layout lädt /api/pc/benutzer beim Wechsel geschützt → frei neu: jetzt 401.
 			await rerender({ ladung: { benutzer: null, grund: 'anmeldung' } });
-			freierKanal.pc = freierTakt(700);
 			flushSync();
 			expect(container.textContent).not.toContain('beispiel-rechner');
 			expect(container.textContent).not.toContain('Beispiel Platte');
-			expect(container.textContent).toContain('Platte C: 300 B frei');
+			expect(container.textContent).toContain('Platte / 600 B frei');
 		} finally {
-			freierKanal.pc = null;
+			live.pc = null;
 		}
 	});
 });

@@ -49,10 +49,10 @@
 		cpuHist = cpuVerlauf(report.snapshot.history);
 		memHist = report.snapshot.history.map((s) => s.mem);
 	});
-	// PC-Werte: aus dem geschützten Kanal, sonst aus dem freien (Kopfleiste, Fassung 2). Der
-	// geschützte zählt nur, solange er gilt: nach dem Abmelden trägt er noch Datenträgernamen.
+	// PC-Werte nur aus dem geschützten Kanal (der freie trägt seit Schritt E2 keine). Er zählt
+	// nur, solange er gilt: nach dem Abmelden trägt er noch Datenträgernamen.
 	const geschuetztPc = $derived(freierKanal.aktiv === 'geschuetzt' ? live.pc : null);
-	const tick = $derived(geschuetztPc ?? freierKanal.pc);
+	const tick = $derived(geschuetztPc);
 	let lastTick = $state<string | null>(null);
 	$effect(() => {
 		const t = tick;
@@ -66,11 +66,9 @@
 	const cpu = $derived(tick?.cpu_percent ?? report.snapshot.cpu_percent);
 	const memUsed = $derived(tick?.mem_used ?? report.snapshot.mem_used);
 	const memTotal = $derived(tick?.mem_total ?? report.snapshot.mem_total);
-	// Angemeldet die Datenträger mit Namen aus /api/pc/benutzer, bis der geschützte Kanal sie
-	// bringt; der freie Takt trägt nur Platzhalter und darf sie nicht überschreiben.
+	// Angemeldet die Datenträger mit Namen aus /api/pc/benutzer, bis der geschützte Kanal sie bringt.
 	const disk = $derived(
-		(geschuetztPc?.disks ?? ladung?.benutzer?.platten ?? tick?.disks ?? report.snapshot.disks)[0] ??
-			null
+		(geschuetztPc?.disks ?? ladung?.benutzer?.platten ?? report.snapshot.disks)[0] ?? null
 	);
 	// Unter Windows ist der Einhängepunkt nur der Laufwerksbuchstabe: den Namen dazu, wenn es einen
 	// gibt. Unter macOS (/Volumes/<Name>) steckt der Name schon im Ort: dann nur der Name.

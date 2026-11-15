@@ -143,7 +143,7 @@ Kurz für dich (Inhaber): Oben auf der Übersicht jeder Projektseite stehen vier
 
 Stand wird nie von Hand gepflegt. Alles in den vier Teilen rechnet der Server aus dem Tracker (/api/projekte/<slug>/stand, /backlog, /plan, /verlauf); die Seite lädt sie neu, sobald sich etwas am Projekt ändert. Kennt der laufende Dienst einen dieser Wege nicht (404, 405) oder fehlen in seiner Antwort Felder, die die Oberfläche braucht (etwa nach einem Bau neuer als der Dienst), zeigt nur dieser Teil „Dieser Teil ist mit dem laufenden Dienst noch nicht verfügbar.“; die übrigen Teile und Seite.svelte bleiben stehen, und wirft ein Teil trotzdem beim Zeichnen, bleibt Seite.svelte darunter sichtbar. Von Hand steht nur Absicht: summary sagt, worum es geht, daten/plan.toml nennt die Etappen in ihrer Reihenfolge. Eine Arbeit nennt ihre Etappe im Feld etappe.
 
-Was entfällt: das Unter-Dashboard mit den Kästen Arbeiten, Fristen und Zuletzt, der eigene Kasten „Aufgaben für dich“ (er steht jetzt in „Wartet auf dich“), der Bau-Stand als eigene Zeile (er steht im Stand, nur wenn der Bau rot ist oder gerade läuft) und die Status-Zeile unter der Überschrift (das Status-Wort steht in der Überschrift). Fristen stehen in der Zeitleiste oben und als Angabe der Zeilen in der Aufgabenliste; die Fristenliste über alle Projekte bleibt auf der Startseite. Auch der einfache Aufbau (Projekt ohne eigene Seite) zeigt fristen.toml und plan.toml nicht als eigene Abschnitte. Eine Meldung „Fertig: …“ oder „Bau rot“ steht nicht unter „Neue Meldungen“, solange die Zeitleiste die fertige Arbeit oder den roten Bau als eigene Zeile zeigt. Ohne Anmeldung stehen die vier Zahlen als Text da, weil die Aufgabenliste dann fehlt; lässt sich die Liste nicht laden, bleiben Fragen und Aufgaben in „Wartet auf dich“ beantwortbar.
+Was entfällt: das Unter-Dashboard mit den Kästen Arbeiten, Fristen und Zuletzt, der eigene Kasten „Aufgaben für dich“ (er steht jetzt in „Wartet auf dich“), der Bau-Stand als eigene Zeile (er steht im Stand, nur wenn der Bau rot ist oder gerade läuft) und die Status-Zeile unter der Überschrift (das Status-Wort steht in der Überschrift). Fristen stehen in der Zeitleiste oben und als Angabe der Zeilen in der Aufgabenliste; die Fristenliste über alle Projekte bleibt auf der Startseite. Auch der einfache Aufbau (Projekt ohne eigene Seite) zeigt fristen.toml und plan.toml nicht als eigene Abschnitte. Eine Meldung „Fertig: …“ oder „Bau rot“ steht nicht unter „Neue Meldungen“, solange die Zeitleiste die fertige Arbeit oder den roten Bau als eigene Zeile zeigt. Ohne Anmeldung lädt die Projektseite seit Schritt E2 nicht (Weiterleitung zur Anmeldung); lässt sich die Aufgabenliste nicht laden, bleiben Fragen und Aufgaben in „Wartet auf dich“ beantwortbar.
 
 Für Seite.svelte heißt das: nur Inhalt (Fluss, Tabellen, Texte, inhaltliche Zeiträume), kein Stand. Fortschritt in Prozent, Kanban und Gantt-Balken mit farbe = "laeuft" fallen weg, Kennzahlen bekommen stand oder berechnet, sobald die Seite umgestellt ist; die vier Teile zeigen dasselbe aus dem Tracker. Die Unterseiten zeigen ihren Inhalt, die vier Teile stehen auf der Übersicht; ist der Bau rot oder läuft er, steht er auch auf Unterseiten oben.
 
@@ -223,14 +223,14 @@ prioritaet = "irgendwann"'''
 text = '''
 Nach der Antwort auf „farbe“ rückt „name“ nach, sofort, auch bevor du „farbe“ herausnimmst. Die Seite zeigt „noch 2 Fragen warten“ ohne deren Text. Dieselbe Rechnung gilt überall: Startseite, „Anstehend“, Glocke (Frist-Meldungen), Aufgabenliste der Projektseite und der Baustein Fragen (der in deiner Seite.svelte jetzt auch nur die sichtbare Frage zeigt). Technisch: jede offene Frage hat in /api/anstehend und /stand/voll das Feld warteschlange = { platz, offen }; /api/projekte/<slug>/daten/fragen hat abgeleitet.warteschlange = { sichtbar, gestellt, weitere }.
 
-Fragen sind nicht frei lesbar. Fragen an den Inhaber sind persönlicher Inhalt. /api/projekte/<slug>/daten/fragen verlangt darum die Windows-Anmeldung (wie /stand/voll), und /api/projects/<slug> lässt daten.fragen ohne Anmeldung weg. Die anderen Dateien in daten/ bleiben frei wie die Seite. Ohne Anmeldung gibt kein Weg Fragentexte, Titel oder Notizen von Aufgaben und Arbeiten oder Texte von Meldungen heraus, nur Zahlen (/stand); ein Test geht dafür jeden freien Weg des Routers durch (src/frei_test.rs). Der Baustein Fragen zeigt ohne Anmeldung nur „Anmelden, um die Fragen an dich zu sehen“.
+Fragen sind nicht öffentlich. Fragen an den Inhaber sind persönlicher Inhalt. Seit Schritt E2 verlangen alle Projektwege die Anmeldung (/api/projects, /api/projekte/<slug> mit daten und stand), auch die Projektseite selbst; /api/projekte/<slug>/daten/fragen prüft im Handler zusätzlich die Anmeldung (sicherheit::GESCHUETZTE_DATEIEN). Ein Wächter-Test geht jeden Weg des Routers durch, roh, groß geschrieben und kodiert, und verlangt, dass er in sicherheit::oeffentlich steht oder ohne Anmeldung 401 gibt (src/frei_test.rs). Ohne Anmeldung lädt die Seite nicht, die Oberfläche leitet auf /anmelden um.
 
-Ohne Anmeldung nur Zahlen (Entscheidung der Architektur). Dasselbe gilt für:'''
+Angemeldet im Klartext (seit Schritt E2; vorher gab es ohne Anmeldung nur Zahlen):'''
 
 [[block]]
 punkte = [
-  'Offene Punkte (open = [...] in projekt.toml): In /api/projects, /api/projects/<slug> und /api/projekte/<slug> steht ohne Anmeldung nur open_zahl, in /stand nur notizen_zahl. Karte, Teil „Stand“ und einfacher Aufbau zeigen dann nur die Zahl.',
-  'Befunde der Prüfung: /api/pruefung und /api/pruefung/<slug> geben ohne Anmeldung nur die Zahlen (gesamt und je Projekt fehler, hinweise), die Sätze nur mit Anmeldung. Auch eine kaputte Seite oder Datei nennt ohne Anmeldung nur einen neutralen Satz statt des Fehlers (/api/projects, /api/projects/<slug>, /api/projekte/<slug> und …/daten/<name>); Datei und Zeile bleiben.',
+  'Offene Punkte (open = [...] in projekt.toml): /api/projects, /api/projects/<slug> und /api/projekte/<slug> nennen sie als Text.',
+  'Befunde der Prüfung: /api/pruefung und /api/pruefung/<slug> nennen die Zahlen (gesamt und je Projekt fehler, hinweise) und die Sätze. Eine kaputte Seite oder Datei nennt den Fehler mit Datei und Zeile (/api/projects, /api/projects/<slug>, /api/projekte/<slug> und …/daten/<name>).',
   'Wege der Backend-Module: geschützt, siehe Abschnitt 12.',
 ]
 
@@ -356,7 +356,7 @@ punkte = [
 
 [[block]]
 text = '''
-Nächste Frist je Projekt (/api/projekte/<slug>/stand): die früheste aus den offenen Aufgaben, der sichtbaren Frage, den Arbeiten mit Frist und den offenen Fristen aus fristen.toml mit Datum. Eine Frist aus der Datei, die vorbei ist, macht die Ampel rot („Eine Frist ist vorbei.“, mit Anmeldung mit Titel). zeitstrahl.toml zählt nie; eine Kennzahl „Nächste Frist“ von Hand braucht es nicht mehr. Ohne Anmeldung steht nur das Datum da.
+Nächste Frist je Projekt (/api/projekte/<slug>/stand): die früheste aus den offenen Aufgaben, der sichtbaren Frage, den Arbeiten mit Frist und den offenen Fristen aus fristen.toml mit Datum. Eine Frist aus der Datei, die vorbei ist, macht die Ampel rot („Eine Frist ist vorbei.“ mit Titel). zeitstrahl.toml zählt nie; eine Kennzahl „Nächste Frist“ von Hand braucht es nicht mehr.
 
 Fristenliste. In Seite.svelte:'''
 
@@ -368,7 +368,7 @@ beispiel = '''
 text = '''
 Sie zeigt alle offenen Fristen des Projekts nach Datum, die überfälligen zuerst; bewegliche ohne Datum am Ende mit „hängt an …“. Die Liste rechnet der Server (abgeleitet.fristen von /api/projekte/<slug>/daten/fristen). Fristen aus der Datei haben den Anker #frist-<kennung>; dorthin führt auch das Widget „Fristen“ oben auf der Seite. Im einfachen Aufbau (ohne Seite.svelte) steht sie von selbst unter „Fristen“. Alle Projekte zusammen: unten in „Anstehend“ (GET /api/fristen).
 
-Nur mit Anmeldung. Titel von Fristen und Namen von Ereignissen sind persönlicher Inhalt: /api/projekte/<slug>/daten/fristen und /api/fristen verlangen die Windows-Anmeldung, /api/projects/<slug> lässt daten.fristen ohne sie weg. Ohne Anmeldung gibt es nur das Datum der nächsten Frist (in zahlen).
+Nur mit Anmeldung. Titel von Fristen und Namen von Ereignissen sind persönlicher Inhalt: /api/projekte/<slug>/daten/fristen und /api/fristen verlangen die Windows-Anmeldung, seit Schritt E2 wie alle Projektwege (auch /api/projects/<slug>, das daten.fristen dann mitliefert). Ohne Anmeldung gibt es keine Frist, auch kein Datum.
 
 Archivierte Projekte. Eine Frist mit Datum folgt der Sicherheitsregel (sieben Tage vorher in „Anstehend“, neutraler Satz). Eine bewegliche Frist, deren Ereignis noch kein Datum hat, steht dort als „Eine Frist in einem archivierten Projekt hängt an einem Ereignis.“, je Projekt einmal, ohne Titel und ohne Farbe, mit Link zur Projektseite, bis das Ereignis ein Datum hat. Diese Zeile steht nur auf der Seite „Anstehend“, nicht auf der Startseite (sie hat kein Ende); Fristen mit Datum stehen in den sieben Tagen auch auf der Startseite. Lässt sich fristen.toml eines archivierten Projekts nicht lesen, steht dort ebenso „Fristen eines archivierten Projekts lassen sich nicht lesen.“, bis pruefe grün ist; die Fristen verschwinden nie still.
 
@@ -458,7 +458,7 @@ titel = 'Orte: Dateien und Ordner öffnen'
 text = '''
 Kurz für dich (Inhaber): Neben einem eingetragenen Ort steht ein Knopf „Öffnen“. Ein Klick öffnet die Datei mit dem Programm, das Windows dafür nimmt (Word, PDF-Anzeige …), einen Ordner im Explorer. Das geht nur, wenn du mit deinem eigenen Windows-Konto angemeldet bist; das Fenster erscheint in deiner Sitzung. Höchstens 10 Öffnungen je Minute.
 
-Browser öffnen keine file:-Adressen aus einer http-Seite. Das ist richtig so und wird nicht umgangen (Entscheidung lokal-oeffnen). Darum öffnet nie der Browser selbst, und es gibt kein „Pfad kopieren“: Orte tragen Chats in daten/orte.toml ein, und die Seite zeigt sie mit dem Baustein Orte. Angemeldet steht unter einem geprüften Ort sein voller Pfad als Text und als file:-Link; Klick, Mittelklick und Enter auf den Link öffnen genau wie der Knopf über den Server. Ohne Anmeldung zeigt die Seite keinen Pfad.
+Browser öffnen keine file:-Adressen aus einer http-Seite. Das ist richtig so und wird nicht umgangen (Entscheidung lokal-oeffnen). Darum öffnet nie der Browser selbst, und es gibt kein „Pfad kopieren“: Orte tragen Chats in daten/orte.toml ein, und die Seite zeigt sie mit dem Baustein Orte. Angemeldet steht unter einem geprüften Ort sein voller Pfad als Text und als file:-Link; Klick, Mittelklick und Enter auf den Link öffnen genau wie der Knopf über den Server. Ohne Anmeldung lädt die Seite seit Schritt E2 gar nicht.
 
 So trägst du Orte ein (Pfade in einfachen Anführungszeichen, dann bleiben die Rückstriche, wie sie sind):'''
 

@@ -22,7 +22,7 @@ use super::*;
 use crate::app::{AppState, beispiel_fuer_tests, router, router_angemeldet};
 
 /// Ein Testmodul für das Beispielprojekt `neu-daten` (hat daten/fortschritt.toml).
-struct Probe;
+pub(crate) struct Probe;
 
 fn zaehlen(k: &ProjektKontext, schluessel: &str) -> Result<(), Fehler> {
     let t = k.tabelle("protokoll")?;
@@ -94,7 +94,7 @@ impl Modul for Probe {
     }
 }
 
-fn zustand_mit(module: Vec<ModulEintrag>) -> AppState {
+pub(crate) fn zustand_mit(module: Vec<ModulEintrag>) -> AppState {
     let mut s = AppState::fuer_tests(&beispiel_fuer_tests());
     let reg = Register::fuer_zustand_ungeprueft(&s, module).mit_zeitlimits(Duration::from_millis(300), Duration::from_millis(300));
     reg.tabellen_einrichten(s.speicher.as_ref().unwrap());
@@ -221,7 +221,7 @@ async fn schreibende_wege_nur_mit_anmeldung_herkunft_und_64_kib() {
 }
 
 /// Ein Modul mit einem erklärten freien Weg (Etappe B2).
-struct MitFreiemWeg;
+pub(crate) struct MitFreiemWeg;
 
 impl Modul for MitFreiemWeg {
     fn herkunft(&self) -> dashboard_projekt::Herkunft {
@@ -241,18 +241,17 @@ impl Modul for MitFreiemWeg {
     }
 }
 
-/// Etappe B2: Modul-Wege sind standardmäßig geschützt, auch GET. Frei ist nur,
-/// was das Modul in `freie_wege` erklärt; ein Modul ohne Erklärung hat keinen freien Weg.
+/// Modul-Wege sind geschützt, auch GET; seit Schritt E2 auch die Wege, die
+/// ein Modul in `freie_wege` erklärt (die Methode wirkt nicht mehr).
 #[tokio::test]
-async fn modul_wege_geschuetzt_ausser_erklaerten() {
+async fn modul_wege_geschuetzt_auch_erklaerte() {
     let state = zustand_mit(vec![eintrag(Probe), eintrag(MitFreiemWeg)]);
     let frei = router(state.clone());
     let an = router_angemeldet(state.clone());
-    for pfad in ["/api/projekte/neu-form/x/zahlen", "/api/projekte/neu-form/x/stufe/2"] {
-        assert_eq!(schicke(&frei, get_req(pfad)).await.0, StatusCode::OK, "{pfad} ist erklärt frei");
-    }
-    #[cfg(windows)]
+    assert_eq!(MitFreiemWeg.freie_wege(), ["/zahlen", "/stufe/{nr}"], "erklärt, aber ohne Wirkung");
     for pfad in [
+        "/api/projekte/neu-form/x/zahlen",
+        "/api/projekte/neu-form/x/stufe/2",
         "/api/projekte/neu-form/x/geheim",
         "/api/projekte/neu-form/x/stufe",
         "/api/projekte/neu-form/x/stufe/2/mehr",
@@ -264,26 +263,20 @@ async fn modul_wege_geschuetzt_ausser_erklaerten() {
     }
     assert_eq!(schicke(&an, get_req("/api/projekte/neu-form/x/geheim")).await, (StatusCode::OK, json!({ "titel": "nur mit Anmeldung" })));
     assert_eq!(schicke(&an, get_req("/api/projekte/neu-daten/x/gut")).await, (StatusCode::OK, json!({ "slug": "neu-daten" })));
-    // Das Muster: `{…}` ist genau ein nicht leerer Abschnitt.
-    assert!(crate::projekte::weg_passt("/stufe/{nr}", "/stufe/7") && !crate::projekte::weg_passt("/stufe/{nr}", "/stufe/"));
-    assert!(!crate::projekte::weg_passt("/zahlen", "/zahlenx") && crate::projekte::weg_passt("/zahlen", "/zahlen/"));
-    assert!(state.projekte.frei_lesbar("/api/projekte/neu-form/x/zahlen") && !state.projekte.frei_lesbar("/api/projekte/neu-form/xzahlen"));
-    assert!(!state.projekte.frei_lesbar("/api/projekte/neu-daten/x/gut"), "ohne Erklärung nichts frei");
+    assert_eq!(schicke(&an, get_req("/api/projekte/neu-form/x/zahlen")).await, (StatusCode::OK, json!({ "offen": 3 })));
 }
 
 /// Hotfix Prozent, zweite Wand der Modul-Wege: Auch ohne die Schleusen davor
-/// (nur der Router der Module) geht ohne `Angemeldet` nur ein erklärt freier
-/// Weg; kodierte, doppelt kodierte und schreibende Wege bekommen 401.
+/// (nur der Router der Module) geht ohne `Angemeldet` kein Weg, seit Schritt
+/// E2 auch kein erklärt freier; kodierte und schreibende Wege bekommen 401.
 #[tokio::test]
 async fn modul_wand_ohne_schleusen() {
     let state = zustand_mit(vec![eintrag(Probe), eintrag(MitFreiemWeg)]);
     let nackt: Router = state.projekte.router::<()>();
     let hole = |pfad: &str| Request::get(pfad).body(Body::empty()).unwrap();
-    for pfad in ["/api/projekte/neu-form/x/zahlen", "/api/projekte/neu-form/x/stufe/2"] {
-        let res = nackt.clone().oneshot(hole(pfad)).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK, "{pfad}");
-    }
     for pfad in [
+        "/api/projekte/neu-form/x/zahlen",
+        "/api/projekte/neu-form/x/stufe/2",
         "/api/projekte/neu-form/x/geheim",
         "/api/projekte/neu-form/x/%67eheim",
         "/api/projekte/neu-form/x/%7Aahlen",
@@ -301,8 +294,6 @@ async fn modul_wand_ohne_schleusen() {
     let mut angemeldet = hole("/api/projekte/neu-form/x/geheim");
     angemeldet.extensions_mut().insert(crate::anmeldung::Angemeldet);
     assert_eq!(nackt.clone().oneshot(angemeldet).await.unwrap().status(), StatusCode::OK);
-    assert!(modul_weg_frei(&["/zahlen", "/stufe/{nr}"], "/stufe/%32") && !modul_weg_frei(&["/zahlen"], "/%7Aahlen"));
-    assert!(!modul_weg_frei(&["/stufe/{nr}"], "/stufe/%2532") && !modul_weg_frei(&["/stufe/{nr}"], "/stufe/%zz"));
 }
 
 /// Hooks aus Beobachter (entprellt), Vorgängen (nur eigene), Bau und Takt.

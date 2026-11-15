@@ -13,7 +13,7 @@
 //! Chat entscheidet, wie es weitergeht. Knöpfe, die wie „Etwas anderes“
 //! heißen, lehnt das Anlegen ab (die Oberfläche setzt den Knopf selbst).
 //!
-//! Alle Wege sind geschützt (Windows-Anmeldung, `sicherheit::geschuetzt`) und
+//! Alle Wege sind geschützt (Windows-Anmeldung, nicht in `sicherheit::oeffentlich`) und
 //! wie `/api/vorgaenge` ohne Herkunftskopf für curl erlaubt
 //! (`sicherheit::herkunft_pflicht`); fremde Seiten bleiben 403. Den Haken
 //! (`erledigt`) gibt es nur aus dem Browser. Die schreibenden Wege nehmen nur

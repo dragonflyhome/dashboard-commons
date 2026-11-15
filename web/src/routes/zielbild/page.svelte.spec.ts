@@ -3,19 +3,15 @@ import { join } from 'node:path';
 import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { SystemAbschnitt, ZielbildAntwort } from '$vertrag';
-import { SATZ_ZIELBILD_ANMELDEN } from '#lib/anmeldung.ts';
+import { leitetZurAnmeldung } from '../zur-anmeldung.testhilfe.ts';
 
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 const { default: Page } = await import('./+page.svelte');
 
 const PLATZHALTER = 'Im Zielbild steht noch kein Abschnitt.';
 
-function zeige(data: {
-	zielbild: ZielbildAntwort | null;
-	fehler: string | null;
-	anmelden?: string | null;
-}) {
-	return render(Page, { data: { anmelden: null, ...data }, params: {} } as never);
+function zeige(data: { zielbild: ZielbildAntwort | null; fehler: string | null }) {
+	return render(Page, { data, params: {} } as never);
 }
 
 describe('/zielbild (Etappe 4d)', () => {
@@ -194,26 +190,8 @@ describe('/zielbild mit Blöcken', () => {
 	});
 });
 
-describe('/zielbild ohne Windows-Anmeldung (Abnahme 4d)', () => {
-	it('401 vom Server: der Weg über Edge, wie bei /anstehend, nicht „lässt sich nicht laden“', async () => {
-		const { load } = await import('./+page.ts');
-		const fetch401 = (() =>
-			Promise.resolve(
-				new Response(
-					JSON.stringify({ fehler: 'Bitte mit dem Windows-Konto anmelden.', art: 'anmeldung' }),
-					{ status: 401, headers: { 'content-type': 'application/json' } }
-				)
-			)) as typeof fetch;
-		const data = (await load({ fetch: fetch401, depends: () => undefined } as never)) as {
-			zielbild: null;
-			fehler: string | null;
-			anmelden: string | null;
-		};
-		expect(data).toEqual({ zielbild: null, fehler: null, anmelden: SATZ_ZIELBILD_ANMELDEN });
-		zeige(data);
-		const link = screen.getByRole('link', { name: 'http://localhost:8787' });
-		expect(link.closest('p')?.textContent).toBe(`${SATZ_ZIELBILD_ANMELDEN}.`);
-		expect(document.body.textContent).not.toMatch(/lässt sich gerade nicht laden/);
-		expect(screen.queryByText(PLATZHALTER)).toBeNull();
+describe('/zielbild ohne Anmeldung (Schritt E2)', () => {
+	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
+		expect(await leitetZurAnmeldung('/zielbild')).toBe('/anmelden?ziel=%2Fzielbild');
 	});
 });

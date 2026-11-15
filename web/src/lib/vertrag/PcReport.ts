@@ -6,7 +6,7 @@ import type { Snapshot } from "./Snapshot";
 import type { SysAppsRechner } from "./SysAppsRechner";
 
 /**
- * `/api/pc`: die Rechner-Werte, frei für jeden (`[anmeldung]`). Die
+ * `/api/pc`: die Rechner-Werte, seit Schritt E2 nur mit Anmeldung. Die
  * Benutzer-Daten stehen seit Etappe 7b getrennt in `PcBenutzer`
  * (`/api/pc/benutzer`, nur für das Windows-Konto des Inhabers).
  */

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { json } from './anstehend.beispiel.ts';
-import type { ServerStand } from '$vertrag';
+import type { ServerStand, ServerStandFrei } from '$vertrag';
 
 // Kopfleiste, Fassung 3, Auflage aus der Abnahme: Der Zähler der
 // Aktualitätsprüfung bleibt beim Wechsel zwischen freiem und geschütztem
@@ -26,7 +26,6 @@ vi.mock('./freikanal.svelte.ts', () => ({
 		get aktiv() {
 			return kanal.aktiv;
 		},
-		onInhalt: an('freiInhalt'),
 		onFassung: an('fassung'),
 		onBereit: an('bereit')
 	}
@@ -49,6 +48,8 @@ const stand = (ereignis: number): ServerStand => ({
 	inhalt: server.inhalt,
 	fassung: 'build'
 });
+/** Schritt E2: der freie Stand ohne Inhaltsversion. */
+const frei = (ereignis: number): ServerStandFrei => ({ ereignis, fassung: 'build' });
 const gefragt: string[] = [];
 /** Ist `halten` gesetzt, wartet die Antwort, bis der Test sie freigibt. */
 let halten: Promise<void> | null = null;
@@ -59,7 +60,7 @@ const f = vi.fn(async (url: string) => {
 	const res =
 		voll && !server.angemeldet
 			? json({ fehler: 'x', art: 'anmeldung' }, 401)
-			: json(stand(voll ? server.voll : server.frei));
+			: json(voll ? stand(server.voll) : frei(server.frei));
 	if (halten !== null) await halten;
 	return res;
 });
@@ -70,14 +71,18 @@ function geschuetztesEreignis(ankommen = true): void {
 	server.voll += 1;
 	if (ankommen) melden('change');
 }
-/** Ein freies Ereignis (etwa `projekt`): beide Zähler; ankommen auf dem offenen Kanal. */
-function freiesEreignis(kommtAn: 'frei' | 'geschuetzt' | null): void {
-	server.frei += 1;
+/** Ein Inhalt (etwa `projekt`): seit Schritt E2 nur auf dem geschützten Kanal. */
+function inhaltEreignis(ankommen = true): void {
 	server.voll += 1;
 	server.inhalt += 1;
 	const a = { projekte: ['schaufenster'], daten: [], sammel: false, version: server.inhalt };
-	if (kommtAn === 'frei') melden('freiInhalt', a);
-	if (kommtAn === 'geschuetzt') melden('liveInhalt', a);
+	if (ankommen) melden('liveInhalt', a);
+}
+/** Das einzige freie Ereignis mit Zähler (`fassung`): beide Zähler; ankommen auf dem offenen Kanal. */
+function freiesEreignis(kommtAn: 'frei' | 'geschuetzt' | null): void {
+	server.frei += 1;
+	server.voll += 1;
+	if (kommtAn !== null) melden('fassung', { ordner: 'x', dauer_ms: 1 }, kommtAn);
 }
 
 async function bereit(k: 'frei' | 'geschuetzt'): Promise<void> {
@@ -114,9 +119,8 @@ describe('Aktualitätsprüfung beim Kanalwechsel', () => {
 		await bereit('geschuetzt');
 		expect(a.zustand.basis).toEqual({ stand: stand(41), voll: true });
 		geschuetztesEreignis();
+		inhaltEreignis();
 		freiesEreignis('geschuetzt');
-		melden('fassung', { ordner: 'x', dauer_ms: 1 }, 'geschuetzt');
-		server.voll += 1;
 		gefragt.length = 0;
 		expect(await a.pruefen(nachziehen)).toBe('aktuell');
 		expect(gefragt).toEqual(['/api/stand/voll']);
@@ -137,13 +141,11 @@ describe('Aktualitätsprüfung beim Kanalwechsel', () => {
 		geschuetztesEreignis();
 		// Abmelden: Der freie steht. Was der geschützte vorher brachte, zählt frei nicht.
 		await bereit('frei');
-		expect(a.zustand).toEqual({ basis: { stand: stand(5), voll: false }, empfangen: 0 });
+		expect(a.zustand).toEqual({ basis: { stand: frei(5), voll: false }, empfangen: 0 });
 		freiesEreignis('frei');
-		melden('fassung', { ordner: 'y', dauer_ms: 1 }, 'frei');
-		server.frei += 1;
-		server.voll += 1;
-		// Geschützte Schreibvorgänge ändern die freie Nummer nicht.
+		// Geschützte Schreibvorgänge und Inhalte ändern die freie Nummer nicht.
 		geschuetztesEreignis(false);
+		inhaltEreignis(false);
 		gefragt.length = 0;
 		expect(await a.pruefen(nachziehen)).toBe('aktuell');
 		expect(gefragt).toEqual(['/api/stand']);
@@ -177,6 +179,20 @@ describe('Aktualitätsprüfung beim Kanalwechsel', () => {
 		aus();
 	});
 
+	it('Schritt E2: erst frei (ohne Inhaltsversion), dann angemeldet: eine verpasste Inhaltsversion fällt auf', async () => {
+		const a = new Aktualitaet();
+		const aus = a.start(fetchFn);
+		await vi.waitFor(() => {
+			expect(a.zustand.basis?.stand.ereignis).toBe(5);
+		});
+		await bereit('geschuetzt');
+		// Die Version steigt ohne Ereignis (etwa data/schluessel.toml): das fehlt.
+		server.inhalt += 1;
+		expect(await a.pruefen(nachziehen)).toBe('nachgeholt');
+		expect(await a.pruefen(nachziehen)).toBe('aktuell');
+		aus();
+	});
+
 	it('Sitzung weg (401 auf /voll): kein Vergleich mit dem alten freien Bezug', async () => {
 		const a = new Aktualitaet();
 		const aus = a.start(fetchFn);
@@ -186,7 +202,7 @@ describe('Aktualitätsprüfung beim Kanalwechsel', () => {
 		await bereit('geschuetzt');
 		// Während der geschützte galt, kamen freie Ereignisse nur dort an.
 		freiesEreignis('geschuetzt');
-		freiesEreignis('geschuetzt');
+		inhaltEreignis();
 		// Widerruf: /voll gibt 401, die Seite fragt frei; der alte freie Bezug gilt nicht.
 		server.angemeldet = false;
 		expect(await a.pruefen(nachziehen)).toBe('abgeglichen');

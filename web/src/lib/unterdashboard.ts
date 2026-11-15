@@ -1,16 +1,14 @@
 /**
  * Daten des Unter-Dashboards einer Projektseite (Etappe A1, Konzept
- * [unter_dashboard]): `/api/projekte/<slug>/stand` ist frei lesbar (Ampel,
- * Grund, Zahlen, nächste Frist, Notizen, Arbeiten in Kürze; die Seite liest
- * ihn über den geschützten Weg `/stand/voll`, siehe `ladeStand`); die Einträge
- * mit Titeln kommen aus `/api/anstehend?projekt=<slug>` und nur mit
- * Windows-Anmeldung. Ohne Anmeldung zeigt die Reihe nur, was `/stand` hat.
- * Die Karte „Aktualisierungen“ (Etappe A3) kommt nur mit Anmeldung, aus
- * `/api/anstehend?projekt=` (mit Vorgängen und allen Titeln). Ohne Anmeldung
- * hat `/stand` nur die Zahlen der Meldungen (`meldungen`: neu, gesamt).
+ * [unter_dashboard]): `/api/projekte/<slug>/stand` (Ampel, Grund, nächste
+ * Frist, Notizen, Arbeiten in Kürze; die Seite liest ihn über `/stand/voll`,
+ * siehe `ladeStand`); die Einträge mit Titeln kommen aus
+ * `/api/anstehend?projekt=<slug>`, ebenso die Karte „Aktualisierungen“
+ * (Etappe A3, mit Vorgängen und allen Titeln). Seit Schritt E2 verlangen alle
+ * diese Wege die Anmeldung; ohne sie lädt die Projektseite nicht.
  *
  * Etappe 3a+: Der Server liefert Einträge und Aktualisierungen ungeordnet
- * und ohne Zahlen (ohne Anmeldung nur Zahlen); `standAnsicht` und
+ * und ohne Zahlen; `standAnsicht` und
  * `auswerten` aus anstehend.ts machen daraus, was das Unter-Dashboard zeigt.
  */
 import { API } from './api/client';
@@ -82,7 +80,6 @@ export function istProjektStand(x: unknown): x is ProjektStand {
 		typeof x.sichtbar === 'boolean' &&
 		typeof x.speicher_fehlt === 'boolean' &&
 		[x.eintraege, x.aktualisierungen, x.notizen].every(Array.isArray) &&
-		(x.zahlen === null || obj(x.zahlen)) &&
 		(x.fristen === undefined || Array.isArray(x.fristen))
 	);
 }

@@ -83,7 +83,8 @@ pub async fn web(State(state): State<AppState>, uri: Uri) -> Response {
     let ordner = state.web.ordner();
     let index = ordner.join("index.html");
     let candidate = if rel.as_os_str().is_empty() { index.clone() } else { ordner.join(&rel) };
-    let (file, status) = if candidate.is_file() && liegt_unter(&candidate, &ordner) {
+    let echt = rel.as_os_str().is_empty() || genau_so_geschrieben(&candidate, &ordner, &rel);
+    let (file, status) = if candidate.is_file() && liegt_unter(&candidate, &ordner) && echt {
         (candidate, StatusCode::OK)
     } else if rel.starts_with("_app") {
         return nicht_gefunden(uri.path());
@@ -180,6 +181,25 @@ pub fn sicherer_teilpfad(pfad: &str) -> Option<std::path::PathBuf> {
     Some(aus)
 }
 
+/// Gibt es `rel` (aus [`sicherer_teilpfad`]) als Datei im Ordner, aus dem die
+/// Oberfläche gerade kommt? Dieselbe Prüfung wie in [`web`]; nur solche
+/// Bau-Dateien sind ohne Anmeldung öffentlich (`sicherheit::oeffentlich`).
+pub fn bau_datei(web: &crate::app::WebOrt, rel: &std::path::Path) -> bool {
+    let ordner = web.ordner();
+    let datei = ordner.join(rel);
+    datei.is_file() && liegt_unter(&datei, &ordner) && genau_so_geschrieben(&datei, &ordner, rel)
+}
+
+/// Heißt die Datei auf der Platte Teil für Teil genau `rel`? Windows und macOS
+/// finden `INDEX.HTML` und `index.html.` als `index.html`; öffentlich ist nur
+/// die echte Schreibweise, damit die Liste nicht vom Dateisystem abhängt.
+fn genau_so_geschrieben(datei: &std::path::Path, ordner: &std::path::Path, rel: &std::path::Path) -> bool {
+    match (datei.canonicalize(), ordner.canonicalize()) {
+        (Ok(d), Ok(o)) => d.strip_prefix(&o).is_ok_and(|echt| echt.components().map(|c| c.as_os_str()).eq(rel.components().map(|c| c.as_os_str()))),
+        _ => false,
+    }
+}
+
 /// Liegt `datei` (aufgelöst, ohne Verknüpfungen) wirklich unter `ordner`?
 fn liegt_unter(datei: &std::path::Path, ordner: &std::path::Path) -> bool {
     match (datei.canonicalize(), ordner.canonicalize()) {
@@ -203,3 +223,47 @@ const NOT_BUILT: &str = "<!doctype html><html lang=\"de\"><meta charset=\"utf-8\
 Bitte in einer Minute neu laden.</p>\
 <p><a href=\"/\">Zur Übersicht</a></p>\
 </body></html>";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Method;
+
+    /// Befund zu E2: Öffentlich ist eine Bau-Datei nur in ihrer echten
+    /// Schreibweise. Windows und macOS fänden `INDEX.HTML` und `index.html.`
+    /// sonst als `index.html` (Prüfung mit dem echten Dateisystem). Unter
+    /// `/_app/` ist jeder sichere Teilpfad öffentlich; dort liefert `web` nur die
+    /// echte Schreibweise (`app::tests::adressen_mit_laufwerk_wurzel_oder_strom_sind_404`).
+    #[test]
+    fn bau_datei_nur_in_echter_schreibweise() {
+        let web = std::env::temp_dir().join(format!("dashboard-bau-schreibweise-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&web);
+        std::fs::create_dir_all(web.join("_app").join("immutable")).unwrap();
+        std::fs::create_dir_all(web.join("icons")).unwrap();
+        std::fs::write(web.join("index.html"), "<!doctype html>").unwrap();
+        std::fs::write(web.join("favicon.ico"), b"ico").unwrap();
+        std::fs::write(web.join("icons").join("symbol-192.png"), b"png").unwrap();
+        std::fs::write(web.join("_app").join("version.json"), "{}").unwrap();
+        std::fs::write(web.join("_app").join("immutable").join("x.js"), "export {};").unwrap();
+        let ort = crate::app::WebOrt::neu(web.clone());
+        let oeff = |p: &str| crate::sicherheit::oeffentlich(&Method::GET, p, &|rel| bau_datei(&ort, rel));
+        for p in ["/index.html", "/favicon.ico", "/icons/symbol-192.png", "/_app/version.json", "/_app/immutable/x.js"] {
+            assert!(oeff(p), "{p}");
+        }
+        for p in [
+            "/INDEX.HTML",
+            "/Index.html",
+            "/index.html.",
+            "/FAVICON.ICO",
+            "/favicon.ico.",
+            "/ICONS/symbol-192.png",
+            "/icons/symbol-192.png.",
+            "/_APP/version.json",
+            "/_App/version.json",
+            "/_app./version.json",
+        ] {
+            assert!(!oeff(p), "{p}");
+        }
+        let _ = std::fs::remove_dir_all(&web);
+    }
+}

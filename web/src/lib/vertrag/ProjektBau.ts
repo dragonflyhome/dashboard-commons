@@ -2,8 +2,8 @@
 import type { SeitenBau } from "./SeitenBau";
 
 /**
- * Etappe 4c: der Bau-Stand eines Projekts, frei in `/api/projects`.
- * Ohne Satz: den gibt es nur geschützt unter `/api/bauen`.
+ * Etappe 4c: der Bau-Stand eines Projekts in `/api/projects`.
+ * Ohne Satz: den gibt es nur unter `/api/bauen`.
  */
 export type ProjektBau = { zustand: SeitenBau, 
 /**
@@ -17,6 +17,6 @@ letzte_gute: string | null,
  * Die Oberfläche zeigt es nicht mehr; es bleibt für Chats
  * in `/api/projects` (sehen, ob ein bestellter Bau die Seite erreicht hat).
  * Fehlt, wenn die Seite gerade nicht zu sehen ist. Nur eine Zeit, kein
- * Satz: darum frei.
+ * Satz.
  */
 gebaut_um?: string, };

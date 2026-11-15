@@ -49,6 +49,7 @@ const {
 const { apiStand } = await import('#lib/api/antwortet.svelte.ts');
 const { fassung, umfeld } = await import('#lib/fassung.svelte.ts');
 const { bauLage } = await import('#lib/bau.svelte.ts');
+const { zugang } = await import('#lib/zugang.ts');
 const { default: FassungWache } = await import('./FassungWache.svelte');
 
 // Verbindung und Bau im Test von Hand (sonst freier Kanal und Bau-Lage).
@@ -75,6 +76,8 @@ beforeEach(() => {
 	lage.echt = false;
 	kanalStand.wert = 'offen';
 	kanalStand.geschuetzt = true;
+	// Schritt E2: die Projektliste nur angemeldet; die Fälle „Kanal noch frei“ sind angemeldet.
+	zugang.setzen('da');
 	stand.mockReset();
 	Object.defineProperty(document, 'visibilityState', {
 		configurable: true,
@@ -90,6 +93,7 @@ afterEach(() => {
 	apiStand.antwortet = true;
 	document.body.innerHTML = '';
 	bauLage.liste(null);
+	zugang.vergessen();
 	vi.unstubAllGlobals();
 });
 
@@ -381,7 +385,7 @@ describe('FassungWache', () => {
 		}
 	});
 
-	it('ohne Anmeldung: holt die Projektliste beim Ereignis fassung, alle paar Sekunden während 3 und vor dem Neuladen', async () => {
+	it('Kanal noch frei: holt die Projektliste beim Ereignis fassung, alle paar Sekunden während 3 und vor dem Neuladen', async () => {
 		kanalStand.geschuetzt = false;
 		lage.echt = true;
 		let baut = false;
@@ -415,7 +419,7 @@ describe('FassungWache', () => {
 		expect(neuLaden).toHaveBeenCalledTimes(1);
 	});
 
-	it('ohne Anmeldung: nennt die Liste vor dem Neuladen einen neuen Bau, gilt 3 und nichts lädt (echter Weg)', async () => {
+	it('Kanal noch frei: nennt die Liste vor dem Neuladen einen neuen Bau, gilt 3 und nichts lädt (echter Weg)', async () => {
 		kanalStand.geschuetzt = false;
 		lage.echt = true;
 		const abruf = projekteAbruf((n) => n > 1);
@@ -429,7 +433,7 @@ describe('FassungWache', () => {
 		expect(neuLaden).not.toHaveBeenCalled();
 	});
 
-	it('ohne Anmeldung: eine ältere Liste, die später ankommt, überschreibt die neuere nicht', async () => {
+	it('Kanal noch frei: eine ältere Liste, die später ankommt, überschreibt die neuere nicht', async () => {
 		kanalStand.geschuetzt = false;
 		const antworten: ((r: Response) => void)[] = [];
 		vi.stubGlobal(
@@ -451,7 +455,7 @@ describe('FassungWache', () => {
 		expect(bauLage.freiLaeuft).toBe(false);
 	});
 
-	it('ohne Anmeldung: Liste ohne Antwort ändert den Bau-Stand nicht und wirft nicht', async () => {
+	it('Kanal noch frei: Liste ohne Antwort ändert den Bau-Stand nicht und wirft nicht', async () => {
 		kanalStand.geschuetzt = false;
 		lage.echt = true;
 		bauLage.liste([{ slug: 'probe', bau: { zustand: 'laeuft', zeit: null } }] as never);
@@ -463,6 +467,19 @@ describe('FassungWache', () => {
 		await geladen();
 		expect(bauLage.freiLaeuft).toBe(true);
 		expect(apiStand.antwortet).toBe(false);
+	});
+
+	it('Schritt E2, ohne Anmeldung (fehlt oder fremd): nie die Projektliste, auch nicht vor dem Neuladen', async () => {
+		for (const z of ['fehlt', 'fremd'] as const) {
+			kanalStand.geschuetzt = false;
+			zugang.setzen(z);
+			const abruf = projekteAbruf(() => true);
+			neueFassung();
+			vi.advanceTimersByTime(SELBST_NEU_MS);
+			await geladen();
+			expect(abruf).not.toHaveBeenCalled();
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it('angemeldet: keine Liste (das Ereignis bau kommt live)', async () => {

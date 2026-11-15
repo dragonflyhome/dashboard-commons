@@ -9,13 +9,8 @@
  *   neutral geordnet, ohne Zahlen; cargo test hält die Dateien aktuell).
  * - `faelle/`: die Fälle der früheren Sortier-Tests in Rust (src/anstehend.rs).
  *
- * Gewollte Unterschiede (einzeln, nur auf dem freien Weg ohne Anmeldung;
- * Entscheidung „/stand ohne Anmeldung nur Zahlen“):
- * 1. Keine Arbeiten mehr mit Titel, nur ihre Zahl je Gruppe (`weitere`).
- * 2. Keine aktuelle Frage mehr, nur die Zahl (`frage.aktuell` null, `weitere` 0).
- * 3. Ampel rot wegen einer Frist, die vorbei ist: ohne Titel des Eintrags,
- *    auch bei Arbeiten und Fragen („Die Frist einer Arbeit ist vorbei.“).
- * 4. Etappe B2: Notizen (open[]) nur als Zahl (`notizen_zahl`).
+ * Den freien Weg ohne Anmeldung (`/stand` nur mit Zahlen) gibt es seit
+ * Schritt E2 nicht mehr; seine Vorlagen und Vergleiche sind entfallen.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,7 +25,6 @@ import {
 	nachPrioritaet,
 	nachSchwerpunkt,
 	standAnsicht,
-	standZahlen,
 	unterDashboardAnsicht,
 	zaehlen,
 	type AnstehendZaehler,
@@ -267,50 +261,10 @@ describe('Gleichwertig mit dem Server vor 3a+: Unter-Dashboard', () => {
 		(slug) => {
 			const a = lies(`alt/stand-${slug}-voll.json`) as AltStand;
 			const roh = lies(`neu/stand-${slug}-voll.json`) as ProjektStand;
-			expect(roh.zahlen).toBeNull();
+			expect(roh).not.toHaveProperty('zahlen');
 			expect(vergleichbar(standAnsicht(roh))).toEqual(vergleichbar(a));
 		}
 	);
-
-	it.each(SLUGS)(
-		'/stand ohne Anmeldung %s: Zahlen gleich, Einträge nur als Zahl (gewollt)',
-		(slug) => {
-			const a = lies(`alt/stand-${slug}-frei.json`) as AltStand;
-			const roh = lies(`neu/stand-${slug}-frei.json`) as ProjektStand;
-			expect(roh.eintraege).toEqual([]);
-			const n = vergleichbar(standAnsicht(roh));
-			const v = vergleichbar(a);
-			expect(n.kurz).toEqual(v.kurz);
-			expect(n.aufgaben).toEqual(v.aufgaben);
-			expect(n.meldungen).toEqual(v.meldungen);
-			expect(n.aktualisierungen).toEqual([]);
-			// Gewollt 4 (Etappe B2): Notizen (open[]) ohne Anmeldung nur als Zahl.
-			expect(n.notizen).toEqual([]);
-			expect(standAnsicht(roh).notizen_zahl).toBe(v.notizen.length);
-			expect({ ...n.gesamt, grund: '' }).toEqual({ ...v.gesamt, grund: '' });
-			// Gewollt 1: Arbeiten nur als Zahl, die Summe je Gruppe bleibt.
-			for (const g of ['laufen', 'wartet', 'als_naechstes'] as const) {
-				expect(n.arbeiten[g].ids).toEqual([]);
-				expect(n.arbeiten[g].weitere).toBe(v.arbeiten[g].ids.length + v.arbeiten[g].weitere);
-			}
-			// Gewollt 2: keine aktuelle Frage ohne Anmeldung.
-			expect(n.frage).toEqual({ aktuell: null, weitere: 0 });
-		}
-	);
-
-	it('gewollt 3: der Satz zur Ampel ohne Titel, nur dort, wo der alte ihn nannte', () => {
-		const satz = (slug: string): [string, string] => [
-			(lies(`alt/stand-${slug}-frei.json`) as AltStand).gesamt.grund,
-			standAnsicht(lies(`neu/stand-${slug}-frei.json`) as ProjektStand).gesamt.grund
-		];
-		expect(satz('beispiel')).toEqual(['Ein Fehler ist offen.', 'Ein Fehler ist offen.']);
-		expect(satz('dashboard')).toEqual(['Ein Fehler ist offen.', 'Ein Fehler ist offen.']);
-		// Früher nannte der freie Weg den Titel einer Arbeit; jetzt nicht mehr.
-		expect(satz('hallo')).toEqual([
-			'Die Frist von „Arbeit ar-20261029-0010“ ist vorbei.',
-			'Die Frist einer Arbeit ist vorbei.'
-		]);
-	});
 });
 
 describe('Unter-Dashboard mit Anmeldung: unterDashboardAnsicht gegen die Vorlage', () => {
@@ -393,21 +347,9 @@ describe('Unter-Dashboard mit Anmeldung: unterDashboardAnsicht gegen die Vorlage
 	});
 });
 
-describe('Freier Weg: die Zahlen des Servers gleich der Zählung im Web', () => {
-	it.each(SLUGS)('%s: zahlen aus /stand = standZahlen aus /stand/voll', (slug) => {
-		const frei = lies(`neu/stand-${slug}-frei.json`) as ProjektStand;
-		const voll = lies(`neu/stand-${slug}-voll.json`) as ProjektStand;
-		expect(frei.zahlen).not.toBeNull();
-		expect(standZahlen(voll.eintraege, voll.aktualisierungen, [], voll.fertig_7_tage ?? 0)).toEqual(
-			frei.zahlen
-		);
-		// Etappe B8: die fertigen Arbeiten als Fakt auf beiden Wegen gleich.
-		expect(voll.fertig_7_tage).toBe(frei.zahlen?.fertig_7_tage);
-		expect(frei.fertig_7_tage).toBe(frei.zahlen?.fertig_7_tage);
-	});
-
-	it('Etappe B8: dashboard hat zwei fertige Arbeiten in sieben Tagen, eine ältere zählt nicht', () => {
-		expect((lies('neu/stand-dashboard-frei.json') as ProjektStand).zahlen?.fertig_7_tage).toBe(2);
+describe('Etappe B8: fertige Arbeiten als Fakt des Servers', () => {
+	it('dashboard hat zwei fertige Arbeiten in sieben Tagen, eine ältere zählt nicht', () => {
+		expect((lies('neu/stand-dashboard-voll.json') as ProjektStand).fertig_7_tage).toBe(2);
 	});
 });
 

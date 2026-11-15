@@ -7,16 +7,16 @@ import type { Befund } from "./Befund";
  */
 export type PruefungProjekt = { slug: string, 
 /**
- * Erst die Kopfdatei, dann `daten/`, dann `assets/`. Etappe B2: nur mit
- * Windows-Anmeldung; ohne ist die Liste leer, es bleiben die Zahlen.
+ * Erst die Kopfdatei, dann `daten/`, dann `assets/`. Der Weg verlangt
+ * seit Schritt E2 die Anmeldung.
  */
 befunde: Array<Befund>, 
 /**
- * Etappe B2: Zahl der Fehler unter den Befunden, auch ohne Anmeldung.
+ * Etappe B2: Zahl der Fehler unter den Befunden.
  * In TypeScript optional (ältere Beispiele).
  */
 fehler?: number, 
 /**
- * Etappe B2: Zahl der Hinweise, auch ohne Anmeldung.
+ * Etappe B2: Zahl der Hinweise unter den Befunden.
  */
 hinweise?: number, };

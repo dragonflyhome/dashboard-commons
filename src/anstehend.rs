@@ -10,14 +10,13 @@
 //! wartet_auf_dich, Schwerpunkt mit reihenfolge) in einer festen, neutralen
 //! Ordnung (Projekt, Art, Kennung). Ordnen, „eine Frage auf einmal“,
 //! Gruppieren und Zählen macht die Oberfläche an einer Stelle
-//! (`web/src/lib/anstehend.ts`). Ausnahme: `/stand` ohne Anmeldung liefert
-//! keine Einträge, darum dort die Zahlen als Fakt ([`stand_zahlen`]).
+//! (`web/src/lib/anstehend.ts`).
 //!
 //! Etappe B2 (Fragen-Warteschlange): Welche Frage eines Projekts sichtbar
 //! ist, rechnet der Server an einer Stelle ([`fragen_warteschlange`]) und
 //! schreibt jeder offenen Frage ihren Platz an (`warteschlange`). Die
-//! Oberfläche (`auswaehlen`), die Frist-Meldungen, die Zahlen ohne
-//! Anmeldung, das Backlog und der Baustein `Fragen` nehmen alle diesen Platz.
+//! Oberfläche (`auswaehlen`), die Frist-Meldungen, die Ampel des Stands,
+//! das Backlog und der Baustein `Fragen` nehmen alle diesen Platz.
 //!
 //! Eine Quelle: `/api/anstehend` und `/api/projekte/<slug>/stand` rufen beide
 //! [`anstehend`] bzw. [`stand`] mit einem [`Inhalt`]. Seit Etappe 2d kommt
@@ -52,11 +51,10 @@ use crate::speicher::arbeiten::{AusDemSpeicher, einstufung_schluessel};
 use crate::speicher::meldungen;
 use crate::vertrag::api::{
     Aktualisierung, AmpelGrund, AnstehendEintrag, AnstehendListe, Arbeit, ArbeitsStand, ArchivFrist, EintragsArt, FrageAngabe, FragenAuswahl, FragenPlatz,
-    FristStufe, GesamtStand, Meldung, MeldungAngabe, MeldungsZahlen, ProjektStand, StandAmpel, StandZahlen, Stufe, StufenAngabe, StufenGrund,
+    FristStufe, GesamtStand, Meldung, MeldungAngabe, ProjektStand, StandAmpel, Stufe, StufenAngabe, StufenGrund,
 };
 use crate::vertrag::bedeutung::Bedeutung;
 use crate::vertrag::daten::{DatenInhalt, Frage};
-use crate::vertrag::fristen::FristZeile;
 use crate::vertrag::gruppen::{self, GruppeAnzeige};
 use crate::vertrag::schwerpunkte::{self, SONSTIGES, Schwerpunkte};
 
@@ -159,7 +157,7 @@ pub fn fragen_warteschlange(fragen: &[(Stufe, Option<&str>)]) -> Vec<usize> {
 /// die sichtbare Frage (Platz 1 in [`fragen_warteschlange`]); alle anderen
 /// Einträge bleiben. Gebraucht dort, wo der Server selbst etwas daraus macht:
 /// Frist-Meldungen (eine Meldung zeigt auf die Frage, die der Inhaber sieht),
-/// die Zahlen des freien Wegs und das Backlog. Die Oberfläche
+/// die Ampel des Stands und das Backlog. Die Oberfläche
 /// (`web/src/lib/anstehend.ts`, `auswaehlen`) nimmt denselben Platz.
 pub fn eine_frage_je_projekt(liste: &[AnstehendEintrag]) -> Vec<&AnstehendEintrag> {
     liste.iter().filter(|e| e.art != EintragsArt::Frage || ist_sichtbar(e)).collect()
@@ -592,8 +590,7 @@ pub fn alle_eintraege(inhalt: &Inhalt) -> Vec<AnstehendEintrag> {
 /// Vorgänge der letzten sieben Tage, neutral nach Quelle und Kennung
 /// (Etappe 3a+: welche fünf zuerst stehen, wählt die Oberfläche). Nur mit
 /// Windows-Anmeldung: Titel und Texte von Meldungen und Vorgängen nennen
-/// Aufgaben, Antworten, Dateipfade und was die Chats schreiben. Ohne
-/// Anmeldung gibt es nur [`meldungs_zahlen`].
+/// Aufgaben, Antworten, Dateipfade und was die Chats schreiben.
 pub fn aktualisierungen(inhalt: &Inhalt, slug: &str) -> Vec<Aktualisierung> {
     let mut liste: Vec<Aktualisierung> = inhalt
         .speicher
@@ -648,20 +645,6 @@ pub fn aktualisierungen(inhalt: &Inhalt, slug: &str) -> Vec<Aktualisierung> {
     liste.extend(vorgaenge.into_values());
     liste.sort_by(|a, b| (&a.quelle, &a.id).cmp(&(&b.quelle, &b.id)));
     liste
-}
-
-/// Wie viele Meldungen das Projekt hat (außerhalb des Archivs) und wie viele
-/// davon ungelesen sind: nur Zahlen, für den freien Weg.
-pub fn meldungs_zahlen(inhalt: &Inhalt, slug: &str) -> MeldungsZahlen {
-    let eigene = inhalt.speicher.meldungen.iter().filter(|m| m.projekt == slug);
-    let (mut neu, mut gesamt) = (0, 0);
-    for m in eigene {
-        gesamt += 1;
-        if m.gelesen.is_none() {
-            neu += 1;
-        }
-    }
-    MeldungsZahlen { neu, gesamt }
 }
 
 /// `GET /api/anstehend`: alle Einträge nach `filter`, neutral geordnet,
@@ -785,38 +768,6 @@ fn frueheste_frist<'a>(kandidaten: impl Iterator<Item = &'a AnstehendEintrag>) -
         .min_by(|a, b| (&a.frist, a.stufe.wirksam, &a.erstellt, a.art, &a.id).cmp(&(&b.frist, b.stufe.wirksam, &b.erstellt, b.art, &b.id)))
 }
 
-/// Die Zahlen des freien Wegs (Ausnahme aus dem Zielbild). Dieselbe
-/// Zählung macht die Oberfläche mit Anmeldung aus `eintraege` und
-/// `aktualisierungen` (`web/src/lib/anstehend.ts`, `standZahlen`); ein
-/// vitest-Fall hält beide gleich.
-pub fn stand_zahlen(inhalt: &Inhalt, slug: &str, eintraege: &[AnstehendEintrag], datei_fristen: &[FristZeile]) -> StandZahlen {
-    let auswahl = eine_frage_je_projekt(eintraege);
-    let arbeiten = |z: ArbeitsStand| eintraege.iter().filter(|e| e.art == EintragsArt::Arbeit && e.zustand == z.wort()).count() as u64;
-    let naechste = frueheste_frist(auswahl.iter().copied());
-    // Etappe B3: eine offene Frist aus fristen.toml, wenn sie früher ist (bei
-    // gleichem Datum bleibt der Eintrag). Nie aus zeitstrahl.toml.
-    let datei = datei_fristen.iter().filter(|z| z.frist.is_some()).min_by(|a, b| a.frist.cmp(&b.frist));
-    let (naechste_frist, tage, stufe) = match (naechste, datei) {
-        (Some(e), Some(z)) if z.frist < e.frist => (z.frist.clone(), z.tage_bis, z.frist_stufe),
-        (Some(e), _) => (e.frist.clone(), e.tage_bis, e.frist_stufe),
-        (None, Some(z)) => (z.frist.clone(), z.tage_bis, z.frist_stufe),
-        (None, None) => (None, None, None),
-    };
-    StandZahlen {
-        wartet_auf_dich: auswahl.iter().filter(|e| e.wartet_auf_dich).count() as u64,
-        aufgaben: eintraege.iter().filter(|e| e.art == EintragsArt::Aufgabe).count() as u64,
-        fragen: eintraege.iter().filter(|e| e.art == EintragsArt::Frage).count() as u64,
-        laeuft: arbeiten(ArbeitsStand::Laeuft),
-        wartet: arbeiten(ArbeitsStand::Wartet),
-        als_naechstes: arbeiten(ArbeitsStand::AlsNaechstes),
-        fertig_7_tage: fertig_7_tage(inhalt, slug),
-        meldungen: meldungs_zahlen(inhalt, slug),
-        naechste_frist,
-        tage_bis: tage,
-        frist_stufe: stufe,
-    }
-}
-
 /// Der lokale Tag eines Zeitpunkts (RFC 3339 oder JJJJ-MM-TT).
 fn tag_von(zeit: &str) -> Option<NaiveDate> {
     datum(zeit.get(..10))
@@ -868,10 +819,9 @@ fn tage_ohne_bewegung(inhalt: &Inhalt, slug: &str) -> Option<i64> {
 }
 
 /// `GET /api/projekte/<slug>/stand` und `/stand/voll`: der Zustand des
-/// Projekts. `None`, wenn es das Projekt nicht gibt. Mit Windows-Anmeldung
-/// (`sichtbar`) alle offenen Einträge und Aktualisierungen, neutral
-/// geordnet, ohne Zahlen; ohne Anmeldung keine Einträge und keine Titel,
-/// nur die Zahlen ([`stand_zahlen`]) und die Ampel.
+/// Projekts. `None`, wenn es das Projekt nicht gibt. Alle offenen Einträge
+/// und Aktualisierungen, neutral geordnet, ohne Zahlen (beide Wege verlangen
+/// seit Schritt E2 die Anmeldung).
 ///
 /// Die Ampel ist eine Regel und bleibt hier: rot bei einer offenen
 /// Fehler-Meldung oder einer Frist, die vorbei ist (bei Fragen nur die
@@ -880,7 +830,7 @@ fn tage_ohne_bewegung(inhalt: &Inhalt, slug: &str) -> Option<i64> {
 /// [`WARTET_LANGE_TAGE`] Tagen auf den Inhaber wartet (`wartet-lange`); gelb, wenn etwas auf
 /// den Inhaber wartet, sonst bei offener Arbeit ohne Änderung seit [`OHNE_BEWEGUNG_TAGE`]
 /// Tagen (`ohne-bewegung`); sonst grün; ohne Datenspeicher unbekannt statt grün.
-pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand> {
+pub fn stand(inhalt: &Inhalt, slug: &str) -> Option<ProjektStand> {
     let kopf = inhalt.projekte.iter().find(|p| p.slug == slug)?;
     let eintraege: Vec<AnstehendEintrag> = alle_eintraege(inhalt).into_iter().filter(|e| e.projekt == slug).collect();
     let auswahl = eine_frage_je_projekt(&eintraege);
@@ -911,7 +861,6 @@ pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand
         (None, None, None) if still.is_some() => (StandAmpel::Gelb, AmpelGrund::OhneBewegung, None, None, still),
         (None, None, None) => (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None, None, None),
     };
-    let zahlen = (!sichtbar).then(|| stand_zahlen(inhalt, slug, &eintraege, &datei));
     Some(ProjektStand {
         slug: slug.to_string(),
         schwerpunkt: inhalt.schwerpunkte.von(slug).0,
@@ -922,27 +871,24 @@ pub fn stand(inhalt: &Inhalt, slug: &str, sichtbar: bool) -> Option<ProjektStand
             ampel,
             grund,
             bezug_art,
-            // Ohne Anmeldung kein Titel einer Meldung oder eines Eintrags.
-            bezug: bezug.filter(|_| sichtbar),
+            bezug,
             tage,
             zuletzt: kopf.zuletzt.clone(),
         },
         frist_bald_tage: FRIST_BALD_TAGE,
-        sichtbar,
-        aktualisierungen: if sichtbar { aktualisierungen(inhalt, slug) } else { Vec::new() },
-        eintraege: if sichtbar { eintraege } else { Vec::new() },
-        zahlen,
-        // Etappe B2: open[] ist persönlicher Text, ohne Anmeldung nur die Zahl.
-        notizen: if sichtbar { kopf.notizen.clone() } else { Vec::new() },
+        sichtbar: true,
+        aktualisierungen: aktualisierungen(inhalt, slug),
+        eintraege,
+        notizen: kopf.notizen.clone(),
         notizen_zahl: kopf.notizen.len() as u64,
         fertig_7_tage: fertig_7_tage(inhalt, slug),
         speicher_fehlt: inhalt.speicher_fehlt,
-        fristen: if sichtbar { datei } else { Vec::new() },
+        fristen: datei,
     })
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::vertrag::api::{Arbeit, Aufgabe, AufgabenZustand, Einstufung};
     use crate::vertrag::daten::FrageArt;
@@ -1135,6 +1081,31 @@ mod tests {
         }
     }
 
+    /// Die Zahlen, wie die Oberfläche sie aus den Einträgen des Stands zählt
+    /// (`standZahlen` in `web/src/lib/anstehend.ts`): je Projekt höchstens
+    /// eine Frage für „wartet auf dich“, Arbeiten nach ihrem Zustand.
+    pub(crate) fn zahlen_wie_oberflaeche(s: &ProjektStand) -> Zahlen {
+        let n = |f: &dyn Fn(&AnstehendEintrag) -> bool| s.eintraege.iter().filter(|e| f(e)).count() as u64;
+        let arbeiten = |z: ArbeitsStand| n(&|e| e.art == EintragsArt::Arbeit && e.zustand == z.wort());
+        Zahlen {
+            wartet_auf_dich: eine_frage_je_projekt(&s.eintraege).iter().filter(|e| e.wartet_auf_dich).count() as u64,
+            aufgaben: n(&|e| e.art == EintragsArt::Aufgabe),
+            fragen: n(&|e| e.art == EintragsArt::Frage),
+            laeuft: arbeiten(ArbeitsStand::Laeuft),
+            wartet: arbeiten(ArbeitsStand::Wartet),
+            als_naechstes: arbeiten(ArbeitsStand::AlsNaechstes),
+        }
+    }
+
+    pub(crate) struct Zahlen {
+        pub wartet_auf_dich: u64,
+        pub aufgaben: u64,
+        pub fragen: u64,
+        pub laeuft: u64,
+        pub wartet: u64,
+        pub als_naechstes: u64,
+    }
+
     fn ids(l: &[AnstehendEintrag]) -> Vec<String> {
         l.iter().map(|e| e.id.clone()).collect()
     }
@@ -1249,9 +1220,8 @@ mod tests {
         let l = alle_eintraege(&i);
         assert_eq!(fragen_auswahl(&l, "beispiel").sichtbar.as_deref(), Some("erste"));
         assert_eq!(l.iter().find(|e| e.id == "erste").and_then(|e| e.warteschlange), Some(FragenPlatz { platz: 1, offen: 2 }));
-        // Die Zahlen ohne Anmeldung zählen je Projekt eine Frage.
-        let s = stand(&i, "beispiel", false).unwrap();
-        let z = s.zahlen.unwrap();
+        // Gezählt wie in der Oberfläche: je Projekt eine Frage.
+        let z = zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap());
         assert_eq!((z.fragen, z.wartet_auf_dich), (2, 2), "zwei offene Fragen, davon wartet eine; dazu die Aufgabe");
     }
 
@@ -1342,7 +1312,7 @@ mod tests {
 
     /// T4: Wartet ein Schritt auf den Inhaber, wartet die Arbeit auf ihn, auch
     /// wenn ein anderer läuft (Stand, Zahlen, Ampel, verweis); die Schritte
-    /// stehen am Eintrag, ohne Anmeldung nur in den Zahlen.
+    /// stehen am Eintrag.
     #[test]
     fn arbeit_mit_schritten_in_anstehend_und_stand() {
         let mut i = inhalt();
@@ -1352,10 +1322,10 @@ mod tests {
         crate::speicher::schritte::stand_ableiten(&mut a);
         i.speicher.arbeiten.push(a.clone());
         // Nur einer läuft: die Arbeit läuft, nichts wartet auf dich, grün.
-        let s = stand(&i, "hallo", true).unwrap();
+        let s = stand(&i, "hallo").unwrap();
         assert_eq!((s.gesamt.ampel, s.eintraege.len()), (StandAmpel::Gruen, 1));
         assert_eq!((s.eintraege[0].zustand.as_str(), s.eintraege[0].schritte.clone()), ("laeuft", a.schritte.clone()));
-        let z = stand(&i, "hallo", false).unwrap().zahlen.unwrap();
+        let z = zahlen_wie_oberflaeche(&stand(&i, "hallo").unwrap());
         assert_eq!((z.laeuft, z.wartet, z.wartet_auf_dich), (1, 0, 0));
 
         // Schritt 2 wartet auf den Inhaber, Schritt 1 läuft weiter: die Arbeit wartet auf dich.
@@ -1366,21 +1336,17 @@ mod tests {
         let e = l.eintraege.iter().find(|e| e.id == a.id).expect("wartet auf dich");
         assert_eq!((e.zustand.as_str(), e.wartet_auf.as_deref(), e.verweis.as_deref()), ("wartet", Some(INHABER), Some("gibt-es-nicht")));
         assert_eq!(e.schritte.len(), 2);
-        let s = stand(&i, "hallo", true).unwrap();
+        let s = stand(&i, "hallo").unwrap();
         assert_eq!((s.gesamt.ampel, s.gesamt.grund), (StandAmpel::Gelb, AmpelGrund::Wartet));
-        let ohne = stand(&i, "hallo", false).unwrap();
-        assert!(ohne.eintraege.is_empty() && ohne.gesamt.bezug.is_none());
-        let z = ohne.zahlen.as_ref().unwrap();
+        let z = zahlen_wie_oberflaeche(&s);
         assert_eq!((z.laeuft, z.wartet, z.wartet_auf_dich), (0, 1, 1), "die Arbeit zählt einmal, mit ihrem abgeleiteten Stand");
-        let json = serde_json::to_string(&ohne).unwrap();
-        assert!(!json.contains("Schritt 2") && !json.contains("chat:architektur"), "ohne Anmeldung keine Titel und Besitzer: {json}");
 
         // Verweist der Schritt auf eine offene Aufgabe, zählt jene (nicht doppelt) und die Arbeit trägt den Vermerk.
         i.speicher.aufgaben.push(aufgabe("hallo", "a-20261029-0020", None, None, "2026-10-29T09:00:00+01:00"));
         a.schritte[1].verweis = Some("a-20261029-0020".into());
         crate::speicher::schritte::stand_ableiten(&mut a);
         *i.speicher.arbeiten.last_mut().unwrap() = a.clone();
-        let z = stand(&i, "hallo", false).unwrap().zahlen.unwrap();
+        let z = zahlen_wie_oberflaeche(&stand(&i, "hallo").unwrap());
         assert_eq!((z.aufgaben, z.wartet, z.wartet_auf_dich), (1, 1, 1));
         let l = alle_eintraege(&i);
         let e = l.iter().find(|e| e.id == a.id).unwrap();
@@ -1400,7 +1366,7 @@ mod tests {
         let mut i = inhalt();
         let auf = "a-20261105-0031";
         i.speicher.aufgaben.push(aufgabe("beispiel", auf, None, None, "2026-11-05T09:00:00+01:00"));
-        let vorher = stand(&i, "beispiel", false).unwrap().zahlen.unwrap().wartet_auf_dich;
+        let vorher = zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap()).wartet_auf_dich;
         let mut a = arbeit("beispiel", "ar-20261105-0030", ArbeitsStand::AlsNaechstes, Stufe::Bald, "2026-11-05T08:00:00+01:00");
         let wartend = |nr, v: &str| schritt(nr, ArbeitsStand::Wartet, Some("chat:dashboard"), Some(INHABER), Some(v));
         a.schritte = vec![wartend(1, "schlusssatz"), wartend(2, auf)];
@@ -1412,7 +1378,7 @@ mod tests {
         let e = finde(&i);
         assert_eq!((e.vermerk.as_deref(), e.wartet_auf_dich), (Some(VERMERK_WARTET), false));
         assert_eq!(e.offene_verweise, ["schlusssatz", auf]);
-        assert_eq!(stand(&i, "beispiel", false).unwrap().zahlen.unwrap().wartet_auf_dich, vorher, "die Arbeit zählt nicht zusätzlich");
+        assert_eq!(zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap()).wartet_auf_dich, vorher, "die Arbeit zählt nicht zusätzlich");
 
         // (i) erste Frage beantwortet: Schritt 1 zeigt auf nichts Offenes mehr, darum
         // kein Vermerk und die Arbeit zählt selbst (Auflage aus T5); der Link an Schritt 2 bleibt.
@@ -1420,7 +1386,7 @@ mod tests {
         let e = finde(&i);
         assert_eq!(e.verweis.as_deref(), Some("schlusssatz"), "die Arbeit trägt weiter den Verweis des ersten Schritts");
         assert_eq!((e.vermerk.as_deref(), e.wartet_auf_dich, e.offene_verweise.clone()), (None, true, vec![auf.to_string()]));
-        assert_eq!(stand(&i, "beispiel", false).unwrap().zahlen.unwrap().wartet_auf_dich, vorher + 1, "die Arbeit zählt");
+        assert_eq!(zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap()).wartet_auf_dich, vorher + 1, "die Arbeit zählt");
 
         // Ein wartender Schritt ohne Verweis (alter Schritt 1 mit übernommenem Warten) neben einem offenen: die Arbeit zählt.
         i.speicher.arbeiten.last_mut().unwrap().schritte[0].verweis = None;
@@ -1465,7 +1431,7 @@ mod tests {
         let i = Inhalt::aus(aus, AusDemSpeicher::default(), tag(HEUTE));
         let l = anstehend(&i, &Filter::default());
         assert_eq!((l.eintraege.len(), l.eintraege[0].stufe.wirksam, l.eintraege[0].schwerpunkt.as_str()), (1, Stufe::Jetzt, SONSTIGES));
-        assert_eq!(stand(&i, "alt", true).unwrap().notizen, ["eins"]);
+        assert_eq!(stand(&i, "alt").unwrap().notizen, ["eins"]);
         // Eine kaputte schwerpunkte.toml: Hinweis mit Zeile, alles unter „Sonstiges“.
         std::fs::create_dir_all(basis.join("data")).unwrap();
         std::fs::write(basis.join("data").join("schwerpunkte.toml"), "[[schwerpunkt]]\nname = \"A\"\n").unwrap();
@@ -1482,12 +1448,12 @@ mod tests {
     fn beantwortete_frage_fehlt() {
         let mut i = inhalt();
         i.fragen[0].fragen.push(frage("dritte", "2026-10-29", Some(Stufe::Irgendwann), None));
-        let s = stand(&i, "beispiel", true).unwrap();
+        let s = stand(&i, "beispiel").unwrap();
         let fragen: Vec<&str> = s.eintraege.iter().filter(|e| e.art == EintragsArt::Frage).map(|e| e.id.as_str()).collect();
         assert_eq!(fragen, ["dritte", "eilig", "schlusssatz"]);
         let f = s.eintraege.iter().find(|e| e.id == "schlusssatz").unwrap();
         assert_eq!(f.frage, Some(FrageAngabe { art: FrageArt::Text, optionen: Vec::new(), empfehlung: None }));
-        let z = stand(&i, "beispiel", false).unwrap().zahlen.unwrap();
+        let z = zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap());
         assert_eq!((z.fragen, z.wartet_auf_dich), (3, 2), "je Projekt zählt höchstens eine Frage");
         // Eine Antwort zu einem alten `gestellt` ändert nichts.
         i.speicher.beantwortet.insert(antwort_schluessel("beispiel", "schlusssatz", "2026-10-01"));
@@ -1496,15 +1462,15 @@ mod tests {
         i.speicher.beantwortet.insert(antwort_schluessel("beispiel", "schlusssatz", "2026-10-25"));
         let l = alle_eintraege(&i);
         assert!(l.iter().all(|e| e.id != "schlusssatz"), "{:?}", ids(&l));
-        let z = stand(&i, "beispiel", false).unwrap().zahlen.unwrap();
+        let z = zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap());
         assert_eq!((z.fragen, z.wartet_auf_dich), (2, 2));
         // Alle beantwortet: keine Frage mehr, die Ampel hängt nur noch an der Aufgabe.
         i.speicher.beantwortet.insert(antwort_schluessel("beispiel", "eilig", "2026-10-28"));
         i.speicher.beantwortet.insert(antwort_schluessel("beispiel", "dritte", "2026-10-29"));
-        let z = stand(&i, "beispiel", false).unwrap().zahlen.unwrap();
+        let z = zahlen_wie_oberflaeche(&stand(&i, "beispiel").unwrap());
         assert_eq!((z.fragen, z.wartet_auf_dich), (0, 1));
         i.speicher.aufgaben.retain(|a| a.projekt != "beispiel");
-        let s = stand(&i, "beispiel", true).unwrap();
+        let s = stand(&i, "beispiel").unwrap();
         assert_eq!((s.gesamt.ampel, s.gesamt.grund, s.eintraege.len()), (StandAmpel::Gruen, AmpelGrund::NichtsWartet, 0));
         // Eine Arbeit, die auf eine beantwortete Frage verweist, trägt den Vermerk nicht mehr.
         let mut a = arbeit("beispiel", "ar-20261029-0009", ArbeitsStand::Wartet, Stufe::Bald, "2026-10-29T11:00:00+01:00");
@@ -1522,7 +1488,7 @@ mod tests {
     #[test]
     fn ampel_wartet_lange_und_ohne_bewegung() {
         let grund = |i: &Inhalt, slug: &str| {
-            let s = stand(i, slug, true).unwrap();
+            let s = stand(i, slug).unwrap();
             (s.gesamt.ampel, s.gesamt.grund, s.gesamt.tage)
         };
         let mut i = inhalt();
@@ -1532,13 +1498,8 @@ mod tests {
         // Seit vier Tagen: rot, mit Bezug.
         i.speicher.aufgaben[0].erstellt = "2026-10-25T09:00:00+01:00".into();
         assert_eq!(grund(&i, "dashboard"), (StandAmpel::Rot, AmpelGrund::WartetLange, Some(4)));
-        let voll = stand(&i, "dashboard", true).unwrap();
+        let voll = stand(&i, "dashboard").unwrap();
         assert_eq!((voll.gesamt.bezug_art, voll.gesamt.bezug.as_deref()), (Some(EintragsArt::Aufgabe), Some("Aufgabe a-20261029-0001")));
-        let frei = stand(&i, "dashboard", false).unwrap();
-        assert_eq!(
-            (frei.gesamt.grund, frei.gesamt.bezug_art, frei.gesamt.bezug, frei.gesamt.tage),
-            (AmpelGrund::WartetLange, Some(EintragsArt::Aufgabe), None, Some(4))
-        );
         // Eine Fehler-Meldung geht vor.
         i.speicher.meldungen.push(meldung("dashboard", "m-1", crate::vertrag::api::MeldungsArt::Fehler, "2026-10-29T08:00:00+01:00"));
         assert_eq!(grund(&i, "dashboard").1, AmpelGrund::FehlerOffen);
@@ -1575,7 +1536,7 @@ mod tests {
             eintrag("2026-10-12T08:00:00+01:00", "laeuft"),
             eintrag("2026-10-20T08:00:00+01:00", "wartet"),
         ];
-        let s = stand(&i, "dashboard", true).unwrap();
+        let s = stand(&i, "dashboard").unwrap();
         assert_eq!((s.gesamt.grund, s.gesamt.tage, s.gesamt.bezug_art), (AmpelGrund::WartetLange, Some(9), Some(EintragsArt::Arbeit)));
         // Wechsel von wartet_auf (Chat → Inhaber) schreibt einen Eintrag wartet → wartet; ab da zählt es.
         i.speicher.arbeiten[0]
@@ -1604,7 +1565,6 @@ mod tests {
         assert_eq!(grund(&i, "hallo"), (StandAmpel::Gruen, AmpelGrund::NichtsWartet, None), "sechs Tage");
         i.speicher.arbeiten[2].geaendert = "2026-10-22T08:00:00+01:00".into();
         assert_eq!(grund(&i, "hallo"), (StandAmpel::Gelb, AmpelGrund::OhneBewegung, Some(7)));
-        assert_eq!(stand(&i, "hallo", false).unwrap().gesamt.grund, AmpelGrund::OhneBewegung);
         // Eine fertige Arbeit, gestern geändert, ist Bewegung.
         i.speicher.arbeiten.push(arbeit("hallo", "ar-20261028-0009", ArbeitsStand::Fertig, Stufe::Bald, "2026-10-28T08:00:00+01:00"));
         assert_eq!(grund(&i, "hallo").1, AmpelGrund::NichtsWartet);
@@ -1614,40 +1574,36 @@ mod tests {
         assert_eq!(grund(&i, "hallo").1, AmpelGrund::NichtsWartet);
     }
 
-    /// Unter-Dashboard: Ampel als Regel; mit Anmeldung alle Einträge ohne
-    /// Zahlen, ohne Anmeldung keine Einträge, nur Zahlen und kein Titel.
+    /// Unter-Dashboard: Ampel als Regel; alle Einträge ohne Zahlen (zählen
+    /// macht die Oberfläche).
     #[test]
     fn stand_eines_projekts() {
         let mut i = inhalt();
-        let s = stand(&i, "dashboard", true).unwrap();
+        let s = stand(&i, "dashboard").unwrap();
         assert_eq!((s.gesamt.ampel, s.gesamt.grund, s.gesamt.bezug.clone()), (StandAmpel::Gelb, AmpelGrund::Wartet, None));
-        assert_eq!((ids(&s.eintraege), s.sichtbar, s.zahlen.clone()), (vec!["a-20261029-0001".to_string(), "ar-20261029-0001".to_string()], true, None));
+        assert_eq!((ids(&s.eintraege), s.sichtbar), (vec!["a-20261029-0001".to_string(), "ar-20261029-0001".to_string()], true));
         assert_eq!((s.notizen.clone(), s.schwerpunkt.as_str(), s.frist_bald_tage), (vec!["Notiz".to_string()], "PC", FRIST_BALD_TAGE));
         assert!(s.aktualisierungen.is_empty());
-        let ohne = stand(&i, "dashboard", false).unwrap();
-        assert!(ohne.eintraege.is_empty() && !ohne.sichtbar);
-        let z = ohne.zahlen.clone().unwrap();
+        let z = zahlen_wie_oberflaeche(&s);
         assert_eq!((z.aufgaben, z.fragen, z.laeuft, z.wartet, z.als_naechstes, z.wartet_auf_dich), (1, 0, 1, 0, 0, 1));
         // Leeres Projekt: grün.
-        let leer = stand(&i, "hallo", false).unwrap();
-        assert_eq!((leer.gesamt.ampel, leer.zahlen.unwrap().als_naechstes), (StandAmpel::Gruen, 1));
-        // Frist vorbei: rot; ohne Anmeldung ohne den Titel.
+        let leer = stand(&i, "hallo").unwrap();
+        assert_eq!((leer.gesamt.ampel, zahlen_wie_oberflaeche(&leer).als_naechstes), (StandAmpel::Gruen, 1));
+        // Frist vorbei: rot, mit dem Titel.
         i.speicher.aufgaben[1].frist = Some("2026-10-27".into());
-        let rot = stand(&i, "beispiel", true).unwrap();
+        let rot = stand(&i, "beispiel").unwrap();
         assert_eq!((rot.gesamt.ampel, rot.gesamt.grund, rot.gesamt.bezug_art), (StandAmpel::Rot, AmpelGrund::FristVorbei, Some(EintragsArt::Aufgabe)));
         assert_eq!(rot.gesamt.bezug.as_deref(), Some("Aufgabe a-20261029-0002"));
-        let rot = stand(&i, "beispiel", false).unwrap();
-        assert_eq!((rot.gesamt.grund, rot.gesamt.bezug_art, rot.gesamt.bezug.clone()), (AmpelGrund::FristVorbei, Some(EintragsArt::Aufgabe), None));
-        let z = rot.zahlen.unwrap();
-        assert_eq!((z.naechste_frist.as_deref(), z.tage_bis, z.frist_stufe), (Some("2026-10-27"), Some(-2), Some(FristStufe::Ueberfaellig)));
-        assert!(stand(&i, "gibt-es-nicht", true).is_none());
+        let z = rot.eintraege.iter().find(|e| e.id == "a-20261029-0002").unwrap();
+        assert_eq!((z.frist.as_deref(), z.tage_bis, z.frist_stufe), (Some("2026-10-27"), Some(-2), Some(FristStufe::Ueberfaellig)));
+        assert!(stand(&i, "gibt-es-nicht").is_none());
         // Alle Aufgaben, keine Auswahl (früher höchstens drei; jetzt vitest).
         for n in 4..9 {
             i.speicher.aufgaben.push(aufgabe("dashboard", &format!("a-20261029-000{n}"), None, None, "2026-10-29T12:00:00+01:00"));
         }
-        let s = stand(&i, "dashboard", true).unwrap();
+        let s = stand(&i, "dashboard").unwrap();
         assert_eq!(s.eintraege.iter().filter(|e| e.art == EintragsArt::Aufgabe).count(), 6);
-        assert_eq!(stand(&i, "dashboard", false).unwrap().zahlen.unwrap().aufgaben, 6);
+        assert_eq!(zahlen_wie_oberflaeche(&stand(&i, "dashboard").unwrap()).aufgaben, 6);
     }
 
     fn meldung(projekt: &str, id: &str, art: crate::vertrag::api::MeldungsArt, zuletzt: &str) -> Meldung {
@@ -1753,7 +1709,7 @@ mod tests {
 
     /// Ampel: rot bei offenem Fehler, auch gelesen; behoben nicht mehr.
     /// Aktualisierungen: alle, neutral nach Quelle und Kennung (welche fünf
-    /// zuerst, wählt die Oberfläche), nur mit Anmeldung; ohne nur die Zahlen.
+    /// zuerst, wählt die Oberfläche).
     #[test]
     fn ampel_und_aktualisierungen() {
         use crate::vertrag::api::{MeldungsArt as M, Vorgang, VorgangsArt, Zustand};
@@ -1762,16 +1718,10 @@ mod tests {
         f.gelesen = Some("2026-10-29T08:30:00+01:00".into());
         i.speicher.meldungen.push(f);
         i.speicher.meldungen[0].text = Some("projects/hallo/daten/geheim.toml, Zeile 1".into());
-        let s = stand(&i, "hallo", true).unwrap();
+        let s = stand(&i, "hallo").unwrap();
         assert_eq!((s.gesamt.ampel, s.gesamt.grund, s.gesamt.bezug.as_deref()), (StandAmpel::Rot, AmpelGrund::FehlerOffen, Some("Meldung m-1")));
-        let s = stand(&i, "hallo", false).unwrap();
-        assert_eq!(
-            (s.gesamt.ampel, s.gesamt.grund, s.gesamt.bezug_art, s.gesamt.bezug.clone()),
-            (StandAmpel::Rot, AmpelGrund::FehlerOffen, Some(EintragsArt::Meldung), None),
-            "ohne Anmeldung kein Titel"
-        );
         i.speicher.meldungen[0].behoben = Some("2026-10-29T09:00:00+01:00".into());
-        assert_eq!(stand(&i, "hallo", true).unwrap().gesamt.ampel, StandAmpel::Gruen);
+        assert_eq!(stand(&i, "hallo").unwrap().gesamt.ampel, StandAmpel::Gruen);
         for (n, t) in ["09", "10", "11", "12", "13"].iter().enumerate() {
             let mut m = meldung("hallo", &format!("m-{}", n + 2), M::Info, &format!("2026-10-29T{t}:00:00+01:00"));
             m.geschuetzt = n == 4;
@@ -1796,15 +1746,10 @@ mod tests {
         assert_eq!(a.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["m-1", "m-2", "m-3", "m-4", "m-5", "m-6", "v-20261029-0001"]);
         assert_eq!((a[6].quelle.as_str(), a[6].ziel.as_str(), a[6].gelesen), ("vorgang", "/vorgaenge#vorgang-v-20261029-0001", true));
         assert_eq!((a[5].titel.as_str(), a[5].gelesen, a[5].ziel.as_str()), ("Meldung m-6", false, "/projects/hallo#meldung-m-6"));
-        let mit = stand(&i, "hallo", true).unwrap();
+        let mit = stand(&i, "hallo").unwrap();
         assert_eq!(mit.aktualisierungen, a);
-        let ohne = stand(&i, "hallo", false).unwrap();
-        assert!(ohne.aktualisierungen.is_empty() && ohne.eintraege.is_empty(), "ohne Anmeldung keine Titel und Texte");
-        assert_eq!(ohne.zahlen.clone().unwrap().meldungen, MeldungsZahlen { neu: 5, gesamt: 6 }, "nur Zahlen");
-        let json = serde_json::to_string(&ohne).unwrap();
-        for geheim in ["Meldung m-", "geheim.toml", "Geheimer Titel", "Arbeit ar-"] {
-            assert!(!json.contains(geheim), "{geheim} in {json}");
-        }
+        let meldungen = a.iter().filter(|x| x.quelle == "meldung");
+        assert_eq!((meldungen.clone().filter(|x| !x.gelesen).count(), meldungen.count()), (5, 6), "neu und gesamt wie in der Oberfläche");
         let l = anstehend(&i, &Filter { projekt: Some("hallo".into()), ..Default::default() });
         assert_eq!(l.aktualisierungen, a);
         assert!(anstehend(&i, &Filter::default()).aktualisierungen.is_empty(), "nur mit Filter projekt");
@@ -1813,7 +1758,7 @@ mod tests {
         leer.speicher = AusDemSpeicher::default();
         leer.fragen.clear();
         leer.speicher_fehlt = true;
-        let s = stand(&leer, "hallo", true).unwrap();
+        let s = stand(&leer, "hallo").unwrap();
         assert_eq!((s.gesamt.ampel, s.gesamt.grund), (StandAmpel::Unbekannt, AmpelGrund::SpeicherFehlt));
     }
 
@@ -1925,8 +1870,7 @@ mod tests {
         for slug in ["beispiel", "dashboard", "hallo"] {
             let f = Filter { projekt: Some(slug.into()), ..Default::default() };
             aus.push((format!("neu/anstehend-{slug}.json"), wert(&anstehend(&i, &f))));
-            aus.push((format!("neu/stand-{slug}-voll.json"), wert(&stand(&i, slug, true).unwrap())));
-            aus.push((format!("neu/stand-{slug}-frei.json"), wert(&stand(&i, slug, false).unwrap())));
+            aus.push((format!("neu/stand-{slug}-voll.json"), wert(&stand(&i, slug).unwrap())));
         }
         // Fälle aus den früheren Sortier-Tests.
         let mut i = inhalt();
@@ -1947,14 +1891,14 @@ mod tests {
         aus.push(("faelle/verweis.json".into(), wert(&anstehend(&i, &Filter::default()))));
         let mut i = inhalt();
         i.fragen[0].fragen.push(frage("dritte", "2026-10-29", Some(Stufe::Irgendwann), None));
-        aus.push(("faelle/beantwortet-0.json".into(), wert(&stand(&i, "beispiel", true).unwrap())));
+        aus.push(("faelle/beantwortet-0.json".into(), wert(&stand(&i, "beispiel").unwrap())));
         i.speicher.beantwortet.insert(antwort_schluessel("beispiel", "schlusssatz", "2026-10-25"));
-        aus.push(("faelle/beantwortet-1.json".into(), wert(&stand(&i, "beispiel", true).unwrap())));
+        aus.push(("faelle/beantwortet-1.json".into(), wert(&stand(&i, "beispiel").unwrap())));
         let mut i = inhalt();
         for n in 4..9 {
             i.speicher.aufgaben.push(aufgabe("dashboard", &format!("a-20261029-000{n}"), None, None, "2026-10-29T12:00:00+01:00"));
         }
-        aus.push(("faelle/viele-aufgaben.json".into(), wert(&stand(&i, "dashboard", true).unwrap())));
+        aus.push(("faelle/viele-aufgaben.json".into(), wert(&stand(&i, "dashboard").unwrap())));
         let mut i = inhalt();
         i.speicher.meldungen = vec![
             meldung("beispiel", "m-1", M::Fehler, "2026-10-29T08:00:00+01:00"),

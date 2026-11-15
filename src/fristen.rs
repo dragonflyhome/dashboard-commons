@@ -332,28 +332,25 @@ erledigt = "2026-09-30"
     #[test]
     fn naechste_frist_und_ampel() {
         let i = inhalt(vec![aufgabe("fest", "a-20261104-0001", Some("2026-11-20"), None)], vec![datei("fest", BEISPIEL)], vec![kopf("fest", false)]);
-        let frei = stand(&i, "fest", false).unwrap();
-        let z = frei.zahlen.unwrap();
-        assert_eq!((z.naechste_frist.as_deref(), z.tage_bis), (Some("2026-11-10"), Some(6)), "die Datei-Frist ist früher");
-        assert!(frei.fristen.is_empty(), "ohne Anmeldung keine Titel");
-        let voll = stand(&i, "fest", true).unwrap();
+        let voll = stand(&i, "fest").unwrap();
         let ids: Vec<&str> = voll.fristen.iter().map(|z| z.id.as_str()).collect();
         assert_eq!(ids, ["plakate", "standanmeldung"], "nur mit Datum, nach Datum");
+        assert_eq!((voll.fristen[0].frist.as_deref(), voll.fristen[0].tage_bis), (Some("2026-11-10"), Some(6)), "die Datei-Frist ist früher");
+        assert_eq!(voll.eintraege[0].frist.as_deref(), Some("2026-11-20"));
         assert_eq!(voll.gesamt.ampel, StandAmpel::Gelb);
-        // Eine vorbei: Ampel rot, ohne Art, Titel nur angemeldet.
+        // Eine vorbei: Ampel rot, ohne Art, mit Titel.
         let vorbei = BEISPIEL.replace("datum = \"2026-11-10\"", "datum = \"2026-11-03\"");
         let i = inhalt(Vec::new(), vec![datei("fest", &vorbei)], vec![kopf("fest", false)]);
-        let s = stand(&i, "fest", true).unwrap();
+        let s = stand(&i, "fest").unwrap();
         assert_eq!(
             (s.gesamt.ampel, s.gesamt.grund, s.gesamt.bezug_art, s.gesamt.bezug.as_deref()),
             (StandAmpel::Rot, AmpelGrund::FristVorbei, None, Some("Plakate bestellen"))
         );
-        assert_eq!(stand(&i, "fest", false).unwrap().gesamt.bezug, None);
         // Erledigt zählt nicht.
         let erledigt = vorbei.replace("datum = \"2026-11-03\"", "datum = \"2026-11-03\"\nerledigt = \"2026-11-02\"");
         let i = inhalt(Vec::new(), vec![datei("fest", &erledigt)], vec![kopf("fest", false)]);
-        let s = stand(&i, "fest", false).unwrap();
-        assert_eq!((s.gesamt.ampel, s.zahlen.unwrap().naechste_frist.as_deref()), (StandAmpel::Gruen, Some("2026-11-30")));
+        let s = stand(&i, "fest").unwrap();
+        assert_eq!((s.gesamt.ampel, s.fristen.first().and_then(|z| z.frist.as_deref())), (StandAmpel::Gruen, Some("2026-11-30")));
     }
 
     /// Auflage zu B3: Lässt sich fristen.toml eines archivierten Projekts nicht
