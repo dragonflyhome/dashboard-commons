@@ -593,6 +593,27 @@ pub struct OeffnenAntwort {
     pub satz: String,
 }
 
+/// `GET /api/projekte/<slug>/orte` (Schritt E1b, geschützt): die Orte eines
+/// Projekts aus `daten/orte.toml`, in Reihenfolge der Datei (alle Teile).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct OrteVoll {
+    pub orte: Vec<OrtVoll>,
+}
+
+/// Ein Ort mit Pfad. Geöffnet wird weiter nur über `POST /api/oeffnen` mit
+/// der Kennung; den Pfad zeigt die Oberfläche als Text und als `file:`-Link.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct OrtVoll {
+    pub kennung: String,
+    pub titel: String,
+    pub hinweis: Option<String>,
+    /// Hat der Ort die Prüfung von `pruefe` bestanden (Endung, Form, Tabu,
+    /// Lage; mit den Regeln des Servers)? Nie bei UNC- oder Gerätepfaden.
+    pub geprueft: bool,
+    /// Der volle Pfad, nur bei `geprueft`; sonst `null`.
+    pub pfad: Option<String>,
+}
+
 /// Ein Vorgang mit seinem jetzigen Zustand (Tabelle `vorgaenge`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct Vorgang {

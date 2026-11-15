@@ -3,8 +3,9 @@ import type { Ort } from "./Ort";
 
 /**
  * `daten/orte.toml`: Dateien und Ordner auf diesem PC, die der Inhaber mit
- * „Öffnen“ aufmachen kann (Entscheidung lokal-oeffnen). Die
- * Oberfläche bekommt nur `kennung`, `titel` und `hinweis`; den Pfad kennt nur
- * der Server (er geht nie hinaus, auch nicht an Backend-Module).
+ * „Öffnen“ aufmachen kann (Entscheidung lokal-oeffnen). Über die
+ * Daten-Wege bekommt die Oberfläche nur `kennung`, `titel` und `hinweis`;
+ * den Pfad liefert nur der geschützte Weg `/api/projekte/<slug>/orte`
+ * (Schritt E1b, `vertrag::api::OrteVoll`), nie ein Backend-Modul.
  */
 export type Orte = { ort: Array<Ort>, };

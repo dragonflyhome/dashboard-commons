@@ -1350,6 +1350,8 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
         "/api/projekte/neu-form/plan",
         // Etappe B8: die Zeitleiste eines Projekts nennt Titel.
         "/api/projekte/neu-form/verlauf",
+        // Schritt E1b: die Orte mit vollem Pfad.
+        "/api/projekte/neu-form/orte",
         "/api/antworten",
         // „Neu in …“ im Layout.
         "/api/fassungen/gezeigt",
@@ -1696,6 +1698,9 @@ fn liste_der_geschuetzten_wege() {
         // Etappe B8: die Zeitleiste eines Projekts.
         "/api/projekte/dashboard/verlauf",
         "/API/Projekte/Dashboard/Verlauf",
+        // Schritt E1b: die Orte mit vollem Pfad.
+        "/api/projekte/dashboard/orte",
+        "/API/Projekte/Dashboard/Orte",
         // Etappe B2: die Fragen an den Inhaber (persönlicher Inhalt).
         "/api/projekte/dashboard/daten/fragen",
         "/API/Projekte/Dashboard/Daten/Fragen",
@@ -1765,6 +1770,9 @@ fn liste_der_geschuetzten_wege() {
         "/api/projekte/dashboard/backlogx",
         "/api/projekte/dashboard/planx",
         "/api/projekte/dashboard/verlaufx",
+        "/api/projekte/dashboard/ortex",
+        // Die Daten-Datei orte bleibt frei (ohne Pfad, bis E2).
+        "/api/projekte/dashboard/daten/orte",
         "/api/projekte/dashboard/daten/plan",
         "/api/projekte/dashboard/daten/kanban",
         "/api/projekte/dashboard/daten/fragenx",

@@ -9,7 +9,8 @@
  * Explorer). Die Antwort ist nur ein Satz.
  */
 import { API, ApiError, readError, SATZ_KEINE_VERBINDUNG } from './api/client.ts';
-import type { OeffnenAntwort } from '$vertrag';
+import type { OeffnenAntwort, OrteVoll, OrtVoll } from '$vertrag';
+import { mitZugang } from './zugang.ts';
 
 export const SATZ_GEOEFFNET = 'Geöffnet.';
 export const SATZ_OHNE_ANMELDUNG =
@@ -36,4 +37,42 @@ export function fehlerSatz(err: unknown): string {
 	if (!(err instanceof ApiError)) return SATZ_KEINE_VERBINDUNG;
 	if (err.status === 401) return SATZ_OHNE_ANMELDUNG;
 	return err.message;
+}
+
+/**
+ * Holt die Orte eines Projekts mit Pfad (`GET /api/projekte/<slug>/orte`,
+ * geschützt, Schritt E1b); `null` ohne Anmeldung oder bei Fehlern. Wirft nie.
+ * `fetchFn` geht durch `mitZugang`: ohne Anmeldung keine Anfrage ins Netz.
+ */
+export async function ladeOrte(
+	projekt: string,
+	fetchFn: typeof fetch = fetch
+): Promise<OrteVoll | null> {
+	try {
+		const res = await mitZugang(fetchFn)(`${API}/projekte/${encodeURIComponent(projekt)}/orte`, {
+			credentials: 'same-origin',
+			headers: { accept: 'application/json' }
+		});
+		if (!res.ok) {
+			await res.body?.cancel().catch(() => undefined);
+			return null;
+		}
+		const o = (await res.json()) as Partial<OrteVoll> | null;
+		return o !== null && Array.isArray(o.orte) ? (o as OrteVoll) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Die `file:`-Adresse zu einem geprüften Ort, sonst `null`: nur mit Laufwerk
+ * (`C:\…`), nie ein UNC- oder Gerätepfad (zweite Sicherung neben `geprueft`
+ * vom Server). Jeder Teil prozentkodiert. Geöffnet wird nie über diese
+ * Adresse, nur über `oeffnen` (der Baustein fängt Klicks ab).
+ */
+export function dateiAdresse(ort: Pick<OrtVoll, 'geprueft' | 'pfad'>): string | null {
+	const p = ort.pfad;
+	if (!ort.geprueft || p === null || !/^[a-z]:[\\/]/i.test(p)) return null;
+	const [laufwerk, ...rest] = p.replaceAll('\\', '/').split('/');
+	return `file:///${laufwerk ?? ''}/${rest.map(encodeURIComponent).join('/')}`;
 }

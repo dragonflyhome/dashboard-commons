@@ -98,11 +98,18 @@ async fn api_pc_rechner_und_datentraeger() {
 
 // ----- Geschützte Wege: angemeldet im Klartext (Schritt E1) -----
 
-/// Die geschützten Wege aus Schritt E1. Ohne Anmeldung antworten sie 401
-/// (Schleuse `sicherheit::geschuetzt`, bei zweien zusätzlich der Handler);
+/// Die geschützten Wege aus Schritt E1 (und E1b: die Orte). Ohne Anmeldung antworten sie 401
+/// (Schleuse `sicherheit::geschuetzt`, bei einigen zusätzlich der Handler);
 /// nur darum dürfen sie im Klartext liefern.
-const GESCHUETZT_KLARTEXT: [&str; 6] =
-    ["/api/pc/benutzer", "/api/pc/verlauf/voll", "/api/betrieb/voll", "/api/daten", "/api/meldungen", "/api/projekte/dashboard/verlauf"];
+const GESCHUETZT_KLARTEXT: [&str; 7] = [
+    "/api/pc/benutzer",
+    "/api/pc/verlauf/voll",
+    "/api/betrieb/voll",
+    "/api/daten",
+    "/api/meldungen",
+    "/api/projekte/dashboard/verlauf",
+    "/api/projekte/dashboard/orte",
+];
 
 /// Ohne Anmeldung: 401 auf jedem dieser Wege, ohne Inhalt.
 #[tokio::test]

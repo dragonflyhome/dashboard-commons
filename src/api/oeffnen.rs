@@ -25,23 +25,27 @@
 //!    (`bote::oeffnen`); nur vom Dienstkonto, höchstens 10 je Minute.
 //! 10. Journal: Vorgang `oeffnen`, gleich erledigt, mit Projekt und Kennung;
 //!     keine Meldung, keine Glocke, kein Chat wird geweckt.
+//!
+//! Dazu `GET /api/projekte/<slug>/orte` (Schritt E1b, geschützt): die Orte mit
+//! Pfad für die Anzeige; nur geprüfte Orte tragen ihn ([`orte`]).
 
 use axum::body::Bytes;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use serde::Deserialize;
 
-use crate::anmeldung::Inhaber;
+use crate::anmeldung::{Angemeldet, Inhaber};
 use crate::api::vorgaenge::{aus_browser, json_kopf_pruefen};
 use crate::app::AppState;
 use crate::fehler::AppError;
 use crate::inhalt::seite;
 use crate::oeffnen::{self, Abweisung, Regeln};
 use crate::pc::inventory;
-use crate::vertrag::api::OeffnenAntwort;
+use crate::vertrag::api::{OeffnenAntwort, OrtVoll, OrteVoll};
 use crate::vertrag::bote::{Anfrage, Antwort};
-use crate::vertrag::daten::{DatenInhalt, ist_kennung};
+use crate::vertrag::daten::{DatenInhalt, Ort, ist_kennung};
 
 /// 403 mit Passkey aus einem anderen Windows-Konto (Wortlaut der Entscheidung).
 pub const SATZ_EIGENES_KONTO: &str = "Öffnen geht nur in deinem eigenen Windows-Konto, dort erscheint das Fenster.";
@@ -188,6 +192,45 @@ pub async fn oeffnen(
     }
     tracing::info!("Öffnen {}/{}: geöffnet.", k.projekt, k.kennung);
     Ok(Json(OeffnenAntwort { projekt: k.projekt, kennung: k.kennung, satz: SATZ_GEOEFFNET.to_string() }))
+}
+
+/// `GET /api/projekte/<slug>/orte` (Schritt E1b): die Orte des Projekts mit
+/// vollem Pfad, für die Anzeige als Text und `file:`-Link. Geschützt
+/// (`sicherheit::geschuetzt`); ohne Anmeldung 401 auch hier, falls doch eine
+/// Anfrage an der Schleuse vorbeikäme. Den Pfad bekommt nur ein Ort, der die
+/// Prüfung von `pruefe` mit den Regeln des Servers besteht
+/// ([`crate::inhalt::pruefung::ort_pruefen`]); geöffnet wird weiter nur über
+/// `POST /api/oeffnen` mit der Kennung. Schreibt nichts, kein Journal.
+pub async fn orte(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    let orte: Vec<Ort> = {
+        let b = state.inhalt.bestand();
+        if !seite::is_valid_slug(&slug) || !b.ordner_da(&slug) {
+            return AppError::nicht_gefunden(format!("Ein Projekt „{slug}“ gibt es nicht.")).into_response();
+        }
+        match b.daten(&slug, "orte") {
+            Ok(Some((DatenInhalt::Orte(o), _))) => o.inhalte().into_iter().flat_map(|t| t.ort.iter().cloned()).collect(),
+            Ok(_) => Vec::new(),
+            Err(_) => return AppError::unlesbar("daten/orte.toml hat einen Fehler; `dashboard pruefe` nennt ihn.").into_response(),
+        }
+    };
+    let r = regeln(&state);
+    let geprueft = tokio::task::spawn_blocking(move || {
+        orte.into_iter()
+            .map(|o| {
+                let ok = crate::inhalt::pruefung::ort_pruefen(&o.pfad, &r).is_ok();
+                OrtVoll { kennung: o.kennung, titel: o.titel, hinweis: o.hinweis, geprueft: ok, pfad: ok.then_some(o.pfad) }
+            })
+            .collect()
+    })
+    .await;
+    match geprueft {
+        // Geschützt, darum im Klartext (Schritt E1b).
+        Ok(orte) => Json(OrteVoll { orte }).into_response(),
+        Err(_) => AppError::intern("Die Prüfung der Orte wurde abgebrochen.").into_response(),
+    }
 }
 
 #[cfg(test)]

@@ -95,6 +95,8 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         BauListe,
         // Lokal öffnen (Entscheidung lokal-oeffnen)
         OeffnenAntwort,
+        // Schritt E1b: die Orte mit Pfad (geschützt)
+        OrteVoll,
         Block,
         Projekt,
         Status,

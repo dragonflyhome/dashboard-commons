@@ -14,6 +14,16 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Neuer geschützter Weg GET /api/projekte/<slug>/orte: die Orte eines
+  Projekts mit vollem Pfad, nur bei Orten, die die Prüfung von pruefe
+  mit den Regeln des Servers bestehen (Kennzeichen geprueft), nie bei
+  Netzwerk- oder Gerätepfaden.
+  Ohne Anmeldung 401, auch in anderer Schreibweise.
+- Der Baustein Orte zeigt angemeldet den Pfad geprüfter Orte als Text und
+  als file:-Link. Klick, Mittelklick und Enter öffnen weiter nur über
+  POST /api/oeffnen; ohne Anmeldung und nach dem Abmelden kein Pfad.
+
 0.11.0 - 2026-11-15
 -------------------
 
