@@ -41,8 +41,8 @@ pub fn ohne_zeitlimit(pfad: &str) -> bool {
 }
 
 /// Der freie Live-Kanal (Kopfleiste, Fassung 2): liegt unter `/api/events`,
-/// ist aber als genau dieser Pfad frei (siehe `geschuetzt`); alles darunter
-/// bleibt geschützt.
+/// ist aber als genau dieser Pfad öffentlich (siehe `oeffentlich`); alles
+/// darunter bleibt geschützt.
 pub const FREIER_KANAL: &str = "/api/events/frei";
 
 // ----- 1 Absturzfänger -----
@@ -196,6 +196,8 @@ pub fn nur_von_hier(pfad: &str) -> bool {
 /// jpg, jpeg, webp, gif), `Sec-Fetch-Dest: image` und `Sec-Fetch-Mode: no-cors`.
 /// Ein Bild im no-cors-Modus liefert dem Aufrufer keine Daten zurück, und die
 /// SVG-CSP (`ASSET_SVG_CSP`) verhindert Skripte. Alles andere bleibt 403.
+/// Seit Schritt E2 verlangen die Dateien zudem die Anmeldung, die der Rahmen
+/// nicht mitschickt; darum bettet `api::projekte::asset` die Bilder ein.
 fn bild_im_rahmen(req: &Request) -> bool {
     const BILDENDUNGEN: [&str; 6] = ["svg", "png", "jpg", "jpeg", "webp", "gif"];
     let h = req.headers();
@@ -220,22 +222,21 @@ pub fn abgelehnt() -> Response {
 // ----- 4b Windows-Anmeldung: das Konto des Inhabers auf den geschützten Wegen -----
 
 /// Etappe B2: die Datei mit den Fragen an den Inhaber (`daten/fragen.toml`); ihr
-/// Weg ist geschützt, und frei gehen ihre Texte nirgends hinaus.
+/// Weg ist geschützt wie jeder Projektweg (Schritt E2).
 pub const FRAGEN_DATEI: &str = "fragen";
 
 /// Etappe B3: Ereignisse und Fristen (`daten/fristen.toml`); Titel von Fristen
 /// und Namen von Ereignissen sind persönlicher Inhalt wie die Fragen.
 pub const FRISTEN_DATEI: &str = "fristen";
 
-/// Die eine Liste der geschützten Dateien in `daten/` (ohne `.toml`). Aus ihr
-/// lesen `geschuetzt` (erste Prüfung, am Pfad), der Handler
-/// `api::neue_form::daten` (zweite Wand, am dekodierten Namen) und
-/// `api::projekte::eine` (der Daten-Teil von `/api/projects/<slug>`).
-/// `orte` und `sicherung` kommen mit B4 dazu.
+/// Die Liste der besonders geschützten Dateien in `daten/` (ohne `.toml`).
+/// Seit Schritt E2 sind alle Projektwege geschützt (`oeffentlich`); der
+/// Handler `api::neue_form::daten` prüft diese Dateien bis E3 als zweite
+/// Wand am dekodierten Namen.
 pub const GESCHUETZTE_DATEIEN: [&str; 2] = [FRAGEN_DATEI, FRISTEN_DATEI];
 
 /// Ist `name` (ein Dateiname aus `daten/`, ohne `.toml`) geschützt? Groß/Klein
-/// zählt nicht, wie in `geschuetzt`.
+/// zählt nicht.
 pub fn datei_geschuetzt(name: &str) -> bool {
     GESCHUETZTE_DATEIEN.iter().any(|d| d.eq_ignore_ascii_case(name))
 }
@@ -252,17 +253,15 @@ fn api_weg(pfad: &str) -> bool {
 }
 
 /// Schleuse 3a (Hotfix Prozent): Ein Pfad unter `/api` mit `%` bekommt 400,
-/// vor der Anmeldung (`geschuetzt` prüft den rohen Pfad) und vor jedem
+/// vor der Anmeldung (`oeffentlich` prüft roh und dekodiert) und vor jedem
 /// Routing (axum dekodiert Platzhalter wie `{name}`, sonst käme
 /// `/daten/%66risten` als `fristen` beim Handler an). Kein legitimer Weg unter
 /// `/api` braucht `%`: Slugs (`seite::is_valid_slug`), Kennungen
 /// (`vertrag::daten::ist_kennung`, `v-…`), Datennamen (`ist_datenname`) und
 /// Passkey-Kennungen (base64url) kommen ohne aus. Die Abfrage (`?projekt=…`)
 /// bleibt frei: Sie gehört nicht zum Pfad, und keine Zugangsregel hängt an ihr.
-/// Außerhalb von `/api` hängt kein Zugang an einem Platzhalter: Die geschützten
-/// Seiten (`/schluessel`, `/vorgaenge`, `/daten`) sind feste Wurzeln, Assets und
-/// Oberfläche lehnen `%` selbst ab (`is_safe_asset_name`, `sicherer_teilpfad`),
-/// und `anmeldung_pflicht` prüft dort zusätzlich den dekodierten Pfad.
+/// Außerhalb von `/api` ist ein Pfad mit `%` nie öffentlich (`oeffentlich`:
+/// die Liste nennt keinen, `sicherer_teilpfad` lehnt `%` ab).
 pub async fn prozent_im_pfad(req: Request, next: Next) -> Response {
     let pfad = req.uri().path();
     if api_weg(pfad) && pfad.contains('%') {
@@ -294,93 +293,41 @@ pub fn pfad_dekodiert(roh: &str) -> Option<String> {
     (!text.contains('%')).then_some(text)
 }
 
-/// Wege, die nur das Windows-Konto des Inhabers sehen darf (`[anmeldung]`, geschuetzt):
-/// die Schlüssel, die Vorgänge (auch `warten`), die Daten (der Export enthält
-/// die Vorgänge), der Live-Kanal (er meldet Vorgänge; frei ist nur genau
-/// `/api/events/frei`, Kopfleiste Fassung 2), die Aufgaben für den Inhaber
-/// (sie enthalten einmalige Links, Etappe 5a), Arbeiten, Einstufung und die
-/// Liste „Anstehend“ (Etappe A1, wie die Aufgaben), die Meldungen (Etappe A3; das Unter-Dashboard
-/// `/api/projekte/<slug>/stand` bleibt frei, Aufgaben dort nur als Zahl) und die Benutzer-Daten
-/// des PCs (`/api/pc/benutzer`), je mit allem darunter und für alle Methoden.
-/// Seit 4d auch `/api/entscheidungen` und `/api/zielbild`, seit 6b `/api/anleitung`,
-/// seit 4c `/api/bauen`.
-/// Seit dem Hotfix 3a-1 auch die vollen Fassungen für die Oberfläche:
-/// `/api/pc/verlauf/voll` und `/api/projekte/<slug>/stand/voll`. Edge schickt
-/// Negotiate nur auf einer Verbindung, die vorher 401 bekam; ein freier Weg,
-/// der mit Anmeldung mehr zeigt, wäre darum nur zufällig vollständig.
-/// Frei bleiben die Projektseiten und ihre Daten, `/api/pc` (nur
-/// Rechner-Werte, siehe `api::pc`), `/api/pc/verlauf` und
-/// `/api/projekte/<slug>/stand` (für Werkzeuge), `/api/betrieb`, `/healthz`,
-/// `/api/pruefung`, die Dateien der Oberfläche und `/api/anmeldung/*` (die
-/// Probe). Groß/Klein zählt hier nicht, damit eine andere Schreibweise nie an
-/// der Pflicht vorbeiführt. Seit Etappe B2 auch `/api/projekte/<slug>/backlog`
-/// und `/api/projekte/<slug>/daten/fragen` (Fragen an den Inhaber sind
-/// persönlicher Inhalt); die anderen Dateien in `daten/` bleiben frei. Seit
-/// Etappe B3 auch `/api/projekte/<slug>/daten/fristen` und `/api/fristen`, seit
-/// Etappe B8 `/api/projekte/<slug>/plan` und `/api/projekte/<slug>/verlauf`, seit
-/// Schritt E1b `/api/projekte/<slug>/orte` (die Orte mit Pfad).
-pub fn geschuetzt(pfad: &str) -> bool {
-    const WURZELN: [&str; 25] = [
-        "/schluessel",
-        "/api/schluessel",
-        "/vorgaenge",
-        "/api/vorgaenge",
-        "/daten",
-        "/api/daten",
-        "/api/events",
-        "/api/pc/benutzer",
-        "/api/pc/verlauf/voll",
-        "/api/aufgaben",
-        "/api/arbeiten",
-        "/api/einstufung",
-        "/api/anstehend",
-        "/api/antworten",
-        "/api/meldungen",
-        // Etappe 4d (Auflage aus der Abnahme): Entscheidungen und Zielbild
-        // nennen Projekte und Pläne; nur der Inhaber liest sie. Die Seiten selbst
-        // bleiben frei wie /anstehend und zeigen ohne Anmeldung den Hinweis.
-        "/api/entscheidungen",
-        "/api/zielbild",
-        // Etappe 6b: die Anleitung nennt Wege und
-        // Abläufe des Inhabers; geschützt wie das Zielbild, die Seite bleibt frei.
-        "/api/anleitung",
-        // Kopfleiste, Fassung 2: der volle Betriebsbericht mit
-        // Pfaden und dem Anmeldestand des Inhabers; /api/betrieb selbst bleibt frei.
-        "/api/betrieb/voll",
-        // Kopfleiste, Fassung 3: die Nummer aller Ereignisse (zeigt, wie oft der Speicher des Inhabers
-        // schreibt); /api/stand selbst bleibt frei und zählt nur Freies.
-        "/api/stand/voll",
-        // Etappe 4c: der Bau-Stand mit Satz (GET /api/bauen); Zustand und Zeit stehen frei
-        // in /api/projects.
-        "/api/bauen",
-        // Entscheidung lokal-oeffnen: „Öffnen“ (POST /api/oeffnen) nur als Inhaber.
-        "/api/oeffnen",
-        // Etappe B3: die Fristenliste aller Projekte nennt Titel von Fristen und Aufgaben.
-        "/api/fristen",
-        // Herzschlag: welcher Chat zu einer Sitzung gehört und was ihn aufhält.
-        "/api/sitzungen",
-        // „Neu in …“: liest und schreibt den Datenspeicher; /api/fassungen selbst bleibt frei.
-        "/api/fassungen/gezeigt",
-    ];
-    let pfad = pfad.to_ascii_lowercase();
-    // Kopfleiste, Fassung 2: der freie Kanal, genau dieser Pfad (nichts darunter, kein
-    // Schrägstrich am Ende). Er trägt nur Lebenszeichen, Anmeldestand und schon freie
-    // Daten (`api::events::FREIER_KANAL`); Adresse und Herkunft prüfen die Schleusen davor.
-    if pfad == FREIER_KANAL {
-        return false;
+/// Die Positivliste (Schritt E2): Ohne Anmeldung antwortet das Dashboard nur
+/// auf diese Paare aus Methode und Pfad; jeder andere Weg verlangt die
+/// Anmeldung, auch jeder neue. Öffentlich sind Lebenszeichen, der schmale
+/// Zustand (`/api/betrieb`, `/api/stand`, der freie Kanal), das Changelog, die
+/// Probe der Windows-Anmeldung, die Passkey-Wege der Anmeldung, die Seiten `/`,
+/// `/anmelden` und `/fassungen`, die Bau-Dateien der Oberfläche und die
+/// Umleitungen unter `/neu`.
+///
+/// Der Abgleich ist streng (nach dem Muster von `projekte::modul_weg_frei`):
+/// exakt und groß/klein-sensitiv, ohne Präfix und ohne Schrägstrich am Ende;
+/// der rohe **und** der dekodierte Pfad müssen passen, eine kaputte oder
+/// doppelte Kodierung ist nie öffentlich. Einzige Präfixe: `/_app/` (mit
+/// `sicherer_teilpfad`) und `/neu/` (nur Umleitung, ohne Blick in den Bestand).
+/// `bau_datei` sagt, ob es den Teilpfad als Datei im Ordner der Oberfläche
+/// gibt (`oberflaeche::bau_datei`); so sind nur Bau-Dateien öffentlich.
+pub fn oeffentlich(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    oeffentlich_roh(methode, pfad, bau_datei) && pfad_dekodiert(pfad).is_some_and(|d| oeffentlich_roh(methode, &d, bau_datei))
+}
+
+/// Der Abgleich eines Pfads ohne Dekodieren (siehe [`oeffentlich`]).
+fn oeffentlich_roh(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::Path) -> bool) -> bool {
+    let get = *methode == Method::GET;
+    let lesen = get || *methode == Method::HEAD;
+    let post = *methode == Method::POST;
+    match pfad {
+        "/healthz" | "/" | "/anmelden" | "/fassungen" | "/neu" | "/neu/" => lesen,
+        "/api/betrieb" | "/api/stand" | FREIER_KANAL | "/api/fassungen" | "/api/anmeldung/probe" | "/api/anmeldung/wer" | "/api/passkey/stand" => get,
+        "/api/passkey/anmelden/beginn" | "/api/passkey/anmelden/ende" | "/api/passkey/abmelden" => post,
+        // Die Anträge brauchen daneben die Windows-Anmeldung mit irgendeinem Konto (`konto_noetig`).
+        "/api/passkey/antrag" | "/api/passkey/antrag/beginn" | "/api/passkey/antrag/ende" => get || post,
+        _ if pfad.ends_with('/') || api_weg(pfad) => false,
+        _ if pfad.starts_with("/neu/") => lesen,
+        _ if pfad.starts_with("/_app/") => lesen && crate::oberflaeche::sicherer_teilpfad(pfad).is_some(),
+        _ => lesen && crate::oberflaeche::sicherer_teilpfad(pfad).is_some_and(|rel| !rel.as_os_str().is_empty() && bau_datei(&rel)),
     }
-    // Der volle Stand eines Projekts: /api/projekte/<slug>/stand/voll (mit allem darunter);
-    // Etappe B2: das Backlog /api/projekte/<slug>/backlog (nennt Titel wie der volle Stand)
-    // und die Fragen an den Inhaber /api/projekte/<slug>/daten/fragen (persönlicher
-    // Inhalt; die anderen Dateien in daten/ bleiben frei wie die Seite).
-    let teile: Vec<&str> = pfad.split('/').collect();
-    let stand_voll = matches!(teile.as_slice(), ["", "api", "projekte", _, "stand", "voll", ..]);
-    // Etappe B8: Plan und Verlauf eines Projekts nennen Titel wie das Backlog; Schritt E1b:
-    // die Orte mit vollem Pfad.
-    let backlog = matches!(teile.as_slice(), ["", "api", "projekte", _, "backlog" | "plan" | "verlauf" | "orte", ..]);
-    // Die geschützten Dateien aus der einen Liste `GESCHUETZTE_DATEIEN`.
-    let datei = matches!(teile.as_slice(), ["", "api", "projekte", _, "daten", name, ..] if datei_geschuetzt(name));
-    stand_voll || backlog || datei || WURZELN.iter().any(|w| pfad.strip_prefix(w).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')))
 }
 
 /// Eine Navigation des Browsers (GET/HEAD, nicht unter `/api`, mit
@@ -406,17 +353,21 @@ pub fn browser_kurz(req: &Request) -> String {
     if ua.chars().count() > 80 { format!("{sauber}…") } else { sauber }
 }
 
-/// HTML-Sonderzeichen ersetzen.
+/// HTML-Sonderzeichen ersetzen (nur die Seite unter Windows braucht es).
+#[cfg(windows)]
 fn html_text(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
-/// Auf einem geschützten Weg kam keine Anmeldung mit. Ins Protokoll kommen
-/// Weg und Browser (gekürzt), damit sich Fälle wie „anderer Browser“
-/// einordnen lassen. Eine Navigation des Browsers bekommt eine Seite in
-/// einfachem Deutsch mit der Adresse zum Kopieren (401 mit
-/// `WWW-Authenticate: Negotiate`, damit Edge trotzdem anmeldet und die Seite
-/// nie sieht); alles andere die Antwort aus `bitte_anmelden`.
+/// Unter Windows auf einem nicht öffentlichen Weg ohne Anmeldung. Ins
+/// Protokoll kommen Weg und Browser (gekürzt), damit sich Fälle wie „anderer
+/// Browser“ einordnen lassen. Eine Navigation des Browsers bekommt eine Seite
+/// in einfachem Deutsch mit der Adresse zum Kopieren und dem Link zur
+/// Anmeldung (401 mit `WWW-Authenticate: Negotiate`, damit Edge trotzdem
+/// anmeldet und die Seite nie sieht); alles andere die Antwort aus
+/// `bitte_anmelden`. Status und Körper hängen nur am Pfad selbst, nie am
+/// Bestand (Schritt E2: kein Unterschied zwischen vorhandenen und erfundenen Projekten).
+#[cfg(windows)]
 fn anmeldung_fehlt(req: &Request, port: u16, wo: &str) -> Response {
     tracing::info!("Anmeldung nötig, Verbindung {wo}: {} ohne Windows-Anmeldung, Browser: {}", req.uri().path(), browser_kurz(req));
     if !ist_navigation(req) {
@@ -427,13 +378,13 @@ fn anmeldung_fehlt(req: &Request, port: u16, wo: &str) -> Response {
     let seite = format!(
         "<!doctype html><html lang=\"de\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\
          <title>Dashboard: Anmeldung nötig</title><body>\
-         <h1>Diese Seite öffnet sich nur in Microsoft Edge</h1>\
-         <p>Diese Seite öffnet sich nur in Microsoft Edge unter <a href=\"{adresse}\">{adresse}</a>. \
+         <h1>Anmeldung nötig</h1>\
+         <p>Anmeldung nötig. Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite.</p>\
+         <p>Mit deiner Windows-Anmeldung öffnet sich diese Seite in Microsoft Edge unter <a href=\"{adresse}\">{adresse}</a>. \
          Andere Browser schicken deine Windows-Anmeldung nicht mit.</p>\
          <p>Adresse zum Kopieren (anklicken, dann Strg+C):</p>\
          <p><input type=\"text\" readonly size=\"60\" value=\"{adresse}\" aria-label=\"Adresse für Microsoft Edge\"></p>\
-         <p>Die Projektseiten und die PC-Werte gehen in jedem Browser.</p>\
-         <p>Aus einem anderen Windows-Konto: <a href=\"{passkey}\">mit Passkey anmelden</a>.</p>\
+         <p><a href=\"{passkey}\">Zur Anmeldung</a> (mit Passkey, etwa aus einem anderen Browser oder Windows-Konto).</p>\
          </body></html>",
         passkey = html_text(&anmelden_adresse(port, pfad_und_abfrage)),
     );
@@ -447,6 +398,7 @@ fn anmeldung_fehlt(req: &Request, port: u16, wo: &str) -> Response {
 /// dieselbe Seite unter `http://localhost:<port>` (`[anmeldung]`, adresse).
 /// Nur GET/HEAD-Navigationen (`Sec-Fetch-Dest: document` oder `Accept:
 /// text/html`) und nie unter `/api/*`: API-Wege antworten 401.
+#[cfg(windows)]
 fn nach_localhost(req: &Request, port: u16) -> Option<String> {
     if !matches!(*req.method(), Method::GET | Method::HEAD) {
         return None;
@@ -498,7 +450,7 @@ fn passkey_noetig(req: &Request, port: u16) -> Response {
     res
 }
 
-/// Schleuse 4b: Auf den geschützten Wegen (`geschuetzt`) muss die Anfrage als
+/// Schleuse 4b: Auf jedem nicht öffentlichen Weg (`oeffentlich`) muss die Anfrage als
 /// Inhaber gelten: Verbindung als Inhaber angemeldet (Negotiate über SSPI,
 /// `anmeldung`, 7b) oder ein gültiger Ausweis nach Anmeldung mit Passkey
 /// (Cookie `__Host-dashboard`, Etappe 7c). Liegt hinter der Herkunftsprüfung
@@ -516,24 +468,20 @@ fn passkey_noetig(req: &Request, port: u16) -> Response {
 ///   gesperrt, Passkey noch registriert): durch mit `Angemeldet` und
 ///   `Inhaber::Passkey`; ist er älter als eine Minute, kommt ein erneuerter mit
 ///   (höchstens 8 Stunden ab Anmeldung). Ein ungültiger wird gelöscht.
-/// - Sonst auf einem geschützten Weg: fremdes Konto (Negotiate fertig, aber
+/// - Sonst auf einem nicht öffentlichen Weg unter Windows: fremdes Konto (Negotiate fertig, aber
 ///   nicht der Inhaber) → Browser-Seiten auf `/anmelden`, API 401 Art `passkey`;
 ///   ohne Nachweis 401 mit `WWW-Authenticate: Negotiate` (Art `anmeldung`),
 ///   bei einer Browser-Navigation über 127.0.0.1 307 auf localhost.
+/// - Außerhalb von Windows ohne gültigen Ausweis: eine Seitennavigation 303 auf
+///   `/anmelden?ziel=<pfad>` (`ohne_anmeldung`), alles andere 401 JSON (Art `anmeldung`).
+/// - Kein Modulweg ist öffentlich (`Modul::freie_wege` wirkt seit E2 nicht mehr).
 /// - Die Anträge auf einen Passkey (`api::passkey::konto_noetig`) brauchen
 ///   Negotiate mit irgendeinem Konto (der echte Kontoname), der Inhaber nicht.
 ///
 /// Ins Protokoll kommt nur die Verbindungsnummer und ob die SID passte.
 pub async fn anmeldung_pflicht(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    // Etappe 4b: schreibende Wege der Backend-Module nur mit Anmeldung. Seit
-    // Etappe B2 auch lesende, außer das Modul nennt den Weg in `freie_wege`.
-    let schreibend = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
-    let modul_geschuetzt = modul_weg(req.uri().path()) && (schreibend || !state.projekte.frei_lesbar(req.uri().path()));
-    // Hotfix Prozent: auch der dekodierte Pfad zählt (außerhalb von `/api`, wo
-    // `prozent_im_pfad` nicht greift); nie weniger geschützt als der rohe.
-    let geschuetzt = geschuetzt(req.uri().path())
-        || modul_geschuetzt
-        || (req.uri().path().contains('%') && pfad_dekodiert(req.uri().path()).is_some_and(|d| geschuetzt(&d)));
+    // Schritt E2: die Positivliste, roh und dekodiert; alles andere verlangt die Anmeldung.
+    let geschuetzt = !oeffentlich(req.method(), req.uri().path(), &|rel| crate::oberflaeche::bau_datei(&state.web, rel));
     let konto_noetig = crate::api::passkey::konto_noetig(req.uri().path());
     let nr = req.extensions().get::<ConnectInfo<Verbindung>>().map(|c| c.0.nr);
     // Den Ausweis nur dort prüfen, wo er etwas ändert (geschützte Wege, Anträge,
@@ -588,6 +536,21 @@ async fn mit_ausweis(mut req: Request, next: Next, sitzung: &crate::anmeldung::P
     next.run(req).await
 }
 
+/// Außerhalb von Windows auf einem nicht öffentlichen Weg ohne gültigen
+/// Ausweis: Eine Seitennavigation bekommt 303 auf `/anmelden?ziel=<pfad>`
+/// (über localhost, Passkeys gehen nicht mit einer IP), alles andere 401 JSON
+/// mit Art `anmeldung` (`bitte_anmelden`, wie unter Windows mit `Negotiate`, das
+/// hier kein Browser aushandelt). Gleich für jeden Weg, ohne Blick in den Bestand.
+#[cfg(not(windows))]
+fn ohne_anmeldung(req: &Request, port: u16) -> Response {
+    tracing::info!("Anmeldung nötig: {} ohne Ausweis, Browser: {}", req.uri().path(), browser_kurz(req));
+    if ist_navigation(req) {
+        let ziel = req.uri().path_and_query().map_or(req.uri().path(), |p| p.as_str());
+        return Redirect::to(&anmelden_adresse(port, ziel)).into_response();
+    }
+    bitte_anmelden(None)
+}
+
 #[cfg(not(windows))]
 async fn ohne_windows(
     state: &AppState,
@@ -603,10 +566,7 @@ async fn ohne_windows(
         return (mit_ausweis(req, next, sitzung, None).await, ausweis);
     }
     if pflicht.geschuetzt || pflicht.konto_noetig {
-        let res = nach_localhost(&req, state.port)
-            .map(|ziel| Redirect::temporary(&ziel).into_response())
-            .unwrap_or_else(|| anmeldung_fehlt(&req, state.port, "ohne Nummer"));
-        return (res, ausweis);
+        return (ohne_anmeldung(&req, state.port), ausweis);
     }
     (next.run(req).await, ausweis)
 }
@@ -626,8 +586,9 @@ async fn anmeldung_windows(
     use crate::api::anmeldung::{mit_ausgabe, nachweis_aus};
     use crate::api::passkey::AusweisStand;
 
-    // Die Probe handelt selbst aus (sonst käme jeder Nachweis zweimal an SSPI).
-    if req.uri().path().starts_with("/api/anmeldung/") {
+    // Die Probe handelt selbst aus (sonst käme jeder Nachweis zweimal an SSPI); genau
+    // die zwei öffentlichen Wege, alles andere unter /api/anmeldung/ verlangt die Anmeldung.
+    if !pflicht.geschuetzt && matches!(req.uri().path(), "/api/anmeldung/probe" | "/api/anmeldung/wer") {
         return (next.run(req).await, ausweis);
     }
     let Pflicht { geschuetzt, konto_noetig } = pflicht;
@@ -978,28 +939,49 @@ pub fn percent_encode(s: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Abnahme 4d: Die Daten von /entscheidungen und /zielbild (seit 6b auch
-    /// /anleitung) sind geschützt,
-    /// die Seiten selbst nicht (sie zeigen ohne Anmeldung den Hinweis).
+    /// `oeffentlich` mit einer Oberfläche, deren Bau nur `favicon.ico` hat.
+    fn oeff(m: &Method, p: &str) -> bool {
+        oeffentlich(m, p, &|rel| rel == std::path::Path::new("favicon.ico"))
+    }
+
+    /// Schritt E2: Die System-Seiten und ihre Daten sind nicht öffentlich,
+    /// keine Schreibweise davon (vorher waren die Seiten frei).
     #[test]
-    fn system_seiten_daten_geschuetzt() {
-        for p in ["/api/entscheidungen", "/api/zielbild", "/Api/Zielbild", "/api/entscheidungen/", "/api/anleitung", "/API/Anleitung", "/api/anleitung/x"] {
-            assert!(geschuetzt(p), "{p}");
-        }
-        for p in ["/entscheidungen", "/zielbild", "/api/zielbilder", "/anleitung", "/api/anleitungx"] {
-            assert!(!geschuetzt(p), "{p}");
+    fn system_seiten_nicht_oeffentlich() {
+        for p in ["/api/entscheidungen", "/api/zielbild", "/Api/Zielbild", "/api/anleitung", "/entscheidungen", "/zielbild", "/anleitung", "/api/zielbilder"] {
+            assert!(!oeff(&Method::GET, p), "{p}");
         }
     }
 
-    /// Kopfleiste, Fassung 2: Nur genau `/api/events/frei` ist frei; der
-    /// geschützte Kanal und alles unter dem freien bleiben geschützt.
+    /// Kopfleiste, Fassung 2: Nur genau `/api/events/frei` ist öffentlich, nur
+    /// mit GET; der geschützte Kanal und alles unter dem freien bleiben geschützt.
     #[test]
     fn freier_kanal_genau_ein_pfad() {
-        assert!(!geschuetzt("/api/events/frei"));
+        assert!(oeff(&Method::GET, "/api/events/frei"));
+        assert!(!oeff(&Method::HEAD, "/api/events/frei") && !oeff(&Method::POST, "/api/events/frei"));
         assert!(ohne_zeitlimit("/api/events/frei"));
-        for p in ["/api/events", "/api/events/", "/api/events/frei/", "/api/events/frei/x", "/api/events/freier", "/api/events/frei2"] {
-            assert!(geschuetzt(p), "{p}");
+        for p in ["/api/events", "/api/events/", "/api/events/frei/", "/api/events/frei/x", "/api/events/freier", "/api/events/frei2", "/API/Events/Frei"] {
+            assert!(!oeff(&Method::GET, p), "{p}");
         }
+    }
+
+    /// Schritt E2: Bau-Dateien nur, wenn es sie gibt, ohne Schrägstrich am Ende;
+    // `/_app/` mit sicherem Teilpfad; `/neu` nur lesend; nie unter `/api`.
+    #[test]
+    fn bau_dateien_und_umleitungen() {
+        assert!(oeff(&Method::GET, "/favicon.ico") && oeff(&Method::HEAD, "/favicon.ico"));
+        for p in ["/favicon.ico/", "/Favicon.ico", "/robots.txt", "/%66avicon.ico", "/api/favicon.ico", "/x/favicon.ico"] {
+            assert!(!oeff(&Method::GET, p), "{p}");
+        }
+        assert!(!oeff(&Method::POST, "/favicon.ico"));
+        assert!(oeff(&Method::GET, "/_app/immutable/a.js") && oeff(&Method::HEAD, "/_app/version.json"));
+        for p in ["/_app/", "/_app/../x", "/_app/%2e%2e/x", "/_app/a%2Fb", "/_App/a.js", "/_app/.x"] {
+            assert!(!oeff(&Method::GET, p), "{p}");
+        }
+        for p in ["/neu", "/neu/", "/neu/projects/beispiel"] {
+            assert!(oeff(&Method::GET, p) && !oeff(&Method::POST, p), "{p}");
+        }
+        assert!(!oeff(&Method::GET, "/neux") && !oeff(&Method::GET, "/Neu"));
     }
 
     #[test]

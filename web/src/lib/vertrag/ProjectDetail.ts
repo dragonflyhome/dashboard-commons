@@ -50,7 +50,7 @@ file_modified: string | null,
 /**
  * Kopfleiste, Fassung 3: Name des Schwerpunkts aus `data/schwerpunkte.toml`,
  * sonst „Sonstiges“ (derselbe Fakt wie `schwerpunkt` in „Anstehend“ und im
- * Stand des Projekts, beide schon frei). Die Seitenleiste gruppiert danach.
+ * Stand des Projekts). Die Seitenleiste gruppiert danach.
  * Steht immer im JSON; in TypeScript optional (ältere Beispiele).
  */
 schwerpunkt?: string, 
@@ -60,8 +60,8 @@ schwerpunkt?: string,
  */
 schwerpunkt_reihenfolge?: number, 
 /**
- * Etappe 4c: Bau-Stand der Seite (nur Projekte mit `Seite.svelte`; frei,
- * ohne Satz). Fehlt, wenn das Projekt keine eigene Seite hat oder der
+ * Etappe 4c: Bau-Stand der Seite (nur Projekte mit `Seite.svelte`, ohne
+ * Satz). Fehlt, wenn das Projekt keine eigene Seite hat oder der
  * Stand des Baumeisters nicht lesbar ist.
  */
 bau?: ProjektBau, };

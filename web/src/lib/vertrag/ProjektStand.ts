@@ -3,14 +3,13 @@ import type { Aktualisierung } from "./Aktualisierung";
 import type { AnstehendEintrag } from "./AnstehendEintrag";
 import type { FristZeile } from "./FristZeile";
 import type { GesamtStand } from "./GesamtStand";
-import type { StandZahlen } from "./StandZahlen";
 
 /**
  * `GET /api/projekte/<slug>/stand` und `/stand/voll`: der Zustand des
  * Projekts für das Unter-Dashboard, aus derselben Rechnung wie
- * `/api/anstehend` (Etappe 3a+). Mit Windows-Anmeldung (`sichtbar`) alle
- * offenen Einträge und Aktualisierungen in neutraler Ordnung, ohne Zahlen;
- * ohne Anmeldung keine Einträge, nur `zahlen`.
+ * `/api/anstehend` (Etappe 3a+): alle offenen Einträge und Aktualisierungen
+ * in neutraler Ordnung, ohne Zahlen. Beide Wege verlangen seit Schritt E2
+ * die Anmeldung.
  */
 export type ProjektStand = { slug: string, schwerpunkt: string, gesamt: GesamtStand, 
 /**
@@ -18,38 +17,33 @@ export type ProjektStand = { slug: string, schwerpunkt: string, gesamt: GesamtSt
  */
 frist_bald_tage: number, 
 /**
- * Mit Windows-Anmeldung: `eintraege` und `aktualisierungen` sind da.
+ * `eintraege` und `aktualisierungen` sind da; seit Schritt E2 immer
+ * `true` (ohne Anmeldung antworten beide Wege 401).
  */
 sichtbar: boolean, 
 /**
- * Alle offenen Einträge des Projekts (Projekt, Art, Kennung); ohne Anmeldung leer.
+ * Alle offenen Einträge des Projekts (Projekt, Art, Kennung).
  */
 eintraege: Array<AnstehendEintrag>, 
 /**
  * Alle Meldungen des Projekts und seine Vorgänge der letzten sieben
- * Tage (Quelle, Kennung); ohne Anmeldung leer (Grenze aus 7b).
+ * Tage (Quelle, Kennung).
  */
 aktualisierungen: Array<Aktualisierung>, 
 /**
- * Nur ohne Anmeldung: die Zahlen als Fakt; mit Anmeldung `null`.
- */
-zahlen: StandZahlen | null, 
-/**
  * `open = [...]` aus dem Kopf.
- * Etappe B2: nur mit Windows-Anmeldung (`sichtbar`); ohne leer, dann
- * steht nur `notizen_zahl` da.
  */
 notizen: Array<string>, 
 /**
- * Etappe B2: wie viele Notizen es gibt, auch ohne Anmeldung. In
- * TypeScript optional (ältere Beispiele).
+ * Etappe B2: wie viele Notizen es gibt. In TypeScript optional (ältere
+ * Beispiele).
  */
 notizen_zahl?: number, 
 /**
- * Etappe B8: wie `zahlen.fertig_7_tage`, auf beiden Wegen (nur eine
- * Zahl): Mit Anmeldung stehen fertige Arbeiten nicht in `eintraege`,
- * die Oberfläche kann sie also nicht selbst zählen. In TypeScript
- * optional (ältere Beispiele).
+ * Etappe B8: Arbeiten, die in den letzten sieben Tagen fertig wurden
+ * (nur eine Zahl): Fertige Arbeiten stehen nicht in `eintraege`, die
+ * Oberfläche kann sie also nicht selbst zählen. In TypeScript optional
+ * (ältere Beispiele).
  */
 fertig_7_tage?: number, 
 /**
@@ -59,8 +53,7 @@ fertig_7_tage?: number,
 speicher_fehlt: boolean, 
 /**
  * Etappe B3: die offenen Fristen aus `daten/fristen.toml` mit Datum
- * (fest oder aufgelöst), nach Datum; nur mit Windows-Anmeldung, sonst
- * leer (ohne Anmeldung steckt die nächste in `zahlen.naechste_frist`).
- * Fehlt im JSON, solange es keine gibt.
+ * (fest oder aufgelöst), nach Datum. Fehlt im JSON, solange es keine
+ * gibt.
  */
 fristen?: Array<FristZeile>, };

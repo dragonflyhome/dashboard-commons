@@ -14,6 +14,49 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Bruch: Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite, den
+  Zustand, die Fassung und das Changelog. Öffentlich ist nur eine feste
+  Liste von Wegen; jeder andere Weg verlangt die Anmeldung, auch jeder neue.
+- Bruch: /api/pc, /api/pc/verlauf, /api/projects, /api/projekte/<slug>
+  (mit stand und daten), /api/pruefung, /api/archiv, /api/hallo, die
+  Projektseiten und die Dateien unter /projects/<slug>/assets verlangen die
+  Anmeldung. Ein Werkzeug, das sie ohne Anmeldung liest, braucht sie jetzt.
+- Bruch: /api/betrieb nennt öffentlich nur Modus, Fassung mit Datum,
+  Startzeit, die Fassung der Oberfläche, ob ein Bote vorgesehen ist, und
+  den Zustand des Datenspeichers; alles andere steht in /api/betrieb/voll.
+  /api/stand nennt öffentlich nur ereignis und fassung, der freie Kanal
+  trägt nur noch anmeldung, fassung und nachholen.
+- Angemeldet liefern die Projektwege, /api/pc und die Prüfung im Klartext.
+- Ohne Anmeldung antwortet jeder nicht öffentliche Weg gleich, ob es ihn
+  gibt oder nicht. Außerhalb von Windows führt eine Seite mit 303 zur
+  Anmeldung.
+- Ohne Anmeldung leitet die Oberfläche jede Seite außer /anmelden und
+  /fassungen auf /anmelden, mit der Seite als Ziel; ebenso nach dem
+  Abmelden. Gilt schon eine Anmeldung, etwa ein Passkey nach einem Link von
+  außen, geht /anmelden gleich weiter zum Ziel. /anmelden und die Seite
+  „Anmeldung nötig“ nennen unter Windows den Weg über Edge, sonst den Passkey.
+- Anleitung und Leitfaden nennen als frei nur noch die öffentlichen Wege.
+  Die Edge-Proben prüfen ohne Anmeldung die Weiterleitung zur Anmeldung,
+  keinen Projekttitel im DOM und 401 auf /api/projects.
+- Bekannt: Die Bau-Dateien der eigenen Projektseiten unter /_app/ nennen
+  ohne Anmeldung noch Projektnamen und feste Seitentexte; das schließt der
+  nächste Schritt.
+- Die Vorschau eines Entwurfs bringt die Bilder aus assets/, die sie nennt,
+  eingebettet mit, weil der abgeschirmte Rahmen keine Anmeldung mitschickt;
+  höchstens 8 MB je Antwort (ein mehrfach genanntes Bild zählt je Nennung),
+  in der Reihenfolge, in der der Entwurf sie nennt, die übrigen bleiben
+  Adressen.
+- Bau-Dateien der Oberfläche sind ohne Anmeldung nur in ihrer echten
+  Schreibweise öffentlich, nicht in anderer Groß- und Kleinschreibung oder
+  mit einem Punkt am Ende.
+
+Entfernt
+- Bruch: Modul::freie_wege wirkt nicht mehr; kein Weg eines Moduls ist
+  ohne Anmeldung lesbar.
+- Bruch: /api/projekte/<slug>/stand nennt kein Feld zahlen mehr; es stand
+  nur ohne Anmeldung da, angemeldet war es immer null.
+
 0.12.0 - 2026-11-15
 -------------------
 

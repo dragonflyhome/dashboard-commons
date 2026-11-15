@@ -143,6 +143,8 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         EinstufungAntwort,
         AnstehendListe,
         ProjektStand,
+        // Zählt die Oberfläche aus ProjektStand (standZahlen); kein Feld trägt sie.
+        StandZahlen,
         // Backlog (Etappe B2)
         Backlog,
         // Plan (Etappe B8): GET /api/projekte/<slug>/plan
@@ -183,6 +185,7 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         Freigabe,
         // Betrieb
         Betrieb,
+        BetriebFrei,
         // Fassungen aus dem Changelog (Freigabe in einem Schritt)
         FassungenAntwort,
         NeuIn,
@@ -190,6 +193,7 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         HalloOrt,
         // Kopfleiste, Fassung 3: Stand für die Aktualitätsprüfung
         ServerStand,
+        ServerStandFrei,
         // Live-Kanal
         Change,
         PcTick,

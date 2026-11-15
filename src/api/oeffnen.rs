@@ -7,7 +7,7 @@
 //!
 //! 1. Schleusen wie bei allen schreibenden Wegen: nur 127.0.0.1/localhost,
 //!    Herkunft und CSRF (Origin/Sec-Fetch-Site), Anmeldung als Inhaber
-//!    (`/api/oeffnen` steht in `sicherheit::geschuetzt`), Zeitlimit, Größe.
+//!    (`/api/oeffnen` steht nicht in `sicherheit::oeffentlich`), Zeitlimit, Größe.
 //!    Nur POST (GET: 405).
 //! 2. Nur im eigenen Windows-Konto: Mit Passkey aus einem anderen Konto 403
 //!    (das Fenster ginge sonst in einer anderen Sitzung auf).
@@ -196,7 +196,7 @@ pub async fn oeffnen(
 
 /// `GET /api/projekte/<slug>/orte` (Schritt E1b): die Orte des Projekts mit
 /// vollem Pfad, für die Anzeige als Text und `file:`-Link. Geschützt
-/// (`sicherheit::geschuetzt`); ohne Anmeldung 401 auch hier, falls doch eine
+/// (nicht in `sicherheit::oeffentlich`); ohne Anmeldung 401 auch hier, falls doch eine
 /// Anfrage an der Schleuse vorbeikäme. Den Pfad bekommt nur ein Ort, der die
 /// Prüfung von `pruefe` mit den Regeln des Servers besteht
 /// ([`crate::inhalt::pruefung::ort_pruefen`]); geöffnet wird weiter nur über

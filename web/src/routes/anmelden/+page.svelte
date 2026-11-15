@@ -17,12 +17,26 @@
 	 * Passkeys zum Bestätigen und Widerrufen (dieselbe wie unter „Schlüssel“;
 	 * der eigene hat keine Knöpfe). Ohne Verbindung keine Handlung, nur ein
 	 * Hinweis.
+	 *
+	 * Schritt E2: Ohne Anmeldung leitet jede andere Seite hierher
+	 * (`?ziel=<pfad>`, `+layout.ts`). Beim Laden fragt die Seite
+	 * `/api/passkey/stand`: Gilt schon eine Anmeldung (etwa ein Passkey, dessen
+	 * Cookie nach einem Link von außen in der Kette fehlte), geht es sofort
+	 * weiter zum Ziel, damit sich niemand zweimal anmeldet. Ohne `ziel` (das
+	 * Schloss oben) bleibt die Seite, zum Verwalten und Abmelden. Und sie fragt
+	 * `/api/anmeldung/wer`: unter Windows der Satz zu Edge unter localhost,
+	 * sonst der Satz zum Passkey.
 	 */
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
-	import { localhostAdresse } from '#lib/anmeldung.ts';
+	import {
+		SATZ_ANMELDUNG_NOETIG,
+		anmeldeWeg,
+		localhostAdresse,
+		type AnmeldeWeg
+	} from '#lib/anmeldung.ts';
 	import { fehlerText } from '#lib/api/client.ts';
 	import { fmtDateTime } from '#lib/format.ts';
 	import OldLink from '#lib/components/OldLink.svelte';
@@ -40,11 +54,15 @@
 		browserFehlerSatz,
 		eigeneAntraege,
 		stand as ladeStand,
+		weiter,
 		zielPruefen
 	} from '#lib/passkey.ts';
 	import type { AntragErgebnis, EigeneAntraege, PasskeyStand } from '$vertrag';
 
 	const ziel = $derived(zielPruefen(page.url.searchParams.get('ziel')));
+	/** Kam die Seite über die Weiterleitung (mit Ziel)? Dann geht es angemeldet sofort weiter. */
+	const umgeleitet = $derived(page.url.searchParams.has('ziel'));
+	let weg = $state<AnmeldeWeg | null>(null);
 	const lokal = $derived(aufLocalhost(page.url.href));
 
 	let stand = $state<PasskeyStand | null>(null);
@@ -96,7 +114,7 @@
 		try {
 			stand = await anmelden();
 			meldung = 'Angemeldet. Es geht weiter …';
-			window.location.assign(ziel);
+			weiter(ziel);
 		} catch (e) {
 			fehler = satz(e);
 		} finally {
@@ -152,7 +170,10 @@
 		void (async () => {
 			await eigeneLaden();
 			await standLaden();
+			// Schritt E2: schon angemeldet (Passkey oder Windows), dann gleich zum Ziel.
+			if (umgeleitet && stand !== null && stand.wie !== 'keine') weiter(ziel);
 		})();
+		void anmeldeWeg().then((w) => (weg = w));
 		// Solange ein Antrag wartet: alle 5 Sekunden nachsehen, ob er entschieden ist.
 		const takt = setInterval(() => {
 			if (offen !== null) void eigeneLaden();
@@ -169,6 +190,20 @@
 
 <p class="crumbs muted small"><a href={resolve('/')}>Übersicht</a> › Anmelden</p>
 <h1>Anmelden</h1>
+
+{#if umgeleitet && !angemeldet}
+	<p class="big">{SATZ_ANMELDUNG_NOETIG}</p>
+{/if}
+{#if weg === 'windows'}
+	<p>
+		Mit deiner Windows-Anmeldung öffnet sich das Dashboard in Microsoft Edge unter
+		<OldLink href={localhostAdresse(new URL(ziel, page.url.href).href)}
+			>{localhostAdresse(page.url.origin)}</OldLink
+		>. Andere Browser und andere Windows-Konten melden sich mit einem Passkey an.
+	</p>
+{:else if weg === 'passkey'}
+	<p>Anmelden geht hier mit einem Passkey.</p>
+{/if}
 
 {#if !lokal}
 	<p class="hinweis" role="note">

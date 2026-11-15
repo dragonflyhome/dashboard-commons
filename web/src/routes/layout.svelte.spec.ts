@@ -58,6 +58,7 @@ vi.mock('#lib/live.svelte.ts', async (original) => {
 		bereichBetroffen: echt.bereichBetroffen,
 		vorgangBetroffen: echt.vorgangBetroffen,
 		live: {
+			pc: null,
 			start: vi.fn(),
 			stop: vi.fn(),
 			onInhalt: aus,
@@ -76,14 +77,12 @@ vi.mock('#lib/freikanal.svelte.ts', () => ({
 	freierKanal: {
 		start: vi.fn(),
 		stop: vi.fn(),
-		onInhalt: () => () => undefined,
 		onAbgemeldet: (l: () => void) => {
 			abgemeldet.add(l);
 			return () => abgemeldet.delete(l);
 		},
 		zustand: 'angemeldet',
-		aktiv: 'geschuetzt',
-		pc: null
+		aktiv: 'geschuetzt'
 	}
 }));
 // Kopfleiste, Fassung 3: die Aktualitätsprüfung als Platzhalter (eigene Tests in aktualitaet.spec.ts).
@@ -334,19 +333,20 @@ describe('Live-Lücken im Layout: gezielt statt refreshAll', () => {
 		expect(geladen(nav.invalidate.mock.calls[0]?.[0])).toEqual(['api:projects']);
 	});
 
-	it('Abmelden, Widerruf, Ablauf: lädt Benutzer-Daten und die geschützt geladenen Seiten neu; nach dem Schließen nichts mehr', () => {
+	it('Abmelden, Widerruf, Ablauf: lädt Benutzer-Daten, die geschützt geladenen Seiten und die Projektliste neu (deren 401 leitet zur Anmeldung); nach dem Schließen nichts mehr', () => {
 		zeige('/daten');
 		expect(abgemeldet.size).toBe(1);
 		nav.invalidate.mockClear();
 		for (const l of abgemeldet) l();
 		expect(nav.refreshAll).not.toHaveBeenCalled();
 		expect(nav.invalidate).toHaveBeenCalledTimes(1);
-		// Nicht die freien: Projektliste, PC-Werte, Verlauf.
+		// Schritt E2: auch die Projektliste (`+layout.ts` leitet bei 401 zur Anmeldung).
 		expect(geladen(nav.invalidate.mock.calls[0]?.[0]).sort()).toEqual([
 			'api:anleitung',
 			'api:daten',
 			'api:entscheidungen',
 			'api:pc:benutzer',
+			'api:projects',
 			'api:schluessel',
 			'api:vorgaenge',
 			'api:zielbild'

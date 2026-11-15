@@ -56,7 +56,7 @@ pub struct Eintrag {
 }
 
 impl Eintrag {
-    /// Für `/api/projects` (frei): ohne Satz.
+    /// Für `/api/projects` (seit Schritt E2 nur mit Anmeldung): ohne Satz.
     pub fn frei(&self) -> ProjektBau {
         ProjektBau { zustand: self.zustand, letzte_gute: self.letzte_gute, gebaut_um: self.gebaut }
     }

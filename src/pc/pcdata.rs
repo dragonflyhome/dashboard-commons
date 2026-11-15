@@ -177,7 +177,7 @@ pub fn lesen(text: &str) -> Result<PcData, LeseFehler> {
 
 /// Der Satz, wenn sich die Datei nicht lesen lässt (wie bei [`load`]). Er
 /// nennt `data/pc.toml`, nie den ganzen Pfad: der enthält den Windows-
-/// Benutzernamen, und `/api/pc` ist frei lesbar.
+/// Benutzernamen.
 pub fn lesefehler_satz(e: &std::io::Error) -> String {
     format!("{DATEI} lässt sich nicht lesen: {e}")
 }
@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(d.backup.lage().regel_321, Regel321::NichtErfuellt);
     }
 
-    /// Aus der Abnahme des Backups: `/api/pc` ist frei lesbar, der Satz darf
+    /// Aus der Abnahme des Backups (damals war `/api/pc` frei lesbar): der Satz darf
     /// den ganzen Pfad (mit dem Windows-Benutzernamen) nicht nennen.
     #[test]
     fn lesefehler_nennt_nur_data_pc_toml() {

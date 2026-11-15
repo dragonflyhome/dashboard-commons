@@ -149,20 +149,7 @@ function netz(
 					sichtbar: false,
 					eintraege: [],
 					notizen: [],
-					notizen_zahl: 1,
-					zahlen: {
-						wartet_auf_dich: 1,
-						aufgaben: 0,
-						fragen: 1,
-						laeuft: 1,
-						wartet: 0,
-						als_naechstes: 1,
-						fertig_7_tage: 6,
-						meldungen: { neu: 1, gesamt: 1 },
-						naechste_frist: null,
-						tage_bis: null,
-						frist_stufe: null
-					}
+					notizen_zahl: 1
 				})
 			);
 		if (url.startsWith('/api/anstehend'))
@@ -322,13 +309,15 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		expect(document.activeElement?.id).toBe('arbeit-ar-20261102-0001');
 	});
 
-	it('ohne Anmeldung: Stand mit Zahlen als Text (ohne Ziel kein Link), sonst je Teil der Satz, keine Titel', async () => {
+	// Seit Schritt E2 schickt der Server keine Zahlen ohne Anmeldung mehr (und /stand verlangt sie);
+	// der Zweig zeigt dann Nullen. Er fällt mit den übrigen Zweigen ohne Anmeldung in E3.
+	it('ohne Anmeldung: Stand ohne Einträge als Text (ohne Ziel kein Link), sonst je Teil der Satz, keine Titel', async () => {
 		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz(false) });
 		await waitFor(() => {
 			expect(screen.getAllByText(SATZ_OHNE_ANMELDUNG)).toHaveLength(3);
 		});
 		await screen.findByText(/In den letzten 7 Tagen/);
-		expect(document.querySelector('.vier')).toHaveTextContent('1 wartet auf dich');
+		expect(document.querySelector('.vier')).toHaveTextContent('0 warten auf dich');
 		expect(document.querySelectorAll('.vier a, .ampel a')).toHaveLength(0);
 		expect(screen.queryByText('Soll die Ampel oben stehen?')).toBeNull();
 		expect(screen.getByText('Notizen (1)')).toBeInTheDocument();

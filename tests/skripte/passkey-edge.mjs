@@ -26,14 +26,17 @@
  *     SameSite=Strict, nicht in document.cookie
  * Teil B, „anderes Konto“ (derselbe Server mit erfundener inhaber_sid, also
  * gilt das eigene Konto jetzt als fremd; dieselben Daten und derselbe Schlüssel):
- *   - /vorgaenge leitet auf /anmelden?ziel=/vorgaenge um, die API sagt 401
+ *   - /vorgaenge leitet auf /anmelden?ziel=/vorgaenge um, die API sagt 401;
+ *     seit Schritt E2 dort kein Projekttitel im DOM und /api/projects 401
  *   - Antrag mit einem neuen Authenticator: ausstehend, Vergleichszahl, keine
  *     Rechte, Anmeldung damit geht nicht
  *   - mit dem ES256-Passkey aus Teil A anmelden (frisch) und auf /schluessel
  *     den Antrag freigeben, nachdem dort dieselbe Zahl steht
  *   - mit dem neuen Passkey anmelden, /vorgaenge öffnen (geschützte Seite)
  *   - Widerruf (mit dem ES256-Passkey) beendet die laufende Sitzung des
- *     neuen Passkeys sofort: nächste Anfrage 401
+ *     neuen Passkeys sofort: nächste Anfrage 401; der offene Tab auf
+ *     /anstehend geht seit Schritt E2 von selbst auf /anmelden?ziel=/anstehend,
+ *     ohne Projekttitel im DOM
  *   - Abmelden sperrt den Ausweis
  *   - Kopfleiste, Fassung 3 (Auflage aus der Abnahme): der Stand für die
  *     Aktualitätsprüfung /api/stand/voll mit der laufenden Sitzung 200, nach
@@ -87,7 +90,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { antwortAbwarten } from './cdp-frist.mjs';
-import { beiAbbruch, browserSperren, mitFrist, portePruefen } from './edge-gemeinsam.mjs';
+import {
+	beiAbbruch,
+	browserSperren,
+	mitFrist,
+	portePruefen,
+	OHNE_ANMELDUNG,
+	ohneAnmeldungMaengel,
+	projektTitel
+} from './edge-gemeinsam.mjs';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -677,6 +688,9 @@ async function main() {
 		`fetch('/api/vorgaenge/uebersicht', { headers: { accept: 'application/json' } }).then(async (r) => [r.status, (await r.json()).art])`
 	);
 	pruefe(api[0] === 401 && api[1] === 'passkey', 'fremdes Konto: API 401, Art passkey');
+	const titel = projektTitel(join(REPO, 'tests', 'beispiel', 'projects'));
+	const vorgaenge = ohneAnmeldungMaengel(await cdp.auswerten(OHNE_ANMELDUNG), '/vorgaenge', titel);
+	pruefe(vorgaenge.length === 0, `fremdes Konto (Schritt E2): kein Projekttitel im DOM, /api/projects 401 (${vorgaenge.join('; ')})`);
 
 	// (a) Nicht angemeldet (das Konto hat registrierte Passkeys aus Teil A): Schloss zu.
 	await schlossKlicken(cdp, 'zu', '#mit-passkey-anmelden', 'nicht_angemeldet');
@@ -758,6 +772,10 @@ async function main() {
 	await zweiter.schliessen();
 	// Der erste Tab merkt es von selbst: Schloss zu, „nicht angemeldet“, nur der freie Kanal.
 	await kopfUndKanal(cdp, 'zu', 'nicht_angemeldet', '/api/events/frei', 'nach dem Widerruf');
+	// Schritt E2: Die Projektliste gibt jetzt 401, darum geht der Tab zur Anmeldung.
+	await cdp.bis(`location.pathname === '/anmelden'`, 20000, 'nach dem Widerruf auf /anmelden');
+	const widerrufen = ohneAnmeldungMaengel(await cdp.auswerten(OHNE_ANMELDUNG), '/anstehend', titel);
+	pruefe(widerrufen.length === 0, `nach dem Widerruf: /anmelden?ziel=/anstehend, kein Projekttitel im DOM, /api/projects 401 (${widerrufen.join('; ')})`);
 
 	// (e) Ohne Verbindung: der freie Kanal wird abgewiesen; nur der Hinweis, keine Handlung.
 	cdp.freiAbweisen = true;

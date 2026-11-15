@@ -23,15 +23,17 @@
 	 *   prüft sie den Sperrgrund noch einmal (er kann während der Frage
 	 *   entstanden sein). Reißt die Verbindung ab oder beginnt ein Bau, stoppt
 	 *   die Uhr.
-	 * - Ohne Anmeldung (kein Ereignis `bau`) holt sie die Projektliste
-	 *   (`/api/projects`, darin `bau.zustand`) selbst, mit Frist und direkt in
-	 *   `bauLage.liste`, nicht über `invalidate`: Ein `load`, der dabei wirft,
-	 *   ließe SvelteKit nach einem Bau voll navigieren (`updated.check`), am
-	 *   Sperrgrund vorbei. Sie holt sie beim Ereignis `fassung`,
-	 *   alle `NACHFRAGE_MS`, solange laut Liste ein Bau läuft (so endet
-	 *   Zustand 3 auch nach rotem Bau), und direkt vor dem Neuladen von selbst
-	 *   (mitten in einer Folge von Bauten lädt nichts).
-	 *   shortcut: den Beginn eines Baus sieht ein freier Tab erst mit der nächsten Liste (ein Ereignis projekt oder inhalt kommt, wenn überhaupt, vor den 5 s Ruhe des Beobachters), aufrüsten mit einem freien Ja/Nein „Bau läuft“ im Kanal, falls Zustand 3 ohne Anmeldung zu spät erscheint
+	 * - Ist die Seite angemeldet (`zugang` „da“), der geschützte Kanal aber
+	 *   (noch) nicht offen (kein Ereignis `bau`), holt sie die Projektliste
+	 *   (`/api/projects`, darin `bau.zustand`) selbst. Ohne Anmeldung fragt sie
+	 *   sie nie (Schritt E2: die Liste ist geschützt), dann zeigt sie Zustand 3
+	 *   nicht. Die Liste kommt mit Frist und direkt in `bauLage.liste`, nicht
+	 *   über `invalidate`: Ein `load`, der dabei wirft, ließe SvelteKit nach
+	 *   einem Bau voll navigieren (`updated.check`), am Sperrgrund vorbei. Sie
+	 *   holt sie beim Ereignis `fassung`, alle `NACHFRAGE_MS`, solange laut
+	 *   Liste ein Bau läuft (so endet Zustand 3 auch nach rotem Bau), und direkt
+	 *   vor dem Neuladen von selbst (mitten in einer Folge von Bauten lädt nichts).
+	 *   shortcut: ohne Anmeldung kein Zustand 3 (die Seite kann bei einem laufenden Bau neu laden), aufrüsten mit einem freien Ja/Nein „Bau läuft“ im Kanal, falls das stört
 	 * - Bis dahin macht `beforeNavigate` den nächsten Klick auf einen Link zu
 	 *   einer anderen Route zur vollen Navigation (lädt die neue Fassung).
 	 * - Nach einem Neuladen durch die Fassung geht der Fokus einmal dorthin
@@ -53,6 +55,7 @@
 		umgebung
 	} from '#lib/fassung.ts';
 	import { freierKanal } from '#lib/freikanal.svelte.ts';
+	import { zugang } from '#lib/zugang.ts';
 
 	/** Abruf mit Frist: Hängt der Dienst, gilt nach `STAND_FRIST_MS` keine Antwort. */
 	const mitFrist: typeof fetch = (pfad, init) =>
@@ -60,9 +63,9 @@
 	const holen = () => standHolen(false, mitFrist);
 	/** Zählt die Abrufe der Liste: Eine ältere Antwort, die später kommt, gilt nicht. */
 	let runde = 0;
-	/** Ohne Anmeldung die Projektliste neu (Bau-Stand); angemeldet kommt `bau` live. Wirft nie. */
+	/** Angemeldet ohne geschützten Kanal die Projektliste neu (Bau-Stand); sonst kommt `bau` live. Wirft nie. */
 	async function listeNeu(): Promise<void> {
-		if (freierKanal.geschuetztOk) return;
+		if (freierKanal.geschuetztOk || zugang.stand !== 'da') return;
 		const meine = ++runde;
 		try {
 			const l = await api.projects(mitFrist);

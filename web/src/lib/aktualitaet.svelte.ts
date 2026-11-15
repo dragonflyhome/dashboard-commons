@@ -5,11 +5,12 @@
  * Browserseite.
  *
  * Den gemeinsamen Stand liefert der Server (`/api/stand`, angemeldet
- * `/api/stand/voll`): Ereignisnummer und Inhaltsversion. Die Seite merkt sich
+ * `/api/stand/voll`): Ereignisnummer und, nur angemeldet, die Inhaltsversion
+ * (Schritt E2: der freie Stand trägt keine). Die Seite merkt sich
  * den Stand beim letzten Abgleich (`basis`) und zählt, was der Live-Kanal
  * seitdem gebracht hat (`empfangen`: dieselben Arten, die der Server zählt:
  * `change`, `vorgang`, `fassung`, `projekt`, `daten`, `inhalt`, `speicher`,
- * `pc-benutzer`, `docs`; frei nur die freien). Beim Klick auf das Blatt:
+ * `pc-benutzer`, `docs`; frei nur `fassung`). Beim Klick auf das Blatt:
  *
  * 1. den Stand holen;
  * 2. alles nachziehen (`refreshAll`, früher `invalidateAll`, und die Speicher außerhalb von
@@ -32,7 +33,7 @@ import { API } from './api/client';
 import { abrufen } from './api/antwortet.svelte.ts';
 import { freierKanal } from './freikanal.svelte.ts';
 import { live, type InhaltAenderung } from './live.svelte.ts';
-import type { ServerStand } from '$vertrag';
+import type { ServerStand, ServerStandFrei } from '$vertrag';
 
 /** Ergebnis eines Abgleichs. */
 export type Abgleich = 'aktuell' | 'nachgeholt' | 'abgeglichen' | 'ohne-server';
@@ -46,9 +47,11 @@ export const ABGLEICH_SATZ: Record<Abgleich, string> = {
 };
 
 /** Ein Stand mit dem Weg, von dem er kam (frei oder voll zählen verschieden). */
-export interface Basis {
-	stand: ServerStand;
-	voll: boolean;
+export type Basis = { stand: ServerStand; voll: true } | { stand: ServerStandFrei; voll: false };
+
+/** Die Inhaltsversion eines Stands; der freie trägt keine (Schritt E2). */
+function inhaltVon(b: Basis): number {
+	return b.voll ? b.stand.inhalt : 0;
 }
 
 /**
@@ -60,17 +63,15 @@ export function fehlend(
 	basis: Basis | null,
 	empfangen: number,
 	inhaltGesehen: number,
-	jetzt: ServerStand,
-	voll: boolean
+	jetzt: Basis
 ): number | null {
-	if (basis?.voll !== voll) return null;
+	if (basis?.voll !== jetzt.voll) return null;
 	// Neu gestartet: die Nummer fängt wieder bei null an.
-	if (jetzt.ereignis < basis.stand.ereignis) return null;
-	const fehlt = jetzt.ereignis - basis.stand.ereignis - empfangen;
+	if (jetzt.stand.ereignis < basis.stand.ereignis) return null;
+	const fehlt = jetzt.stand.ereignis - basis.stand.ereignis - empfangen;
 	if (fehlt > 0) return fehlt;
-	// Die Inhaltsversion steigt auch bei Dateien, die der freie Kanal nicht
-	// trägt (data/schluessel.toml): vergleichen nur, wer alles sieht.
-	return voll && jetzt.inhalt > Math.max(inhaltGesehen, basis.stand.inhalt) ? 1 : 0;
+	// Die Inhaltsversion trägt nur der volle Stand (Schritt E2).
+	return jetzt.voll && jetzt.stand.inhalt > Math.max(inhaltGesehen, inhaltVon(basis)) ? 1 : 0;
 }
 
 /** Den Stand holen: angemeldet voll, sonst frei (401 auf voll: frei). Wirft nie. */
@@ -101,7 +102,10 @@ export async function standHolen(
 		return null;
 	}
 	try {
-		return { stand: (await res.json()) as ServerStand, voll: weg };
+		const stand: unknown = await res.json();
+		return weg
+			? { stand: stand as ServerStand, voll: true }
+			: { stand: stand as ServerStandFrei, voll: false };
 	} catch {
 		return null;
 	}
@@ -162,9 +166,6 @@ export class Aktualitaet {
 				this.#gesehen.voll += 1;
 				this.#inhalt = Math.max(this.#inhalt, a.version);
 			}),
-			freierKanal.onInhalt(() => {
-				this.#gesehen.frei += 1;
-			}),
 			freierKanal.onFassung((_f, kanal) => {
 				this.#gesehen[kanal === 'geschuetzt' ? 'voll' : 'frei'] += 1;
 			}),
@@ -204,17 +205,11 @@ export class Aktualitaet {
 		const fehlt =
 			vorher === null
 				? null
-				: fehlend(
-						vorher.basis,
-						this.#gesehen[w] - vorher.gesehenBei,
-						this.#inhalt,
-						jetzt.stand,
-						jetzt.voll
-					);
+				: fehlend(vorher.basis, this.#gesehen[w] - vorher.gesehenBei, this.#inhalt, jetzt);
 		if (vorher === null || vorher.runde < runde) {
 			this.#bezug[w] = { basis: jetzt, gesehenBei: marke[w], runde };
 		}
-		this.#inhalt = Math.max(this.#inhalt, jetzt.stand.inhalt);
+		this.#inhalt = Math.max(this.#inhalt, inhaltVon(jetzt));
 		return { jetzt, fehlt };
 	}
 

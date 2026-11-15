@@ -1,26 +1,29 @@
-//! Etappe B2 (Nacharbeit, Architektur): Ohne Anmeldung geht kein persönlicher
-//! Text hinaus. Fragen an den Inhaber, Titel und Notizen von Aufgaben und
-//! Arbeiten, Texte von Meldungen, offene Punkte (`open`) und Befund-Sätze der
-//! Prüfung kommen nur mit Windows-Anmeldung; frei bleiben Zahlen.
+//! Schritt E2: Ohne Anmeldung antwortet das Dashboard nur auf ausdrücklich
+//! öffentliche Wege (`sicherheit::oeffentlich`); alles andere gibt 401.
+//! Vorher (Etappe B2) war es eine Sperrliste mit freien Projektwegen, die nur
+//! Zahlen zeigten.
 //!
-//! Der Test leitet die Wege aus dem Router selbst ab: Er liest jede
-//! `.route("…", get(…))` aus `src/api/mod.rs` und `src/app.rs`, setzt Werte für
-//! die Platzhalter ein und fragt jeden Weg ab, den `sicherheit::geschuetzt`
-//! frei lässt, auch den freien Live-Kanal. Ein neuer freier Weg wird so ohne
-//! Zutun mitgeprüft. Die Daten sind erfundene Spürhunde: Kommt einer davon
-//! in einer freien Antwort vor, schlägt der Test fehl.
+//! Der Wächtertest leitet die Wege aus dem Router selbst ab: Er liest jede
+//! `.route("…", get(…).post(…))` aus `src/api/mod.rs` und `src/app.rs`, nimmt
+//! die Seiten der Oberfläche (`oberflaeche::SEITEN` und die Projekt-, Gruppen-
+//! und Katalogseiten) und die Wege eines Testmoduls dazu, setzt Werte für die
+//! Platzhalter ein und fragt jeden Weg ohne Anmeldung ab: roh, groß
+//! geschrieben, mit HEAD und prozentkodiert. Ein neuer Weg wird so ohne Zutun
+//! mitgeprüft. Die Daten sind erfundene Spürhunde: Kommt einer davon in einer
+//! Antwort ohne Anmeldung vor, schlägt der Test fehl.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{Method, Request, StatusCode, header};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use crate::app::{AppState, router, router_angemeldet};
 use crate::sicherheit::FREIER_KANAL as FREIER_KANAL_PFAD;
-use crate::sicherheit::geschuetzt;
+use crate::sicherheit::oeffentlich;
 
 /// Die Spürhunde: erfundene Texte, die nie frei hinausgehen dürfen.
 const SPUERHUNDE: [&str; 15] = [
@@ -46,9 +49,9 @@ const SPUERHUNDE: [&str; 15] = [
 /// Die Quellen, aus denen der Router gebaut wird.
 const ROUTER_QUELLEN: [&str; 2] = [include_str!("api/mod.rs"), include_str!("app.rs")];
 
-/// Alle GET-Wege des Routers als Muster (`/api/projekte/{slug}/daten/{name}`),
-/// ohne die Wege, die es nur in Tests gibt.
-fn get_wege() -> Vec<String> {
+/// Alle Wege des Routers als Paare aus Methode und Muster
+/// (`/api/projekte/{slug}/daten/{name}`), ohne die Wege, die es nur in Tests gibt.
+fn alle_wege() -> Vec<(Method, String)> {
     let mut wege = Vec::new();
     for quelle in ROUTER_QUELLEN {
         let mut rest = quelle;
@@ -59,14 +62,35 @@ fn get_wege() -> Vec<String> {
             let weg = &rest[start + 1..start + 1 + laenge];
             let danach: String = rest[start + 1 + laenge..].chars().take(160).collect();
             let bis_zum_naechsten = danach.split(".route(").next().unwrap_or_default();
-            if weg.starts_with('/') && !weg.starts_with("/api/_test") && bis_zum_naechsten.contains("get(") {
-                wege.push(weg.to_string());
+            if !weg.starts_with('/') || weg.starts_with("/api/_test") {
+                continue;
+            }
+            for (wort, methode) in [("get(", Method::GET), ("post(", Method::POST)] {
+                if bis_zum_naechsten.contains(wort) {
+                    wege.push((methode, weg.to_string()));
+                }
             }
         }
     }
-    wege.sort();
+    wege.sort_by(|a, b| (a.1.as_str(), a.0.as_str()).cmp(&(b.1.as_str(), b.0.as_str())));
     wege.dedup();
     wege
+}
+
+/// Die GET-Wege des Routers (wie [`alle_wege`]).
+fn get_wege() -> Vec<String> {
+    alle_wege().into_iter().filter(|(m, _)| *m == Method::GET).map(|(_, w)| w).collect()
+}
+
+/// Die Seiten der Oberfläche als Muster (alle GET), dazu ein unbekannter Weg.
+fn seiten_wege() -> Vec<String> {
+    let mut s: Vec<String> = crate::oberflaeche::SEITEN.iter().map(|x| format!("/{x}")).collect();
+    s.extend(crate::oberflaeche::KATALOG_SEITEN.iter().map(|x| format!("/katalog/{x}")));
+    s.extend(
+        ["/projects/{slug}", "/projects/{slug}/vorschau", "/projects/{slug}/{seite}", "/gruppen/{gruppe}", "/projekte/archiviert", "/gibt-es-nicht"]
+            .map(String::from),
+    );
+    s
 }
 
 /// Setzt für jeden Platzhalter alle Werte ein.
@@ -183,13 +207,54 @@ summary = \"x\"
     ordner
 }
 
-/// Jeder freie Datenweg, ohne Anmeldung: kein Spürhund in der Antwort.
+/// Eine Anfrage wie aus dem Dashboard selbst: schreibend mit eigener Herkunft
+/// und leerem JSON, damit nur die Anmeldung entscheidet.
+fn anfrage(methode: &Method, pfad: &str) -> Request<Body> {
+    let b = Request::builder().method(methode.clone()).uri(pfad).header("host", "127.0.0.1:8787");
+    if matches!(*methode, Method::GET | Method::HEAD) {
+        return b.body(Body::empty()).unwrap();
+    }
+    b.header("origin", "http://127.0.0.1:8787").header("content-type", "application/json").body(Body::from("{}")).unwrap()
+}
+
+/// Der Zustand mit den Spürhunden, einer Gruppe und dem Testmodul (Slug
+/// `neu-form`, mit erklärten, aber seit E2 wirkungslosen freien Wegen).
+fn zustand_mit_spuerhunden(zweck: &str) -> (AppState, PathBuf) {
+    let ordner = inhalt_mit_spuerhunden(zweck);
+    std::fs::write(
+        ordner.join("data").join("gruppen.toml"),
+        "[[gruppe]]\nslug = \"spuer-gruppe\"\ntitel = \"Spürhund-Gruppe\"\nteile = [\"spuer\", \"spuerbefund\"]\n",
+    )
+    .unwrap();
+    let mut state = AppState::fuer_tests(&ordner);
+    let reg = crate::projekte::Register::fuer_zustand_ungeprueft(&state, vec![crate::projekte::eintrag(crate::projekte::tests::MitFreiemWeg)]);
+    reg.tabellen_einrichten(state.speicher.as_ref().unwrap());
+    state.projekte = Arc::new(reg);
+    (state, ordner)
+}
+
+/// Prüft eine Antwort ohne Anmeldung: nie ein Spürhund; gibt Status und Text zurück.
+async fn ohne_spuerhund(app: &axum::Router, methode: &Method, weg: &str) -> (StatusCode, String) {
+    let res = app.clone().oneshot(anfrage(methode, weg)).await.unwrap();
+    let status = res.status();
+    let strom = weg == FREIER_KANAL_PFAD;
+    let t = text(res, Duration::from_millis(if strom { 1500 } else { 10_000 })).await;
+    for hund in SPUERHUNDE {
+        assert!(!t.contains(hund), "{methode} {weg} ({status}) gibt ohne Anmeldung „{hund}“ heraus: {t}");
+    }
+    (status, t)
+}
+
+/// Der Wächter (Schritt E2): Jeder Weg des Routers, jede Seite und jeder Weg
+/// eines Moduls steht in `oeffentlich` oder gibt ohne Anmeldung 401, roh, groß
+/// geschrieben, mit HEAD und prozentkodiert (kodiert oder kaputt: 400 oder 401).
+/// Kein öffentlicher Weg gibt einen Spürhund heraus. Mit Anmeldung sind die
+/// Spürhunde da (sonst prüfte der Test nichts).
 #[tokio::test]
-async fn ohne_anmeldung_kein_persoenlicher_text() {
-    let ordner = inhalt_mit_spuerhunden("b2");
-    let state = AppState::fuer_tests(&ordner);
+async fn waechter_jeder_weg_oeffentlich_oder_401() {
+    let (state, ordner) = zustand_mit_spuerhunden("waechter");
     // Aufgabe, Arbeit und Meldung legt der Chat an (per curl, angemeldet).
-    let mut ids = vec!["v-1".to_string()];
+    let mut ids = Vec::new();
     for (weg, koerper) in [
         ("/api/aufgaben", r#"{"projekt": "spuer", "titel": "SPUERHUND-AUFGABE", "frist": "2026-11-04"}"#),
         ("/api/aufgaben", r#"{"projekt": "spuer", "titel": "SPUERHUND-AUFGABE beweglich", "frist_bezug": {"ereignis": "brief", "abstand": "+1 Monat"}}"#),
@@ -207,7 +272,7 @@ async fn ohne_anmeldung_kein_persoenlicher_text() {
         ids.push(v["id"].as_str().unwrap().to_string());
     }
     // T4: Die Arbeit bekommt einen Schritt mit Titel, Besitzer und Notiz.
-    let ar = ids[3].clone();
+    let ar = ids[2].clone();
     for (weg, koerper) in [
         (format!("/api/arbeiten/{ar}/schritte"), r#"{"von": "chat:spuer", "titel": "SPUERHUND-SCHRITT bauen"}"#),
         (format!("/api/arbeiten/{ar}/schritte/2/uebernehmen"), r#"{"von": "chat:spuerhund-besitzer"}"#),
@@ -242,82 +307,189 @@ async fn ohne_anmeldung_kein_persoenlicher_text() {
         assert!(text(res, Duration::from_secs(5)).await.contains(hund), "{weg}: mit Anmeldung fehlt {hund}");
     }
 
-    let slugs: Vec<String> =
-        ["spuer", "spuerbefund", "spuerkaputt", "neu-form", "dashboard", "schaufenster", "kaputt", "neu-kaputt", "gibt-es-nicht"].map(String::from).to_vec();
-    let namen: Vec<String> = ["fragen", "fristen", "kanban", "kennzahlen", "fortschritt", "ampel", "fluss", "gantt", "zeitstrahl", "orte", "eigen-notizen"]
-        .map(String::from)
-        .to_vec();
-    let werte = [("{slug}", slugs), ("{name}", namen), ("{id}", ids), ("{file}", vec!["vorschau.html".to_string()]), ("{*path}", vec!["x".to_string()])];
-    let wege = get_wege();
-    assert!(wege.iter().any(|w| w == "/api/projekte/{slug}/daten/{name}"), "Router nicht gelesen: {wege:?}");
-    let mut frei = Vec::new();
-    for muster in &wege {
-        for weg in einsetzen(muster, &werte) {
-            if geschuetzt(&weg) {
-                continue;
+    let werte = [
+        ("{slug}", vec!["spuer".to_string(), "gibt-es-nicht".to_string()]),
+        ("{name}", ["fragen", "fristen", "orte", "kanban"].map(String::from).to_vec()),
+        ("{id}", vec![ids[0].clone(), ids[2].clone()]),
+        ("{nr}", vec!["2".to_string()]),
+        ("{file}", vec!["vorschau.html".to_string()]),
+        ("{*path}", vec!["x".to_string()]),
+        ("{seite}", vec!["plan".to_string()]),
+        ("{gruppe}", vec!["spuer-gruppe".to_string()]),
+    ];
+    let mut muster = alle_wege();
+    assert!(muster.iter().any(|(m, w)| *m == Method::POST && w == "/api/passkey/abmelden"), "Router nicht gelesen: {muster:?}");
+    muster.extend(seiten_wege().into_iter().map(|w| (Method::GET, w)));
+    // Die Wege des Testmoduls: erklärt frei, seit E2 ohne Wirkung.
+    for w in ["/api/projekte/neu-form/x/zahlen", "/api/projekte/neu-form/x/stufe/2", "/api/projekte/neu-form/x/geheim"] {
+        muster.push((Method::GET, w.to_string()));
+    }
+    muster.push((Method::POST, "/api/projekte/neu-form/x/zahlen".to_string()));
+    let bau = |rel: &Path| crate::oberflaeche::bau_datei(&state.web, rel);
+    let app = router(state.clone());
+    let mut oeffentliche = Vec::new();
+    let mut gezaehlt = 0;
+    for (methode, m) in &muster {
+        for weg in einsetzen(m, &werte) {
+            let mut varianten: Vec<(Method, String)> = vec![(methode.clone(), weg.clone()), (methode.clone(), weg.to_uppercase())];
+            if *methode == Method::GET {
+                varianten.push((Method::HEAD, weg.clone()));
             }
-            // Zusätzlich mit Abfragen, die Wege wie /api/anstehend kennen.
-            for anfrage in [weg.clone(), format!("{weg}?projekt=spuer")] {
-                let strom = weg == FREIER_KANAL_PFAD;
-                let res = router(state.clone()).oneshot(get(&anfrage)).await.unwrap();
-                let status = res.status();
-                let t = text(res, Duration::from_millis(if strom { 1500 } else { 10_000 })).await;
-                for hund in SPUERHUNDE {
-                    assert!(!t.contains(hund), "{anfrage} ({status}) gibt ohne Anmeldung „{hund}“ heraus: {t}");
+            varianten.extend(kodiert(&weg).into_iter().map(|k| (methode.clone(), k)));
+            for (methode, w) in varianten {
+                gezaehlt += 1;
+                let (status, t) = ohne_spuerhund(&app, &methode, &w).await;
+                if oeffentlich(&methode, &w, &bau) {
+                    oeffentliche.push(format!("{methode} {w}"));
+                } else if w.contains('%') {
+                    // Kodiert oder kaputt: 400 oder 401, nie 2xx, nie Inhalt (Spürhunde oben).
+                    // Im Test antwortet unter /api die Prozent-Wand zuerst (400); im Dienst
+                    // fragt Windows-Negotiate vor dieser Wand, darum sagt er dort 401.
+                    assert!(status == StatusCode::BAD_REQUEST || status == StatusCode::UNAUTHORIZED, "{methode} {w}: {status} {t}");
+                } else {
+                    assert_eq!(status, StatusCode::UNAUTHORIZED, "{methode} {w} ist nicht öffentlich: {t}");
                 }
-                frei.push(anfrage);
             }
         }
     }
-    // Die bekannten freien Wege sind darunter, die Fragen nicht.
-    for w in [
-        "/api/projects",
-        "/api/projects/spuer",
-        "/api/projekte/spuer",
-        "/api/projekte/spuer/stand",
-        "/api/projekte/spuer/daten/kanban",
-        FREIER_KANAL_PFAD,
-        "/api/stand",
-        "/api/pruefung/spuer",
-    ] {
-        assert!(frei.iter().any(|f| f == w), "{w} fehlt unter den freien Wegen: {frei:?}");
-    }
-    assert!(!frei.iter().any(|f| f.starts_with("/api/projekte/spuer/daten/fragen")), "die Fragen sind geschützt");
-    assert!(!frei.iter().any(|f| f.starts_with("/api/anleitung")), "die Anleitung ist geschützt (Etappe 6b)");
-    assert!(!frei.iter().any(|f| f.starts_with("/api/projekte/spuer/daten/fristen") || f.starts_with("/api/fristen")), "die Fristen sind geschützt");
-    for weg in ["/api/projekte/spuer/daten/fristen", "/api/fristen"] {
-        let res = router(state.clone()).oneshot(get(weg)).await.unwrap();
-        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{weg}");
-    }
-    let res = router(state.clone()).oneshot(get("/api/projekte/spuer/daten/fragen")).await.unwrap();
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    // Ohne Anmeldung bleiben Zahlen: der Stand nennt zwei offene Fragen und die zwei Aufgaben.
-    let res = router(state.clone()).oneshot(get("/api/projekte/spuer/stand")).await.unwrap();
-    let v: serde_json::Value = serde_json::from_str(&text(res, Duration::from_secs(5)).await).unwrap();
-    assert_eq!((v["zahlen"]["fragen"].as_u64(), v["zahlen"]["aufgaben"].as_u64()), (Some(2), Some(2)), "{v}");
-    assert_eq!((v["notizen"].as_array().map(Vec::len), v["notizen_zahl"].as_u64()), (Some(0), Some(2)), "{v}");
-    // Fristen vorbei (eine Arbeit, eine aus fristen.toml): Ampel rot, ohne Titel.
+    assert!(gezaehlt > 2000, "zu wenige Wege: {gezaehlt}");
+    oeffentliche.sort();
+    oeffentliche.dedup();
+    // Kodiert öffentlich ist nur die Umleitung unter /neu/ (ohne Blick in den Bestand).
+    let (kodiert_oeffentlich, oeffentliche): (Vec<String>, Vec<String>) = oeffentliche.into_iter().partition(|w| w.contains('%'));
+    assert!(kodiert_oeffentlich.iter().all(|w| w.starts_with("GET /neu/")), "{kodiert_oeffentlich:?}");
     assert_eq!(
-        (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["gesamt"]["bezug"].clone()),
-        (Some("rot"), Some("frist-vorbei"), serde_json::Value::Null),
-        "{v}"
+        oeffentliche,
+        [
+            "GET /",
+            "GET /anmelden",
+            "GET /api/anmeldung/probe",
+            "GET /api/anmeldung/wer",
+            "GET /api/betrieb",
+            "GET /api/events/frei",
+            "GET /api/fassungen",
+            "GET /api/passkey/antrag",
+            "GET /api/passkey/stand",
+            "GET /api/stand",
+            "GET /fassungen",
+            "GET /healthz",
+            "GET /neu",
+            "GET /neu/",
+            "GET /neu/x",
+            "HEAD /",
+            "HEAD /anmelden",
+            "HEAD /fassungen",
+            "HEAD /healthz",
+            "HEAD /neu",
+            "HEAD /neu/",
+            "HEAD /neu/x",
+            "POST /api/passkey/abmelden",
+            "POST /api/passkey/anmelden/beginn",
+            "POST /api/passkey/anmelden/ende",
+            "POST /api/passkey/antrag/beginn",
+            "POST /api/passkey/antrag/ende",
+        ],
+        "die öffentlichen Wege des Routers"
     );
-    assert!(v.get("fristen").is_none(), "ohne Anmeldung keine Fristzeilen: {v}");
-    let json = |weg: &'static str| {
-        let state = state.clone();
-        async move {
-            let res = router(state).oneshot(get(weg)).await.unwrap();
-            serde_json::from_str::<serde_json::Value>(&text(res, Duration::from_secs(10)).await).unwrap()
-        }
-    };
-    let liste = json("/api/projects").await;
-    let spuer = liste["projects"].as_array().unwrap().iter().find(|p| p["slug"] == "spuer").cloned().unwrap();
-    assert_eq!((spuer["open"].as_array().map(Vec::len), spuer["open_zahl"].as_u64()), (Some(0), Some(2)), "{spuer}");
-    let kopf = json("/api/projekte/spuer").await;
-    assert_eq!((kopf["kopf"]["open"].as_array().map(Vec::len), kopf["open_zahl"].as_u64()), (Some(0), Some(2)), "{kopf}");
-    let p = json("/api/pruefung/spuerbefund").await;
-    assert!(p["befunde"].as_array().is_some_and(Vec::is_empty) && p["fehler"].as_u64().is_some_and(|f| f > 0), "nur Zahlen: {p}");
     let _ = std::fs::remove_dir_all(&ordner);
+}
+
+/// Schritt E2: Ohne Anmeldung derselbe Status und derselbe Körper für
+/// vorhandene und erfundene Projekte, Unterseiten, Gruppen und Projektwege
+/// (bis auf den Weg selbst in der Adresse zum Kopieren); mit Anmeldung sind
+/// sie verschieden (sonst prüfte der Test nichts). Als Navigation des
+/// Browsers und als einfache Anfrage.
+#[tokio::test]
+async fn gleiche_antwort_fuer_vorhandene_und_erfundene() {
+    let (state, ordner) = zustand_mit_spuerhunden("gleich");
+    let app = router(state.clone());
+    let an = router_angemeldet(state.clone());
+    let antwort = |app: axum::Router, pfad: String, navigation: bool| async move {
+        let mut b = Request::get(&pfad).header("host", "localhost:8787");
+        if navigation {
+            b = b.header("sec-fetch-dest", "document").header(header::ACCEPT, "text/html");
+        }
+        let res = app.oneshot(b.body(Body::empty()).unwrap()).await.unwrap();
+        let status = res.status();
+        let ort = res.headers().get(header::LOCATION).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+        let t = text(res, Duration::from_secs(5)).await;
+        (status, ort, t)
+    };
+    for (da, erfunden) in [
+        ("/projects/spuer", "/projects/gibtsnicht"),
+        ("/projects/neu-form/plan", "/projects/neu-form/gibtsnicht"),
+        ("/gruppen/spuer-gruppe", "/gruppen/gibtsnicht"),
+        ("/api/projects/spuer", "/api/projects/gibtsnicht"),
+        ("/api/projekte/spuer/stand", "/api/projekte/gibtsnicht/stand"),
+        ("/projects/schaufenster/assets/bild.svg", "/projects/schaufenster/assets/gibtsnicht"),
+    ] {
+        for navigation in [true, false] {
+            let (s1, o1, t1) = antwort(app.clone(), da.to_string(), navigation).await;
+            let (s2, o2, t2) = antwort(app.clone(), erfunden.to_string(), navigation).await;
+            let gleich = |x: &str, weg: &str| x.replace(weg, "WEG");
+            assert_eq!(
+                (s1, gleich(&o1, da), gleich(&t1, da)),
+                (s2, gleich(&o2, erfunden), gleich(&t2, erfunden)),
+                "{da} / {erfunden}, Navigation {navigation}"
+            );
+            assert!(s1 == StatusCode::UNAUTHORIZED || s1 == StatusCode::SEE_OTHER, "{da}: {s1}");
+            assert!(!t1.contains("Spürhund") && !t1.contains("Spuerhund"), "{da}: {t1}");
+        }
+        // Mit Anmeldung unterscheiden sie sich (Seite 200 oder Daten gegen 404).
+        let (s1, _, t1) = antwort(an.clone(), da.to_string(), false).await;
+        let (s2, _, t2) = antwort(an.clone(), erfunden.to_string(), false).await;
+        // Ohne Bau der Oberfläche (503) lassen sich Seiten nicht unterscheiden.
+        assert!(s1 != s2 || t1 != t2 || s1 == StatusCode::SERVICE_UNAVAILABLE, "{da} / {erfunden}: angemeldet gleich ({s1})");
+    }
+    let _ = std::fs::remove_dir_all(&ordner);
+}
+
+/// Schritt E2: Auf Seiten (auch öffentlichen) ist nur GET und HEAD öffentlich;
+/// jede andere Methode verlangt die Anmeldung, auch mit eigener Herkunft.
+#[tokio::test]
+async fn seiten_nur_mit_get_und_head() {
+    let app = router(AppState::fuer_tests(&crate::app::beispiel_fuer_tests()));
+    for pfad in ["/", "/anmelden", "/fassungen", "/pc", "/projects/schaufenster", "/neu/x", "/_app/version.json"] {
+        for methode in [Method::POST, Method::PUT, Method::DELETE, Method::PATCH, Method::OPTIONS] {
+            let res = app.clone().oneshot(anfrage(&methode, pfad)).await.unwrap();
+            assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{methode} {pfad}");
+        }
+    }
+}
+
+/// Schritt E2: `/api`, `/api/`, `/API/x`, unbekannte Wege unter `/api` und unter
+/// `/api/anmeldung/` (bis E2 übersprungen) geben ohne Anmeldung 401, vor 404.
+#[tokio::test]
+async fn api_wurzel_und_unbekannte_wege_401() {
+    let app = router(AppState::fuer_tests(&crate::app::beispiel_fuer_tests()));
+    for pfad in ["/api", "/api/", "/API/x", "/Api/Betrieb", "/api/gibt-es-nicht", "/api/anmeldung/gibt-es-nicht", "/api/anmeldung/", "/api/anmeldung/probe/"] {
+        let res = app.clone().oneshot(get(pfad)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{pfad}");
+        // JSON unter /api/ (klein geschrieben), sonst derselbe Satz als Text (Fehlerform).
+        let t = text(res, Duration::from_secs(2)).await;
+        let v: serde_json::Value = serde_json::from_str(&t).unwrap_or_else(|_| serde_json::json!({ "art": "anmeldung", "fehler": t }));
+        assert_eq!((v["art"].as_str(), v["fehler"].as_str()), (Some("anmeldung"), Some("Bitte mit dem Windows-Konto anmelden.")), "{pfad}: {v}");
+    }
+    // Angemeldet ist ein unbekannter Weg weiter 404.
+    let res = router_angemeldet(AppState::fuer_tests(&crate::app::beispiel_fuer_tests())).oneshot(get("/api/gibt-es-nicht")).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+/// Schritt E2: `/api/passkey/abmelden` ist öffentlich und geht auch mit einem
+/// ungültigen Ausweis: 204, das Cookie wird gelöscht.
+#[tokio::test]
+async fn abmelden_mit_ungueltigem_ausweis_204() {
+    let app = router(AppState::fuer_tests(&crate::app::beispiel_fuer_tests()));
+    let req = Request::post("/api/passkey/abmelden")
+        .header("host", "127.0.0.1:8787")
+        .header("origin", "http://127.0.0.1:8787")
+        .header(header::COOKIE, format!("{}=kaputt.kaputt.kaputt", crate::passkey::cookie::NAME))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    let cookie = res.headers().get(header::SET_COOKIE).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+    assert!(cookie.starts_with(&format!("{}=", crate::passkey::cookie::NAME)) && cookie.contains("Max-Age=0"), "{cookie}");
 }
 
 /// Der Leser findet die Wege, auch mehrere je Zeile und über Zeilen hinweg.
@@ -328,13 +500,19 @@ fn wege_aus_dem_router() {
         assert!(w.iter().any(|x| x == erwartet), "{erwartet} fehlt: {w:?}");
     }
     assert!(!w.iter().any(|x| x.starts_with("/api/_test")), "Test-Wege nicht");
-    assert!(!w.iter().any(|x| x == "/api/einstufung"), "nur POST: nicht dabei");
-    // Etappe 6b: die Anleitung steht im Router und ist geschützt (wie das
-    // Zielbild), fällt also nicht unter die freien Wege dieses Tests.
+    assert!(!w.iter().any(|x| x == "/api/einstufung"), "nur POST: nicht unter GET");
+    let alle = alle_wege();
+    for (m, erwartet) in
+        [(Method::POST, "/api/einstufung"), (Method::GET, "/api/vorgaenge"), (Method::POST, "/api/vorgaenge"), (Method::POST, "/api/antworten/{slug}/{id}")]
+    {
+        assert!(alle.iter().any(|(x, y)| *x == m && y == erwartet), "{m} {erwartet} fehlt: {alle:?}");
+    }
+    // Etappe 6b: die Anleitung steht im Router und ist nicht öffentlich (wie das Zielbild).
     for system in ["/api/anleitung", "/api/zielbild", "/api/entscheidungen"] {
         assert!(w.iter().any(|x| x == system), "{system} fehlt: {w:?}");
-        assert!(geschuetzt(system), "{system} muss geschützt sein");
+        assert!(!oeffentlich(&Method::GET, system, &|_| true), "{system} darf nicht öffentlich sein");
     }
+    assert!(seiten_wege().iter().any(|s| s == "/anmelden") && seiten_wege().iter().any(|s| s == "/projects/{slug}"));
     assert_eq!(einsetzen("/a/{slug}/b/{name}", &[("{slug}", vec!["x".into(), "y".into()]), ("{name}", vec!["n".into()])]), ["/a/x/b/n", "/a/y/b/n"]);
 }
 
@@ -378,8 +556,9 @@ fn kodiert(weg: &str) -> Vec<String> {
 /// Hotfix Prozent (Fund live: `/daten/%66risten` gab ohne Anmeldung 200). Jeder
 /// GET-Weg des Routers (abgeleitet wie oben, neue Wege kommen von selbst dazu),
 /// jede kodierte Abwandlung, ohne Anmeldung: nie ein Spürhund; unter `/api` 400
-/// (erste Wand, `sicherheit::prozent_im_pfad`); außerhalb nie 200 auf einem
-/// geschützten Weg. Mit Anmeldung gehen normale Wege und Abfragen mit `%` weiter.
+/// (erste Wand, `sicherheit::prozent_im_pfad`); außerhalb 401, außer die
+/// Abwandlung ist selbst öffentlich (nur die Umleitung unter `/neu/`). Mit
+/// Anmeldung gehen normale Wege und Abfragen mit `%` weiter.
 #[tokio::test]
 async fn prozent_im_pfad_kein_umweg() {
     use crate::fehler::AppError;
@@ -397,6 +576,7 @@ async fn prozent_im_pfad_kein_umweg() {
         ("{*path}", vec!["x".to_string()]),
     ];
     // Die Fälle aus dem Fund, ausdrücklich.
+    let oeff = |w: &str| oeffentlich(&Method::GET, w, &|rel| crate::oberflaeche::bau_datei(&state.web, rel));
     let mut faelle: Vec<(String, bool)> = [
         "/api/projekte/spuer/daten/%66ragen",
         "/api/projekte/spuer/daten/%66risten",
@@ -418,8 +598,7 @@ async fn prozent_im_pfad_kein_umweg() {
     .to_vec();
     for muster in get_wege() {
         for weg in einsetzen(&muster, &werte) {
-            let schutz = geschuetzt(&weg);
-            faelle.extend(kodiert(&weg).into_iter().map(|k| (k, schutz)));
+            faelle.extend(kodiert(&weg).into_iter().map(|k| (k.clone(), !oeff(&k))));
         }
     }
     assert!(faelle.len() > 500, "zu wenige Abwandlungen: {}", faelle.len());
@@ -434,7 +613,9 @@ async fn prozent_im_pfad_kein_umweg() {
             assert_eq!(status, StatusCode::BAD_REQUEST, "{weg}: {t}");
             assert!(t.contains("\"fehlerhaft\""), "{weg}: {t}");
         } else if *schutz {
-            assert_ne!(status, StatusCode::OK, "{weg}: {t}");
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{weg}: {t}");
+        } else {
+            assert!(weg.starts_with("/neu/"), "kodiert öffentlich: {weg}");
         }
     }
     // Schreibende Wege: dieselbe Wand.
@@ -453,8 +634,10 @@ async fn prozent_im_pfad_kein_umweg() {
         assert_eq!(res.status(), StatusCode::OK, "{weg}");
     }
     for weg in ["/api/projekte/spuer?x=%66", "/api/projekte/spuer/stand?projekt=%73puer"] {
-        let res = frei.clone().oneshot(get(weg)).await.unwrap();
+        let res = an.clone().oneshot(get(weg)).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK, "{weg}");
+        let res = frei.clone().oneshot(get(weg)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{weg}");
     }
 
     // Zweite Wand: der Handler selbst, ohne Schleusen davor, mit dem dekodierten Namen.
@@ -472,11 +655,11 @@ async fn prozent_im_pfad_kein_umweg() {
     let res = crate::api::neue_form::daten(State(state.clone()), Pfad(("spuer".to_string(), "fristen".to_string())), mit).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert!(text(res, Duration::from_secs(5)).await.contains("SPUERHUND-FRIST"));
-    // Die eine Liste: was `geschuetzt` am Pfad schützt, schützt der Handler am Namen.
-    for name in crate::sicherheit::GESCHUETZTE_DATEIEN {
-        assert!(geschuetzt(&format!("/api/projekte/spuer/daten/{name}")) && crate::sicherheit::datei_geschuetzt(name));
+    // Die zweite Wand kennt die besonders geschützten Dateien; am Pfad ist seit E2 keine öffentlich.
+    for name in crate::sicherheit::GESCHUETZTE_DATEIEN.into_iter().chain(["kanban", "orte"]) {
+        assert!(!oeff(&format!("/api/projekte/spuer/daten/{name}")), "{name}");
     }
-    assert!(!crate::sicherheit::datei_geschuetzt("kanban") && !geschuetzt("/api/projekte/spuer/daten/kanban"));
+    assert!(crate::sicherheit::GESCHUETZTE_DATEIEN.iter().all(|n| crate::sicherheit::datei_geschuetzt(n)) && !crate::sicherheit::datei_geschuetzt("kanban"));
     let _ = std::fs::remove_dir_all(&ordner);
 }
 

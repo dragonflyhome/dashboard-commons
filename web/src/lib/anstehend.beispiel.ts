@@ -171,29 +171,8 @@ export function beispielProjektStand(teil: Partial<ProjektStand> = {}): ProjektS
 		sichtbar: true,
 		eintraege: [],
 		aktualisierungen: [],
-		zahlen: null,
 		notizen: [],
 		speicher_fehlt: false,
-		...teil
-	};
-}
-
-/** Die Zahlen des freien Wegs, alle 0. */
-export function beispielZahlen(
-	teil: Partial<NonNullable<ProjektStand['zahlen']>> = {}
-): NonNullable<ProjektStand['zahlen']> {
-	return {
-		wartet_auf_dich: 0,
-		aufgaben: 0,
-		fragen: 0,
-		laeuft: 0,
-		wartet: 0,
-		als_naechstes: 0,
-		fertig_7_tage: 0,
-		meldungen: { neu: 0, gesamt: 0 },
-		naechste_frist: null,
-		tage_bis: null,
-		frist_stufe: null,
 		...teil
 	};
 }

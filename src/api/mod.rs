@@ -20,7 +20,6 @@ pub mod bauen;
 pub mod daten;
 pub mod events;
 pub mod fassungen;
-pub mod frei;
 pub mod meldungen;
 pub mod neue_form;
 pub mod oeffnen;
@@ -53,7 +52,7 @@ pub fn routes() -> Router<AppState> {
         // Reiter „Hallo“: welches Projekt den Begrüßungstext trägt (kein Slug im Code).
         .route("/api/hallo", get(neue_form::hallo))
         .route("/projects/{slug}/assets/{file}", get(projekte::asset))
-        // Etappe 4c: Bau-Stand mit Satz (nur der Inhaber, `sicherheit::geschuetzt`).
+        // Etappe 4c: Bau-Stand mit Satz (nur der Inhaber, nicht in `sicherheit::oeffentlich`).
         .route("/api/bauen", get(bauen::liste))
         // Entscheidung lokal-oeffnen: nur POST, nur der Inhaber im eigenen Windows-Konto.
         .route("/api/oeffnen", post(oeffnen::oeffnen))
@@ -74,7 +73,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/pc/benutzer", get(pc::benutzer))
         .route("/api/pc/verlauf", get(pc::verlauf))
         // Hotfix 3a-1: geschützt, für die Oberfläche (immer mit Starts, Meldungen, Vorgängen).
-        .route("/api/pc/verlauf/voll", get(pc::verlauf_voll))
+        .route("/api/pc/verlauf/voll", get(pc::verlauf))
         .route("/api/schluessel", get(schluessel::liste))
         .route("/schluessel/{name}", post(schluessel::speichern))
         .route("/api/daten", get(daten::bericht))
@@ -106,7 +105,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/meldungen/{id}/gelesen", post(meldungen::gelesen))
         .route("/api/anstehend", get(anstehend::liste))
         .route("/api/projekte/{slug}/stand", get(anstehend::stand))
-        .route("/api/projekte/{slug}/stand/voll", get(anstehend::stand_voll))
+        .route("/api/projekte/{slug}/stand/voll", get(anstehend::stand))
         // Etappe B2: das Backlog eines Projekts (geschützt wie /stand/voll).
         .route("/api/projekte/{slug}/backlog", get(anstehend::backlog))
         .route("/api/projekte/{slug}/plan", get(anstehend::plan))
@@ -116,7 +115,7 @@ pub fn routes() -> Router<AppState> {
         // stehen in `abgeleitet.fristen` von /api/projekte/<slug>/daten/fristen).
         .route("/api/fristen", get(anstehend::fristen))
         .route("/api/events", get(events::sse))
-        // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, schon freie Daten).
+        // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).
         .route("/api/events/frei", get(events::sse_frei))
         // Kopfleiste, Fassung 3: der gemeinsame Stand für die Aktualitätsprüfung (frei und geschützt).
         .route("/api/stand", get(stand::frei))

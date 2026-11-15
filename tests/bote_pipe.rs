@@ -281,15 +281,13 @@ fn kleines_repo(ordner: &Path) {
     }
 }
 
-/// /api/projects mit einem Projekt, das acht kleine Repos nennt: Der
-/// Git-Zwischenspeicher holt ihren Stand beim Start über den Boten (höchstens
-/// zwei zugleich), keins „beschäftigt“ oder „ausgelastet“; die Liste selbst
-/// fragt nie git.
+/// Ein Projekt, das acht kleine Repos nennt: Der Git-Zwischenspeicher holt
+/// ihren Stand beim Start über den Boten (höchstens zwei zugleich), keins
+/// „beschäftigt“ oder „ausgelastet“; das Lesen (wie für /api/projects) fragt
+/// nie git. Seit Schritt E2 direkt über `state.git` (der Weg ist geschützt,
+/// und dieser Test meldet sich nicht an).
 #[tokio::test(flavor = "multi_thread")]
 async fn acht_repos_ueber_den_boten() {
-    use http_body_util::BodyExt;
-    use tower::ServiceExt;
-
     let ort = Ort::mit("acht", |o| {
         o.repo = o.ordner.join("repo");
         let projekt = o.repo.join("projects").join("acht");
@@ -309,27 +307,25 @@ async fn acht_repos_ueber_den_boten() {
     warten_bis_bereit(&probe, &mut kind).await;
 
     let (state, _abschalter) = dashboard::app::AppState::aus_einstellungen(&e).unwrap();
-    let app = dashboard::app::router(state);
     // Der erste Lauf beginnt mit dem Start; bis alle acht einen Stand haben,
-    // antwortet die Liste trotzdem sofort (mit „wird ermittelt“).
+    // antwortet der Zwischenspeicher trotzdem sofort (mit „wird ermittelt“).
     let ende = std::time::Instant::now() + Duration::from_secs(30);
-    let (bytes, v) = loop {
-        let anfrage = axum::http::Request::get("/api/projects").header("host", "127.0.0.1:8788").body(axum::body::Body::empty()).unwrap();
+    let (text, v) = loop {
         let start = std::time::Instant::now();
-        let res = app.clone().oneshot(anfrage).await.unwrap();
-        assert_eq!(res.status(), 200);
-        let bytes = res.into_body().collect().await.unwrap().to_bytes();
-        assert!(start.elapsed() < Duration::from_millis(500), "Liste wartet auf git: {:?}", start.elapsed());
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        let fertig = v["projects"][0]["repos"].as_array().is_some_and(|r| r.iter().all(|r| r["stand"].is_string()));
+        let v = {
+            let bestand = state.inhalt.bestand();
+            let (projekte, _) = bestand.liste_sichtbar();
+            assert_eq!(projekte.len(), 1, "ein Projekt");
+            serde_json::to_value(state.git.repos_fuer(projekte[0])).unwrap()
+        };
+        assert!(start.elapsed() < Duration::from_millis(500), "Lesen wartet auf git: {:?}", start.elapsed());
+        let fertig = v.as_array().is_some_and(|r| r.iter().all(|r| r["stand"].is_string()));
         if fertig || std::time::Instant::now() > ende {
-            break (bytes, v);
+            break (v.to_string(), v);
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
-    let projekte = v["projects"].as_array().unwrap();
-    assert_eq!(projekte.len(), 1, "{v}");
-    let repos = projekte[0]["repos"].as_array().unwrap();
+    let repos = v.as_array().unwrap();
     assert_eq!(repos.len(), 8, "{v}");
     assert!(repos.iter().all(|r| r["stand"].is_string()), "nicht alle erneuert: {v}");
     // Jede Anfrage kam beim Boten an und wurde beantwortet. Das Budget von
@@ -340,7 +336,6 @@ async fn acht_repos_ueber_den_boten() {
         assert!(fehler.is_none() || fehler == Some("git antwortet nicht (Zeitlimit)"), "{r}");
     }
     assert!(repos.iter().any(|r| r["branch"].is_string()), "{v}");
-    let text = String::from_utf8_lossy(&bytes);
     assert!(!text.contains("beschäftigt") && !text.contains("ausgelastet"), "{text}");
 }
 

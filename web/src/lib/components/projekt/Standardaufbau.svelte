@@ -53,12 +53,7 @@
 		const beiInhalt = (a: InhaltAenderung): void => {
 			if (betrifftProjekt(a, slug)) holen();
 		};
-		const aus = [
-			live.onInhalt(beiInhalt),
-			freierKanal.onInhalt(beiInhalt),
-			freierKanal.onFassung(holen),
-			live.onNachholen(holen)
-		];
+		const aus = [live.onInhalt(beiInhalt), freierKanal.onFassung(holen), live.onNachholen(holen)];
 		return () => {
 			aktuell = false;
 			for (const ab of aus) ab();
@@ -130,7 +125,7 @@
 			<Liste punkte={kopf.kopf.open} nummeriert />
 		</Abschnitt>
 	{:else if (kopf.open_zahl ?? 0) > 0}
-		<!-- Etappe B2: ohne Anmeldung nur die Zahl der offenen Punkte. -->
+		<!-- Etappe B2: nur die Zahl, wenn der Server die Liste nicht schickt (seit Schritt E2 lädt die Seite nur mit Anmeldung). -->
 		<Abschnitt titel="Offene Punkte">
 			<p class="muted">
 				{kopf.open_zahl} offene {kopf.open_zahl === 1 ? 'Punkt' : 'Punkte'}. Anmelden, um sie zu

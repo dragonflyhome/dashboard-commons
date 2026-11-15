@@ -1,6 +1,6 @@
 //! Integrierte Windows-Anmeldung (Negotiate über SSPI). In 7a1 als Probe
 //! (`/api/anmeldung/probe`), seit Etappe 7b Pflicht auf den geschützten Wegen
-//! (Schleuse `sicherheit::anmeldung_pflicht`, Liste in `sicherheit::geschuetzt`;
+//! (Schleuse `sicherheit::anmeldung_pflicht`, Positivliste in `sicherheit::oeffentlich`;
 //! `autostart-dienst`, `[anmeldung]`).
 //!
 //! Die Anmeldung gehört zur TCP-Verbindung (`verbindung`), nicht zu einem

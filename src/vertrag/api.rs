@@ -56,7 +56,7 @@ pub struct ProjectSummary {
     pub file_modified: Option<chrono::DateTime<chrono::Local>>,
     /// Kopfleiste, Fassung 3: Name des Schwerpunkts aus `data/schwerpunkte.toml`,
     /// sonst „Sonstiges“ (derselbe Fakt wie `schwerpunkt` in „Anstehend“ und im
-    /// Stand des Projekts, beide schon frei). Die Seitenleiste gruppiert danach.
+    /// Stand des Projekts). Die Seitenleiste gruppiert danach.
     /// Steht immer im JSON; in TypeScript optional (ältere Beispiele).
     #[ts(as = "Option<String>", optional)]
     pub schwerpunkt: String,
@@ -64,8 +64,8 @@ pub struct ProjectSummary {
     /// hat eins mehr als der letzte.
     #[ts(as = "Option<i64>", optional)]
     pub schwerpunkt_reihenfolge: i64,
-    /// Etappe 4c: Bau-Stand der Seite (nur Projekte mit `Seite.svelte`; frei,
-    /// ohne Satz). Fehlt, wenn das Projekt keine eigene Seite hat oder der
+    /// Etappe 4c: Bau-Stand der Seite (nur Projekte mit `Seite.svelte`, ohne
+    /// Satz). Fehlt, wenn das Projekt keine eigene Seite hat oder der
     /// Stand des Baumeisters nicht lesbar ist.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -76,14 +76,6 @@ impl ProjectSummary {
     /// Etappe 4c: setzt den Bau-Stand (aus `baustand`).
     pub fn mit_bau(mut self, bau: Option<ProjektBau>) -> Self {
         self.bau = bau;
-        self
-    }
-
-    /// Etappe B2: ohne Windows-Anmeldung keine Texte der offenen Punkte, nur ihre Zahl.
-    pub fn ohne_texte(mut self, angemeldet: bool) -> Self {
-        if !angemeldet {
-            self.open.clear();
-        }
         self
     }
 
@@ -289,7 +281,7 @@ pub struct ProjectBackup {
     pub backup_note: String,
 }
 
-/// `/api/pc`: die Rechner-Werte, frei für jeden (`[anmeldung]`). Die
+/// `/api/pc`: die Rechner-Werte, seit Schritt E2 nur mit Anmeldung. Die
 /// Benutzer-Daten stehen seit Etappe 7b getrennt in `PcBenutzer`
 /// (`/api/pc/benutzer`, nur für das Windows-Konto des Inhabers).
 #[derive(Debug, Serialize, TS)]
@@ -540,8 +532,8 @@ pub enum SeitenBau {
     NichtGeprueft,
 }
 
-/// Etappe 4c: der Bau-Stand eines Projekts, frei in `/api/projects`.
-/// Ohne Satz: den gibt es nur geschützt unter `/api/bauen`.
+/// Etappe 4c: der Bau-Stand eines Projekts in `/api/projects`.
+/// Ohne Satz: den gibt es nur unter `/api/bauen`.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct ProjektBau {
     pub zustand: SeitenBau,
@@ -554,7 +546,7 @@ pub struct ProjektBau {
     /// Die Oberfläche zeigt es nicht mehr; es bleibt für Chats
     /// in `/api/projects` (sehen, ob ein bestellter Bau die Seite erreicht hat).
     /// Fehlt, wenn die Seite gerade nicht zu sehen ist. Nur eine Zeit, kein
-    /// Satz: darum frei.
+    /// Satz.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "string")]
     pub gebaut_um: Option<chrono::DateTime<chrono::Local>>,
@@ -915,14 +907,14 @@ pub struct AufgabeGeaendert {
 #[derive(Debug, Clone, Serialize, TS)]
 pub struct PruefungProjekt {
     pub slug: String,
-    /// Erst die Kopfdatei, dann `daten/`, dann `assets/`. Etappe B2: nur mit
-    /// Windows-Anmeldung; ohne ist die Liste leer, es bleiben die Zahlen.
+    /// Erst die Kopfdatei, dann `daten/`, dann `assets/`. Der Weg verlangt
+    /// seit Schritt E2 die Anmeldung.
     pub befunde: Vec<Befund>,
-    /// Etappe B2: Zahl der Fehler unter den Befunden, auch ohne Anmeldung.
+    /// Etappe B2: Zahl der Fehler unter den Befunden.
     /// In TypeScript optional (ältere Beispiele).
     #[ts(as = "Option<u64>", optional)]
     pub fehler: u64,
-    /// Etappe B2: Zahl der Hinweise, auch ohne Anmeldung.
+    /// Etappe B2: Zahl der Hinweise unter den Befunden.
     #[ts(as = "Option<u64>", optional)]
     pub hinweise: u64,
 }
@@ -938,14 +930,6 @@ impl PruefungProjekt {
     pub fn zahlen_neu(&mut self) {
         let (f, h) = crate::inhalt::pruefung::zaehlen(&self.befunde);
         (self.fehler, self.hinweise) = (f as u64, h as u64);
-    }
-
-    /// Etappe B2: Ohne Windows-Anmeldung nur die Zahlen, keine Befund-Sätze.
-    pub fn ohne_saetze(mut self, angemeldet: bool) -> Self {
-        if !angemeldet {
-            self.befunde.clear();
-        }
-        self
     }
 }
 
@@ -968,8 +952,36 @@ pub struct PruefungsBericht {
 
 // ----- Betrieb (Etappe 7a) -----
 
-/// `GET /api/betrieb`: wie der Server läuft. Lebenszeichen für Skripte
-/// (neben `/healthz`) und später die Seite /betrieb.
+/// `GET /api/betrieb` (öffentlich, Schritt E2): der schmale Zustand für
+/// Skripte ohne Anmeldung (`Dienst.ps1 -Status`, `Dienst-Einrichten.ps1`,
+/// `Freigeben.ps1`) und den Fuß der Oberfläche. Keine Pfade, keine Ordner,
+/// kein Inhalt, kein Anmeldestand des Inhabers; alles andere steht nur in
+/// [`Betrieb`] (`/api/betrieb/voll`, geschützt).
+#[derive(Debug, Clone, Serialize, TS)]
+pub struct BetriebFrei {
+    /// Wie in [`Betrieb`].
+    #[ts(type = "\"dienst\" | \"konsole\" | \"umgebung\"")]
+    pub modus: String,
+    /// Fassung aus Cargo.toml.
+    pub version: String,
+    /// Datum dieser Fassung aus dem eingebetteten Changelog; `null`, wenn es sie nicht nennt.
+    pub version_datum: Option<String>,
+    /// `true`, wenn Unreleased im eingebetteten Changelog Einträge hat.
+    pub unveroeffentlicht: bool,
+    /// Startzeit des Servers, Ortszeit, RFC 3339.
+    pub gestartet: String,
+    /// Die Fassung der Oberfläche: der Ordnername unter `web/builds` (er
+    /// nennt nur den Bauzeitpunkt) oder `build`.
+    pub fassung: String,
+    /// Nur, ob ein Bote vorgesehen ist: Er läuft nur in der Sitzung des
+    /// Inhabers, `verbunden` verriete also, ob sie an der Konsole angemeldet ist.
+    #[ts(type = "\"vorgesehen\" | \"nicht vorgesehen\"")]
+    pub bote: String,
+    /// Der Datenspeicher (`fehler` ohne Pfad und Namen, `datenschutz`).
+    pub speicher: SpeicherStand,
+}
+
+/// `GET /api/betrieb/voll` (geschützt): wie der Server läuft, im Klartext.
 #[derive(Debug, Clone, Serialize, TS)]
 pub struct Betrieb {
     /// `dienst` (Windows-Dienst), `konsole` (`--konsole --einstellungen`),
@@ -989,28 +1001,22 @@ pub struct Betrieb {
     /// Startzeit des Servers, Ortszeit, RFC 3339.
     pub gestartet: String,
     /// Die Einstellungsdatei (`dienst.toml`); `null` im Modus `umgebung`.
-    /// Nur in `/api/betrieb/voll` (geschützt); auf dem freien Weg immer `null`
-    /// (ein Pfad, Kopfleiste Fassung 2, Abnahme).
     pub einstellungen: Option<String>,
     /// Zustand des Boten: `verbunden` (letzte Anfrage beantwortet),
     /// `getrennt` (Bote vorgesehen, aber nicht erreichbar) oder
-    /// `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). Auf dem freien Weg
-    /// statt `verbunden` und `getrennt` nur `vorgesehen`: Der Bote läuft nur in
-    /// der Sitzung des Inhabers (Abnahme Kopfleiste 2); den Zustand nennt `/api/betrieb/voll`.
+    /// `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). `vorgesehen` steht
+    /// nur in [`BetriebFrei`]; der Typ bleibt bis zum Umbau der Oberfläche breit.
     #[ts(type = "\"verbunden\" | \"getrennt\" | \"vorgesehen\" | \"nicht vorgesehen\"")]
     pub bote: String,
     /// Bei `verbunden`: seit wann; bei `getrennt`: wann er zuletzt antwortete
-    /// (RFC 3339, `null` wenn nie). Sonst `null`. Nur in `/api/betrieb/voll`
-    /// (der Bote läuft in der Sitzung des Inhabers; seine Zeiten sagen, wann sie sich
-    /// an- oder abgemeldet hat); auf dem freien Weg immer `null`.
+    /// (RFC 3339, `null` wenn nie). Sonst `null`.
     pub bote_seit: Option<String>,
     /// Der Datenspeicher. Der Server öffnet ihn in jedem Modus beim Start
     /// (auch im Altweg ohne Einstellungsdatei); `offen: false` heißt also
     /// immer, dass etwas nicht stimmt.
     pub speicher: SpeicherStand,
-    /// Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3). Nur in
-    /// `/api/betrieb/voll` (geschützt: ob der Inhaber an der Konsole angemeldet
-    /// ist); auf dem freien Weg `null`.
+    /// Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3); immer
+    /// gesetzt (der Typ bleibt bis zum Umbau der Oberfläche optional).
     pub sitzung: Option<SitzungsStand>,
     /// Der Inhalt im Arbeitsspeicher (Etappe 2d).
     pub inhalt: InhaltStand,
@@ -1024,8 +1030,8 @@ pub struct Betrieb {
     /// Ob sich die Ordner lesen lassen, die der Server liest (dieselbe
     /// Prüfung wie beim Start, Hotfix 4d), nur mit kurzem Namen, nie mit Pfad.
     pub ordner: Vec<OrdnerStand>,
-    /// Woher der Server den Inhalt liest (Umzug des Inhalts). Nur in
-    /// `/api/betrieb/voll` (Pfade); auf dem freien Weg immer `null`.
+    /// Woher der Server den Inhalt liest (Umzug des Inhalts); immer gesetzt
+    /// (der Typ bleibt bis zum Umbau der Oberfläche optional).
     pub quellen: Option<QuellenStand>,
     /// Kleinkram 2: Störungen im Betrieb, je ein Satz (leer: keine). Bisher:
     /// Der Bote (der Bau-Prüfer) prüft mit einer anderen Fassung des Prüfers
@@ -1073,16 +1079,26 @@ pub struct OrdnerStand {
     pub stand: String,
 }
 
-/// `GET /api/stand` und `/api/stand/voll` (Kopfleiste, Fassung 3): der
-/// gemeinsame Stand für die Aktualitätsprüfung im letzten Brotkrumen-Glied.
-/// Nur Zahlen und der Name der Fassung (wie in `/api/betrieb`).
+/// `GET /api/stand` (öffentlich, Schritt E2): nur die Nummer der Ereignisse
+/// des freien Kanals und die Fassung, keine Inhaltsversion (auch keine Null).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+pub struct ServerStandFrei {
+    /// Wie viele Ereignisse des freien Kanals (`fassung`) der Server seit dem
+    /// Start geschickt hat (siehe `api::stand`). Ohne Neustart nie kleiner.
+    pub ereignis: u64,
+    /// Die Fassung der Oberfläche (Ordnername oder `build`).
+    pub fassung: String,
+}
+
+/// `GET /api/stand/voll` (geschützt, Kopfleiste, Fassung 3): der gemeinsame
+/// Stand für die Aktualitätsprüfung im letzten Brotkrumen-Glied. Nur Zahlen
+/// und der Name der Fassung (wie in `/api/betrieb/voll`).
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct ServerStand {
     /// Ereignisnummer: wie viele Ereignisse mit Daten der Server seit dem Start
-    /// geschickt hat. Frei nur die, die auch der freie Kanal trägt; geschützt
-    /// alle (siehe `api::stand`). Ohne Neustart nie kleiner.
+    /// geschickt hat (siehe `api::stand`). Ohne Neustart nie kleiner.
     pub ereignis: u64,
-    /// Version des Inhalts (wie `inhalt.version` in `/api/betrieb`).
+    /// Version des Inhalts (wie `inhalt.version` in `/api/betrieb/voll`).
     pub inhalt: u64,
     /// Die Fassung der Oberfläche (Ordnername oder `build`).
     pub fassung: String,

@@ -131,9 +131,9 @@ fn konsole_mit_einstellungen_laeuft_und_protokolliert() {
     // einer, der die Prüfung nicht besteht: inhaber_sid fehlt).
     // Seit der Abnahme der Kopfleiste 2 frei nur „vorgesehen“ (verbunden/getrennt in /api/betrieb/voll).
     assert!(koerper.contains("\"bote\":\"vorgesehen\""), "{koerper}");
-    // Kopfleiste, Fassung 2: frei ohne Pfad und ohne Sitzung (nur in /api/betrieb/voll).
-    assert!(!koerper.contains("dienst.toml"), "Pfad auf dem freien Weg: {koerper}");
-    assert!(koerper.contains("\"einstellungen\":null") && koerper.contains("\"sitzung\":null"), "{koerper}");
+    // Schritt E2: öffentlich ohne Pfad, ohne Einstellungen und ohne Sitzung (nur in /api/betrieb/voll).
+    assert!(!koerper.contains("dienst.toml"), "Pfad auf dem öffentlichen Weg: {koerper}");
+    assert!(!koerper.contains("\"einstellungen\"") && !koerper.contains("\"sitzung\"") && !koerper.contains("\"quellen\""), "{koerper}");
 
     drop(kind);
     let protokoll = ort.ordner.join("protokoll");
@@ -299,7 +299,7 @@ fn wie_ein_chat(port: u16, weg: &str, json: &str, kennung: &str, benannt: bool) 
 /// Windows-Anmeldung als Pflicht (7b), Ende zu Ende mit der echten
 /// Verbindungskennung: ohne Nachweis 401, mit 200; ein Warter mit Nachweis
 /// wird von einem neuen Vorgang (ebenfalls mit Nachweis) binnen 2 s nach dem
-/// Anlegen geweckt. Projekte bleiben frei. Gefragt wird wie in den Skripten
+/// Anlegen geweckt. Seit Schritt E2 auch die Projekte. Gefragt wird wie in den Skripten
 /// über `WindowsAnfrage` (Windows PowerShell 5.1).
 #[cfg(windows)]
 #[test]
@@ -318,7 +318,9 @@ fn anmeldung_ist_pflicht_und_warten_wird_geweckt() {
     let (status, koerper) = anfrage(&format!("http://127.0.0.1:{port}/api/vorgaenge/uebersicht"), true, None);
     assert_eq!(status, "200", "auch über 127.0.0.1: {koerper}");
     let (status, koerper) = anfrage(&format!("{basis}/api/projects"), false, None);
-    assert_eq!(status, "200", "Projekte frei: {koerper}");
+    assert_eq!(status, "401", "Projekte ohne Anmeldung (Schritt E2): {koerper}");
+    let (status, koerper) = anfrage(&format!("{basis}/api/projects"), true, None);
+    assert_eq!(status, "200", "Projekte mit Anmeldung: {koerper}");
 
     // Warten mit Anmeldung, dann ein neuer Vorgang mit Anmeldung. PowerShell
     // braucht zum Starten bis zu einigen Sekunden; darum hat der Warter 4 s

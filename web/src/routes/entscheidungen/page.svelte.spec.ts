@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import { describe, expect, it, vi } from 'vitest';
 import type { Entscheidung, EntscheidungsListe } from '$vertrag';
 import { einzeilig, feldName, filtern, zeilen } from '#lib/entscheidungen.ts';
-import { SATZ_ENTSCHEIDUNGEN_ANMELDEN } from '#lib/anmeldung.ts';
+import { leitetZurAnmeldung } from '../zur-anmeldung.testhilfe.ts';
 
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 const { default: Page } = await import('./+page.svelte');
@@ -63,12 +63,8 @@ const liste: EntscheidungsListe = {
 	warnung: null
 };
 
-function zeige(data: {
-	liste: EntscheidungsListe | null;
-	fehler: string | null;
-	anmelden?: string | null;
-}) {
-	return render(Page, { data: { anmelden: null, ...data }, params: {} } as never);
+function zeige(data: { liste: EntscheidungsListe | null; fehler: string | null }) {
+	return render(Page, { data, params: {} } as never);
 }
 
 describe('/entscheidungen (Etappe 4d)', () => {
@@ -175,26 +171,8 @@ describe('Felder als Zeilen', () => {
 	});
 });
 
-describe('/entscheidungen ohne Windows-Anmeldung (Abnahme 4d)', () => {
-	it('401 vom Server: der Weg über Edge, wie bei /anstehend, nicht „lässt sich nicht laden“', async () => {
-		const { load } = await import('./+page.ts');
-		const fetch401 = (() =>
-			Promise.resolve(
-				new Response(
-					JSON.stringify({ fehler: 'Bitte mit dem Windows-Konto anmelden.', art: 'anmeldung' }),
-					{ status: 401, headers: { 'content-type': 'application/json' } }
-				)
-			)) as typeof fetch;
-		const data = (await load({ fetch: fetch401, depends: () => undefined } as never)) as {
-			liste: null;
-			fehler: string | null;
-			anmelden: string | null;
-		};
-		expect(data).toEqual({ liste: null, fehler: null, anmelden: SATZ_ENTSCHEIDUNGEN_ANMELDEN });
-		zeige(data);
-		const link = screen.getByRole('link', { name: 'http://localhost:8787' });
-		expect(link.closest('p')?.textContent).toBe(`${SATZ_ENTSCHEIDUNGEN_ANMELDEN}.`);
-		expect(document.body.textContent).not.toMatch(/lassen sich gerade nicht laden/);
-		expect(screen.queryByRole('searchbox')).toBeNull();
+describe('/entscheidungen ohne Anmeldung (Schritt E2)', () => {
+	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
+		expect(await leitetZurAnmeldung('/entscheidungen')).toBe('/anmelden?ziel=%2Fentscheidungen');
 	});
 });

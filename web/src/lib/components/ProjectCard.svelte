@@ -67,7 +67,7 @@
 				>
 			{/if}
 		{/if}
-		<!-- Etappe B2: ohne Anmeldung kommt nur die Zahl der offenen Punkte (open_zahl). -->
+		<!-- Etappe B2: open_zahl, wenn der Server die Liste nicht schickt (seit Schritt E2 ist /api/projects nur mit Anmeldung). -->
 		{#if (project.open_zahl ?? project.open.length) > 0}
 			<span class="pill">{project.open_zahl ?? project.open.length} offene Punkte</span>
 		{/if}

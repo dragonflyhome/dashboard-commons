@@ -21,7 +21,6 @@ assets?: boolean,
  * Namen der geänderten Dateien in `assets/` (höchstens
  * [`ASSET_DATEIEN_HOECHSTENS`]); die Seite erneuert dann nur deren
  * Adressen. Fehlt das Feld, gilt die Änderung für alle Dateien des
- * Projekts. Nur auf dem geschützten Kanal; der freie bekommt es nie
- * ([`InhaltEreignis::nur_frei`]).
+ * Projekts. Nur auf dem geschützten Kanal (wie jedes `projekt`).
  */
 dateien?: Array<string>, };

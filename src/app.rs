@@ -1380,6 +1380,12 @@ mod tests {
             "/../Cargo.toml",
             "/.git/config",
             "/a//b",
+            // Schritt E2: nur die echte Schreibweise, auch wenn das Dateisystem sie gleich behandelt.
+            "/FAVICON.PNG",
+            "/favicon.png.",
+            "/_app/immutable/START.js",
+            "/_app/immutable/start.js.",
+            "/_APP/immutable/start.js",
         ] {
             let (status, body) = abrufen(pfad).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{pfad}: {body}");
@@ -1741,7 +1747,7 @@ mod tests {
         std::fs::write(projekte.join("probe/projekt.toml"), seite).unwrap();
         let git = Arc::new(git::Zwischenspeicher::neu(vec![projekte.clone()], None));
         let state = AppState { git: git.clone(), ..AppState::fuer_tests(&beispiel()).mit_projekten(projekte.clone()) };
-        let app = router(state);
+        let app = router_angemeldet(state);
 
         async fn messen(app: &Router, pfad: &str) -> (std::time::Duration, serde_json::Value) {
             let start = std::time::Instant::now();

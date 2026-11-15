@@ -42,7 +42,8 @@ export type BenutzerLadung =
 /**
  * Holt `/api/pc/benutzer` (geschützt). Fehlt die Windows-Anmeldung (401) oder
  * ist es ein fremdes Konto (403), kommt `null` mit Grund statt eines Fehlers:
- * Die Rechner-Werte der PC-Seite gehen auch ohne. Andere Fehler fliegen weiter.
+ * Die PC-Seite zeigt ihre übrigen Werte dann ohne die Benutzer-Daten. Andere
+ * Fehler fliegen weiter.
  */
 export async function ladeBenutzer(f?: typeof fetch): Promise<BenutzerLadung> {
 	try {

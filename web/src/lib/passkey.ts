@@ -53,6 +53,11 @@ export function zielPruefen(ziel: string | null | undefined): string {
 	return ziel;
 }
 
+/** Weiter zu `ziel` (aus `zielPruefen`), voll geladen: Der neue Anmeldestand gilt von vorn. */
+export function weiter(ziel: string): void {
+	window.location.assign(ziel);
+}
+
 /** Ist die Seite über localhost offen (sonst gehen Passkeys nicht)? */
 export function aufLocalhost(href: string): boolean {
 	try {

@@ -16,7 +16,7 @@ punkte = [
   'Bote: Der Bote (Bauen, Git, Öffnen) läuft als eigener Windows-Prozess mit Job-Objekt. Ohne ihn baut der Dienst nur im eigenen Prozess und ohne Zeitgrenze für Kindprozesse; Öffnen antwortet dann mit 503.',
   'PC-Seite: Sie liest PowerShell, die Registry und winget und bleibt ohne Windows leer.',
   'Werkzeugorte: Außerhalb von Windows sucht der Dienst Git nur unter /usr/bin/git und für node, npm, cargo und rustc an gar keinem Ort.',
-  'Schwärzen: Benutzerpfade werden nur in Windows-Form erkannt (Laufwerksbuchstabe, Profilordner, Windows-Benutzername). Pfade der Form /Users/<name> oder /home/<name> werden heute nicht geschwärzt, auch nicht in der Oberfläche. Rechnername und Datenträgernamen gehen auf dem freien Weg nur in Windows-Form geschwärzt hinaus.',
+  'Schwärzen: Benutzerpfade werden nur in Windows-Form erkannt (Laufwerksbuchstabe, Profilordner, Windows-Benutzername). Pfade der Form /Users/<name> oder /home/<name> werden heute nicht geschwärzt, auch nicht in der Oberfläche. Rechnername und Datenträgernamen gehen seit Schritt E2 auf keinem öffentlichen Weg mehr hinaus.',
   'Orte: Mehrere Ablageorte kommen nur aus den Windows-Umgebungsvariablen für Profil und lokale Anwendungsdaten, ohne Rückfall auf HOME (unter anderem Zusammenbau-Wächter, Protokoll des Boten, Herzschlag, Öffnen).',
   'Chat-Wege: Die Skripte für Chats (Anfrage, Api, Warten) melden sich mit dem Windows-Konto an (Negotiate). Ohne Windows braucht ein Chat einen eigenen Anmeldeweg.',
   'Skripte: Bau-, Einspiel- und Dienstskripte setzen .exe-Dateien, die Registry (HKCU) und Windows-Schnittstellen (advapi32) voraus.',

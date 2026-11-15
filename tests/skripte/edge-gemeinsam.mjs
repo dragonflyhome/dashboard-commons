@@ -31,10 +31,15 @@
  *    sonst der Nachbarordner `dashboard-inhalt` des Repos, wenn es ihn
  *    gibt, sonst das Repo selbst (vor dem Umzug). Die Proben kopieren nur,
  *    nie ändern sie den Inhalt.
+ * 6. `ohneAnmeldungPruefen` (Schritt E2): Ohne Anmeldung führt jede nicht
+ *    öffentliche Seite zur Anmeldung, zeigt keinen Projekttitel und
+ *    `/api/projects` antwortet 401. Die reinen Teile prüft
+ *    `node tests/skripte/edge-gemeinsam.mjs` selbst.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
 
 /**
@@ -64,6 +69,105 @@ export function erlaubteAdresse(url) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Schritt E2: Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite. Was ein
+ * Browser ohne Anmeldung auf einer nicht öffentlichen Seite sieht, liest dieser
+ * Ausdruck (für Runtime.evaluate): wo der Tab steht, das Ziel der Anmeldeseite,
+ * die Ziele der Links zur Anmeldung (die 401-Seite des Servers unter Windows),
+ * Links auf Projekte, das ganze HTML und den Status von `/api/projects`.
+ */
+export const OHNE_ANMELDUNG = `(async () => {
+  const links = [...document.querySelectorAll("a[href]")].map((a) => new URL(a.href, location.href));
+  return {
+    pfad: location.pathname,
+    ziel: location.pathname === "/anmelden" ? new URLSearchParams(location.search).get("ziel") : null,
+    anmeldeZiele: links.filter((u) => u.pathname === "/anmelden").map((u) => u.searchParams.get("ziel")),
+    projektLinks: links.filter((u) => /^\\/(projects|gruppen)\\//.test(u.pathname)).map((u) => u.pathname),
+    html: document.documentElement.outerHTML,
+    projekte: await fetch("/api/projects", { headers: { accept: "application/json" } }).then((r) => r.status, () => 0),
+  };
+})()`;
+
+/**
+ * Die Mängel einer Seite ohne Anmeldung (leer: bestanden). Gut ist die
+ * Anmeldeseite der Oberfläche mit `ziel` gleich `pfad` (Weiterleitung im
+ * Browser, außerhalb von Windows 303 vom Server) oder die 401-Seite des
+ * Servers mit dem Link „Zur Anmeldung“ auf dasselbe Ziel (Windows). Dazu kein
+ * Link auf ein anderes Projekt als `pfad` selbst (die 401-Seite verlinkt die
+ * angefragte Adresse), kein Projekttitel im DOM und `/api/projects` 401.
+ * Ein Titel, der ganz in einem festen Text der Oberfläche steht
+ * (`OBERFLAECHE`, etwa „Dashboard“ im Tab-Titel), lässt sich davon nicht
+ * unterscheiden und zählt nicht.
+ * @param {{ pfad: string, ziel: string | null, anmeldeZiele: (string | null)[], projektLinks: string[], html: string, projekte: number }} stand
+ * @param {string} pfad
+ * @param {string[]} titel
+ * @returns {string[]}
+ */
+export function ohneAnmeldungMaengel(stand, pfad, titel) {
+  const maengel = [];
+  if (!((stand.pfad === "/anmelden" && stand.ziel === pfad) || stand.anmeldeZiele.includes(pfad)))
+    maengel.push(`führt nicht zur Anmeldung (Tab auf ${stand.pfad}, Ziel ${stand.ziel ?? (stand.anmeldeZiele.join(", ") || "keins")})`);
+  // Die 401-Seite verlinkt die angefragte Adresse selbst (zum Öffnen in Edge); die nennt nichts Neues.
+  const links = stand.projektLinks.filter((l) => l !== pfad);
+  if (links.length > 0) maengel.push(`Links auf Projekte: ${links.slice(0, 3).join(", ")}`);
+  const gesehen = titel.filter((t) => t !== "" && stand.html.includes(t) && !OBERFLAECHE.some((o) => o.includes(t)));
+  if (gesehen.length > 0) maengel.push(`Projekttitel im DOM: ${gesehen.slice(0, 3).join(", ")}`);
+  if (stand.projekte !== 401) maengel.push(`/api/projects ${stand.projekte} statt 401`);
+  return maengel;
+}
+
+/**
+ * Feste Texte der Seiten ohne Anmeldung (Tab-Titel der Oberfläche, Anmeldeseite,
+ * 401-Seite des Servers). Nur sie nimmt die Titelprüfung aus, nie das HTML einer
+ * Antwort: Ein Leck, das auf jeder Seite gleich aussieht, bliebe sonst unbemerkt.
+ */
+export const OBERFLAECHE = ["Dashboard", "Anmelden · Dashboard", "Dashboard: Anmeldung nötig"];
+
+/** Ein Weg, den es nie gibt: Auch seine Antwort ohne Anmeldung darf keinen Projekttitel nennen. */
+export const ERFUNDEN = "/projects/zz-gibt-es-nicht-e2";
+
+/**
+ * Öffnet jeden Weg aus `pfade` ohne Anmeldung und wartet höchstens `frist` ms
+ * auf die Anmeldeseite (die Weiterleitung im Browser braucht einen Moment).
+ * `cdp`: `oeffnen(pfad)` und `werte(ausdruck)` der Probe. Gibt je Weg die
+ * Mängel zurück; der erfundene Weg (`ERFUNDEN`) läuft zuerst mit.
+ * @param {{ oeffnen: (pfad: string) => Promise<unknown>, werte: (ausdruck: string) => Promise<any> }} cdp
+ * @param {string[]} pfade
+ * @param {string[]} titel
+ * @returns {Promise<{ pfad: string, maengel: string[] }[]>}
+ */
+export async function ohneAnmeldungPruefen(cdp, pfade, titel, frist = 10000) {
+  const lesen = async (pfad) => {
+    await cdp.oeffnen(pfad);
+    const ende = Date.now() + frist;
+    let stand = null;
+    while (Date.now() < ende) {
+      stand = await cdp.werte(OHNE_ANMELDUNG).catch(() => null);
+      if (stand !== null && ohneAnmeldungMaengel(stand, pfad, []).length === 0) break;
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
+    return stand ?? { pfad: "?", ziel: null, anmeldeZiele: [], projektLinks: [], html: "", projekte: 0 };
+  };
+  const ergebnis = [];
+  for (const pfad of [ERFUNDEN, ...pfade]) ergebnis.push({ pfad, maengel: ohneAnmeldungMaengel(await lesen(pfad), pfad, titel) });
+  return ergebnis;
+}
+
+/**
+ * Die Titel der Projekte in `ordner` (je `projekt.toml` die Zeile `title = "…"`).
+ * shortcut: liest nur die einfache Zeile ohne TOML-Parser; ein Titel mit
+ * Anführungszeichen darin fehlt dann in der Liste, aufrüsten, wenn es so einen gibt.
+ * @param {string} ordner
+ * @returns {string[]}
+ */
+export function projektTitel(ordner) {
+  if (!existsSync(ordner)) return [];
+  return readdirSync(ordner, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(ordner, d.name, "projekt.toml")))
+    .map((d) => /^title\s*=\s*"([^"\\]*)"/m.exec(readFileSync(join(ordner, d.name, "projekt.toml"), "utf8"))?.[1] ?? "")
+    .filter((t) => t !== "");
 }
 
 /**
@@ -292,3 +396,56 @@ export async function portePruefen(port) {
       );
   }
 }
+
+/**
+ * Selbstprüfung der reinen Teile (ohne Edge): `node tests/skripte/edge-gemeinsam.mjs`.
+ * Exit 0 heißt bestanden; jede Zusicherung, die nicht hält, bricht mit Fehler ab.
+ */
+async function selbstpruefung() {
+  const { deepStrictEqual: gleich, ok } = await import("node:assert/strict");
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const leer = { pfad: "/anmelden", ziel: "/pc", anmeldeZiele: [], projektLinks: [], html: "<title>Anmelden · Dashboard</title>", projekte: 401 };
+  gleich(ohneAnmeldungMaengel(leer, "/pc", ["Beispiel"]), []);
+  // Die 401-Seite des Servers (Windows): Link „Zur Anmeldung“ mit demselben Ziel.
+  gleich(ohneAnmeldungMaengel({ ...leer, pfad: "/pc", ziel: null, anmeldeZiele: ["/pc"] }, "/pc", []), []);
+  // Falsches Ziel, eine andere Seite, ein Link auf ein Projekt, ein Titel, /api/projects 200: je ein Mangel.
+  gleich(ohneAnmeldungMaengel({ ...leer, ziel: "/" }, "/pc", []).length, 1);
+  gleich(ohneAnmeldungMaengel({ ...leer, pfad: "/pc", ziel: null }, "/pc", []).length, 1);
+  gleich(ohneAnmeldungMaengel({ ...leer, projektLinks: ["/projects/beispiel"] }, "/pc", []).length, 1);
+  // Die 401-Seite verlinkt die angefragte Projektseite selbst: kein Mangel; ein anderes Projekt schon.
+  const seite401 = { ...leer, pfad: "/projects/beispiel", ziel: null, anmeldeZiele: ["/projects/beispiel"] };
+  gleich(ohneAnmeldungMaengel({ ...seite401, projektLinks: ["/projects/beispiel"] }, "/projects/beispiel", []), []);
+  gleich(ohneAnmeldungMaengel({ ...seite401, projektLinks: ["/projects/beispiel", "/projects/probekonto"] }, "/projects/beispiel", []).length, 1);
+  gleich(ohneAnmeldungMaengel({ ...leer, html: "<h1>Beispiel zwei</h1>" }, "/pc", ["Beispiel zwei"]).length, 1);
+  gleich(ohneAnmeldungMaengel({ ...leer, projekte: 200 }, "/pc", []).length, 1);
+  // Ein Titel, der ganz in einem festen Text der Oberfläche steht, zählt nicht; einer, der nur darin anfängt, schon.
+  gleich(ohneAnmeldungMaengel(leer, "/pc", ["Dashboard"]), []);
+  gleich(ohneAnmeldungMaengel({ ...leer, html: "<title>Dashboard Beispiel</title>" }, "/pc", ["Dashboard Beispiel"]).length, 1);
+  // Gegenprüfung E2 Runde 2: Steht ein Titel auf jeder Seite, auch auf dem erfundenen Weg, ist das ein Mangel überall.
+  const ueberall = { ...leer, html: "<nav>Beispiel Geheim</nav>", ziel: null, pfad: "/anmelden" };
+  const cdp = { oeffnen: async (p) => (ueberall.ziel = p), werte: async () => ({ ...ueberall }) };
+  const alle = await ohneAnmeldungPruefen(cdp, ["/", "/projects/beispiel"], ["Beispiel Geheim", "Probekonto Plan"], 50);
+  gleich(alle.map((e) => e.pfad), [ERFUNDEN, "/", "/projects/beispiel"]);
+  ok(alle.every((e) => e.maengel.length === 1 && e.maengel[0].startsWith("Projekttitel im DOM")), JSON.stringify(alle));
+  // projektTitel: nur Ordner mit projekt.toml, nur die Zeile title.
+  const ordner = mkdtempSync(join(tmpdir(), "edge-gemeinsam-"));
+  try {
+    for (const [slug, kopf] of [["beispiel", 'schema = 3\ntitle = "Beispiel"\n'], ["beispiel2", 'subtitle = "nein"\ntitle = "Beispiel zwei"\n']]) {
+      mkdirSync(join(ordner, slug));
+      writeFileSync(join(ordner, slug, "projekt.toml"), kopf);
+    }
+    mkdirSync(join(ordner, "ohne-kopf"));
+    gleich(projektTitel(ordner).sort(), ["Beispiel", "Beispiel zwei"]);
+    gleich(projektTitel(join(ordner, "fehlt")), []);
+  } finally {
+    rmSync(ordner, { recursive: true, force: true });
+  }
+  ok(ERFUNDEN.startsWith("/projects/"));
+  // Der Ausdruck für die Seite ist gültiges JavaScript, und sein Muster erkennt Projektwege.
+  ok(typeof new Function(`return ${OHNE_ANMELDUNG}`) === "function");
+  ok(OHNE_ANMELDUNG.includes(String.raw`/^\/(projects|gruppen)\//`));
+  console.log("edge-gemeinsam: Selbstprüfung bestanden");
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await selbstpruefung();

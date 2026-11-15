@@ -3,7 +3,7 @@
 	 * Bau-Stand im Kopf der Projektseite (Etappe 4c): grün, rot, nicht geprüft,
 	 * läuft oder noch nicht gebaut; bei grün „in Ordnung“, bei rot „zeigt die
 	 * letzte gute Fassung von …“ und, angemeldet, der Satz des Servers. Nicht
-	 * geprüft: ohne Anmeldung nur der Zustand, angemeldet darunter der Satz
+	 * geprüft: der Zustand, darunter der Satz des Servers
 	 * (wie bei rot, ohne Ansage: ein Hinweis, keine Aufforderung).
 	 *
 	 * Keine Zeitzeile und kein Knopf zum Bauen

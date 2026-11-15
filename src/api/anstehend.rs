@@ -5,12 +5,10 @@
 //!   `/api/aufgaben` (Windows-Anmeldung, ohne sie 401): die Liste nennt die
 //!   Titel der Aufgaben. Klick-Links stehen nie darin, nur `hat_link`.
 //! - `GET /api/projekte/<slug>/stand`: das Unter-Dashboard einer Projektseite
-//!   (alte und neue Form). Frei lesbar wie die Projektseiten ([unter_dashboard]
-//!   api: „Lesen ist frei“); die Aufgaben zeigt es mit Titel nur, wenn die
-//!   Verbindung als Inhaber angemeldet ist, sonst nur ihre Zahl. Der Weg bleibt
-//!   für Werkzeuge.
+//!   (alte und neue Form), mit allen Titeln. Seit Schritt E2 geschützt wie
+//!   die Projektseiten (ohne Anmeldung 401). Der Weg bleibt für Werkzeuge.
 //! - `GET /api/projekte/<slug>/stand/voll` (Hotfix 3a-1): derselbe Stand,
-//!   immer mit Titeln, geschützt wie `/api/anstehend`. Die Oberfläche liest
+//!   geschützt wie `/api/anstehend`. Die Oberfläche liest
 //!   ihn hier: Edge schickt Negotiate nur auf einer Verbindung, die vorher 401
 //!   bekam; auf dem freien Weg fehlte die Anmeldung oft zufällig.
 //! - `POST /api/einstufung {projekt, art, id, gestellt?, stufe | null}`:
@@ -112,25 +110,13 @@ pub async fn liste(State(state): State<AppState>, uri: Uri) -> Result<Json<Anste
     Ok(Json(anstehend::anstehend(&inhalt, &filter)))
 }
 
-/// `GET /api/projekte/<slug>/stand`: frei; Aufgaben mit Titel nur angemeldet.
-pub async fn stand(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Result<Json<ProjektStand>, AppError> {
-    stand_bauen(&state, &slug, angemeldet.is_some()).await.map(Json)
+/// `GET /api/projekte/<slug>/stand` und `…/stand/voll` (beide geschützt seit
+/// Schritt E2, darum gleich): mit Titeln und Einträgen.
+pub async fn stand(State(state): State<AppState>, Path(slug): Path<String>) -> Result<Json<ProjektStand>, AppError> {
+    stand_bauen(&state, &slug).await.map(Json)
 }
 
-/// `GET /api/projekte/<slug>/stand/voll`: geschützt (`sicherheit::geschuetzt`),
-/// darum immer mit Titeln. Ohne Anmeldung antwortet schon die Schleuse 401 mit
-/// `WWW-Authenticate: Negotiate`; käme doch eine Anfrage ohne durch, dasselbe hier.
-pub async fn stand_voll(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
-    if angemeldet.is_none() {
-        return super::anmeldung::bitte_anmelden(None);
-    }
-    match stand_bauen(&state, &slug, true).await {
-        Ok(s) => Json(s).into_response(),
-        Err(e) => e.into_response(),
-    }
-}
-
-/// `GET /api/projekte/<slug>/backlog` (Etappe B2): geschützt (`sicherheit::geschuetzt`),
+/// `GET /api/projekte/<slug>/backlog` (Etappe B2): geschützt (nicht in `sicherheit::oeffentlich`),
 /// ohne Anmeldung 401 wie `/stand/voll`. Liest Datenspeicher und Dateien wie
 /// „Anstehend“ und schreibt nichts.
 pub async fn backlog(State(state): State<AppState>, Path(slug): Path<String>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
@@ -222,7 +208,7 @@ pub async fn verlauf(State(state): State<AppState>, Path(slug): Path<String>, ur
 /// `GET /api/fristen` (Etappe B3): die Fristenliste aller sichtbaren Projekte
 /// (ohne archivierte; für die gilt die Sicherheitsregel in Anstehend), nach
 /// Datum, bewegliche ohne Datum am Ende (`crate::fristen::fristenliste`).
-/// Geschützt (`sicherheit::geschuetzt`), ohne Anmeldung 401: die Liste nennt
+/// Geschützt (nicht in `sicherheit::oeffentlich`), ohne Anmeldung 401: die Liste nennt
 /// Titel. Schreibt nichts.
 pub async fn fristen(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
     if angemeldet.is_none() {
@@ -234,12 +220,12 @@ pub async fn fristen(State(state): State<AppState>, angemeldet: Option<Extension
     }
 }
 
-async fn stand_bauen(state: &AppState, slug: &str, aufgaben_sichtbar: bool) -> Result<ProjektStand, AppError> {
+async fn stand_bauen(state: &AppState, slug: &str) -> Result<ProjektStand, AppError> {
     if !seite::is_valid_slug(slug) {
         return Err(AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")));
     }
     let inhalt = inhalt_sammeln(state).await?;
-    anstehend::stand(&inhalt, slug, aufgaben_sichtbar).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
+    anstehend::stand(&inhalt, slug).ok_or_else(|| AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")))
 }
 
 #[derive(Deserialize)]
@@ -632,8 +618,8 @@ mod tests {
         assert_eq!(eintrag(&l, &h)["stufe"]["wirksam"], "jetzt");
     }
 
-    /// Unter-Dashboard: frei lesbar, Aufgaben ohne Anmeldung nur als Zahl;
-    /// unbekannt 404.
+    /// Unter-Dashboard: seit Schritt E2 geschützt (ohne Anmeldung 401 ohne
+    /// Inhalt), angemeldet mit Titeln; unbekannt 404.
     #[tokio::test]
     async fn stand_frei_aufgaben_nur_mit_anmeldung() {
         let state = zustand();
@@ -645,35 +631,22 @@ mod tests {
             &format!(r#"{{"projekt": "dashboard", "von": "chat:dashboard", "titel": "Wartet auf den Haken", "stand": "wartet", "wartet_auf": "inhaber", "verweis": "{a}"}}"#),
         )
         .await;
-        // Ohne Anmeldung (Router ohne angemeldete Verbindung): 200, nur die Zahl.
+        // Ohne Anmeldung (Router ohne angemeldete Verbindung): 401, kein Titel, keine Zahl.
         let (status, text) = roh_mit(crate::app::router(state.clone()), get("/api/projekte/dashboard/stand")).await;
-        assert_eq!(status, StatusCode::OK, "{text}");
-        assert!(!text.contains("Probe-Dienst") && !text.contains(GEHEIM), "{text}");
-        let v: Value = serde_json::from_str(&text).unwrap();
-        // Etappe 3a+: ohne Anmeldung keine Einträge, nur die Zahlen als Fakt.
-        assert_eq!(
-            (v["sichtbar"].as_bool(), v["eintraege"].clone(), v["aktualisierungen"].clone()),
-            (Some(false), serde_json::json!([]), serde_json::json!([]))
-        );
-        assert_eq!((v.get("form"), v["schwerpunkt"].as_str()), (None, Some("Bienen und Honig")));
-        assert_eq!(
-            (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["gesamt"]["status"].as_str()),
-            (Some("gelb"), Some("wartet"), Some("aktiv"))
-        );
-        // Etappe B2: open[] ohne Anmeldung nur als Zahl.
-        assert_eq!((v["notizen"].clone(), v["notizen_zahl"].as_u64()), (serde_json::json!([]), Some(2)));
-        let z = &v["zahlen"];
-        assert_eq!(
-            (z["aufgaben"].as_u64(), z["laeuft"].as_u64(), z["wartet"].as_u64(), z["wartet_auf_dich"].as_u64()),
-            (Some(1), Some(1), Some(1), Some(1)),
-            "die Arbeit mit Verweis zählt nicht doppelt"
-        );
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{text}");
+        assert!(!text.contains("Probe-Dienst") && !text.contains(GEHEIM) && !text.contains("zahlen"), "{text}");
         // Angemeldet: mit Titel, ohne Link.
         let (status, text) = roh_mit(router(state.clone()), get("/api/projekte/dashboard/stand")).await;
         assert_eq!(status, StatusCode::OK);
         assert!(!text.contains(GEHEIM), "{text}");
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!((v["sichtbar"].as_bool(), v["zahlen"].clone()), (Some(true), Value::Null), "mit Anmeldung zählt die Oberfläche");
+        assert_eq!((v.get("form"), v["schwerpunkt"].as_str()), (None, Some("Bienen und Honig")));
+        assert_eq!(
+            (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["gesamt"]["status"].as_str()),
+            (Some("gelb"), Some("wartet"), Some("aktiv"))
+        );
+        assert_eq!(v["notizen_zahl"].as_u64(), Some(2));
         let ea = eintrag(&v, &a);
         assert_eq!(ea["titel"], "Beim Probe-Dienst anmelden");
         assert_eq!(ea["ziel"], format!("/projects/dashboard#aufgabe-{a}"));
@@ -695,9 +668,6 @@ mod tests {
             (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["eintraege"].as_array().unwrap().len()),
             (Some("rot"), Some("wartet-lange"), 2)
         );
-        let (_, frei) = roh_mit(crate::app::router(state.clone()), get("/api/projekte/neu-form/stand")).await;
-        let frei: Value = serde_json::from_str(&frei).unwrap();
-        assert_eq!((frei["zahlen"]["fragen"].as_u64(), frei["zahlen"]["wartet_auf_dich"].as_u64()), (Some(2), Some(1)), "je Projekt zählt eine Frage");
         assert_eq!(v["notizen"], serde_json::json!(["Erster offener Punkt"]));
         // Ohne Einträge: grün, nur der Gesamtstatus.
         let (_, v) = schicke(&state, get("/api/projekte/schaufenster/stand")).await;
@@ -724,18 +694,17 @@ mod tests {
     #[tokio::test]
     async fn ohne_speicher_notizen_und_fragen_aus_den_dateien() {
         let ohne = AppState::fuer_tests_ohne_speicher(&beispiel(), "kaputt");
-        // Frei lesbar, auch ohne Anmeldung.
-        let (status, text) = roh_mit(crate::app::router(ohne.clone()), get("/api/projekte/dashboard/stand")).await;
+        // Schritt E2: ohne Anmeldung 401.
+        let (status, _) = roh_mit(crate::app::router(ohne.clone()), get("/api/projekte/dashboard/stand")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, text) = roh_mit(router(ohne.clone()), get("/api/projekte/dashboard/stand")).await;
         assert_eq!(status, StatusCode::OK, "{text}");
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["speicher_fehlt"], true);
-        // Etappe B2: ohne Anmeldung nur die Zahl der Notizen; angemeldet die Texte.
-        assert_eq!((v["notizen"].clone(), v["notizen_zahl"].as_u64()), (serde_json::json!([]), Some(2)));
-        let (_, mit) = schicke(&ohne, get("/api/projekte/dashboard/stand")).await;
-        assert_eq!(mit["notizen"], serde_json::json!(["Erster offener Punkt", "Zweiter offener Punkt"]));
-        assert_eq!(v["zahlen"]["aufgaben"], 0);
+        assert_eq!(v["notizen"], serde_json::json!(["Erster offener Punkt", "Zweiter offener Punkt"]));
+        assert_eq!(v["eintraege"], serde_json::json!([]), "keine Aufgaben und Arbeiten");
         // Ohne Datenspeicher: unbekannt statt grün (Auflage aus A1).
-        assert_eq!((v["zahlen"]["laeuft"].as_u64(), v["gesamt"]["ampel"].as_str()), (Some(0), Some("unbekannt")));
+        assert_eq!(v["gesamt"]["ampel"].as_str(), Some("unbekannt"));
         assert_eq!(v["gesamt"]["grund"], "speicher-fehlt");
         assert!(!text.contains("kaputt"), "/stand nennt den Grund nicht: {text}");
         // Neue Form: die Frage aus fragen.toml zählt weiter.

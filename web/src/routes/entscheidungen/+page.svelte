@@ -8,7 +8,6 @@
 	import { resolve } from '$app/paths';
 	import { Absatz, Abschnitt, Aufklapper, Hinweis, Text } from '$katalog';
 	import Felder from '#lib/components/system/Felder.svelte';
-	import EdgeHinweis from '#lib/components/EdgeHinweis.svelte';
 	import { eckdaten, filtern } from '#lib/entscheidungen.ts';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
 	import type { PageProps } from './$types';
@@ -33,10 +32,7 @@
 	Architektur-Rolle trägt die Entscheidungen ein.
 </Absatz>
 
-{#if data.anmelden !== null}
-	<!-- Abnahme 4d: ohne Windows-Anmeldung der Weg über Edge, wie bei /anstehend. -->
-	<EdgeHinweis class="card muted" satz={data.anmelden} />
-{:else if data.fehler !== null}
+{#if data.fehler !== null}
 	<Hinweis bedeutung="problem"
 		>Die Entscheidungen lassen sich gerade nicht laden: {data.fehler}</Hinweis
 	>

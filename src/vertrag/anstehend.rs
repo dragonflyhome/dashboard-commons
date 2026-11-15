@@ -804,11 +804,10 @@ pub struct GesamtStand {
     pub zuletzt: String,
 }
 
-/// Die Zahlen des Unter-Dashboards als Fakt, nur auf dem freien Weg ohne
-/// Anmeldung (Ausnahme aus dem Zielbild: dort gehen keine Einträge hinaus,
-/// also kann die Oberfläche nicht selbst zählen). Mit Anmeldung zählt die
-/// Oberfläche aus `eintraege` und `aktualisierungen` dasselbe; ein Test hält
-/// beide Zählungen gleich.
+/// Die Zahlen des Unter-Dashboards. Die Oberfläche zählt sie aus
+/// `eintraege` und `aktualisierungen` des Stands (`standZahlen` in
+/// `web/src/lib/anstehend.ts`); der Server schickt sie seit Schritt E2 nicht
+/// mehr (vorher auf dem freien Weg ohne Anmeldung).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, TS)]
 pub struct StandZahlen {
     /// Was auf den Inhaber wartet; je Projekt zählt höchstens eine Frage.
@@ -862,7 +861,7 @@ pub struct Aktualisierung {
 }
 
 /// Wie viele Meldungen ein Projekt hat (außerhalb des Archivs), ohne Titel
-/// und Texte: Das steht auch ohne Windows-Anmeldung im Stand.
+/// und Texte.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
 pub struct MeldungsZahlen {
     /// Ungelesen (der Inhaber hat noch nicht „gelesen“ geklickt).
@@ -873,9 +872,9 @@ pub struct MeldungsZahlen {
 
 /// `GET /api/projekte/<slug>/stand` und `/stand/voll`: der Zustand des
 /// Projekts für das Unter-Dashboard, aus derselben Rechnung wie
-/// `/api/anstehend` (Etappe 3a+). Mit Windows-Anmeldung (`sichtbar`) alle
-/// offenen Einträge und Aktualisierungen in neutraler Ordnung, ohne Zahlen;
-/// ohne Anmeldung keine Einträge, nur `zahlen`.
+/// `/api/anstehend` (Etappe 3a+): alle offenen Einträge und Aktualisierungen
+/// in neutraler Ordnung, ohne Zahlen. Beide Wege verlangen seit Schritt E2
+/// die Anmeldung.
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct ProjektStand {
     pub slug: String,
@@ -883,36 +882,32 @@ pub struct ProjektStand {
     pub gesamt: GesamtStand,
     /// Bis zu so vielen Tagen ist eine Frist `bald` (Fakt zu `frist_stufe`).
     pub frist_bald_tage: i64,
-    /// Mit Windows-Anmeldung: `eintraege` und `aktualisierungen` sind da.
+    /// `eintraege` und `aktualisierungen` sind da; seit Schritt E2 immer
+    /// `true` (ohne Anmeldung antworten beide Wege 401).
     pub sichtbar: bool,
-    /// Alle offenen Einträge des Projekts (Projekt, Art, Kennung); ohne Anmeldung leer.
+    /// Alle offenen Einträge des Projekts (Projekt, Art, Kennung).
     pub eintraege: Vec<AnstehendEintrag>,
     /// Alle Meldungen des Projekts und seine Vorgänge der letzten sieben
-    /// Tage (Quelle, Kennung); ohne Anmeldung leer (Grenze aus 7b).
+    /// Tage (Quelle, Kennung).
     pub aktualisierungen: Vec<Aktualisierung>,
-    /// Nur ohne Anmeldung: die Zahlen als Fakt; mit Anmeldung `null`.
-    pub zahlen: Option<StandZahlen>,
     /// `open = [...]` aus dem Kopf.
-    /// Etappe B2: nur mit Windows-Anmeldung (`sichtbar`); ohne leer, dann
-    /// steht nur `notizen_zahl` da.
     pub notizen: Vec<String>,
-    /// Etappe B2: wie viele Notizen es gibt, auch ohne Anmeldung. In
-    /// TypeScript optional (ältere Beispiele).
+    /// Etappe B2: wie viele Notizen es gibt. In TypeScript optional (ältere
+    /// Beispiele).
     #[ts(as = "Option<u64>", optional)]
     pub notizen_zahl: u64,
-    /// Etappe B8: wie `zahlen.fertig_7_tage`, auf beiden Wegen (nur eine
-    /// Zahl): Mit Anmeldung stehen fertige Arbeiten nicht in `eintraege`,
-    /// die Oberfläche kann sie also nicht selbst zählen. In TypeScript
-    /// optional (ältere Beispiele).
+    /// Etappe B8: Arbeiten, die in den letzten sieben Tagen fertig wurden
+    /// (nur eine Zahl): Fertige Arbeiten stehen nicht in `eintraege`, die
+    /// Oberfläche kann sie also nicht selbst zählen. In TypeScript optional
+    /// (ältere Beispiele).
     #[ts(as = "Option<u64>", optional)]
     pub fertig_7_tage: u64,
     /// Der Datenspeicher fehlt gerade: Aufgaben und Arbeiten sind leer, die
     /// Notizen und Fragen aus den Dateien stehen trotzdem da.
     pub speicher_fehlt: bool,
     /// Etappe B3: die offenen Fristen aus `daten/fristen.toml` mit Datum
-    /// (fest oder aufgelöst), nach Datum; nur mit Windows-Anmeldung, sonst
-    /// leer (ohne Anmeldung steckt die nächste in `zahlen.naechste_frist`).
-    /// Fehlt im JSON, solange es keine gibt.
+    /// (fest oder aufgelöst), nach Datum. Fehlt im JSON, solange es keine
+    /// gibt.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<super::fristen::FristZeile>>", optional)]
     pub fristen: Vec<super::fristen::FristZeile>,

@@ -17,8 +17,10 @@
  * Server, Edge und Temp-Ordner auf.
  *
  * Zwei Edge: eines meldet sich bei localhost bei Windows an (die Seiten mit
- * Anmeldung), das zweite nie (der freie Weg über 127.0.0.1, wie ein Browser
- * ohne Anmeldung).
+ * Anmeldung), das zweite nie (über 127.0.0.1, wie ein Browser ohne
+ * Anmeldung). Seit Schritt E2 zeigt das Dashboard ohne Anmeldung nur die
+ * Anmeldeseite: Die Prüfungen am Server, die Seiten und Projekte brauchen,
+ * fragen darum aus dem angemeldeten Edge.
  *
  * Je Fund des Prüfers (Projekt der Prüfer-Rolle, Zuständig Rust-Dashboard) eine
  * Prüfung; die Zeilen beginnen mit dem Kürzel des Funds:
@@ -28,21 +30,22 @@
  *               eigenen Rahmen, ein kaputter Block steht als Hinweis da;
  *               /anleitung (6b) mit den echten docs/anleitung: angemeldet
  *               alle Abschnitte, zuerst die acht Schritte für einen Chat,
- *               bei 360 px ohne Überbreite, ohne Anmeldung nur der Weg
- *               über Edge
+ *               bei 360 px ohne Überbreite
  *   nichts      „nichts für dich zu tun“ nie neben Fragen an dich
  *   zeitachse   keine Beschriftung über einer anderen, nichts über den Rand
  *               (/pc, /, eine Projektseite der neuen Form, bei 1280 und 375 px)
  *   fehlerseite 404 vom Server, deutscher Satz, Tab-Titel, Link zur
  *               Übersicht, keine Pfade, Versionen oder „cargo“
  *   api-kopf    /api/projekte/<slug> und seine daten-Adressen passen zusammen
- *   anstehend   Stufen-Knöpfe beschriftet und groß genug, Edge-Hinweis einmal
- *               mit Link, „Stufe“ verständlich
+ *   anstehend   Stufen-Knöpfe beschriftet und groß genug, „Stufe“ verständlich
  *   bedienung   Heute auf jedem Zeitbaustein, Zoom um heute, Regler-Schritt,
  *               Zoom übersteht den Reiterwechsel, Konfetti räumt auf
  *   handy       Gantt am Handy: Breite, Knöpfe 44 px, Achse im Rahmen
- *   anmeldung   127.0.0.1 ohne Anmeldung: höchstens ein 401 je Laden;
- *               geschützte Adressen geben weiter 401
+ *   anmeldung   127.0.0.1 ohne Anmeldung (Schritt E2): jede nicht
+ *               öffentliche Seite führt zur Anmeldung, ohne Projekttitel im
+ *               DOM, keine anderen Fehler in der Konsole; /api/projects, die
+ *               PC- und Projektwege und alle geschützten Adressen geben 401,
+ *               vorhandene und erfundene Projekte dieselbe Antwort
  *   du          /schluessel spricht mit „du“
  *   fachsprache Fußzeile ohne Dateinamen und Technik
  *   neue-form   (3b-2, seit 6a jedes Projekt) Projekte zeigen
@@ -52,7 +55,9 @@
  *               Projekt 404); die Seite fragt
  *               nur beim eigenen Server an (Netzsperre)
  *   kopfleiste-2 (Kopfleiste, Fassung 2) mit und ohne Anmeldung bei 360, 375
- *               und 1280 px: Live-Punkt als Link zu /pc#dashboard mit dem
+ *               und 1280 px (ohne Anmeldung auf der öffentlichen Seite
+ *               /fassungen; der Live-Punkt führt dann zur Anmeldung mit
+ *               Ziel /pc): Live-Punkt als Link zu /pc#dashboard mit dem
  *               passenden Zustand, Schloss offen oder zu mit Ziel auf der
  *               Passkey-Seite, beide mindestens 44 px, nichts überlappt,
  *               kein seitliches Scrollen; Klick auf beide landet richtig;
@@ -60,8 +65,11 @@
  *               geschützte Kanal, sonst der freie; gezählt über eine Hülle
  *               um window.EventSource, Abnahme); seit Fassung 3
  *               rechts in der Gruppe mit PC-Symbol und Glocke
- *   kopfleiste-3 (Kopfleiste, Fassung 3) mit und ohne Anmeldung bei 360,
- *               375, 768 und 1280 px, hell und dunkel: Brotkrumen (Symbol,
+ *   kopfleiste-3 (Kopfleiste, Fassung 3) mit Anmeldung bei 360, 375, 768
+ *               und 1280 px, hell und dunkel (ohne Anmeldung seit Schritt E2
+ *               nicht mehr: /anstehend, /hallo und /katalog laden dann
+ *               nicht; Kopfleiste und Kanal ohne Anmeldung prüft
+ *               kopfleiste-2): Brotkrumen (Symbol,
  *               Glieder, Blatt; am Handy „…“), rechts PC, Glocke, Live-Punkt,
  *               Schloss in dieser Reihenfolge, nichts überlappt, Ziele ab
  *               44 px, kein seitliches Scrollen, genau eine EventSource;
@@ -72,7 +80,7 @@
  *               eine Zahl oder „keine“, ohne nur der Hinweis) öffnet ein
  *               Klappfeld ohne Seitensperre; das Blatt scrollt nach oben,
  *               fragt /api/stand und lädt die Seite nicht neu; das PC-Symbol
- *               zeigt Werte auch ohne Anmeldung. Auflagen aus der Abnahme
+ *               zeigt Werte. Auflagen aus der Abnahme
  *               (bei 768 px): Schublade offen und Fenster auf 1280 px: sie
  *               schließt, der Fokus steht sichtbar auf dem Inhalt (nie auf
  *               dem versteckten Knopf); ein Klick daneben schließt; ein
@@ -103,7 +111,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -899,9 +907,20 @@ function projekteDerKopie() {
     });
 }
 
-async function serverPruefen(projekte) {
+/**
+ * Antworten des Servers. Seit Schritt E2 brauchen Seiten und Projektwege die
+ * Anmeldung: `holen` fragt darum aus dem angemeldeten Edge (`cdp`, folgt
+ * Weiterleitungen), nur die Prüfung „anmeldung“ fragt ohne Nachweis aus Node.
+ */
+async function serverPruefen(projekte, cdp) {
   console.log("\n== Server: Fehlerseite, Kopf der neuen Form, geschützte Adressen ==");
-  const holen = (pfad, kopf = {}) => fetch(`http://127.0.0.1:${PORT}${pfad}`, { headers: { accept: "text/html", ...kopf }, redirect: "manual" });
+  await cdp.oeffnen("/fassungen");
+  const holen = (pfad) =>
+    cdp.rufe(async (p) => {
+      const r = await fetch(p, { headers: { accept: "text/html" } });
+      const text = await r.text();
+      return { status: r.status, ort: new URL(r.url).pathname, umgeleitet: r.redirected, text: text.slice(0, 4000) };
+    }, pfad);
   // Etappe 6a: /projects/<slug>/neu und /neu/<name> sind für jedes Projekt
   // nur noch eine Weiterleitung (dauerhaft, ohne Vorschau).
   const mitKopf = projekte.filter((p) => p.projektToml).map((p) => p.slug);
@@ -912,9 +931,8 @@ async function serverPruefen(projekte) {
     [`/projects/${nurNeu}/neu/gibt-es-nicht`, `/projects/${nurNeu}/gibt-es-nicht`],
   ]) {
     const r = await holen(pfad);
-    await r.text();
-    weiter.push(`${pfad} ${r.status} → ${r.headers.get("location")}`);
-    pruefe(r.status === 307 && r.headers.get("location") === ziel, `neue-form: ${pfad} leitet nach ${ziel}`, `${r.status} ${r.headers.get("location")}`);
+    weiter.push(`${pfad} → ${r.ort}`);
+    pruefe(r.umgeleitet && r.ort === ziel, `neue-form: ${pfad} leitet nach ${ziel}`, `${r.status} ${r.ort}`);
   }
   messen("neue-form (Server)", weiter.join(", "));
   const faelle = [
@@ -938,7 +956,7 @@ async function serverPruefen(projekte) {
   const codes = [];
   for (const [pfad, soll] of faelle) {
     const r = await holen(pfad);
-    const text = await r.text();
+    const text = r.text;
     codes.push(`${pfad} ${r.status}`);
     pruefe(r.status === soll, `fehlerseite: ${pfad} antwortet ${soll}`, `${r.status}`);
     if (soll === 404)
@@ -954,18 +972,30 @@ async function serverPruefen(projekte) {
   const widersprueche = [];
   let ohne = 0;
   for (const p of projekte) {
-    const kopf = (await fetch(`http://127.0.0.1:${PORT}/api/projekte/${p.slug}`)).status;
+    const kopf = (await holen(`/api/projekte/${p.slug}`)).status;
     if (!p.projektToml) ohne++;
     for (const name of p.daten.slice(0, 2)) {
-      const d = (await fetch(`http://127.0.0.1:${PORT}/api/projekte/${p.slug}/daten/${name}`)).status;
+      const d = (await holen(`/api/projekte/${p.slug}/daten/${name}`)).status;
       if ((kopf === 404) !== (d === 404)) widersprueche.push(`${p.slug}: Kopf ${kopf}, daten/${name} ${d}`);
     }
   }
   messen("api-kopf", `${ohne} Projekte ohne projekt.toml, Widersprüche: ${widersprueche.length} (${widersprueche.slice(0, 6).join("; ")})`);
   pruefe(widersprueche.length === 0, "api-kopf: Kopf und daten-Adressen passen zusammen", widersprueche.slice(0, 6).join("; "));
 
-  // Geschützte Adressen ohne Anmeldung: weiter 401 (die Schleusen bleiben).
+  // Geschützte Adressen ohne Anmeldung (Node schickt keinen Nachweis): 401.
+  // Seit Schritt E2 auch die Projekt- und PC-Wege, die vorher frei waren.
   const geschuetzt = [
+    "/api/projects",
+    `/api/projects/${nurNeu}`,
+    "/api/pc",
+    "/api/pc/verlauf",
+    "/api/archiv",
+    "/api/hallo",
+    "/api/pruefung",
+    `/api/projekte/${nurNeu}`,
+    `/api/projekte/${nurNeu}/stand`,
+    `/projects/${nurNeu}/assets/gibt-es-nicht.png`,
+    "/api/gibt-es-nicht",
     "/api/events",
     "/api/vorgaenge/uebersicht",
     "/api/aufgaben/anzahl",
@@ -989,6 +1019,14 @@ async function serverPruefen(projekte) {
     r.body?.cancel().catch(() => {});
   }
   pruefe(nicht401.length === 0, `anmeldung: ${geschuetzt.length} geschützte Adressen geben ohne Anmeldung 401`, nicht401.join(", "));
+  // Schritt E2: ohne Anmeldung verrät die Antwort nicht, ob es ein Projekt gibt.
+  const antworten = [];
+  for (const pfad of [`/projects/${nurNeu}`, "/projects/gibt-es-nicht", `/api/projekte/${nurNeu}/stand`, "/api/projekte/gibt-es-nicht/stand"]) {
+    const r = await fetch(`http://127.0.0.1:${PORT}${pfad}`, { headers: { accept: "application/json" }, redirect: "manual" });
+    antworten.push({ pfad, status: r.status, text: await r.text() });
+  }
+  for (const [a, b] of [[antworten[0], antworten[1]], [antworten[2], antworten[3]]])
+    pruefe(a.status === b.status && a.text === b.text && a.status === 401, `anmeldung: ${a.pfad} und ${b.pfad} antworten ohne Anmeldung gleich (401)`, `${a.status} ${b.status}`);
 }
 
 /** 375 px (iPhone) und 360 px (kleine Android-Telefone, Abnahme 3b: „/“ war dort 13 px zu breit). */
@@ -1332,7 +1370,9 @@ async function kopfleiste2Pruefen(cdp, mitAnmeldung) {
   for (const breite of [360, 375, 1280]) {
     await sicher(`kopfleiste-2 ${wer} ${breite}`, async () => {
       await cdp.breite(breite);
-      await cdp.oeffnen("/anstehend");
+      // Schritt E2: ohne Anmeldung nur öffentliche Seiten.
+      const start = mitAnmeldung ? "/anstehend" : "/fassungen";
+      await cdp.oeffnen(start);
       // Der freie Kanal braucht einen Moment (erster Versuch, dann das Wort des Servers).
       let k = await cdp.rufe(KOPFLEISTE_2);
       for (let i = 0; i < 20 && k.live?.zustand !== soll.zustand; i++) {
@@ -1353,16 +1393,19 @@ async function kopfleiste2Pruefen(cdp, mitAnmeldung) {
       pruefe(JSON.stringify(k.quellen) === JSON.stringify([kanal]), `${t}: genau eine EventSource (${kanal})`, JSON.stringify(k.quellen));
       pruefe(k.imBild && k.seitlich <= 0, `${t}: im Bild, kein seitliches Scrollen`, `seitlich ${k.seitlich} px`);
       pruefe((k.titel?.breite ?? 0) >= 40, `${t}: Blatt (Ort) bleibt sichtbar`, `${Math.round(k.titel?.breite ?? 0)} px`);
-      // Klick auf den Live-Punkt: /pc, Abschnitt „Dashboard“.
+      // Klick auf den Live-Punkt: /pc, Abschnitt „Dashboard“; ohne Anmeldung (Schritt E2) die Anmeldung mit Ziel /pc.
       await cdp.rufe(() => document.querySelector('header .rechts a[href$="#dashboard"]').click());
       await pause(1500);
-      const ort = await cdp.rufe(() => ({ pfad: location.pathname, anker: location.hash, abschnitt: document.querySelector("#dashboard h2")?.textContent.trim() ?? null, bote: /Bote/.test(document.querySelector("#dashboard")?.textContent ?? "") }));
-      pruefe(ort.pfad === "/pc" && ort.anker === "#dashboard" && ort.abschnitt === "Dashboard" && ort.bote, `${t}: Live-Punkt führt zum Abschnitt „Dashboard“ auf /pc`, JSON.stringify(ort));
-      // Klick auf das Schloss: Passkey-Seite im passenden Zustand.
+      const ort = await cdp.rufe(() => ({ pfad: location.pathname, anker: location.hash, ziel: new URLSearchParams(location.search).get("ziel"), abschnitt: document.querySelector("#dashboard h2")?.textContent.trim() ?? null, bote: /Bote/.test(document.querySelector("#dashboard")?.textContent ?? "") }));
+      if (mitAnmeldung) pruefe(ort.pfad === "/pc" && ort.anker === "#dashboard" && ort.abschnitt === "Dashboard" && ort.bote, `${t}: Live-Punkt führt zum Abschnitt „Dashboard“ auf /pc`, JSON.stringify(ort));
+      else pruefe(ort.pfad === "/anmelden" && ort.ziel === "/pc", `${t}: Live-Punkt führt ohne Anmeldung zur Anmeldung, Ziel /pc`, JSON.stringify(ort));
+      // Klick auf das Schloss (von der Startseite des Durchgangs aus): Passkey-Seite im passenden Zustand.
+      if (!mitAnmeldung) await cdp.oeffnen(start);
       await cdp.rufe(() => document.querySelector("header .rechts a[data-schloss]").click());
       await pause(1500);
       const ziel = await cdp.rufe(() => ({ pfad: location.pathname, anker: location.hash, suche: location.search, abschnitt: location.hash ? document.getElementById(location.hash.slice(1))?.querySelector("h2")?.textContent.trim() ?? null : null }));
-      pruefe(ziel.pfad === "/anmelden" && ziel.anker === soll.anker && ziel.suche.includes("ziel=%2Fpc"), `${t}: Schloss führt zur Passkey-Seite (${soll.anker}), zurück nach /pc`, JSON.stringify(ziel));
+      const zurueck = mitAnmeldung ? "/pc" : start;
+      pruefe(ziel.pfad === "/anmelden" && ziel.anker === soll.anker && ziel.suche.includes(`ziel=${encodeURIComponent(zurueck)}`), `${t}: Schloss führt zur Passkey-Seite (${soll.anker}), zurück nach ${zurueck}`, JSON.stringify(ziel));
       if (breite === 1280) {
         const teile = await cdp.rufe(() => ({
           antrag: document.getElementById("passkey-anlegen") !== null,
@@ -1556,52 +1599,27 @@ async function handyPruefen(cdp, seitenMitGantt) {
 /** Eine Projektseite der Kopie; gesetzt in main. */
 let projektPfad = "/projects/dashboard";
 
+/**
+ * Schritt E2: Ohne Anmeldung (127.0.0.1) führt jede nicht öffentliche Seite
+ * zur Anmeldung, ohne Projekttitel im DOM, und /api/projects gibt 401
+ * (edge-gemeinsam.mjs, ohneAnmeldungPruefen). Dazu keine anderen Fehler in
+ * der Konsole als 401, 403 und 404.
+ */
 async function freierWegPruefen(frei) {
   console.log("\n== 127.0.0.1 ohne Anmeldung ==");
   await frei.breite(1280);
-  const zahlen = [];
-  for (const pfad of ["/", "/pc", "/anstehend", projektPfad]) {
-    await sicher(`anmeldung ${pfad}`, async () => {
-      await frei.oeffnen("/hallo"); // etwas anderes zuerst, damit das Laden voll zählt
-      const z = antwortenZaehlen(frei);
-      const k = konsoleMitschreiben(frei, { ohne401: true });
-      await frei.oeffnen(pfad);
-      await pause(1500);
-      z.stopp();
-      k.stopp();
-      const vier = z.antworten.filter((a) => a.status === 401);
-      zahlen.push(`${pfad} ${vier.length}`);
-      pruefe(vier.length <= 1, `anmeldung: ${pfad} höchstens ein 401 je Laden`, `${vier.length}: ${vier.map((a) => new URL(a.url).pathname).join(", ")}`);
-      pruefe(k.fehler.length === 0, `anmeldung: ${pfad} keine anderen Fehler in der Konsole`, k.fehler.join(" | "));
-    });
-  }
-  messen("anmeldung 401 je Laden", zahlen.join(", "));
-  await sicher("anstehend Edge-Hinweis", async () => {
-    await frei.oeffnen("/anstehend");
-    const t = await frei.rufe(TEXTE);
-    const mal = (t.main.match(/Microsoft Edge/g) ?? []).length;
-    messen("anstehend Edge-Hinweis", `${mal}× im Text, ${t.hinweisLinks} Links auf localhost`);
-    pruefe(mal === 1, "anstehend: der Edge-Hinweis steht genau einmal", String(mal));
-    pruefe(t.hinweisLinks >= 1, "anstehend: der Edge-Hinweis hat einen Link", String(t.hinweisLinks));
+  const pfade = ["/", "/pc", "/anstehend", "/hallo", "/katalog", "/anleitung", "/zielbild", "/entscheidungen", projektPfad, "/projects/gibt-es-nicht"];
+  await sicher("anmeldung ohne Anmeldung", async () => {
+    const k = konsoleMitschreiben(frei, { ohne401: true });
+    const ergebnis = await ohneAnmeldungPruefen(
+      { oeffnen: (p) => frei.oeffnen(p), werte: async (a) => (await frei.senden("Runtime.evaluate", { expression: a, awaitPromise: true, returnByValue: true })).result.value },
+      pfade,
+      projektTitel(join(ordner, "repo", "projects")),
+    );
+    k.stopp();
+    for (const e of ergebnis) pruefe(e.maengel.length === 0, `anmeldung: ${e.pfad} führt ohne Anmeldung zur Anmeldung, ohne Projekttitel, /api/projects 401`, e.maengel.join("; "));
+    pruefe(k.fehler.length === 0, "anmeldung: ohne Anmeldung keine anderen Fehler in der Konsole", k.fehler.join(" | "));
   });
-  // Abnahme 4d: /entscheidungen und /zielbild ohne Anmeldung zeigen den Weg
-  // über Edge (wie /anstehend), nie „lässt sich gerade nicht laden“; seit 6b
-  // auch /anleitung (ohne Anmeldung kein Abschnitt).
-  for (const pfad of ["/entscheidungen", "/zielbild", "/anleitung"]) {
-    await sicher(`system-seite ${pfad} ohne Anmeldung`, async () => {
-      await frei.oeffnen(pfad);
-      await pause(800);
-      const t = await frei.rufe(TEXTE);
-      const mal = (t.main.match(/Microsoft Edge/g) ?? []).length;
-      messen(`system-seite ${pfad} ohne Anmeldung`, `${mal}× Edge-Hinweis, ${t.hinweisLinks} Links auf localhost`);
-      pruefe(mal === 1 && t.hinweisLinks >= 1, `anmeldung: ${pfad} zeigt ohne Anmeldung den Edge-Hinweis mit Link`, t.main.replace(/\s+/g, " ").slice(0, 160));
-      pruefe(!/nicht laden/.test(t.main), `anmeldung: ${pfad} ohne Anmeldung nicht „lässt sich nicht laden“`, "");
-      if (pfad === "/anleitung") {
-        const h2 = await frei.rufe(() => document.querySelectorAll("main h2").length);
-        pruefe(h2 === 0, "anmeldung: /anleitung zeigt ohne Anmeldung keinen Abschnitt", String(h2));
-      }
-    });
-  }
   console.log(`  (Anmelde-Rückfragen des Browsers abgebrochen: ${frei.anmeldeRueckfragen})`);
 }
 
@@ -1756,12 +1774,13 @@ function datenKopieren() {
   console.log(`data\\: ${liste.length} eingecheckte Dateien kopiert`);
 }
 
-/** Eine Unterseite eines Projekts nur in neuer Form (für die Brotkrumen), über die freie API. */
-async function unterseiteFinden() {
+/** Eine Unterseite eines Projekts nur in neuer Form (für die Brotkrumen), aus dem angemeldeten Edge (Schritt E2). */
+async function unterseiteFinden(cdp) {
+  const json = (pfad) => cdp.rufe(async (p) => (await fetch(p, { headers: { accept: "application/json" } })).json(), pfad);
   try {
-    const liste = await (await fetch(`${BASIS_FREI}/api/projects`)).json();
+    const liste = await json("/api/projects");
     for (const p of liste.projects) {
-      const k = await (await fetch(`${BASIS_FREI}/api/projekte/${p.slug}`)).json();
+      const k = await json(`/api/projekte/${p.slug}`);
       const s = [...(k.kopf?.seiten ?? [])].sort((a, b) => a.order - b.order)[0];
       if (!k.vorschau && s) return { pfad: `/projects/${p.slug}/${s.name}`, projekt: k.kopf.title, blatt: s.title };
     }
@@ -1800,9 +1819,9 @@ async function main() {
   if (neu[0]) projektPfad = `/projects/${neu[0].slug}`;
 
   await serverStarten(eigeneSid());
-  await serverPruefen(projekte);
 
   const cdp = await edgeStarten();
+  await serverPruefen(projekte, cdp);
   await cdp.thema("light");
   const k = konsoleMitschreiben(cdp);
 
@@ -1811,7 +1830,7 @@ async function main() {
   await nichtsPruefen(cdp);
   await fehlerseitePruefen(cdp);
   await neueFormPruefen(cdp, projekte);
-  const unterseite = await unterseiteFinden();
+  const unterseite = await unterseiteFinden(cdp);
   await kopfleiste2Pruefen(cdp, true);
   await kopfleiste3Pruefen(cdp, true, unterseite);
   await anstehendPruefen(cdp);
@@ -1829,8 +1848,8 @@ async function main() {
   await sicher("freier Weg", async () => {
     frei = await edgeStarten({ port: DEBUG_PORT_FREI, profilName: "edge-profil-frei", anmeldungFuer: "nicht-dieser-pc.invalid", frei: true });
     await freierWegPruefen(frei);
+    // Schritt E2: ohne Anmeldung nur die öffentlichen Seiten; kopfleiste-3 nur angemeldet.
     await kopfleiste2Pruefen(frei, false);
-    await kopfleiste3Pruefen(frei, false, null);
   });
 
   const gesperrt = [...cdp.gesperrt, ...(frei?.gesperrt ?? [])];

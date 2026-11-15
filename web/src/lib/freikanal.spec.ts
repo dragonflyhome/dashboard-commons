@@ -46,6 +46,10 @@ class FakeSource {
 	addEventListener(name: string, fn: (ev: MessageEvent<string>) => void): void {
 		this.#handler.set(name, fn);
 	}
+	/** Die Arten, auf die jemand hört. */
+	get arten(): string[] {
+		return [...this.#handler.keys()].sort();
+	}
 	close(): void {
 		this.geschlossen = true;
 		this.readyState = FakeSource.CLOSED;
@@ -188,25 +192,22 @@ describe('freier Kanal: fünf Zustände', () => {
 		]);
 	});
 
-	it('PC-Werte, Inhalt und Fassung kommen an', () => {
+	it('Schritt E2: hört nur auf anmeldung und fassung, keine PC-Werte und kein Inhalt', () => {
 		vi.stubGlobal('EventSource', FakeSource);
 		zugang.setzen('fehlt');
 		const k = neuerKanal();
-		const inhalt: string[][] = [];
 		const fassungen: string[] = [];
-		k.onInhalt((a) => {
-			inhalt.push(a.projekte);
-		});
 		k.onFassung((f) => {
 			fassungen.push(f.ordner);
 		});
 		k.start(ohneFetch);
+		expect(frei().arten).toEqual(['anmeldung', 'fassung']);
 		frei().senden('pc', { at: 'x', cpu_percent: 5 });
 		frei().senden('projekt', { slug: 'alpha', version: 3 });
 		frei().senden('fassung', { ordner: '20261031-120000', dauer_ms: 9 });
-		expect(k.pc?.cpu_percent).toBe(5);
-		expect(inhalt).toEqual([['alpha']]);
 		expect(fassungen).toEqual(['20261031-120000']);
+		expect('pc' in k).toBe(false);
+		expect('onInhalt' in k).toBe(false);
 	});
 });
 

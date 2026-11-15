@@ -236,7 +236,7 @@ async fn arbeit_ohne_frist_nirgends_gezaehlt_auf_der_projektseite_sichtbar() {
     assert_eq!(v["archiv_fristen"], serde_json::json!([]), "ohne Frist kein Satz");
     let (v, _) = lies(&state, "/api/arbeiten").await;
     assert!(v["arbeiten"].as_array().unwrap().is_empty(), "{v}");
-    // Die Projektseite: Unter-Dashboard mit der Arbeit, Zahlen ohne Anmeldung mit ihr.
+    // Die Projektseite: Unter-Dashboard mit der Arbeit.
     let (v, _) = lies(&state, "/api/projekte/ruhig/stand/voll").await;
     assert!(v["eintraege"].as_array().unwrap().iter().any(|e| e["id"] == r.as_str()), "{v}");
     assert_eq!(v["gesamt"]["titel"], TITEL);

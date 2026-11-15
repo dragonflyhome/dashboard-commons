@@ -81,16 +81,14 @@ pub trait Modul: Send + Sync + 'static {
 
     /// Die Endpunkte. Der Dienst hängt sie unter `/api/projekte/<slug>/x/` ein;
     /// das Präfix setzt das Register, hier stehen nur Wege wie `/stufen`.
-    /// Seit Etappe B2 sind alle Wege geschützt (Windows-Anmeldung, ohne sie
-    /// 401), auch GET; frei lesbar ist nur, was [`Modul::freie_wege`]
-    /// ausdrücklich nennt. Schreibende Wege dazu nur aus dem Dashboard selbst
+    /// Alle Wege sind geschützt (Anmeldung, ohne sie 401), auch GET; seit
+    /// Schritt E2 ohne Ausnahme. Schreibende Wege dazu nur aus dem Dashboard selbst
     /// (Herkunftsprüfung), Körper höchstens 64 KiB.
     fn router(&self) -> axum::Router<ProjektKontext>;
 
-    /// Etappe B2: Wege (wie in [`Modul::router`], etwa `/stufen` oder
-    /// `/stufen/{id}`), die GET ohne Anmeldung lesen darf. Standard: keiner.
-    /// Ein freier Weg gibt nie persönlichen Text heraus (Fragen, Titel,
-    /// Notizen, Befunde); jeder freie Weg wird von der Architektur abgenommen.
+    /// Wirkt nicht mehr: Seit Schritt E2 ist kein Weg eines Moduls ohne
+    /// Anmeldung lesbar, was hier steht, wird nicht gelesen. Die Methode
+    /// bleibt bis Schritt E3, damit bestehende Module weiter übersetzen.
     fn freie_wege(&self) -> &'static [&'static str] {
         &[]
     }

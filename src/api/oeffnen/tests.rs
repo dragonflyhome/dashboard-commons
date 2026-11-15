@@ -399,8 +399,11 @@ fn regeln_des_servers() {
 /// Der Weg ist geschützt (Anmeldung als Inhaber), auch in anderer Schreibweise.
 #[test]
 fn weg_ist_geschuetzt() {
-    assert!(crate::sicherheit::geschuetzt("/api/oeffnen"));
-    assert!(crate::sicherheit::geschuetzt("/API/Oeffnen"));
+    use axum::http::Method;
+    for p in ["/api/oeffnen", "/API/Oeffnen"] {
+        assert!(!crate::sicherheit::oeffentlich(&Method::POST, p, &|_| true), "{p}");
+        assert!(!crate::sicherheit::oeffentlich(&Method::GET, p, &|_| true), "{p}");
+    }
 }
 
 // ----- Schritt E1b: GET /api/projekte/<slug>/orte -----

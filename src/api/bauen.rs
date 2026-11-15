@@ -1,7 +1,7 @@
 //! Der Bau-Stand mit Satz (Etappe 4c).
 //!
 //! - `GET /api/bauen`: der Bau-Stand aller Projekte mit eigener Seite, bei rot
-//!   mit Satz (geschützt: `/api/bauen` steht in `sicherheit::geschuetzt`).
+//!   mit Satz (geschützt: `/api/bauen` steht nicht in `sicherheit::oeffentlich`).
 //!   Zustand und Zeit stehen frei in `/api/projects`.
 //!
 //! Einen Bau bestellt niemand hier: Die Oberfläche baut von selbst nach dem
@@ -131,8 +131,8 @@ mod tests {
 
     /// Zweig nicht-geprueft-sichtbar: Lief ein Prüfwerkzeug nicht, heißt der
     /// Zustand `nicht_geprueft`, mit Kopie (`probe`, mit Zeit) und ohne
-    /// (`ohne`, ohne Zeit). Frei in /api/projects nur der Zustand, der Satz
-    /// nur angemeldet unter /api/bauen.
+    /// (`ohne`, ohne Zeit). In /api/projects (seit Schritt E2 geschützt) nur
+    /// der Zustand, der Satz unter /api/bauen; ohne Anmeldung beides 401.
     #[tokio::test]
     async fn nicht_geprueft_frei_nur_zustand() {
         use crate::baustand::{SATZ_NICHT_GEPRUEFT_MIT_FASSUNG, SATZ_NICHT_GEPRUEFT_OHNE_FASSUNG};
@@ -152,7 +152,9 @@ mod tests {
         std::fs::write(gruen.join(STAND_DATEI), serde_json::to_string(&stand).unwrap()).unwrap();
         let state = AppState::fuer_tests(&beispiel_fuer_tests()).mit_projekten(p.clone()).mit_web(web.join("build"));
 
-        let (status, l) = schicke(ohne(&state), anfrage(Method::GET, "/api/projects")).await;
+        let (status, _) = schicke(ohne(&state), anfrage(Method::GET, "/api/projects")).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        let (status, l) = schicke(router_angemeldet(state.clone()), anfrage(Method::GET, "/api/projects")).await;
         assert_eq!(status, StatusCode::OK, "{l}");
         let bau = |slug: &str| l["projects"].as_array().unwrap().iter().find(|x| x["slug"] == slug).unwrap()["bau"].clone();
         assert_eq!(bau("probe")["zustand"], "nicht_geprueft", "{l}");
@@ -160,7 +162,7 @@ mod tests {
         assert_eq!((bau("ohne")["zustand"].as_str(), bau("ohne")["letzte_gute"].is_null()), (Some("nicht_geprueft"), true), "{l}");
         let t = l.to_string();
         for satz in [SATZ_NICHT_GEPRUEFT_MIT_FASSUNG, SATZ_NICHT_GEPRUEFT_OHNE_FASSUNG, "SPUERHUND-BOTE"] {
-            assert!(!t.contains(satz), "ohne Anmeldung kein Satz: {satz}");
+            assert!(!t.contains(satz), "in der Liste kein Satz: {satz}");
         }
         let (status, _) = schicke(ohne(&state), anfrage(Method::GET, "/api/bauen")).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);

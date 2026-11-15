@@ -57,10 +57,11 @@
  *      b) Absichtlich kaputte Seite: rot mit „zeigt die letzte gute Fassung
  *      von …“, Satz ohne Pfade, die alte Seite bleibt, Marke in der Leiste;
  *      keine Zeitzeile, kein Knopf (auch bei 360 px).
- *      c) Ohne Anmeldung (127.0.0.1): derselbe Stand ohne Satz und ohne
- *      Knopf, bei rot ohne Zeile „Seite wurde … generiert“; Karte und Zählzeile
- *      der Startseite; /api/bauen 401. Zweig C: Während des Baus aus a) kein
- *      Fortschritt in /api/events/frei und /api/projects.
+ *      c) Ohne Anmeldung (127.0.0.1, Schritt E2): Die Probe-Seite und die
+ *      Startseite führen zur Anmeldung, ohne Projekttitel im DOM;
+ *      /api/projects und /api/bauen 401. Zweig C: Während des Baus aus a)
+ *      kein Fortschritt im freien Kanal /api/events/frei, /api/projects
+ *      bleibt 401.
  *      d) Abnahme 4c: Eine Seite, die nur die Gesamtprüfung bricht, wird aus
  *      ihrer grünen Kopie gebaut und zeigt ihre alte Fassung.
  *      e) Dasselbe mit dem geänderten Projekt vorn im Alphabet: Es trifft das
@@ -97,7 +98,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen, inhaltOrt } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, portePruefen, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -1094,14 +1095,15 @@ async function knopfPruefen(frei) {
 
   // Bau-Tempo, Zweig C: Während eines Baus steht der Schritt im Kopf („prüft
   // Projekt x von y“), angesagt wird nur das Ergebnis (6a). Ohne Anmeldung
-  // kommt kein Fortschritt, weder im freien Kanal noch in /api/projects (6c).
-  await frei.oeffnen("/");
+  // kommt kein Fortschritt im freien Kanal, und /api/projects bleibt 401
+  // (6c, Schritt E2). Die Anmeldeseite ist öffentlich.
+  await frei.oeffnen("/anmelden");
   await frei.rufe(() => {
     window.__frei = [];
     window.__listen = [];
     window.__kanal = new EventSource("/api/events/frei");
     for (const n of ["anmeldung", "bau-fortschritt", "fassung", "projekt", "inhalt"]) window.__kanal.addEventListener(n, (e) => window.__frei.push(`${n} ${e.data}`));
-    window.__listenTakt = setInterval(async () => window.__listen.push(await (await fetch("/api/projects")).text()), 500);
+    window.__listenTakt = setInterval(async () => window.__listen.push((await fetch("/api/projects")).status), 500);
   });
   await cdp.rufe(() => {
     window.__schritte = new Set();
@@ -1127,12 +1129,12 @@ async function knopfPruefen(frei) {
   const ohne = await frei.rufe(() => {
     clearInterval(window.__listenTakt);
     window.__kanal.close();
-    return { ereignisse: window.__frei, listen: window.__listen.length, mitZaehler: window.__listen.filter((l) => /"(schritt|fertig|gesamt)":/.test(l)).length };
+    return { ereignisse: window.__frei, listen: window.__listen.length, nicht401: window.__listen.filter((s) => s !== 401) };
   });
   pruefe(
-    ohne.ereignisse.some((e) => e.startsWith("anmeldung")) && ohne.listen > 0 && ohne.mitZaehler === 0 && !ohne.ereignisse.some((e) => e.startsWith("bau-fortschritt") || /"(fertig|gesamt)"/.test(e)),
-    "6c (Zweig C): ohne Anmeldung kein Fortschritt in /api/events/frei und /api/projects",
-    JSON.stringify({ listen: ohne.listen, mitZaehler: ohne.mitZaehler, ereignisse: ohne.ereignisse.slice(0, 6) }),
+    ohne.ereignisse.some((e) => e.startsWith("anmeldung")) && ohne.listen > 0 && ohne.nicht401.length === 0 && !ohne.ereignisse.some((e) => /^(bau-fortschritt|projekt|inhalt) /.test(e) || /"(fertig|gesamt)"/.test(e)),
+    "6c (Zweig C): ohne Anmeldung kein Fortschritt und kein Projekt in /api/events/frei, /api/projects immer 401",
+    JSON.stringify({ listen: ohne.listen, nicht401: ohne.nicht401.slice(0, 3), ereignisse: ohne.ereignisse.slice(0, 6) }),
   );
 
   // b) Absichtlich kaputt: rot mit „zeigt die letzte gute Fassung von …“.
@@ -1199,20 +1201,17 @@ async function knopfPruefen(frei) {
   // Die Probe-Typen gelten sonst für alle späteren Gesamtprüfungen der Kopie.
   rmSync(join(repo, "web", "src", "gesamt-probe.d.ts"), { force: true });
 
-  // c) Ohne Anmeldung: derselbe Stand, ohne Satz und ohne Knopf.
-  await bisSichtbar(frei, pfad, /Die Knopf-Probe ist gut/);
-  await bisWahr(frei, () => document.querySelector("main .bau") !== null, null, 15000);
-  s = await bauStand(frei);
-  pruefe(s.zustand === "rot" && /zeigt die letzte gute Fassung von /.test(s.zeile), "6c: ohne Anmeldung: rot mit „letzte gute Fassung von …“", s.zeile);
-  pruefe(s.knopf === null && s.satz === "", "6c: ohne Anmeldung kein Knopf und kein Satz", JSON.stringify({ knopf: s.knopf, satz: s.satz }));
-  pruefe(s.generiert === "", "6c: ohne Anmeldung bei rot keine Zeile „Seite wurde vor … generiert“", s.generiert);
-  await frei.oeffnen("/");
-  await bisWahr(frei, () => document.querySelector(".pill.bau") !== null, null, 15000);
-  const start = await frei.rufe(() => ({
-    zeile: document.querySelector(".section-head .muted")?.textContent ?? "",
-    karte: [...document.querySelectorAll(".pill.bau")].map((e) => e.textContent.trim()).join(" | "),
-  }));
-  pruefe(/\d+ Seiten? mit Fehler/.test(start.zeile) && /zeigt die letzte gute Fassung von /.test(start.karte), "6c: Startseite: Zählzeile und Karte zeigen die rote Seite", JSON.stringify(start));
+  // c) Ohne Anmeldung (Schritt E2): Probe-Seite und Startseite führen zur
+  // Anmeldung, kein Projekttitel im DOM, /api/projects 401; dazu der Bau-Stand
+  // (Probe-Seite rot) nirgends zu sehen.
+  const ohneAnmeldung = await ohneAnmeldungPruefen(
+    { oeffnen: (p) => frei.oeffnen(p), werte: async (a) => (await frei.senden("Runtime.evaluate", { expression: a, awaitPromise: true, returnByValue: true })).result.value },
+    [pfad, "/"],
+    projektTitel(join(repo, "projects")),
+  );
+  for (const e of ohneAnmeldung) pruefe(e.maengel.length === 0, `6c: ohne Anmeldung: ${e.pfad} führt zur Anmeldung, ohne Projekttitel, /api/projects 401`, e.maengel.join("; "));
+  const bauSichtbar = await frei.rufe(() => document.querySelector(".pill.bau, main .bau") !== null || /letzte gute Fassung/.test(document.body?.innerText ?? ""));
+  pruefe(!bauSichtbar, "6c: ohne Anmeldung kein Bau-Stand zu sehen");
   const lesen = await frei.rufe(async () => (await fetch("/api/bauen")).status);
   pruefe(lesen === 401, "6c: /api/bauen ohne Anmeldung 401", String(lesen));
   const bestellen = await frei.rufe(async (slug) => (await fetch(`/api/bauen/${slug}`, { method: "POST" })).status, KNOPF_PROBE);
@@ -1241,8 +1240,9 @@ async function main() {
 
   if (NUR === "") {
     await eslintMessen();
-    await echtMessen(cdp);
-    await abnahme(cdp);
+    // Schritt E2: Projektseiten nur mit Anmeldung; das erste Edge bleibt ohne (6c).
+    await echtMessen(await angemeldetesEdge());
+    await abnahme(await angemeldetesEdge());
   }
   if (NUR === "" || NUR === "fassung") await fassungPruefen();
   if (NUR === "" || NUR === "knopf" || NUR === "bau") await knopfPruefen(cdp);

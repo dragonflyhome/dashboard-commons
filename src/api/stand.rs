@@ -2,11 +2,10 @@
 //! Entscheidung `immer-aktuell`, Schritt 4): Ereignisnummer
 //! und Inhaltsversion, die der Server liefert und die Seite vergleicht.
 //!
-//! - `GET /api/stand` (frei, hinter Adresse, Host und Herkunft wie alles):
-//!   `ereignis` zählt nur Ereignisse, die auch der freie Kanal trägt
-//!   (`projekt`, `daten` für pc und schwerpunkte, `inhalt` ohne die übrigen Dateien,
-//!   `fassung`). Daraus lässt sich nichts ablesen, was der freie Kanal nicht
-//!   ohnehin jedem zeigt.
+//! - `GET /api/stand` (öffentlich, Schritt E2, eigener Typ `ServerStandFrei`):
+//!   nur `ereignis` und `fassung`, keine Inhaltsversion. `ereignis` zählt nur
+//!   die Ereignisse, die auch der freie Kanal trägt (`fassung`). Daraus lässt
+//!   sich nichts ablesen, was der freie Kanal nicht ohnehin jedem zeigt.
 //! - `GET /api/stand/voll` (geschützt wie `/api/events`): `ereignis` zählt
 //!   alle Ereignisse des geschützten Kanals mit Daten (`change`, `vorgang`,
 //!   `fassung`, `projekt`, `daten`, `inhalt`, `speicher`, `pc-benutzer`,
@@ -22,8 +21,8 @@
 //! Seite zählt mit, was sie empfängt; fehlt beim Abgleich etwas, holt sie es
 //! nach. Läuft diese Aufgabe selbst über (`Lagged`), zählt sie die verlorenen
 //! mit, damit die Nummer nie hinter dem wahren Stand zurückbleibt. Frei zählt
-//! ein Überlauf nur auf Kanälen, die auch Freies tragen (Fassungen, Inhalt);
-//! auf den nur geschützten (Änderungen, Vorgänge, Bereiche: `speicher`,
+//! ein Überlauf nur auf dem Kanal, der auch Freies trägt (Fassungen); auf den
+//! nur geschützten (Änderungen, Vorgänge, Inhalt, Bereiche: `speicher`,
 //! `docs`, `pc-benutzer`) nie, sonst verriete die freie Nummer geschützte
 //! Schreibvorgänge (Auflage aus der Abnahme der Kopfleiste 3).
 
@@ -34,9 +33,8 @@ use axum::Json;
 use axum::extract::State;
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::api::events::InhaltEreignis;
 use crate::app::AppState;
-use crate::vertrag::api::ServerStand;
+use crate::vertrag::api::{ServerStand, ServerStandFrei};
 
 /// Die zwei Zähler: frei (was der freie Kanal trägt) und alle (geschützt).
 #[derive(Debug, Default)]
@@ -79,11 +77,6 @@ fn eins<T>(r: Result<T, RecvError>, traegt_freies: bool, frei: impl Fn(&T) -> bo
     }
 }
 
-/// Ein Inhalts-Ereignis ist frei, wenn der freie Kanal etwas davon trägt.
-fn inhalt_frei(e: &InhaltEreignis) -> bool {
-    e.nur_frei().is_some()
-}
-
 /// Startet die zählende Aufgabe (einmal je Server, im Dienst beim Start).
 /// Endet, wenn alle Kanäle zu sind.
 pub fn zaehlen_starten(state: &AppState) {
@@ -97,11 +90,11 @@ pub fn zaehlen_starten(state: &AppState) {
         let mut offen = [true; 5];
         while offen.iter().any(|o| *o) {
             let (i, r) = tokio::select! {
-                // Nur geschützt: Änderungen, Vorgänge, Bereiche (auch beim Überlauf).
+                // Nur geschützt: Änderungen, Vorgänge, Inhalt, Bereiche (auch beim Überlauf).
                 r = aenderungen.recv(), if offen[0] => (0, eins(r, false, |_| false)),
                 r = vorgaenge.recv(), if offen[1] => (1, eins(r, false, |_| false)),
                 r = fassungen.recv(), if offen[2] => (2, eins(r, true, |_| true)),
-                r = inhalt.recv(), if offen[3] => (3, eins(r, true, inhalt_frei)),
+                r = inhalt.recv(), if offen[3] => (3, eins(r, false, |_| false)),
                 r = bereiche.recv(), if offen[4] => (4, eins(r, false, |_| false)),
             };
             match r {
@@ -112,24 +105,14 @@ pub fn zaehlen_starten(state: &AppState) {
     });
 }
 
-/// Der Stand; `voll` nur auf dem geschützten Weg.
-fn stand(state: &AppState, voll: bool) -> ServerStand {
-    let z = &state.zaehler;
-    ServerStand {
-        ereignis: if voll { z.alle() } else { z.frei() },
-        inhalt: state.inhalt.bestand().version,
-        fassung: crate::dienst::betrieb::fassung_name(state),
-    }
+/// `GET /api/stand` (öffentlich): Nummer der freien Ereignisse und Fassung.
+pub async fn frei(State(state): State<AppState>) -> Json<ServerStandFrei> {
+    Json(ServerStandFrei { ereignis: state.zaehler.frei(), fassung: crate::dienst::betrieb::fassung_name(&state) })
 }
 
-/// `GET /api/stand` (frei): Nummer der freien Ereignisse, Inhaltsversion, Fassung.
-pub async fn frei(State(state): State<AppState>) -> Json<ServerStand> {
-    Json(stand(&state, false))
-}
-
-/// `GET /api/stand/voll` (geschützt): Nummer aller Ereignisse mit Daten.
+/// `GET /api/stand/voll` (geschützt): Nummer aller Ereignisse mit Daten, Inhaltsversion, Fassung.
 pub async fn voll(State(state): State<AppState>) -> Json<ServerStand> {
-    Json(stand(&state, true))
+    Json(ServerStand { ereignis: state.zaehler.alle(), inhalt: state.inhalt.bestand().version, fassung: crate::dienst::betrieb::fassung_name(&state) })
 }
 
 /// Für Tests und die Zähl-Aufgabe: ein neuer Zähler.
@@ -140,7 +123,7 @@ pub fn neu() -> Arc<Ereigniszaehler> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::events::{Change, DatenEreignis, FassungEreignis, ProjektEreignis, SammelEreignis};
+    use crate::api::events::{Change, DatenEreignis, FassungEreignis, InhaltEreignis, ProjektEreignis, SammelEreignis};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
@@ -169,9 +152,9 @@ mod tests {
         panic!("Zähler kam nicht an");
     }
 
-    /// Frei zählt nur, was der freie Kanal trägt; geschützt zählt alles mit
-    /// Daten. Die freie Nummer verrät also nichts über Vorgänge, Speicher
-    /// oder Änderungen an geschützten Dateien.
+    /// Frei zählt nur, was der freie Kanal trägt (seit Schritt E2 nur
+    /// `fassung`); geschützt zählt alles mit Daten. Die freie Nummer verrät
+    /// also nichts über Vorgänge, Speicher, Projekte oder Dateien.
     #[tokio::test]
     async fn frei_zaehlt_nur_freie_ereignisse() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
@@ -182,13 +165,16 @@ mod tests {
         state.inhalt.senden_fuer_tests(InhaltEreignis::Daten(DatenEreignis { name: "schluessel".into(), version: 3 }));
         warten_bis(|| state.zaehler.alle() == 3).await;
         assert_eq!(state.zaehler.frei(), 0, "nichts Freies darunter");
-        // Frei: Projekt, pc, Fassung, ein Sammelereignis mit Projekten.
+        // Bis Schritt E2 frei, jetzt geschützt: Projekt, pc, ein Sammelereignis mit Projekten.
         state.inhalt.senden_fuer_tests(InhaltEreignis::Projekt(ProjektEreignis { slug: "schaufenster".into(), version: 4, assets: None, dateien: None }));
         state.inhalt.senden_fuer_tests(InhaltEreignis::Daten(DatenEreignis { name: "pc".into(), version: 5 }));
         state.inhalt.senden_fuer_tests(InhaltEreignis::Sammel(SammelEreignis { version: 6, projekte: vec!["schaufenster".into()], daten: vec![] }));
+        warten_bis(|| state.zaehler.alle() == 6).await;
+        assert_eq!(state.zaehler.frei(), 0, "Inhalt zählt nicht frei");
+        // Frei: die Fassung.
         state.fassung_events.send(FassungEreignis { ordner: "20261031-120000".into(), dauer_ms: 1 }).unwrap();
         warten_bis(|| state.zaehler.alle() == 7).await;
-        assert_eq!(state.zaehler.frei(), 4);
+        assert_eq!(state.zaehler.frei(), 1);
     }
 
     /// Überlauf (`Lagged`): Auf den nur geschützten Kanälen zählt er nie frei,
@@ -216,8 +202,9 @@ mod tests {
         assert_eq!(state.zaehler.frei(), 0, "Überlauf der Änderungen zählt nicht frei");
     }
 
-    /// `/api/stand` ist frei und nennt die freie Nummer; `/api/stand/voll`
-    /// verlangt die Anmeldung (401) und nennt mit ihr alle.
+    /// `/api/stand` ist öffentlich und nennt genau die freie Nummer und die
+    /// Fassung (Schritt E2: keine Inhaltsversion); `/api/stand/voll` verlangt
+    /// die Anmeldung (401) und nennt mit ihr alle.
     #[tokio::test]
     async fn frei_und_voll() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
@@ -226,7 +213,8 @@ mod tests {
         let (s, v) = json(crate::app::router(state.clone()), "/api/stand").await;
         assert_eq!(s, StatusCode::OK);
         assert_eq!(v["ereignis"].as_u64(), Some(1), "{v}");
-        assert!(v["inhalt"].as_u64().is_some() && v["fassung"].as_str().is_some(), "{v}");
+        assert!(v["fassung"].as_str().is_some(), "{v}");
+        assert_eq!(v.as_object().map(|o| o.len()), Some(2), "nur ereignis und fassung: {v}");
         let (s, _) = json(crate::app::router(state.clone()), "/api/stand/voll").await;
         assert_eq!(s, StatusCode::UNAUTHORIZED);
         let (s, v) = json(crate::app::router_angemeldet(state.clone()), "/api/stand/voll").await;
@@ -236,13 +224,17 @@ mod tests {
         assert_eq!(v.as_object().map(|o| o.len()), Some(3), "{v}");
     }
 
-    /// Die Inhaltsversion ist dieselbe wie in `/api/betrieb`.
+    /// Die Inhaltsversion ist dieselbe wie in `/api/betrieb/voll`, die
+    /// Fassung in allen drei Antworten gleich (auch öffentlich).
     #[tokio::test]
     async fn inhalt_wie_betrieb() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         let (_, s) = json(crate::app::router(state.clone()), "/api/stand").await;
         let (_, b) = json(crate::app::router(state.clone()), "/api/betrieb").await;
-        assert_eq!(s["inhalt"], b["inhalt"]["version"]);
         assert_eq!(s["fassung"], b["fassung"]);
+        let (_, voll) = json(crate::app::router_angemeldet(state.clone()), "/api/betrieb/voll").await;
+        let (_, v) = json(crate::app::router_angemeldet(state.clone()), "/api/stand/voll").await;
+        assert_eq!(v["inhalt"], voll["inhalt"]["version"]);
+        assert_eq!((v["fassung"].clone(), voll["fassung"].clone()), (s["fassung"].clone(), s["fassung"].clone()));
     }
 }

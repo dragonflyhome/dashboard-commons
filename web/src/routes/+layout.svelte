@@ -28,8 +28,12 @@
 
 	let { data, children }: LayoutProps = $props();
 
-	/** Was ein `load` aus geschützten Wegen holt (`depends`); nach dem Abmelden neu. */
+	/**
+	 * Was ein `load` aus geschützten Wegen holt (`depends`); nach dem Abmelden neu.
+	 * Schritt E2: darunter die Projektliste des Layouts; ihre 401 leitet zur Anmeldung (`+layout.ts`).
+	 */
 	const GESCHUETZT_GELADEN = new Set([
+		'api:projects',
 		'api:pc:benutzer',
 		'api:daten',
 		'api:vorgaenge',
@@ -54,9 +58,9 @@
 		bauLage.liste(data.leisteProjekte);
 	});
 
-	// Das PC-Symbol: die Werte des einen Kanals (geschützt oder frei), doppelte zählen nicht.
+	// Das PC-Symbol: die Werte des geschützten Kanals (der freie trägt seit Schritt E2 keine).
 	$effect(() => {
-		pcMinute.aufnehmen(live.pc ?? freierKanal.pc);
+		pcMinute.aufnehmen(live.pc);
 	});
 
 	/** Der Klick auf das Blatt: alles nachziehen, was die Seite zeigt (ohne neue Browserseite). */
@@ -95,10 +99,6 @@
 		const off = live.onInhalt((a) => {
 			void invalidate(betroffen(a));
 		});
-		// Ohne geschützten Kanal (nicht angemeldet) kommen schon freie Änderungen über den freien.
-		const offFrei = freierKanal.onInhalt((a) => {
-			if (!live.connected) void invalidate(betroffen(a));
-		});
 		// Abmelden, Widerruf, Ablauf: Benutzer-Daten (Rechnername, Platten, Ordner, Systemanwendungen)
 		// und die Seiten aus geschützten Wegen kamen im Klartext; neu laden, ohne Anmeldung kommt nichts davon.
 		const offAbgemeldet = freierKanal.onAbgemeldet(() => {
@@ -129,7 +129,6 @@
 		breit.addEventListener('change', beiBreite);
 		return () => {
 			off();
-			offFrei();
 			offAbgemeldet();
 			freierKanal.stop();
 			offVorgang();

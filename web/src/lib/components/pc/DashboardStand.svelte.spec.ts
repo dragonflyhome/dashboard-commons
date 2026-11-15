@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Betrieb } from '$vertrag';
 import DashboardStand from './DashboardStand.svelte';
 
@@ -22,5 +22,21 @@ describe('Abschnitt „Dashboard“ (Schritt E1)', () => {
 		render(DashboardStand, { laden: () => Promise.resolve(betrieb), zustand: null });
 		expect(await screen.findByText('C:\\Users\\beispiel\\dienst.toml')).toBeInTheDocument();
 		expect(document.body.textContent).not.toContain('%USERPROFILE%');
+	});
+});
+
+describe('Abschnitt „Dashboard“ (Schritt E2)', () => {
+	it('fragt nur /api/betrieb/voll, auch solange der geschützte Kanal noch nicht steht', async () => {
+		const abruf = vi.fn(() => Promise.resolve(new Response('{}', { status: 500 })));
+		vi.stubGlobal('fetch', abruf);
+		try {
+			render(DashboardStand, { zustand: null });
+			await vi.waitFor(() => {
+				expect(abruf).toHaveBeenCalled();
+			});
+			expect(abruf.mock.calls.map((c: unknown[]) => c[0])).toEqual(['/api/betrieb/voll']);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

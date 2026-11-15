@@ -522,7 +522,7 @@ async fn svg_und_andere_dateien_mit_eigener_csp() {
     std::fs::write(assets.join("notiz.txt"), "Hallo").unwrap();
     std::fs::write(assets.join("bild.png"), [0x89, b'P', b'N', b'G']).unwrap();
     std::fs::write(assets.join("plan.pdf"), b"%PDF-1.4\n").unwrap();
-    let app = router(AppState::fuer_tests(&wurzel));
+    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
     for (datei, art, csp) in [
         ("notiz.txt", "text/plain; charset=utf-8", "default-src 'none'; sandbox"),
         ("bild.png", "image/png", "default-src 'none'; sandbox"),
@@ -541,6 +541,11 @@ async fn svg_und_andere_dateien_mit_eigener_csp() {
 /// Nachzug 2c: Bilder aus dem Vorschau-Rahmen (undurchsichtige Herkunft, darum
 /// `cross-site`) gehen als `Sec-Fetch-Dest: image` im no-cors-Modus durch,
 /// aber nur mit Bildendung und nur als Bild; sonst bleibt es 403.
+///
+/// Schritt E2: Die Fälle mit 200 tragen den Ausweis des Tests. Ein Browser
+/// schickt das Passkey-Cookie (SameSite=Strict) aus dem Rahmen nie mit; ohne
+/// Ausweis gibt es 401. Darum bettet der Server die Bilder in den Entwurf ein
+/// (`entwurf_bekommt_seine_bilder_eingebettet`).
 #[tokio::test]
 async fn bilder_fuer_den_vorschau_rahmen_trotz_cross_site() {
     let (wurzel, assets) = temp_repo("rahmen");
@@ -548,7 +553,7 @@ async fn bilder_fuer_den_vorschau_rahmen_trotz_cross_site() {
     std::fs::write(assets.join("plan.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
     std::fs::write(assets.join("daten.json"), "{}").unwrap();
     std::fs::write(assets.join("vorschau.html"), "<!doctype html><p>x</p>").unwrap();
-    let app = router(AppState::fuer_tests(&wurzel));
+    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
     let mit = |pfad: &str, methode: Method, ziel: &str, modus: &str| {
         anfrage(methode, pfad)
             .header("sec-fetch-site", "cross-site")
@@ -573,10 +578,48 @@ async fn bilder_fuer_den_vorschau_rahmen_trotz_cross_site() {
     for (pfad, methode, ziel, modus, _) in &faelle {
         ergebnisse.push(schicke(&app, mit(pfad, methode.clone(), ziel, modus)).await.status());
     }
+    let ohne_ausweis = router(AppState::fuer_tests(&wurzel));
+    let mut ohne = Vec::new();
+    for pfad in ["/projects/p/assets/bild.png", "/projects/p/assets/plan.svg"] {
+        ohne.push((pfad, schicke(&ohne_ausweis, mit(pfad, Method::GET, "image", "no-cors")).await.status()));
+    }
     let _ = std::fs::remove_dir_all(&wurzel);
     for ((pfad, methode, ziel, modus, soll), ist) in faelle.iter().zip(ergebnisse) {
-        assert_eq!(ist, *soll, "{methode} {pfad} dest={ziel} mode={modus}");
+        assert_eq!(ist, *soll, "mit Ausweis (nur im Test): {methode} {pfad} dest={ziel} mode={modus}");
     }
+    for (pfad, ist) in ohne {
+        assert_eq!(ist, StatusCode::UNAUTHORIZED, "ohne Ausweis, wie aus dem Rahmen: {pfad}");
+    }
+}
+
+/// Schritt E2: Der angemeldet geöffnete Entwurf bringt seine Bilder als
+/// `data:` mit, weil Bildanfragen aus dem Rahmen ohne Ausweis 401 bekämen.
+/// Nur Bilder aus `assets/`; andere Dateien und fremde Namen bleiben Adressen.
+#[tokio::test]
+async fn entwurf_bekommt_seine_bilder_eingebettet() {
+    let (wurzel, assets) = temp_repo("einbetten");
+    std::fs::write(assets.join("bild.png"), [0x89, b'P', b'N', b'G']).unwrap();
+    std::fs::write(assets.join("daten.json"), "{}").unwrap();
+    std::fs::write(
+        assets.join("vorschau.html"),
+        "<!doctype html><img src=\"bild.png\"><div style=\"background:url(./bild.png)\"></div><a href=\"daten.json\">d</a><img src=\"fehlt.png\">",
+    )
+    .unwrap();
+    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+    let req = anfrage(Method::GET, "/projects/p/assets/vorschau.html")
+        .header("sec-fetch-site", "same-origin")
+        .header("sec-fetch-dest", "iframe")
+        .body(Body::empty())
+        .unwrap();
+    let res = schicke(&app, req).await;
+    let _ = std::fs::remove_dir_all(&wurzel);
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(kopf(&res, "content-security-policy").contains("img-src 'self' data:"));
+    let html = text(res).await;
+    assert_eq!(
+        html,
+        "<!doctype html><img src=\"data:image/png;base64,iVBORw==\"><div style=\"background:url(data:image/png;base64,iVBORw==)\"></div><a href=\"daten.json\">d</a><img src=\"fehlt.png\">"
+    );
 }
 
 /// Nachzug 2c: lesend abgelehnt heißt „Diese Anfrage …“, beim Formular bleibt der Formular-Satz.
@@ -614,7 +657,7 @@ async fn assets_als_junction_gibt_404() {
     std::fs::write(fremd.join("geheim.txt"), "nicht ausliefern").unwrap();
     let q = wurzel.join("projects").join("q");
     std::fs::create_dir_all(&q).unwrap();
-    let app = router(AppState::fuer_tests(&wurzel));
+    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
     let res = schicke(&app, hole("/projects/p/assets/echt.svg")).await;
     assert_eq!(res.status(), StatusCode::OK, "echter Ordner");
 
@@ -662,7 +705,7 @@ async fn zu_grosse_datei_gibt_413() {
     std::fs::write(assets_ordner.join("riesig.svg"), &svg).unwrap();
     std::fs::write(assets_ordner.join("gross.html"), vec![b'a'; assets::HTML_HOECHSTENS as usize + 1]).unwrap();
     std::fs::write(assets_ordner.join("genau.png"), vec![0u8; assets::BILD_HOECHSTENS as usize]).unwrap();
-    let app = router(AppState::fuer_tests(&wurzel));
+    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
     let svg_res = schicke(&app, hole("/projects/p/assets/riesig.svg")).await;
     let svg_status = svg_res.status();
     let svg_satz = text(svg_res).await;
@@ -847,7 +890,7 @@ async fn haengende_repos_in_mehreren_projekten_halten_die_liste_nicht_auf() {
     let mut state = AppState::fuer_tests(&beispiel);
     state.zeitlimit = Duration::from_secs(5);
     let git = state.git.clone();
-    let app = router(state);
+    let app = router_angemeldet(state);
     let start = std::time::Instant::now();
     let res = schicke(&app, anfrage(Method::GET, "/api/projects").body(Body::empty()).unwrap()).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -1261,7 +1304,9 @@ async fn ohne_nachweis_401_auf_den_geschuetzten_wegen() {
 /// Ein Browser ohne Windows-Anmeldung (etwa Firefox) öffnet eine geschützte
 /// Seite über localhost: 401 mit `WWW-Authenticate: Negotiate` (Edge meldet
 /// trotzdem an) und eine Seite in einfachem Deutsch mit der Adresse zum
-/// Kopieren; die Adresse ist für HTML ersetzt. API-Wege bleiben beim Satz.
+/// Kopieren und dem Link zur Anmeldung; die Adresse ist für HTML ersetzt.
+/// API-Wege bleiben beim Satz. Nur unter Windows (sonst 303 zur Anmeldung).
+#[cfg(windows)]
 #[tokio::test]
 async fn browser_ohne_anmeldung_bekommt_eine_seite_in_einfachem_deutsch() {
     let app = app_ohne_anmeldung();
@@ -1276,14 +1321,39 @@ async fn browser_ohne_anmeldung_bekommt_eine_seite_in_einfachem_deutsch() {
     assert_eq!(kopf(&res, "www-authenticate"), "Negotiate");
     assert!(kopf(&res, "content-type").starts_with("text/html"));
     let html = text(res).await;
-    assert!(html.contains("Diese Seite öffnet sich nur in Microsoft Edge unter"), "{html}");
+    assert!(html.contains("Anmeldung nötig. Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite."), "{html}");
+    assert!(html.contains("öffnet sich diese Seite in Microsoft Edge unter"), "{html}");
     assert!(html.contains("Andere Browser schicken deine Windows-Anmeldung nicht mit."), "{html}");
+    assert!(html.contains("href=\"http://localhost:8787/anmelden?ziel=/schluessel%3Fx%3D%2522%253C\">Zur Anmeldung</a>"), "{html}");
+    assert!(!html.contains("in jedem Browser"), "der alte Satz ist falsch: {html}");
     assert!(html.contains("value=\"http://localhost:8787/schluessel?x=%22%3C\""), "{html}");
     assert!(!html.contains('"') || !html.contains("x=\"<"), "Adresse ist ersetzt");
     let api = Request::get("/api/vorgaenge").header(header::HOST, "localhost:8787").header(header::ACCEPT, "text/html").body(Body::empty()).unwrap();
     let res = schicke(&app, api).await;
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     assert!(json(res).await["art"] == "anmeldung");
+}
+
+/// Schritt E2, außerhalb von Windows: Eine Seitennavigation ohne Anmeldung
+/// geht mit 303 zur Anmeldung (über localhost, mit Ziel), auch über
+/// 127.0.0.1; ein Weg unter `/api` und eine Anfrage ohne Navigation bekommen
+/// 401 JSON (Art `anmeldung`).
+#[cfg(not(windows))]
+#[tokio::test]
+async fn browser_ohne_anmeldung_geht_zur_anmeldung() {
+    let app = app_ohne_anmeldung();
+    for host in ["localhost:8787", EIGENER_HOST] {
+        let req = Request::get("/projects/schaufenster?x=1").header(header::HOST, host).header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
+        let res = schicke(&app, req).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{host}");
+        assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/projects/schaufenster%3Fx%3D1", "{host}");
+    }
+    let api = anfrage(Method::GET, "/api/projects").header("sec-fetch-dest", "document").header(header::ACCEPT, "text/html").body(Body::empty()).unwrap();
+    let res = schicke(&app, api).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(json(res).await["art"], "anmeldung");
+    let res = schicke(&app, hole("/pc")).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "ohne Navigation kein 303");
 }
 
 #[test]
@@ -1299,7 +1369,9 @@ fn browser_im_protokoll_gekuerzt() {
 
 /// Browser-Navigation über 127.0.0.1 auf eine geschützte Seite: 307 auf
 /// localhost (dort meldet Chromium ohne Rückfrage an). Über localhost, unter
-/// `/api/*` und für andere Methoden bleibt es 401.
+/// `/api/*` und für andere Methoden bleibt es 401. Nur unter Windows (sonst
+/// führt jede Navigation ohne Anmeldung mit 303 zur Anmeldung).
+#[cfg(windows)]
 #[tokio::test]
 async fn browser_ueber_127_wird_nach_localhost_geleitet() {
     let app = app_ohne_anmeldung();
@@ -1319,9 +1391,11 @@ async fn browser_ueber_127_wird_nach_localhost_geleitet() {
         .body(Body::from("wert=abc"))
         .unwrap();
     assert_eq!(schicke(&app, post).await.status(), StatusCode::UNAUTHORIZED, "nur GET-Navigationen");
-    // Freie Seiten werden nicht umgeleitet.
-    let frei = anfrage(Method::GET, "/pc").header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
+    // Öffentliche Seiten werden nicht umgeleitet; /pc ist seit Schritt E2 geschützt.
+    let frei = anfrage(Method::GET, "/anmelden").header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
     assert_ne!(schicke(&app, frei).await.status(), StatusCode::TEMPORARY_REDIRECT);
+    let pc = anfrage(Method::GET, "/pc").header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
+    assert_eq!(schicke(&app, pc).await.status(), StatusCode::TEMPORARY_REDIRECT);
 }
 
 /// Etappe 3b (Fund des Prüfers „127.0.0.1: 6× 401 je Laden“): Die Oberfläche
@@ -1355,6 +1429,19 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
         "/api/antworten",
         // „Neu in …“ im Layout.
         "/api/fassungen/gezeigt",
+        // Schritt E2: Projekte, PC-Werte, Prüfung und Unter-Dashboard.
+        "/api/projects",
+        "/api/projects/dashboard",
+        "/api/projekte/dashboard",
+        "/api/projekte/dashboard/stand",
+        "/api/projekte/dashboard/daten/orte",
+        "/api/projekte/dashboard/daten/kanban",
+        "/api/archiv",
+        "/api/hallo",
+        "/api/pc",
+        "/api/pc/verlauf",
+        "/api/pruefung",
+        "/api/pruefung/dashboard",
     ] {
         let res = schicke(&app, hole(pfad)).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{pfad}");
@@ -1363,13 +1450,22 @@ async fn geschuetzte_adressen_der_oberflaeche_bleiben_401() {
     }
 }
 
-/// Frei ohne Anmeldung: Projekte, Lebenszeichen, Prüfung, Probe, PC-Werte.
+/// Schritt E2: Öffentlich ohne Anmeldung nur Lebenszeichen, schmaler Zustand,
+/// Changelog, Passkey-Stand und die öffentlichen Seiten; Projekte, PC-Werte
+/// und Projektdateien geben 401.
 #[tokio::test]
 async fn freie_wege_ohne_anmeldung() {
     let app = app_ohne_anmeldung();
-    for pfad in ["/api/projects", "/api/projects/dashboard", "/healthz", "/api/betrieb", "/api/fassungen", "/api/pc", "/projects/schaufenster/assets/bild.svg"]
-    {
+    for pfad in ["/healthz", "/api/betrieb", "/api/stand", "/api/fassungen", "/api/passkey/stand"] {
         assert_eq!(schicke(&app, hole(pfad)).await.status(), StatusCode::OK, "{pfad}");
+    }
+    // Seiten: die Oberfläche (503, solange web/build fehlt), nie 401.
+    for pfad in ["/", "/anmelden", "/fassungen"] {
+        let status = schicke(&app, hole(pfad)).await.status();
+        assert!(status == StatusCode::OK || status == StatusCode::SERVICE_UNAVAILABLE, "{pfad}: {status}");
+    }
+    for pfad in ["/api/projects", "/api/projects/dashboard", "/api/pc", "/projects/schaufenster/assets/bild.svg", "/pc", "/projects/schaufenster"] {
+        assert_eq!(schicke(&app, hole(pfad)).await.status(), StatusCode::UNAUTHORIZED, "{pfad}");
     }
 }
 
@@ -1426,8 +1522,9 @@ async fn freier_kanal_hinter_den_schleusen() {
         let req = anfrage(Method::GET, "/api/events/frei").header("sec-fetch-site", seite).body(Body::empty()).unwrap();
         assert_eq!(schicke(&app_frei, req).await.status(), StatusCode::FORBIDDEN, "{seite}");
     }
+    // Nur GET ist öffentlich (Schritt E2: jede andere Methode verlangt die Anmeldung).
     let req = anfrage(Method::POST, "/api/events/frei").header(header::ORIGIN, EIGENE_HERKUNFT).body(Body::empty()).unwrap();
-    assert_eq!(schicke(&app_frei, req).await.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(schicke(&app_frei, req).await.status(), StatusCode::UNAUTHORIZED);
     #[cfg(windows)]
     {
         let res = schicke(&app(), hole("/api/events/frei")).await;
@@ -1437,10 +1534,9 @@ async fn freier_kanal_hinter_den_schleusen() {
     }
 }
 
-/// `/api/pc` ohne Anmeldung: 200 mit den Rechner-Werten, ohne ein
-/// Benutzer-Feld (auch nicht für einen Angemeldeten). `/api/pc/benutzer` ohne
-/// Anmeldung: 401 mit `WWW-Authenticate: Negotiate`; angemeldet 200 mit
-/// winget und Schlüssel-Zählern.
+/// `/api/pc` ohne Anmeldung seit Schritt E2: 401; angemeldet die Rechner-Werte,
+/// ohne ein Benutzer-Feld. `/api/pc/benutzer` ohne Anmeldung: 401 mit
+/// `WWW-Authenticate: Negotiate`; angemeldet 200 mit winget und Schlüssel-Zählern.
 #[tokio::test]
 async fn pc_ohne_anmeldung_ohne_benutzerdaten() {
     let state = AppState::fuer_tests(&beispiel());
@@ -1453,7 +1549,11 @@ async fn pc_ohne_anmeldung_ohne_benutzerdaten() {
         k.sort();
         k
     };
-    for app in [router(state.clone()), router_angemeldet(state.clone())] {
+    let res = schicke(&router(state.clone()), hole("/api/pc")).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert!(!text(res).await.contains("snapshot"));
+    {
+        let app = router_angemeldet(state.clone());
         let res = schicke(&app, hole("/api/pc")).await;
         assert_eq!(res.status(), StatusCode::OK);
         let v = json(res).await;
@@ -1488,12 +1588,9 @@ async fn pc_ohne_anmeldung_ohne_benutzerdaten() {
 
 /// Etappe 3a-4: Die neuen Urteile (Defender, Neustart, Belegung, Frist-Stufe,
 /// Art der Verlaufs-Hinweise) sind nur aus Fakten gerechnet, die der Weg
-/// schon hatte. Der freie Weg zeigt darum nicht mehr als vorher: `/api/pc`
-/// hat ohne und mit Anmeldung genau dieselben Felder, nirgends Schlüssel;
-/// der Stand der Schlüssel kommt nur über `/api/pc/benutzer` (ohne Anmeldung
-/// 401 ohne Zahlen); der freie Verlauf hat keine Starts, Meldungen und
-/// Vorgänge, dafür den Hinweis `ohne-anmeldung`; `/stand` nennt ohne
-/// Anmeldung keinen Titel einer Aufgabe, auch nicht mit Frist-Stufe.
+/// schon hatte: `/api/pc` hat nirgends Schlüssel; der Stand der Schlüssel
+/// kommt nur über `/api/pc/benutzer`. Seit Schritt E2 geben `/api/pc`, der
+/// Verlauf und `/stand` ohne Anmeldung 401 ohne Zahlen und Titel.
 #[tokio::test]
 async fn neue_urteile_frei_nicht_mehr_als_vorher() {
     let state = AppState::fuer_tests(&beispiel());
@@ -1516,8 +1613,16 @@ async fn neue_urteile_frei_nicht_mehr_als_vorher() {
         k.sort();
         k
     };
-    let mut je_weg = Vec::new();
-    for app in [router(state.clone()), router_angemeldet(state.clone())] {
+    for weg in ["/api/pc", "/api/pc/benutzer", "/api/pc/verlauf", "/api/projekte/dashboard/stand", "/api/anstehend"] {
+        let res = schicke(&router(state.clone()), hole(weg)).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{weg}");
+        let t = text(res).await;
+        for x in ["gespeichert", "vollstaendig", "snapshot", "ereignisse", "Geheimer Aufgabentitel", "frist_stufe", "eintraege"] {
+            assert!(!t.contains(x), "{weg}: {x} in {t}");
+        }
+    }
+    {
+        let app = router_angemeldet(state.clone());
         let res = schicke(&app, hole("/api/pc")).await;
         assert_eq!(res.status(), StatusCode::OK);
         let v = json(res).await;
@@ -1548,37 +1653,17 @@ async fn neue_urteile_frei_nicht_mehr_als_vorher() {
         assert_eq!(v["snapshot"]["defender"]["signatur_schwelle_tage"], 3);
         assert!(["aussteht", "nicht-noetig", "unbekannt"].contains(&v["snapshot"]["neustart"]["neustart"].as_str().unwrap()), "{v}");
         assert_eq!(v["snapshot"]["belegung_schwellen"], serde_json::json!({"hoch_ab": 70, "kritisch_ab": 90}));
-        je_weg.push(schluessel_felder(&v));
+        assert!(!schluessel_felder(&v).iter().any(|f| f.contains("schluessel")), "{v}");
     }
-    assert_eq!(je_weg[0], je_weg[1], "frei und angemeldet dieselben Felder");
 
-    let res = schicke(&router(state.clone()), hole("/api/pc/benutzer")).await;
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
-    let t = text(res).await;
-    assert!(!t.contains("gespeichert") && !t.contains("vollstaendig"), "{t}");
-
-    let res = schicke(&router(state.clone()), hole("/api/pc/verlauf")).await;
-    assert_eq!(res.status(), StatusCode::OK);
+    let res = schicke(&router_angemeldet(state.clone()), hole("/api/pc/verlauf")).await;
     let v = json(res).await;
     let h = v["hinweise"].as_array().unwrap();
     assert!(h.iter().all(|h| h["art"].is_string() && h["text"].is_string()), "{v}");
-    assert!(h.iter().any(|h| h["art"] == "ohne-anmeldung"), "{v}");
-    assert!(!v["ereignisse"].as_array().unwrap().iter().any(|e| ["start", "meldung", "vorgang"].contains(&e["quelle"].as_str().unwrap())), "{v}");
-    let res = schicke(&router_angemeldet(state.clone()), hole("/api/pc/verlauf")).await;
-    let v = json(res).await;
-    assert!(!v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-anmeldung"), "{v}");
+    assert!(!h.iter().any(|h| h["art"] == "ohne-anmeldung"), "{v}");
 
-    let res = schicke(&router(state.clone()), hole("/api/projekte/dashboard/stand")).await;
-    assert_eq!(res.status(), StatusCode::OK);
-    let t = text(res).await;
-    assert!(!t.contains("Geheimer Aufgabentitel"), "{t}");
-    let v: serde_json::Value = serde_json::from_str(&t).unwrap();
-    assert_eq!((v["zahlen"]["frist_stufe"].as_str(), v["frist_bald_tage"].as_i64()), (Some("bald"), Some(7)), "{v}");
-    assert_eq!(v["eintraege"], serde_json::json!([]), "ohne Anmeldung keine Einträge (Etappe 3a+)");
     let res = schicke(&router_angemeldet(state.clone()), hole("/api/projekte/dashboard/stand")).await;
     assert!(text(res).await.contains("Geheimer Aufgabentitel"));
-    let res = schicke(&router(state.clone()), hole("/api/anstehend")).await;
-    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     let res = schicke(&router_angemeldet(state), hole("/api/anstehend")).await;
     let v = json(res).await;
     assert_eq!(v["frist_bald_tage"], 7);
@@ -1614,8 +1699,8 @@ async fn verbindung_merkt_sich_inhaber() {
     assert_eq!(kopf(&res, "www-authenticate"), "Negotiate");
 }
 
-/// Die Aushandlung auf einem freien Weg (der Client fängt selbst an) meldet
-/// die Verbindung ebenso an.
+/// Die Aushandlung auf einem öffentlichen Weg (der Client fängt selbst an)
+/// meldet die Verbindung ebenso an.
 #[cfg(windows)]
 #[tokio::test]
 async fn aushandlung_auf_freiem_weg_meldet_an() {
@@ -1623,7 +1708,7 @@ async fn aushandlung_auf_freiem_weg_meldet_an() {
 
     let app = app_ohne_anmeldung();
     let v = Verbindung::neu();
-    let (res, _) = aushandeln(&app, Method::GET, "/api/pc", v).await;
+    let (res, _) = aushandeln(&app, Method::GET, "/api/betrieb", v).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(schicke(&app, ueber(hole("/api/pc/benutzer"), v)).await.status(), StatusCode::OK);
     assert_eq!(schicke(&app, ueber(hole("/api/schluessel"), v)).await.status(), StatusCode::OK);
@@ -1654,9 +1739,10 @@ async fn fremdes_konto_ohne_ausweis_muss_zum_passkey() {
     let res = schicke(&app, ueber(req, v)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/vorgaenge%3Fx%3D1");
-    // Freie Wege bleiben für die fremde Verbindung frei, ohne Benutzer-Daten.
-    let res = schicke(&app, ueber(hole("/api/pc"), v)).await;
+    // Öffentliche Wege bleiben für die fremde Verbindung offen; /api/pc nicht (Schritt E2).
+    let res = schicke(&app, ueber(hole("/api/betrieb"), v)).await;
     assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(schicke(&app, ueber(hole("/api/pc"), v)).await.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(schicke(&app, ueber(hole("/api/pc/benutzer"), v)).await.status(), StatusCode::UNAUTHORIZED);
     // Die Anträge (Windows-Anmeldung mit irgendeinem Konto) gehen.
     let res = schicke(&app, ueber(hole("/api/passkey/antrag"), v)).await;
@@ -1665,129 +1751,134 @@ async fn fremdes_konto_ohne_ausweis_muss_zum_passkey() {
     assert_eq!((j["konto"].as_str(), j["hauptkonto"].as_bool()), (Some(r"PC\fremd"), Some(false)), "{j}");
 }
 
+/// Schritt E2: die Positivliste mit beiden Seiten. Öffentlich nur die festen
+/// Paare aus Methode und Pfad; alles andere, auch jede andere Schreibweise,
+/// jeder Schrägstrich am Ende und jede Kodierung, verlangt die Anmeldung.
 #[test]
-fn liste_der_geschuetzten_wege() {
-    use crate::sicherheit::geschuetzt;
-    for p in [
-        "/schluessel",
-        "/schluessel/beispiel-test",
-        "/api/schluessel",
-        "/api/schluessel/x",
-        "/vorgaenge",
-        "/vorgaenge/",
-        "/api/vorgaenge",
-        "/api/vorgaenge/warten",
-        "/api/vorgaenge/v-1/erledigt",
-        "/daten",
-        "/api/daten",
-        "/api/daten/export",
-        "/api/events",
-        "/api/pc/benutzer",
-        "/API/PC/Benutzer",
-        "/api/pc/verlauf/voll",
-        "/API/PC/Verlauf/Voll",
-        "/api/projekte/dashboard/stand/voll",
-        "/API/Projekte/Dashboard/Stand/Voll",
-        "/api/projekte/x/stand/voll/mehr",
-        // Etappe B2: das Backlog eines Projekts.
-        "/api/projekte/dashboard/backlog",
-        "/API/Projekte/Dashboard/Backlog",
-        // Etappe B8: der Plan eines Projekts.
-        "/api/projekte/dashboard/plan",
-        "/API/Projekte/Dashboard/Plan",
-        // Etappe B8: die Zeitleiste eines Projekts.
-        "/api/projekte/dashboard/verlauf",
-        "/API/Projekte/Dashboard/Verlauf",
-        // Schritt E1b: die Orte mit vollem Pfad.
-        "/api/projekte/dashboard/orte",
-        "/API/Projekte/Dashboard/Orte",
-        // Etappe B2: die Fragen an den Inhaber (persönlicher Inhalt).
-        "/api/projekte/dashboard/daten/fragen",
-        "/API/Projekte/Dashboard/Daten/Fragen",
-        "/Api/Events",
-        "/api/events/frei/x",
-        "/api/betrieb/voll",
-        // „Neu in …“ (Freigabe in einem Schritt).
-        "/api/fassungen/gezeigt",
-        "/API/Fassungen/Gezeigt",
-        "/api/aufgaben",
-        "/api/aufgaben/a-20261028-0001/erledigt",
-        "/API/Aufgaben",
-        "/api/arbeiten",
-        "/api/arbeiten/ar-20261029-0001",
-        "/api/arbeiten/ar-20261029-0001/schritte/1/uebernehmen",
-        "/API/Arbeiten/ar-1/Schritte",
-        "/api/einstufung",
-        "/api/anstehend",
-        "/API/Anstehend",
-        "/api/antworten",
-        "/api/antworten/neu-form/schlusssatz",
-        "/API/Antworten",
-        "/api/schluessel/passkeys",
-        "/api/schluessel/passkeys/abc/freigeben",
-        "/api/schluessel/sitzungen-beenden",
-        // Etappe 4d: System-Seiten mit Projekten und Plänen.
-        "/api/entscheidungen",
-        "/API/Entscheidungen",
-        "/api/zielbild",
-        "/api/zielbild/x",
-        // Etappe 6b: die Anleitung, geschützt wie das Zielbild.
-        "/api/anleitung",
-        "/API/Anleitung",
-        "/api/anleitung/x",
+fn liste_der_oeffentlichen_wege() {
+    use crate::sicherheit::oeffentlich;
+    // Die Oberfläche hat in diesem Test nur favicon.ico und robots.txt.
+    let bau = |rel: &std::path::Path| rel == std::path::Path::new("favicon.ico") || rel == std::path::Path::new("robots.txt");
+    let (get, head, post) = (Method::GET, Method::HEAD, Method::POST);
+    for (m, p) in [
+        (&get, "/healthz"),
+        (&head, "/healthz"),
+        (&get, "/api/betrieb"),
+        (&get, "/api/stand"),
+        (&get, "/api/events/frei"),
+        (&get, "/api/fassungen"),
+        (&get, "/api/anmeldung/probe"),
+        (&get, "/api/anmeldung/wer"),
+        (&get, "/api/passkey/stand"),
+        (&post, "/api/passkey/anmelden/beginn"),
+        (&post, "/api/passkey/anmelden/ende"),
+        (&post, "/api/passkey/abmelden"),
+        (&get, "/api/passkey/antrag"),
+        (&post, "/api/passkey/antrag"),
+        (&get, "/api/passkey/antrag/beginn"),
+        (&post, "/api/passkey/antrag/beginn"),
+        (&post, "/api/passkey/antrag/ende"),
+        (&get, "/"),
+        (&head, "/"),
+        (&get, "/anmelden"),
+        (&head, "/anmelden"),
+        (&get, "/fassungen"),
+        (&get, "/_app/immutable/a.js"),
+        (&head, "/_app/version.json"),
+        (&get, "/favicon.ico"),
+        (&get, "/robots.txt"),
+        (&get, "/neu"),
+        (&get, "/neu/"),
+        (&get, "/neu/projects/beispiel"),
     ] {
-        assert!(geschuetzt(p), "{p}");
+        assert!(oeffentlich(m, p, &bau), "{m} {p} ist öffentlich");
     }
-    for p in [
-        "/",
-        "/pc",
-        "/projects/schaufenster",
-        "/api/projects",
-        "/api/pc",
-        "/api/betrieb",
-        // Freigabe in einem Schritt: das Changelog ist öffentlich.
-        "/api/fassungen",
-        "/healthz",
-        "/api/pruefung",
-        "/api/anmeldung/probe",
-        "/api/anmeldung/wer",
-        "/_app/immutable/a.js",
-        "/schluesselx",
-        "/api/vorgaengex",
-        "/datenschutz",
-        "/api/eventsx",
-        // Kopfleiste, Fassung 2: genau der freie Kanal.
-        "/api/events/frei",
-        "/api/pc/benutzerx",
-        "/api/pc/verlauf",
-        "/api/pc/verlauf/vollx",
-        "/api/aufgabenx",
-        "/api/anstehendx",
-        "/api/antwortenx",
-        "/api/projekte/dashboard/stand",
-        "/api/projekte/dashboard/stand/vollx",
-        "/api/projekte/dashboard/standx/voll",
-        "/api/projekte/dashboard/backlogx",
-        "/api/projekte/dashboard/planx",
-        "/api/projekte/dashboard/verlaufx",
-        "/api/projekte/dashboard/ortex",
-        // Die Daten-Datei orte bleibt frei (ohne Pfad, bis E2).
-        "/api/projekte/dashboard/daten/orte",
-        "/api/projekte/dashboard/daten/plan",
-        "/api/projekte/dashboard/daten/kanban",
-        "/api/projekte/dashboard/daten/fragenx",
-        "/anmelden",
-        "/api/passkey/stand",
-        "/api/passkey/anmelden/beginn",
-        "/api/passkey/antrag",
-        // Die Seiten selbst bleiben frei (wie /anstehend); nur ihre Daten nicht.
-        "/entscheidungen",
-        "/zielbild",
-        "/anleitung",
-        "/api/entscheidungenx",
-        "/api/zielbildx",
-        "/api/anleitungx",
+    for (m, p) in [
+        // Andere Methoden auf öffentlichen Wegen.
+        (&head, "/api/betrieb"),
+        (&post, "/api/betrieb"),
+        (&post, "/api/events/frei"),
+        (&get, "/api/passkey/abmelden"),
+        (&get, "/api/passkey/anmelden/beginn"),
+        (&post, "/api/anmeldung/probe"),
+        (&post, "/"),
+        (&post, "/anmelden"),
+        (&Method::OPTIONS, "/"),
+        (&Method::DELETE, "/anmelden"),
+        (&post, "/_app/immutable/a.js"),
+        (&post, "/neu"),
+        // Schreibweise, Schrägstrich am Ende, Präfix.
+        (&get, "/API/Betrieb"),
+        (&get, "/api/betrieb/"),
+        (&get, "/api/betriebx"),
+        (&get, "/api/betrieb/voll"),
+        (&get, "/api/stand/voll"),
+        (&get, "/Anmelden"),
+        (&get, "/anmelden/"),
+        (&get, "/anmelden/x"),
+        (&get, "/fassungen/"),
+        (&get, "/api/fassungen/gezeigt"),
+        (&get, "/api/events/frei/"),
+        (&get, "/api/events"),
+        (&get, "/api/anmeldung/gibt-es-nicht"),
+        (&get, "/api/anmeldung/"),
+        (&get, "/api/passkey/antragx"),
+        (&get, "/api/passkey/antrag/x"),
+        (&get, "/api"),
+        (&get, "/api/"),
+        (&get, "/API/x"),
+        (&get, "/healthz/"),
+        (&get, "/HEALTHZ"),
+        // Kodierung: einfach, doppelt, kaputt.
+        (&get, "/%61nmelden"),
+        (&get, "/api/%62etrieb"),
+        (&get, "/_app/%61.js"),
+        (&get, "/%2566avicon.ico"),
+        (&get, "/fassungen%2f"),
+        (&get, "/neu/%zz"),
+        (&get, "/neu/%2541"),
+        // Bau-Dateien nur in der Wurzel des Baus, nur wenn es sie gibt.
+        (&get, "/logo.svg"),
+        (&get, "/favicon.ico/"),
+        (&get, "/x/favicon.ico"),
+        (&get, "/_app/"),
+        (&get, "/_app/../index.html"),
+        // Alle übrigen Seiten und Wege.
+        (&get, "/pc"),
+        (&get, "/anstehend"),
+        (&get, "/projects/schaufenster"),
+        (&get, "/projects/gibt-es-nicht"),
+        (&get, "/projects/schaufenster/assets/bild.svg"),
+        (&get, "/gruppen/beispiel"),
+        (&get, "/projekte/archiviert"),
+        (&get, "/katalog/entwuerfe/logo"),
+        (&get, "/anleitung"),
+        (&get, "/zielbild"),
+        (&get, "/entscheidungen"),
+        (&get, "/hallo"),
+        (&get, "/schluessel"),
+        (&get, "/vorgaenge"),
+        (&get, "/daten"),
+        (&get, "/api/projects"),
+        (&get, "/api/projects/dashboard"),
+        (&get, "/api/projekte/dashboard"),
+        (&get, "/api/projekte/dashboard/stand"),
+        // Der Daten-Weg der Orte (ohne Pfad) ist geschützt wie alles andere; den Pfad liefert nur /orte.
+        (&get, "/api/projekte/dashboard/daten/orte"),
+        (&get, "/api/projekte/dashboard/orte"),
+        (&get, "/api/projekte/dashboard/daten/kanban"),
+        (&get, "/api/projekte/dashboard/x/zahlen"),
+        (&get, "/api/archiv"),
+        (&get, "/api/hallo"),
+        (&get, "/api/pc"),
+        (&get, "/api/pc/verlauf"),
+        (&get, "/api/pc/benutzer"),
+        (&get, "/api/pruefung"),
+        (&get, "/api/vorgaenge"),
+        (&get, "/api/schluessel"),
+        (&get, "/api/_test/langsam"),
+        (&post, "/api/oeffnen"),
     ] {
-        assert!(!geschuetzt(p), "{p}");
+        assert!(!oeffentlich(m, p, &bau), "{m} {p} ist nicht öffentlich");
     }
 }

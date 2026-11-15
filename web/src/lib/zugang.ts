@@ -17,7 +17,8 @@
  * - `unbekannt` (Netzfehler, Server startet, anderer Code): Alles geht ins
  *   Netz wie bisher.
  *
- * Die Schleusen im Server bleiben unverändert; das hier spart nur Anfragen.
+ * Die Schleusen im Server bleiben unverändert; das hier spart Anfragen und
+ * entscheidet seit Schritt E2, ob die Seite zur Anmeldung leitet (`+layout.ts`).
  * Wie der Rückfall (`rueckfall.ts`) gilt `fehlt` oder `fremd` höchstens
  * `FRIST_MS`; danach fragt die nächste geschützte Abfrage wieder echt. Öffnet
  * der Live-Kanal (dann ist die Verbindung angemeldet), gilt `da`. Bewusst im
@@ -115,6 +116,19 @@ export class Zugang {
 
 /** Der eine Zugang für die ganze Seite. */
 export const zugang = new Zugang();
+
+/**
+ * Schritt E2: die Seiten, die ohne Anmeldung laden. Jede andere leitet die
+ * Seite zur Anmeldung (`+layout.ts`). Der Server führt sie in
+ * `sicherheit::oeffentlich`; die Startseite steht dort nur, damit die
+ * Oberfläche selbst lädt, ihr Inhalt ist geschützt.
+ */
+export const OEFFENTLICHE_SEITEN: ReadonlySet<string> = new Set(['/anmelden', '/fassungen']);
+
+/** Die Anmeldeseite mit dem Weg zurück (`ziel`, geprüft auf /anmelden durch `zielPruefen`). */
+export function anmeldenAdresse(url: URL): string {
+	return `/anmelden?ziel=${encodeURIComponent(url.pathname + url.search)}`;
+}
 
 /** Die Antwort, die der Server ohne Anmeldung gäbe (Körper wie `AppError`). */
 export function antwortOhneZugang(stand: 'fehlt' | 'fremd'): Response {

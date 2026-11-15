@@ -15,7 +15,7 @@
 //!   Browser (Kopfzeilen `Origin` oder `Sec-Fetch-Site`; per curl 422). Das ist
 //!   eine Prüfung von Kopfzeilen, keine Sicherheitsgrenze (wie beim Haken).
 //!
-//! Geschützt wie `/api/arbeiten` (Windows-Anmeldung, `sicherheit::geschuetzt`)
+//! Geschützt wie `/api/arbeiten` (Windows-Anmeldung, nicht in `sicherheit::oeffentlich`)
 //! und ohne Herkunftskopf für curl erlaubt (`sicherheit::herkunft_pflicht`);
 //! fremde Seiten bleiben 403. Schreiben nur mit `Content-Type: application/json`.
 //! Jede Änderung sendet `change` mit Bereich `anstehend`.
@@ -335,10 +335,10 @@ mod tests {
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{v}");
     }
 
-    /// Grenze aus 7b: /stand ohne Anmeldung nennt Meldungen nur als Zahlen
-    /// (neu, gesamt), ohne Titel, Texte und Dateipfade; mit Anmeldung alles.
+    /// Grenze aus 7b, seit Schritt E2: /stand ohne Anmeldung 401 ohne Titel,
+    /// Texte, Dateipfade und Zahlen; mit Anmeldung alles.
     #[tokio::test]
-    async fn stand_ohne_anmeldung_nur_zahlen() {
+    async fn stand_ohne_anmeldung_401() {
         let state = zustand();
         let jetzt = crate::speicher::aufgaben::jetzt();
         let (status, _) = schicke(
@@ -355,20 +355,13 @@ mod tests {
         let erste = state.speicher().unwrap().meldungen_lesen(Some("dashboard")).unwrap();
         assert_eq!(erste.len(), 3);
         state.speicher().unwrap().meldung_gelesen(&erste[0].id, &jetzt).unwrap();
-        // Ohne Anmeldung: nur Zahlen.
+        // Ohne Anmeldung: 401, nichts davon.
         let res = crate::app::router(state.clone()).oneshot(get("/api/projekte/dashboard/stand")).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         let text = String::from_utf8_lossy(&res.into_body().collect().await.unwrap().to_bytes()).into_owned();
-        for geheim in ["Vertraulicher", "Einzelheit", "geheim", "Bau der Oberfläche", "Prüfung von", "meldung-m-"] {
+        for geheim in ["Vertraulicher", "Einzelheit", "geheim", "Bau der Oberfläche", "Prüfung von", "meldung-m-", "zahlen", "ampel"] {
             assert!(!text.contains(geheim), "„{geheim}“ steht ohne Anmeldung in /stand: {text}");
         }
-        let v: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(v["aktualisierungen"], serde_json::json!([]));
-        assert_eq!(v["zahlen"]["meldungen"], serde_json::json!({"neu": 2, "gesamt": 3}));
-        assert_eq!(
-            (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["gesamt"]["bezug"].clone()),
-            (Some("rot"), Some("fehler-offen"), Value::Null)
-        );
         // Mit Anmeldung: Titel und Texte, keine Zahlen (die zählt die Oberfläche).
         let (_, v) = schicke(&state, get("/api/projekte/dashboard/stand")).await;
         assert_eq!(v["zahlen"], Value::Null);

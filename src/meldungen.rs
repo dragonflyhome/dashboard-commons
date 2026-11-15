@@ -1000,12 +1000,12 @@ mod tests {
         let pfade: Vec<String> = std::iter::from_fn(|| live.try_recv().ok()).map(|c| c.path).collect();
         assert!(pfade.contains(&"anstehend/dashboard".to_string()), "{pfade:?}");
         let inhalt = crate::api::anstehend::inhalt_sammeln(&state).await.unwrap();
-        assert_eq!(anstehend::stand(&inhalt, "dashboard", true).unwrap().gesamt.ampel, crate::api::vertrag::StandAmpel::Rot);
+        assert_eq!(anstehend::stand(&inhalt, "dashboard").unwrap().gesamt.ampel, crate::api::vertrag::StandAmpel::Rot);
         bote_lauf_mit(&state, true, true, &mut seit, zeit(30, 8, 40)).await;
         let m = meldungen(&state);
         assert!(m[0].behoben.is_some() && !offen(&m[0]));
         let inhalt = crate::api::anstehend::inhalt_sammeln(&state).await.unwrap();
-        assert_ne!(anstehend::stand(&inhalt, "dashboard", true).unwrap().gesamt.ampel, crate::api::vertrag::StandAmpel::Rot);
+        assert_ne!(anstehend::stand(&inhalt, "dashboard").unwrap().gesamt.ampel, crate::api::vertrag::StandAmpel::Rot);
     }
 
     /// Bau: rot zählt je Bau hoch (eine Meldung je Chat), Scanner-rote
@@ -1214,7 +1214,7 @@ mod tests {
         assert!(m.iter().any(|x| x.schluessel == format!("dashboard/frist:arbeit-{}", morgen.id)));
         assert!(m.iter().any(|x| x.schluessel == format!("dashboard/frist-vorbei:arbeit-{}", vorbei.id)));
         let inhalt = crate::api::anstehend::inhalt_sammeln(&state).await.unwrap();
-        let st = anstehend::stand(&inhalt, "dashboard", true).unwrap();
+        let st = anstehend::stand(&inhalt, "dashboard").unwrap();
         assert_eq!(st.gesamt.ampel, crate::api::vertrag::StandAmpel::Rot);
         // Frist-Meldungen stehen unter Jetzt in der Liste.
         let l = anstehend::anstehend(&inhalt, &anstehend::Filter { art: Some(EintragsArt::Meldung), ..Default::default() });

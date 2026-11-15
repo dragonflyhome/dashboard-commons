@@ -1,17 +1,13 @@
 import { render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import type { AnleitungAntwort, SystemAbschnitt } from '$vertrag';
-import { SATZ_ANLEITUNG_ANMELDEN } from '#lib/anmeldung.ts';
+import { leitetZurAnmeldung } from '../zur-anmeldung.testhilfe.ts';
 
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 const { default: Page } = await import('./+page.svelte');
 
-function zeige(data: {
-	anleitung: AnleitungAntwort | null;
-	fehler: string | null;
-	anmelden?: string | null;
-}) {
-	return render(Page, { data: { anmelden: null, ...data }, params: {} } as never);
+function zeige(data: { anleitung: AnleitungAntwort | null; fehler: string | null }) {
+	return render(Page, { data, params: {} } as never);
 }
 
 function abschnitt(teil: Partial<SystemAbschnitt> & { datei: string }): SystemAbschnitt {
@@ -131,28 +127,9 @@ describe('/anleitung (Etappe 6b): die Abschnitte aus docs/anleitung', () => {
 	});
 });
 
-describe('/anleitung ohne Windows-Anmeldung', () => {
-	it('401 vom Server: der Weg über Edge, nicht der Inhalt', async () => {
-		const { load } = await import('./+page.ts');
-		const fetch401 = (() =>
-			Promise.resolve(
-				new Response(
-					JSON.stringify({ fehler: 'Bitte mit dem Windows-Konto anmelden.', art: 'anmeldung' }),
-					{ status: 401, headers: { 'content-type': 'application/json' } }
-				)
-			)) as typeof fetch;
-		const schluessel: string[] = [];
-		const data = (await load({
-			fetch: fetch401,
-			depends: (...k: string[]) => schluessel.push(...k)
-		} as never)) as { anleitung: null; fehler: string | null; anmelden: string | null };
-		expect(schluessel).toEqual(['api:anleitung']);
-		expect(data).toEqual({ anleitung: null, fehler: null, anmelden: SATZ_ANLEITUNG_ANMELDEN });
-		zeige(data);
-		const link = screen.getByRole('link', { name: 'http://localhost:8787' });
-		expect(link.closest('p')?.textContent).toBe(`${SATZ_ANLEITUNG_ANMELDEN}.`);
-		expect(screen.queryByRole('region')).toBeNull();
-		expect(document.body.textContent).not.toMatch(/lässt sich gerade nicht laden/);
+describe('/anleitung ohne Anmeldung (Schritt E2)', () => {
+	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
+		expect(await leitetZurAnmeldung('/anleitung')).toBe('/anmelden?ziel=%2Fanleitung');
 	});
 
 	it('mit Anmeldung: lädt /api/anleitung', async () => {

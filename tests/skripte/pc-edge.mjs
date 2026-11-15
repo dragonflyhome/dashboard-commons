@@ -21,12 +21,13 @@
  * Ungeprüftes daneben. Strg+C räumt Server, Edge und Temp-Ordner auf; das
  * Aufräumen selbst hat Fristen (/json/version, Browser.close).
  *
- * Freier Weg (Auflage aus 3a-4): Ein zweites Edge mit eigenem Profil, das
- * sich bei localhost nicht bei Windows anmeldet (--auth-server-allowlist
- * auf einen Namen, den es nicht gibt; Anmelde-Rückfragen bricht die Probe
- * ab). Dort zeigt das Cockpit die Werte des freien Wegs (Schlüssel
- * unbekannt), /pc den Satz zur fehlenden Anmeldung und keine geschützten
- * Daten (keine Starts, keine Ordner, Verlauf nur frei).
+ * Ohne Anmeldung (Auflage aus 3a-4, seit Schritt E2): Ein zweites Edge mit
+ * eigenem Profil, das sich bei localhost nicht bei Windows anmeldet
+ * (--auth-server-allowlist auf einen Namen, den es nicht gibt;
+ * Anmelde-Rückfragen bricht die Probe ab). Dort führen /pc und die
+ * Startseite zur Anmeldung (edge-gemeinsam.mjs, ohneAnmeldungPruefen), ohne
+ * Projekttitel im DOM; /api/projects, /api/pc, /api/pc/verlauf und die
+ * geschützten Wege antworten 401.
  *
  * Geprüft wird auf /pc und auf der Startseite (Cockpit), bei 375 und
  * 1280 px, hell und dunkel:
@@ -60,7 +61,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -563,11 +564,16 @@ async function sicher(satz, f) {
   }
 }
 
-/** Wartet, bis der Server gemessen und den Defender einmal gelesen hat. */
-async function bisGemessen() {
+/**
+ * Wartet, bis der Server gemessen und den Defender einmal gelesen hat. Seit
+ * Schritt E2 ist /api/pc geschützt: gefragt wird aus dem angemeldeten Edge
+ * (auf der öffentlichen Seite /fassungen, damit die Adresse stimmt).
+ */
+async function bisGemessen(cdp) {
+  await cdp.oeffnen("/fassungen");
   for (let i = 0; i < 120; i++) {
     try {
-      const pc = await (await fetch(`http://127.0.0.1:${PORT}/api/pc`)).json();
+      const pc = await cdp.auswerten(`fetch('/api/pc', { headers: { accept: 'application/json' } }).then((r) => r.json())`);
       if (pc.snapshot.taken_at && pc.snapshot.defender.checked_at) return true;
     } catch {
       // noch nicht da
@@ -745,25 +751,10 @@ function datenKopieren() {
   console.log(`data\\: ${liste.length} eingecheckte Dateien kopiert`);
 }
 
-// ----- Freier Weg im Browser (Auflage aus 3a-4) -----
+// ----- Ohne Anmeldung im Browser (Auflage aus 3a-4, seit Schritt E2) -----
 
-/** Was der freie Weg im Browser zeigt: Antworten der geschützten Wege und die Seite. */
-const FREI = `(async () => {
-	const status = async (p) => (await fetch(p, { headers: { accept: 'application/json' } })).status;
-	const text = document.querySelector('main')?.innerText ?? '';
-	const verlauf = document.querySelector('[data-zeit="verlauf"]');
-	return {
-		benutzer: await status('/api/pc/benutzer'),
-		verlaufVoll: await status('/api/pc/verlauf/voll'),
-		anstehend: await status('/api/anstehend'),
-		satzVerlauf: text.includes('Starts, Meldungen und Vorgänge zeigt der Verlauf nur mit Anmeldung.'),
-		satzBenutzer: text.includes('Diese Werte zeigt das Dashboard nur nach Windows-Anmeldung'),
-		ordner: document.querySelectorAll('table.folders').length,
-		filter: [...(verlauf?.querySelectorAll('.filter button') ?? [])].map((b) => b.textContent.trim()),
-		quellen: [...(verlauf?.querySelectorAll('.quelle') ?? [])].map((q) => q.textContent.trim()),
-		verlaufDa: verlauf !== null,
-	};
-})()`;
+/** Status der Wege, die ohne Anmeldung 401 geben (seit Schritt E2 auch /api/pc und /api/pc/verlauf). */
+const OHNE_ANMELDUNG_401 = `Promise.all(['/api/pc', '/api/pc/verlauf', '/api/pc/benutzer', '/api/pc/verlauf/voll', '/api/anstehend'].map(async (p) => [p, (await fetch(p, { headers: { accept: 'application/json' } })).status]))`;
 
 const freierWeg = {
   /** Zweites Edge, eigenes Profil, keine Windows-Anmeldung für localhost. */
@@ -789,54 +780,36 @@ const freierWeg = {
     return cdp;
   },
 
-  /** Cockpit mit den Werten des freien Wegs, /pc ohne geschützte Daten. */
+  /** Schritt E2: /pc und die Startseite führen zur Anmeldung, die PC-Wege geben 401. */
   async pruefen(cdp) {
     await cdp.thema("light");
     await cdp.breite(1280);
-    for (const pfad of ["/pc", "/"]) {
-      const wo = `freier Weg ${pfad}`;
-      const fehler = [];
-      const h = (m) => {
-        if (m.method === "Runtime.exceptionThrown")
-          fehler.push(`Ausnahme: ${m.params.exceptionDetails.text}`.slice(0, 300));
-        else if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
-          // 401/403 der geschützten Wege gehören zum freien Weg.
-          if (!/status of 40[13]/.test(m.params.entry.text ?? ""))
-            fehler.push(`${m.params.entry.text} ${m.params.entry.url ?? ""}`.slice(0, 300));
-        }
-      };
-      cdp.hoerer.push(h);
-      await cdp.oeffnen(pfad);
-      const c = await cdp.auswerten(COCKPIT);
-      const f = await cdp.auswerten(FREI);
-      cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);
-      pruefe(fehler.length === 0, `${wo}: keine Fehler außer 401/403 in der Konsole`, fehler.join(" | "));
-      pruefe(
-        f.benutzer === 401 && f.verlaufVoll === 401 && f.anstehend === 401,
-        `${wo}: ohne Windows-Anmeldung (geschützte Wege 401)`,
-        JSON.stringify({ benutzer: f.benutzer, verlaufVoll: f.verlaufVoll, anstehend: f.anstehend }),
-      );
-      pruefe(
-        c.fakten.benutzerStatus !== 200 && c.fakten.vollstaendig === "unbekannt",
-        `${wo}: Fakt des freien Wegs: Schlüssel unbekannt`,
-        `${c.fakten.benutzerStatus} ${c.fakten.vollstaendig}`,
-      );
-      pillePruefen(wo, "schluessel", c.schluessel, "unbekannt", TON.vollstaendig);
-      pillePruefen(wo, "defender", c.defender, c.fakten.defender, TON.defender);
-      pillePruefen(wo, "neustart", c.neustart, c.fakten.neustart, TON.neustart);
-      if (pfad === "/pc") {
-        pruefe(f.satzVerlauf, `${wo}: Satz „nur mit Anmeldung“ beim Verlauf`);
-        pruefe(f.satzBenutzer, `${wo}: Satz zur Windows-Anmeldung bei den Benutzer-Daten`);
-        pruefe(f.ordner === 0, `${wo}: keine Ordner (Benutzer-Daten)`, String(f.ordner));
-        pruefe(
-          f.verlaufDa &&
-            !f.filter.some((t) => /^(Starts|Meldungen|Vorgänge)\b/.test(t)) &&
-            !f.quellen.some((q) => ["Start", "Meldung", "Vorgang"].includes(q)),
-          `${wo}: Verlauf ohne Starts, Meldungen und Vorgänge`,
-          `Filter: ${f.filter.join(", ")}; Quellen: ${[...new Set(f.quellen)].join(", ")}`,
-        );
+    const fehler = [];
+    const h = (m) => {
+      if (m.method === "Runtime.exceptionThrown")
+        fehler.push(`Ausnahme: ${m.params.exceptionDetails.text}`.slice(0, 300));
+      else if (m.method === "Log.entryAdded" && m.params.entry.level === "error") {
+        // 401/403 der geschützten Wege gehören zum Weg ohne Anmeldung.
+        if (!/status of 40[13]/.test(m.params.entry.text ?? ""))
+          fehler.push(`${m.params.entry.text} ${m.params.entry.url ?? ""}`.slice(0, 300));
       }
-    }
+    };
+    cdp.hoerer.push(h);
+    const ergebnis = await ohneAnmeldungPruefen(
+      { oeffnen: (p) => cdp.oeffnen(p), werte: (a) => cdp.auswerten(a) },
+      ["/pc", "/"],
+      projektTitel(join(ordner, "repo", "projects")),
+    );
+    const status = await cdp.auswerten(OHNE_ANMELDUNG_401);
+    cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);
+    for (const e of ergebnis)
+      pruefe(e.maengel.length === 0, `ohne Anmeldung ${e.pfad}: führt zur Anmeldung, ohne Projekttitel, /api/projects 401`, e.maengel.join("; "));
+    pruefe(
+      status.every(([, st]) => st === 401),
+      "ohne Anmeldung: /api/pc, /api/pc/verlauf und die geschützten PC-Wege 401",
+      JSON.stringify(status),
+    );
+    pruefe(fehler.length === 0, "ohne Anmeldung: keine Fehler außer 401/403 in der Konsole", fehler.join(" | "));
     console.log(`  (Anmelde-Rückfragen des Browsers abgebrochen: ${cdp.anmeldeRueckfragen})`);
   },
 };
@@ -857,8 +830,8 @@ async function main() {
   console.log(`Temp-Ordner: ${ordner}`);
 
   await serverStarten(eigeneSid());
-  await bisGemessen();
   const cdp = await edgeStarten();
+  await bisGemessen(cdp);
 
   let fakten = null;
   for (const thema of ["light", "dark"]) {
@@ -881,9 +854,9 @@ async function main() {
   await cdp.breite(1280);
   await sicher("/schluessel?gespeichert", () => schluesselPruefen(cdp));
 
-  console.log("\n== Freier Weg (zweites Profil ohne Windows-Anmeldung) ==");
+  console.log("\n== Ohne Anmeldung (zweites Profil ohne Windows-Anmeldung) ==");
   let frei = null;
-  await sicher("freier Weg", async () => {
+  await sicher("ohne Anmeldung", async () => {
     frei = await freierWeg.starten();
     await freierWeg.pruefen(frei);
   });
