@@ -378,6 +378,65 @@ describe('Meldungen für die Aktualitätsprüfung (Auflage aus der Abnahme der K
 		expect(bereit).toEqual(['frei', 'geschuetzt', 'frei']);
 	});
 
+	it('„abgemeldet“ nur beim Wechsel geschützt → frei; die Abmeldung des Hörers wirkt', async () => {
+		vi.stubGlobal('EventSource', FakeSource);
+		const k = neuerKanal();
+		let abgemeldet = 0;
+		const ab = k.onAbgemeldet(() => {
+			abgemeldet += 1;
+			// Beim Auslösen gilt schon der freie, und die Seite fragt den Anmeldestand neu.
+			expect(k.aktiv).toBe('frei');
+			expect(zugang.stand).not.toBe('da');
+		});
+		// Start ohne Anmeldung (null → frei): nichts.
+		k.start(antwort(200));
+		frei().oeffnen();
+		frei().senden('anmeldung', { stand: 'nicht_angemeldet' });
+		// Anmelden (frei → geschützt): nichts.
+		await vi.waitFor(() => {
+			expect(FakeSource.offen()).toEqual([FREIER_KANAL, GESCHUETZT]);
+		});
+		geschuetzt().oeffnen();
+		geschuetzt().senden('anmeldung', { stand: 'angemeldet' });
+		expect(k.aktiv).toBe('geschuetzt');
+		expect(abgemeldet).toBe(0);
+		// Widerruf durch den Server: einmal.
+		geschuetzt().senden('anmeldung', { stand: 'nicht_angemeldet' });
+		expect(abgemeldet).toBe(1);
+		// Schon frei: „Abmelden“ noch einmal meldet nichts.
+		k.abgemeldet();
+		expect(abgemeldet).toBe(1);
+		ab();
+	});
+
+	it('Ausweis abgelaufen (Neuaufbau 401) und Knopf: „abgemeldet“; ein abgemeldeter Hörer nicht', async () => {
+		vi.stubGlobal('EventSource', FakeSource);
+		vi.stubGlobal('fetch', antwort(401));
+		zugang.setzen('da');
+		const k = neuerKanal();
+		const ruf: string[] = [];
+		k.onAbgemeldet(() => ruf.push('bleibt'));
+		const ab = k.onAbgemeldet(() => ruf.push('weg'));
+		ab();
+		k.start(antwort(401));
+		geschuetzt().oeffnen();
+		geschuetzt().senden('anmeldung', { stand: 'angemeldet' });
+		geschuetzt().fehlerAufgegeben();
+		await vi.waitFor(() => {
+			expect(k.aktiv).toBe('frei');
+		});
+		expect(ruf).toEqual(['bleibt']);
+		// Wieder angemeldet, dann der Knopf „Abmelden“: noch einmal.
+		k.stop();
+		zugang.setzen('da');
+		k.start(antwort(401));
+		geschuetzt().oeffnen();
+		geschuetzt().senden('anmeldung', { stand: 'angemeldet' });
+		expect(ruf).toEqual(['bleibt']);
+		k.abgemeldet();
+		expect(ruf).toEqual(['bleibt', 'bleibt']);
+	});
+
 	it('jede Fassung nennt den Kanal, aus dem sie kam', () => {
 		vi.stubGlobal('EventSource', FakeSource);
 		zugang.setzen('da');

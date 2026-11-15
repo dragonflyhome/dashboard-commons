@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SATZ_NICHT_MEHR_DA, SATZ_OHNE_ANMELDUNG } from '#lib/anstehend.ts';
+import { freierKanal } from '#lib/freikanal.svelte.ts';
 import { live, type InhaltAenderung } from '#lib/live.svelte.ts';
 import { beispielProjektStand, eintrag, json } from '#lib/anstehend.beispiel.ts';
 import { SATZ_TEIL_FEHLT } from '#lib/projektteile.ts';
@@ -662,6 +663,32 @@ describe('Fehlerwege, Anker und Neuladen (aus dem Unter-Dashboard übernommen)',
 			for (const weg of ['/api/anstehend', '/backlog', '/plan', '/verlauf?'])
 				expect(aufrufe(f, weg), weg).toBe(2);
 		});
+	});
+
+	it('nach dem Abmelden (auch Widerruf, Ablauf) lädt alles neu: kein Klartext aus Zeitleiste und Liste (Schritt E1)', async () => {
+		let hoerer: (() => void) | null = null;
+		const ab = vi.fn();
+		vi.spyOn(freierKanal, 'onAbgemeldet').mockImplementation((l) => {
+			hoerer = l;
+			return ab;
+		});
+		let angemeldet = true;
+		const ein = netz(true);
+		const aus = netz(false);
+		const f = vi.fn((e: RequestInfo | URL) => (angemeldet ? ein(e) : aus(e)));
+		const { unmount } = render(ProjektTeile, { slug: 'beispiel', fetchFn: f });
+		await screen.findByText('Gästeliste abgeschlossen');
+		expect(screen.getAllByText('Soll die Ampel oben stehen?').length).toBeGreaterThan(0);
+		angemeldet = false;
+		(hoerer as (() => void) | null)?.();
+		await waitFor(() => {
+			expect(screen.getAllByText(SATZ_OHNE_ANMELDUNG)).toHaveLength(3);
+		});
+		expect(screen.queryByText('Gästeliste abgeschlossen')).toBeNull();
+		expect(screen.queryByText('Soll die Ampel oben stehen?')).toBeNull();
+		expect(aufrufe(f, '/verlauf?')).toBe(2);
+		unmount();
+		expect(ab).toHaveBeenCalledTimes(1);
 	});
 
 	it('live: eine Änderung am Inhalt des Projekts (plan.toml) lädt Plan und Liste neu, nur für dieses Projekt', async () => {

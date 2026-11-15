@@ -9,11 +9,13 @@
 	 * Projekte fehlen; für sie steht oben die neutrale Zeile.
 	 *
 	 * Zugeklappt, damit die Liste der Einträge oben bleibt; lädt neu bei
-	 * `change` für Anstehend oder Aufgaben, nach dem Nachholen und um Mitternacht.
+	 * `change` für Anstehend oder Aufgaben, nach dem Nachholen, um Mitternacht und
+	 * nach dem Abmelden (auch Widerruf, Ablauf; ohne Anmeldung verschwindet der Abschnitt).
 	 */
 	import type { FristenListe } from '$vertrag';
 	import { Fristenliste } from '$katalog';
 	import { ladeFristen } from '#lib/fristen.ts';
+	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { beiTageswechsel } from '#lib/tageswechsel.ts';
 	import { mitZugang } from '#lib/zugang.ts';
@@ -43,6 +45,9 @@
 				void laden();
 			}),
 			beiTageswechsel(() => {
+				void laden();
+			}),
+			freierKanal.onAbgemeldet(() => {
 				void laden();
 			})
 		];

@@ -20,8 +20,8 @@
 	 * Backlog als eigenen Kasten und den Bau als eigene Zeile. Hier stehen
 	 * Laden, Live-Kanal, Mitternacht, Anker und Fokus; die Bausteine zeigen nur.
 	 * Neu geladen wird bei `change` für Anstehend oder die Aufgaben des
-	 * Projekts, nach dem Nachholen, bei Vorgängen des Projekts, um Mitternacht
-	 * und (nur der Plan) bei einer Änderung am Inhalt des Projekts.
+	 * Projekts, nach dem Nachholen, bei Vorgängen des Projekts, um Mitternacht,
+	 * nach dem Abmelden und (nur der Plan) bei einer Änderung am Inhalt des Projekts.
 	 */
 	import { page } from '$app/state';
 	import { tick, untrack } from 'svelte';
@@ -38,6 +38,7 @@
 	import { frageSchluessel } from '#lib/antworten.ts';
 	import { aufgaben } from '#lib/aufgaben.svelte.ts';
 	import { bauLage } from '#lib/bau.svelte.ts';
+	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import { live, betrifftProjekt, type InhaltAenderung } from '#lib/live.svelte.ts';
 	import { ApiError } from '#lib/api/client.ts';
 	import {
@@ -158,6 +159,10 @@
 				if (!betrifftProjekt(a, s)) return;
 				void ladePlanFuer(s);
 				void ladeListe(s);
+			}),
+			// Abmelden, Widerruf, Ablauf: Zeitleiste und Liste kamen im Klartext; ohne Anmeldung der Satz.
+			freierKanal.onAbgemeldet(() => {
+				void allesLaden(s);
 			})
 		];
 		return () => {

@@ -7,16 +7,17 @@
 	 * Fehlt sie (archiviert), steht „nicht mehr da“.
 	 *
 	 * Die Liste kommt aus `/api/meldungen?projekt=dashboard` (Windows-
-	 * Anmeldung; ohne sie fehlt der Kasten) und folgt dem Live-Kanal.
+	 * Anmeldung; ohne sie fehlt der Kasten) und folgt dem Live-Kanal; nach dem
+	 * Abmelden lädt sie neu.
 	 */
 	import { page } from '$app/state';
 	import { tick } from 'svelte';
 	import { API } from '#lib/api/client.ts';
+	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import { live } from '#lib/live.svelte.ts';
 	import { MELDUNG_WORT, SATZ_NICHT_MEHR_DA, meldungGelesen } from '#lib/anstehend.ts';
 	import { kurzZeit } from '#lib/unterdashboard.ts';
 	import { mitZugang } from '#lib/zugang.ts';
-	import { profilVerbergen } from '#lib/pfade.ts';
 	import { ankerAus, ansteuern, gleicherAnkerKlick } from '#lib/ziel.ts';
 	import type { Meldung, MeldungenListe } from '$vertrag';
 
@@ -55,9 +56,15 @@
 		const offNachholen = live.onNachholen(() => {
 			void laden();
 		});
+		// Abmelden, Widerruf, Ablauf: Die Meldungen kamen im Klartext; neu laden, ohne Anmeldung
+		// verschwindet der Kasten. Anmelden lädt schon über `onNachholen`.
+		const offAbgemeldet = freierKanal.onAbgemeldet(() => {
+			void laden();
+		});
 		return () => {
 			off();
 			offNachholen();
+			offAbgemeldet();
 		};
 	});
 
@@ -120,14 +127,14 @@
 					<details id="meldung-{m.id}">
 						<summary>
 							<b>{MELDUNG_WORT[m.art]}:</b>
-							{profilVerbergen(m.titel)}
+							{m.titel}
 							{#if m.behoben !== null}<span class="muted small"> · behoben</span>{/if}
 						</summary>
 						<ul class="plain einzel small">
 							<li>
 								zuletzt {kurzZeit(m.zuletzt)}{#if m.anzahl > 1}, {m.anzahl}-mal{/if}
 							</li>
-							{#if m.text}<li class="text">{profilVerbergen(m.text)}</li>{/if}
+							{#if m.text}<li class="text">{m.text}</li>{/if}
 						</ul>
 						{#if m.gelesen === null}
 							<button

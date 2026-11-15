@@ -6,6 +6,17 @@ import type { Meldung } from '$vertrag';
 
 const { ort } = vi.hoisted(() => ({ ort: { url: new URL('http://localhost:8787/pc') } }));
 vi.mock('$app/state', () => ({ page: ort }));
+// Der freie Kanal als Platzhalter; die Hörer von `onAbgemeldet` stehen in `abgemeldet`, damit
+// ein Test das Abmelden auslösen kann.
+const { abgemeldet } = vi.hoisted(() => ({ abgemeldet: new Set<() => void>() }));
+vi.mock('#lib/freikanal.svelte.ts', () => ({
+	freierKanal: {
+		onAbgemeldet: (l: () => void) => {
+			abgemeldet.add(l);
+			return () => abgemeldet.delete(l);
+		}
+	}
+}));
 const { default: SystemMeldungen } = await import('./SystemMeldungen.svelte');
 
 function meldung(teil: Partial<Meldung>): Meldung {
@@ -50,10 +61,42 @@ describe('Systemmeldungen auf der PC-Seite (Etappe A3)', () => {
 		expect(screen.getByRole('button', { name: /^Gelesen:/ })).toBeInTheDocument();
 	});
 
+	it('zeigt Titel und Text aus /api/meldungen (geschützt) im Klartext (Schritt E1)', async () => {
+		ort.url = new URL('http://localhost:8787/pc');
+		const m = meldung({
+			titel: 'C:\\Users\\beispiel\\dev ist nicht lesbar',
+			text: 'Zugriff verweigert: C:\\Users\\beispiel\\dev'
+		});
+		const { container } = render(SystemMeldungen, { fetchFn: netz([m]) });
+		expect(
+			await screen.findByText('C:\\Users\\beispiel\\dev ist nicht lesbar')
+		).toBeInTheDocument();
+		expect(container.textContent).toContain('Zugriff verweigert: C:\\Users\\beispiel\\dev');
+		expect(container.textContent).not.toContain('%USERPROFILE%');
+	});
+
 	it('fehlt die Meldung (im Archiv): „nicht mehr da“', async () => {
 		ort.url = new URL('http://localhost:8787/pc#meldung-m-alt');
 		render(SystemMeldungen, { fetchFn: netz([meldung({ behoben: '2026-10-30T09:00:00+01:00' })]) });
 		expect(await screen.findByRole('status')).toHaveTextContent(SATZ_NICHT_MEHR_DA);
 		expect(screen.getByText(/behoben/)).toBeInTheDocument();
+	});
+	it('lädt nach dem Abmelden neu; ohne Anmeldung verschwindet der Kasten (Schritt E1)', async () => {
+		ort.url = new URL('http://localhost:8787/pc');
+		let angemeldet = true;
+		const fetchFn = vi.fn(() =>
+			Promise.resolve(angemeldet ? json({ meldungen: [meldung({})] }) : json({}, 401))
+		);
+		const { unmount } = render(SystemMeldungen, { fetchFn });
+		expect(await screen.findByRole('heading', { name: 'Meldungen zum PC' })).toBeInTheDocument();
+		expect(fetchFn).toHaveBeenCalledTimes(1);
+		angemeldet = false;
+		for (const l of abgemeldet) l();
+		await waitFor(() => {
+			expect(screen.queryByRole('heading', { name: 'Meldungen zum PC' })).toBeNull();
+		});
+		expect(fetchFn).toHaveBeenCalledTimes(2);
+		unmount();
+		expect(abgemeldet.size).toBe(0);
 	});
 });

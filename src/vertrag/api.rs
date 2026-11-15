@@ -320,9 +320,14 @@ pub struct SysAppsRechner {
 
 /// `/api/pc/benutzer` (geschützt, nur das Windows-Konto des Inhabers): was der Bote
 /// unter dem Konto des Inhabers liest (Ordnergrößen, winget, Autostart, Werkzeuge),
-/// dazu der Stand der Schlüssel.
+/// dazu der Stand der Schlüssel, der Name des Rechners und die Datenträger mit
+/// ihren Namen (auf `/api/pc` stehen dort Platzhalter).
 #[derive(Debug, Serialize, TS)]
 pub struct PcBenutzer {
+    /// Der Name des Rechners (`snapshot.host`).
+    pub rechner: String,
+    /// Die Datenträger wie in `snapshot.disks`, mit echten Namen.
+    pub platten: Vec<system::DiskInfo>,
     pub inventory: inventory::Inventory,
     pub sysapps: SysAppsBenutzer,
     pub schluessel: SchluesselStand,
@@ -390,8 +395,8 @@ pub struct PcVerlaufEckdaten {
     pub eintraege: u64,
 }
 
-/// `/api/daten`: Ort, Größe und Stand des Datenspeichers. Pfade im
-/// Benutzerordner stehen als `%USERPROFILE%\…` da.
+/// `/api/daten` (geschützt): Ort, Größe und Stand des Datenspeichers, Pfade im
+/// Klartext. Nur der Satz in `fehler` verbirgt das Profil (wie jede Fehlerantwort).
 #[derive(Debug, Serialize, TS)]
 pub struct DatenBericht {
     pub pfad: String,
@@ -1011,7 +1016,7 @@ pub struct Betrieb {
 /// Woher der Server den privaten Inhalt liest (Teil von [`Betrieb`], nur in
 /// `/api/betrieb/voll`). Der zweite Durchgang von Inhalt-Umziehen.ps1 prüft
 /// damit, dass der Dienst schon aus `dashboard-inhalt` liest. Pfade im
-/// Benutzerordner wie überall als `%USERPROFILE%\…`.
+/// Klartext (geschützter Weg).
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct QuellenStand {
     /// Steht in der Einstellungsdatei ein Abschnitt `[inhalt]` mit

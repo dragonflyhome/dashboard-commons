@@ -213,8 +213,8 @@ pub async fn verlauf(State(state): State<AppState>, Path(slug): Path<String>, ur
         return AppError::nicht_gefunden(format!("Kein Projekt „{slug}“")).into_response();
     }
     match super::pc::verlauf_bauen(&state, &uri, super::pc::Umfang::Projekt(&slug)).await {
-        // Meldungstexte und Hinweise ohne Profil und Namen (`datenschutz`).
-        Ok(v) => crate::datenschutz::als_json(&v).into_response(),
+        // Geschützt, darum im Klartext (Schritt E1).
+        Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
     }
 }

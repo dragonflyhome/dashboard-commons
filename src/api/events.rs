@@ -962,9 +962,12 @@ fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + 
         let snap = snap.clone();
         async move {
             let s = snap.read().await;
-            // Auf beiden Kanälen wie `/api/pc`: statt der Namen der Datenträger der Platzhalter.
+            // Frei wie `/api/pc`: statt der Namen der Datenträger der Platzhalter, alle Texte
+            // verborgen (`ereignis`). Geschützt im Klartext (Schritt E1).
             let mut disks = s.disks.clone();
-            crate::datenschutz::platten_verbergen(&mut disks);
+            if frei {
+                crate::datenschutz::platten_verbergen(&mut disks);
+            }
             let tick = PcTick {
                 at: s.taken_at,
                 cpu_percent: s.cpu_percent,
@@ -975,10 +978,7 @@ fn pc_takt(state: &AppState, frei: bool) -> impl Stream<Item = Option<Event>> + 
                 cpu_belegung: s.cpu_belegung,
                 mem_belegung: s.mem_belegung,
             };
-            // Auch auf dem geschützten Kanal wie `/api/pc`: Laufwerke ohne Profil und Namen.
-            let mut wert = serde_json::to_value(&tick).ok()?;
-            crate::datenschutz::json_verbergen(&mut wert);
-            ereignis(Art::Pc, frei, &wert)
+            ereignis(Art::Pc, frei, &tick)
         }
     })
 }
@@ -1268,10 +1268,10 @@ mod tests {
         }
     }
 
-    /// Der PC-Takt nennt die Laufwerke auf
-    /// beiden Kanälen ohne Profil und Namen, wie `/api/pc`.
+    /// Der PC-Takt nennt die Laufwerke auf dem freien Kanal ohne Profil und
+    /// Namen, wie `/api/pc`; auf dem geschützten im Klartext (Schritt E1).
     #[tokio::test]
-    async fn pc_takt_ohne_profil() {
+    async fn pc_takt_ohne_profil_nur_frei() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         state.snapshot.write().await.disks = vec![crate::pc::system::DiskInfo {
             name: r"Ablage (C:\Users\beispiel-konto\Laufwerk)".into(),
@@ -1284,15 +1284,37 @@ mod tests {
             let mut strom = Box::pin(pc_takt(&state, frei));
             let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
             let text = als_text(tokio_stream::once(Some(e))).await;
-            assert!(text.contains(r#""mount":"%USERPROFILE%\\Laufwerk""#), "{text}");
-            assert!(!text.contains("beispiel-konto") && !text.contains(r"Users\\"), "{text}");
+            if frei {
+                assert!(text.contains(r#""mount":"%USERPROFILE%\\Laufwerk""#), "{text}");
+                assert!(!text.contains("beispiel-konto") && !text.contains(r"Users\\"), "{text}");
+            } else {
+                assert!(text.contains(r#""mount":"C:\\Users\\beispiel-konto\\Laufwerk""#), "{text}");
+            }
         }
     }
 
-    /// Der PC-Takt nennt auf beiden Kanälen statt des Namens eines
-    /// Datenträgers den Platzhalter; ein leerer Name bleibt leer.
+    /// Über den ganzen freien Strom (`frei_strom`, wie `/api/events/frei`):
+    /// Das erste `pc`-Ereignis nennt statt des Namens eines Datenträgers den
+    /// Platzhalter und statt des Profils `%USERPROFILE%`. Fällt, wenn
+    /// `frei_strom` den PC-Takt als geschützt aufriefe.
     #[tokio::test]
-    async fn pc_takt_ohne_namen_der_datentraeger() {
+    async fn freier_strom_verbirgt_datentraeger() {
+        let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
+        let platte =
+            |name: &str, mount: &str| crate::pc::system::DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
+        state.snapshot.write().await.disks = vec![platte("Beispiel Platte", "/Volumes/Beispiel Platte"), platte("", r"C:\Users\beispiel-konto\Laufwerk")];
+        let strom = frei_strom(&state, Anmeldewort::NichtAngemeldet);
+        let text = als_text(futures_util::StreamExt::take_until(strom, tokio::time::sleep(Duration::from_millis(400)))).await;
+        let pc = text.split("\n\n").find(|e| e.lines().any(|z| z == "event: pc")).unwrap_or_else(|| panic!("kein pc-Ereignis: {text}"));
+        assert!(pc.contains("%VOLUME%") && pc.contains("%USERPROFILE%"), "{pc}");
+        assert!(!pc.contains("Beispiel") && !pc.contains("beispiel-konto"), "{pc}");
+    }
+
+    /// Der PC-Takt nennt auf dem freien Kanal statt des Namens eines
+    /// Datenträgers den Platzhalter, auf dem geschützten den echten Namen;
+    /// ein leerer Name bleibt leer.
+    #[tokio::test]
+    async fn pc_takt_namen_der_datentraeger_nur_geschuetzt() {
         let state = AppState::fuer_tests(&crate::app::beispiel_fuer_tests());
         let platte =
             |name: &str, mount: &str| crate::pc::system::DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
@@ -1301,9 +1323,14 @@ mod tests {
             let mut strom = Box::pin(pc_takt(&state, frei));
             let e = tokio::time::timeout(Duration::from_secs(3), strom.next()).await.unwrap().flatten().expect("ein Takt");
             let text = als_text(tokio_stream::once(Some(e))).await;
-            assert!(text.contains(r#""name":"%VOLUME%","mount":"/Volumes/%VOLUME%""#), "{text}");
             assert!(text.contains(r#""name":"","mount":"C:\\""#), "{text}");
-            assert!(!text.contains("Beispiel") && !text.contains("Platte"), "{text}");
+            if frei {
+                assert!(text.contains(r#""name":"%VOLUME%","mount":"/Volumes/%VOLUME%""#), "{text}");
+                assert!(!text.contains("Beispiel") && !text.contains("Platte"), "{text}");
+            } else {
+                assert!(text.contains(r#""name":"Beispiel Platte","mount":"/Volumes/Beispiel Platte""#), "{text}");
+                assert!(!text.contains("%VOLUME%"), "{text}");
+            }
         }
     }
 

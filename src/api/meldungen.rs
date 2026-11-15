@@ -130,12 +130,7 @@ pub async fn liste(State(state): State<AppState>, uri: Uri) -> Result<Json<Meldu
     let ohne = if projekt.is_none() { state.archivierte() } else { Default::default() };
     let mut meldungen = Speicher::im_hintergrund(state.speicher()?, move |s| s.meldungen_lesen(projekt.as_deref())).await.map_err(meldungsfehler)?;
     meldungen.retain(|m| !ohne.contains(&m.projekt));
-    // Titel und Text ohne Profil und Benutzernamen (`datenschutz`; die PC-Seite
-    // zeigt hier die Systemmeldungen, oft mit einem Pfad aus einem Lesefehler).
-    for m in &mut meldungen {
-        m.titel = crate::datenschutz::verbergen(&m.titel);
-        m.text = m.text.as_deref().map(crate::datenschutz::verbergen);
-    }
+    // Geschützt, darum Titel und Text im Klartext (Schritt E1).
     Ok(Json(MeldungenListe { meldungen }))
 }
 

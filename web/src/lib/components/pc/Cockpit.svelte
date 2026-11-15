@@ -2,13 +2,15 @@
 	/**
 	 * PC-Übersicht für die Startseite: drei Ringe, zwei Live-Kurven, Ampeln.
 	 * Erste Werte kommen aus /api/pc, danach alle 5 s über den Live-Kanal.
-	 * Schlüssel und Benutzerordner kommen aus /api/pc/benutzer (`ladung`).
+	 * Schlüssel, Benutzerordner und angemeldet der Name des Rechners und der
+	 * Datenträger kommen aus /api/pc/benutzer (`ladung`).
 	 */
 	import { resolve } from '$app/paths';
 	import type { PcReport } from '$vertrag';
 	import { live } from '#lib/live.svelte.ts';
 	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import { fmtBytes, fmtUptime } from '#lib/format.ts';
+	import { VOLUME_PLATZHALTER } from '#lib/pfade.ts';
 	import {
 		backupVerdict,
 		benutzerdaten,
@@ -47,8 +49,10 @@
 		cpuHist = cpuVerlauf(report.snapshot.history);
 		memHist = report.snapshot.history.map((s) => s.mem);
 	});
-	// PC-Werte: aus dem geschützten Kanal, sonst aus dem freien (Kopfleiste, Fassung 2).
-	const tick = $derived(live.pc ?? freierKanal.pc);
+	// PC-Werte: aus dem geschützten Kanal, sonst aus dem freien (Kopfleiste, Fassung 2). Der
+	// geschützte zählt nur, solange er gilt: nach dem Abmelden trägt er noch Datenträgernamen.
+	const geschuetztPc = $derived(freierKanal.aktiv === 'geschuetzt' ? live.pc : null);
+	const tick = $derived(geschuetztPc ?? freierKanal.pc);
 	let lastTick = $state<string | null>(null);
 	$effect(() => {
 		const t = tick;
@@ -62,7 +66,20 @@
 	const cpu = $derived(tick?.cpu_percent ?? report.snapshot.cpu_percent);
 	const memUsed = $derived(tick?.mem_used ?? report.snapshot.mem_used);
 	const memTotal = $derived(tick?.mem_total ?? report.snapshot.mem_total);
-	const disk = $derived((tick?.disks ?? report.snapshot.disks)[0] ?? null);
+	// Angemeldet die Datenträger mit Namen aus /api/pc/benutzer, bis der geschützte Kanal sie
+	// bringt; der freie Takt trägt nur Platzhalter und darf sie nicht überschreiben.
+	const disk = $derived(
+		(geschuetztPc?.disks ?? ladung?.benutzer?.platten ?? tick?.disks ?? report.snapshot.disks)[0] ??
+			null
+	);
+	// Unter Windows ist der Einhängepunkt nur der Laufwerksbuchstabe: den Namen dazu, wenn es einen
+	// gibt. Unter macOS (/Volumes/<Name>) steckt der Name schon im Ort: dann nur der Name.
+	const plattenLabel = $derived.by(() => {
+		if (!disk) return '';
+		const ort = disk.mount.replace('\\', '');
+		if (!disk.name || disk.name === VOLUME_PLATZHALTER) return `Platte ${ort}`;
+		return ort === `/Volumes/${disk.name}` ? `Platte ${disk.name}` : `Platte ${disk.name} (${ort})`;
+	});
 	const uptime = $derived(tick?.uptime_secs ?? report.snapshot.uptime_secs);
 	// Die Stufe der Belegung rechnet der Server (Schwellen in belegung_schwellen).
 	const cpuBelegung = $derived(tick?.cpu_belegung ?? report.snapshot.cpu_belegung);
@@ -82,7 +99,8 @@
 	<div class="head">
 		<h2>Wie geht es dem PC?</h2>
 		<span class="muted small">
-			<!-- Ohne den Namen des Rechners: Der Server liefert dort nur einen Platzhalter. -->
+			<!-- Den Namen des Rechners nur angemeldet (/api/pc/benutzer); /api/pc trägt einen Platzhalter. -->
+			{#if b?.rechner}{b.rechner} ·{/if}
 			{report.snapshot.os}
 			{#if ready}· läuft seit {fmtUptime(uptime)}{/if}
 		</span>
@@ -108,7 +126,7 @@
 				<Ring
 					percent={percent(disk.used, disk.total)}
 					belegung={disk.belegung}
-					label="Platte {disk.mount.replace('\\', '')}"
+					label={plattenLabel}
 					value="{fmtBytes(disk.total - disk.used)} frei"
 				/>
 			{/if}

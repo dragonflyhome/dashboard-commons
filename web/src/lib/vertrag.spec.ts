@@ -282,6 +282,8 @@ const pc: PcReport = {
 };
 
 const pcBenutzer: PcBenutzer = {
+	rechner: 'beispiel-rechner',
+	platten: [{ name: 'Beispiel Platte', mount: 'C:\\', total: 10, used: 1, belegung: 'normal' }],
 	inventory: {
 		root: 'C:\\',
 		computed_at: null,
@@ -317,6 +319,9 @@ describe('Vertrag: PC', () => {
 		expect(b.schluessel.gespeichert).toBe(2);
 		expect(b.bote).toBe('bote-fehlt');
 		expect(b.sysapps.tools[0]?.version).toBe('2.47');
+		// Geschützt: Rechner und Datenträger mit echten Namen (Schritt E1).
+		expect(b.rechner).toBe('beispiel-rechner');
+		expect(b.platten[0]?.name).toBe('Beispiel Platte');
 	});
 });
 

@@ -1,7 +1,8 @@
-//! Tests je Endpunkt: Was hinausgeht, nennt weder das Profil noch den
-//! Benutzernamen. Erfundenes Konto
+//! Tests je Endpunkt: Was ein freier Weg hinausgibt, nennt weder das Profil
+//! noch den Benutzernamen; die geschützten Wege aus Schritt E1 liefern
+//! angemeldet im Klartext und ohne Anmeldung 401. Erfundenes Konto
 //! `probekonto`; jeder Test legt Texte mit dessen Profil in den Zustand und
-//! prüft alle Texte der Antwort.
+//! prüft die Texte der Antwort.
 
 use axum::Router;
 use axum::body::Body;
@@ -95,10 +96,34 @@ async fn api_pc_rechner_und_datentraeger() {
     ohne_profil("/api/pc", &v);
 }
 
-/// `/api/pc/benutzer`: `inventory.root`, `inventory.hinweis`,
-/// `autostart.command`, `winget_error`.
+// ----- Geschützte Wege: angemeldet im Klartext (Schritt E1) -----
+
+/// Die geschützten Wege aus Schritt E1. Ohne Anmeldung antworten sie 401
+/// (Schleuse `sicherheit::geschuetzt`, bei zweien zusätzlich der Handler);
+/// nur darum dürfen sie im Klartext liefern.
+const GESCHUETZT_KLARTEXT: [&str; 6] =
+    ["/api/pc/benutzer", "/api/pc/verlauf/voll", "/api/betrieb/voll", "/api/daten", "/api/meldungen", "/api/projekte/dashboard/verlauf"];
+
+/// Ohne Anmeldung: 401 auf jedem dieser Wege, ohne Inhalt.
 #[tokio::test]
-async fn api_pc_benutzer() {
+async fn klartext_wege_ohne_anmeldung_401() {
+    let state = AppState::fuer_tests(&beispiel_fuer_tests());
+    meldung_mit_pfad(&state);
+    let app = router(state);
+    let mut offen = Vec::new();
+    for pfad in GESCHUETZT_KLARTEXT {
+        let (status, v) = hole(&app, pfad).await;
+        if status != StatusCode::UNAUTHORIZED || v.to_string().contains(NAME) {
+            offen.push(format!("{pfad}: {status}"));
+        }
+    }
+    assert!(offen.is_empty(), "ohne Anmeldung nicht 401: {offen:?}");
+}
+
+/// `/api/pc/benutzer`: `inventory.root`, `inventory.hinweis`,
+/// `autostart.command`, `winget_error` angemeldet im Klartext.
+#[tokio::test]
+async fn api_pc_benutzer_klartext() {
     let state = AppState::fuer_tests(&beispiel_fuer_tests());
     {
         let mut inv = state.inventory.write().await;
@@ -116,11 +141,32 @@ async fn api_pc_benutzer() {
     }
     let (status, v) = hole(&router_angemeldet(state), "/api/pc/benutzer").await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v["inventory"]["root"], "%USERPROFILE%");
-    assert_eq!(v["inventory"]["hinweis"], "Die Ausschlussliste fehlt unter %USERPROFILE%/dev/inhalt/data.");
-    assert_eq!(v["sysapps"]["autostart"][0]["command"], r#""%USERPROFILE%\AppData\Local\werkzeug.exe" --leise"#);
-    assert_eq!(v["sysapps"]["winget_error"], "winget: %USERPROFILE%/winget.log fehlt");
-    ohne_profil("/api/pc/benutzer", &v);
+    assert_eq!(v["inventory"]["root"], format!(r"C:\Users\{NAME}"));
+    assert_eq!(v["inventory"]["hinweis"], format!("Die Ausschlussliste fehlt unter /c/Users/{NAME}/dev/inhalt/data."));
+    assert_eq!(v["sysapps"]["autostart"][0]["command"], format!(r#""C:\Users\{NAME}\AppData\Local\werkzeug.exe" --leise"#));
+    assert_eq!(v["sysapps"]["winget_error"], format!("winget: file:///C:/Users/{NAME}/winget.log fehlt"));
+}
+
+/// `/api/pc/benutzer` trägt den Namen des Rechners und die Datenträger mit
+/// echten Namen; `/api/pc` (frei) behält die Platzhalter.
+#[tokio::test]
+async fn api_pc_benutzer_rechner_und_datentraeger() {
+    use crate::pc::system::DiskInfo;
+    let state = AppState::fuer_tests(&beispiel_fuer_tests());
+    {
+        let mut s = state.snapshot.write().await;
+        s.host = "beispiel-rechner".into();
+        s.disks = vec![DiskInfo { name: "Beispiel Platte".into(), mount: "/Volumes/Beispiel Platte".into(), total: 10, used: 1, belegung: Default::default() }];
+    }
+    let (status, v) = hole(&router_angemeldet(state.clone()), "/api/pc/benutzer").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    assert_eq!(v["rechner"], "beispiel-rechner");
+    assert_eq!(v["platten"][0]["name"], "Beispiel Platte");
+    assert_eq!(v["platten"][0]["mount"], "/Volumes/Beispiel Platte");
+    assert_eq!(v["platten"][0]["total"], 10);
+    let (_, frei) = hole(&router(state), "/api/pc").await;
+    assert_eq!(frei["snapshot"]["host"], "%COMPUTERNAME%");
+    assert_eq!(frei["snapshot"]["disks"][0]["name"], "%VOLUME%");
 }
 
 /// Eine Systemmeldung mit Pfad im Titel und Text.
@@ -140,42 +186,85 @@ fn meldung_mit_pfad(state: &AppState) {
     state.speicher.clone().unwrap().meldung_melden(n, crate::speicher::meldungen::Wiederholung::Zustand, &jetzt).unwrap();
 }
 
-/// `/api/pc/verlauf/voll`: die Meldungstexte.
+/// `/api/pc/verlauf/voll` und `/api/projekte/<slug>/verlauf`: die
+/// Meldungstexte im Klartext; der freie `/api/pc/verlauf` verbirgt weiter.
 #[tokio::test]
-async fn api_pc_verlauf_voll() {
+async fn verlauf_voll_und_projekt_klartext() {
     let state = AppState::fuer_tests(&beispiel_fuer_tests());
     meldung_mit_pfad(&state);
-    let (status, v) = hole(&router_angemeldet(state), "/api/pc/verlauf/voll").await;
-    assert_eq!(status, StatusCode::OK, "{v}");
-    let mut alle = Vec::new();
-    texte(&v, &mut alle);
-    assert!(alle.iter().any(|t| t == r"%USERPROFILE%\dev ist nicht lesbar"), "{v}");
-    ohne_profil("/api/pc/verlauf/voll", &v);
+    let titel = format!(r"C:\Users\{NAME}\dev ist nicht lesbar");
+    for pfad in ["/api/pc/verlauf/voll", "/api/projekte/dashboard/verlauf"] {
+        let (status, v) = hole(&router_angemeldet(state.clone()), pfad).await;
+        assert_eq!(status, StatusCode::OK, "{pfad}: {v}");
+        let mut alle = Vec::new();
+        texte(&v, &mut alle);
+        assert!(alle.contains(&titel), "{pfad}: {v}");
+    }
+    let (_, frei) = hole(&router_angemeldet(state), "/api/pc/verlauf").await;
+    ohne_profil("/api/pc/verlauf", &frei);
 }
 
-/// `/api/meldungen` (die PC-Seite liest dort die Systemmeldungen).
+/// `/api/meldungen` (die PC-Seite liest dort die Systemmeldungen) im Klartext.
 #[tokio::test]
-async fn api_meldungen() {
+async fn api_meldungen_klartext() {
     let state = AppState::fuer_tests(&beispiel_fuer_tests());
     meldung_mit_pfad(&state);
     let (status, v) = hole(&router_angemeldet(state), "/api/meldungen?projekt=dashboard").await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v["meldungen"][0]["titel"], r"%USERPROFILE%\dev ist nicht lesbar");
-    assert_eq!(v["meldungen"][0]["text"], r"Zugriff verweigert: %USERPROFILE%\dev (os error 5)");
-    ohne_profil("/api/meldungen", &v);
+    assert_eq!(v["meldungen"][0]["titel"], format!(r"C:\Users\{NAME}\dev ist nicht lesbar"));
+    assert_eq!(v["meldungen"][0]["text"], format!(r"Zugriff verweigert: \\rechner\c$\Users\{NAME}\dev (os error 5)"));
 }
 
-/// `/api/betrieb` und `/api/betrieb/voll`: `einstellungen`, `quellen`,
-/// `ordner[].stand` und Fehlersätze ohne Profil (im Test liegen die Quellen
-/// oft im Profil dieses Prozesses).
+/// `/api/betrieb` (frei): `ordner[].stand` und Fehlersätze ohne Profil (im
+/// Test liegen die Quellen oft im Profil dieses Prozesses).
+/// `/api/betrieb/voll` (geschützt): `einstellungen` und alle `quellen` genau
+/// im Klartext, unter einem erfundenen Profil.
 #[tokio::test]
 async fn api_betrieb() {
-    let state = AppState::fuer_tests(&beispiel_fuer_tests());
-    for pfad in ["/api/betrieb", "/api/betrieb/voll"] {
-        let (status, v) = hole(&router_angemeldet(state.clone()), pfad).await;
-        assert_eq!(status, StatusCode::OK, "{pfad}: {v}");
-        ohne_profil(pfad, &v);
-    }
+    use crate::dienst::einstellungen::{Bote, Einstellungen, Inhalt, Konten, Pfade};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    let mut state = AppState::fuer_tests(&beispiel_fuer_tests());
+    let (status, v) = hole(&router_angemeldet(state.clone()), "/api/betrieb").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    ohne_profil("/api/betrieb", &v);
+    // Ein Pfad unter dem erfundenen Profil, in der Form des Systems.
+    let im_profil =
+        |rest: &str| -> String { if cfg!(windows) { format!(r"C:\Users\{NAME}\{}", rest.replace('/', r"\")) } else { format!("/Users/{NAME}/{rest}") } };
+    let pfad = |rest: &str| PathBuf::from(im_profil(rest));
+    state.einstellungen = Some(Arc::new(Einstellungen {
+        datei: pfad("dashboard/dienst.toml"),
+        repo: pfad("dev/dashboard"),
+        port: 8787,
+        pfade: Pfade {
+            daten: pfad("dashboard/daten.redb"),
+            sicherung: pfad("dashboard/sicherung"),
+            protokoll: pfad("dashboard/protokoll"),
+            web: pfad("dev/dashboard/web/build"),
+            projekte: pfad("dev/inhalt/projects"),
+        },
+        inhalt: Inhalt {
+            projekte: vec![pfad("dev/inhalt/projects"), pfad("dev/zweite/projects")],
+            daten: pfad("dev/inhalt/data"),
+            entscheidungen: pfad("dev/inhalt/docs/entscheidungen"),
+            abschnitt: true,
+        },
+        konten: Konten::default(),
+        bote: Bote { pipe: "dashboard-bote".into(), programm: pfad("dashboard/bote.exe") },
+    }));
+    state.quellen = Arc::new(vec![pfad("dev/inhalt/projects"), pfad("dev/zweite/projects")]);
+    state.entscheidungen_dir = Arc::new(pfad("dev/inhalt/docs/entscheidungen"));
+    let (status, v) = hole(&router_angemeldet(state.clone()), "/api/betrieb/voll").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    assert_eq!(v["einstellungen"], im_profil("dashboard/dienst.toml").as_str(), "{v}");
+    assert_eq!(v["quellen"]["projekte"], serde_json::json!([im_profil("dev/inhalt/projects"), im_profil("dev/zweite/projects")]), "{v}");
+    assert_eq!(v["quellen"]["daten"], im_profil("dev/inhalt/data").as_str(), "{v}");
+    assert_eq!(v["quellen"]["entscheidungen"], im_profil("dev/inhalt/docs/entscheidungen").as_str(), "{v}");
+    assert_eq!(v["quellen"]["inhalt_abschnitt"], true, "{v}");
+    // Der freie Weg verbirgt dieselben Einstellungen weiter.
+    let (status, v) = hole(&router_angemeldet(state), "/api/betrieb").await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    ohne_profil("/api/betrieb", &v);
 }
 
 /// Ein Inhalt im Temp-Ordner mit einem Projekt, dessen Kopf Profilpfade nennt

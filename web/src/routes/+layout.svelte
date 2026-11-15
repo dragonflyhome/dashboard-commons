@@ -28,6 +28,17 @@
 
 	let { data, children }: LayoutProps = $props();
 
+	/** Was ein `load` aus geschützten Wegen holt (`depends`); nach dem Abmelden neu. */
+	const GESCHUETZT_GELADEN = new Set([
+		'api:pc:benutzer',
+		'api:daten',
+		'api:vorgaenge',
+		'api:entscheidungen',
+		'api:zielbild',
+		'api:anleitung',
+		'api:schluessel'
+	]);
+
 	// Kopfleiste, Fassung 3: Brotkrumen und Markierung der Leiste aus Route und den schon geladenen Daten.
 	const kopf = $derived(kopfleiste(page.route.id, page.params, page.data));
 
@@ -88,6 +99,11 @@
 		const offFrei = freierKanal.onInhalt((a) => {
 			if (!live.connected) void invalidate(betroffen(a));
 		});
+		// Abmelden, Widerruf, Ablauf: Benutzer-Daten (Rechnername, Platten, Ordner, Systemanwendungen)
+		// und die Seiten aus geschützten Wegen kamen im Klartext; neu laden, ohne Anmeldung kommt nichts davon.
+		const offAbgemeldet = freierKanal.onAbgemeldet(() => {
+			void invalidate((u) => GESCHUETZT_GELADEN.has(u.href));
+		});
 		// Vorgänge kommen nicht als Dateiänderung, sondern als eigenes Ereignis.
 		// Live-Lücken: gezielt die Übersicht der Vorgänge statt refreshAll; was ein
 		// Vorgang sonst ändert, kommt als `speicher` mit Bereich `vorgaenge`.
@@ -114,6 +130,7 @@
 		return () => {
 			off();
 			offFrei();
+			offAbgemeldet();
 			freierKanal.stop();
 			offVorgang();
 			offBereich();

@@ -1476,7 +1476,8 @@ async fn pc_ohne_anmeldung_ohne_benutzerdaten() {
     let res = schicke(&router_angemeldet(state), hole("/api/pc/benutzer")).await;
     assert_eq!(res.status(), StatusCode::OK);
     let v = json(res).await;
-    assert_eq!(felder(&v), ["bote", "inventory", "schluessel", "stand", "sysapps"], "{v}");
+    // Schritt E1: dazu Rechnername und Datenträger (nur hier, geschützt).
+    assert_eq!(felder(&v), ["bote", "inventory", "platten", "rechner", "schluessel", "stand", "sysapps"], "{v}");
     assert_eq!(v["bote"], "da", "{v}");
     assert_eq!(v["sysapps"]["winget"][0]["name"], "Geheim");
     assert_ne!(v["schluessel"]["vollstaendig"], "unbekannt", "{v}");
