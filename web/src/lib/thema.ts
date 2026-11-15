@@ -13,26 +13,33 @@
  * mit gesperrtem Speicher gilt einfach System.
  */
 
-export type Thema = 'system' | 'hell' | 'dunkel';
-
 /** Schlüssel im localStorage, derselbe wie im Skript in app.html. */
 export const THEMA_SCHLUESSEL = 'dashboard-thema';
 
-export const THEMEN: readonly { wert: Thema; text: string }[] = [
+/**
+ * Die eine Liste der Themen (Etappe S1): Typ, Prüfung, gemerkte Wahl und die
+ * Optionen des Schalters kommen von hier. `system` ist die fehlende Wahl; jeder
+ * andere Wert braucht in app.css seinen Block `:root[data-theme='<wert>'],
+ * [data-thema-vorschau='<wert>']` (kontrast.spec.ts verlangt ihn) und muss dem
+ * Skript in app.html bekannt sein (thema.svelte.spec.ts führt es je Wert aus).
+ */
+export const THEMEN = [
 	{ wert: 'system', text: 'System' },
 	{ wert: 'hell', text: 'Hell' },
 	{ wert: 'dunkel', text: 'Dunkel' }
-];
+] as const;
+
+export type Thema = (typeof THEMEN)[number]['wert'];
 
 export function istThema(x: unknown): x is Thema {
-	return x === 'system' || x === 'hell' || x === 'dunkel';
+	return THEMEN.some((t) => t.wert === x);
 }
 
-/** Die gespeicherte Wahl; ohne Wahl oder ohne Speicher `system`. */
+/** Die gespeicherte Wahl; ohne Wahl, mit fremdem Wert oder ohne Speicher `system`. */
 export function themaLesen(): Thema {
 	try {
 		const t = localStorage.getItem(THEMA_SCHLUESSEL);
-		return t === 'hell' || t === 'dunkel' ? t : 'system';
+		return istThema(t) ? t : 'system';
 	} catch {
 		return 'system';
 	}
