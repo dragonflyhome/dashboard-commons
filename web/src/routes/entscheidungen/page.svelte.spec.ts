@@ -173,6 +173,8 @@ describe('Felder als Zeilen', () => {
 
 describe('/entscheidungen ohne Anmeldung (Schritt E2)', () => {
 	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
-		expect(await leitetZurAnmeldung('/entscheidungen')).toBe('/anmelden?ziel=%2Fentscheidungen');
+		expect(await leitetZurAnmeldung('/entscheidungen')).toBe(
+			'/anmelden?ziel=%2Fentscheidungen&umgeleitet=1'
+		);
 	});
 });

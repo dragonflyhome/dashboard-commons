@@ -125,9 +125,13 @@ export const zugang = new Zugang();
  */
 export const OEFFENTLICHE_SEITEN: ReadonlySet<string> = new Set(['/anmelden', '/fassungen']);
 
-/** Die Anmeldeseite mit dem Weg zurück (`ziel`, geprüft auf /anmelden durch `zielPruefen`). */
-export function anmeldenAdresse(url: URL): string {
-	return `/anmelden?ziel=${encodeURIComponent(url.pathname + url.search)}`;
+/**
+ * Die Anmeldeseite mit dem Weg zurück (`ziel`, geprüft auf /anmelden durch `zielPruefen`).
+ * `umgeleitet=1` setzt nur der Weg ohne Anmeldung (hier und im Server): Nur dann springt
+ * /anmelden bei gültiger Anmeldung gleich weiter. Das Schloss setzt es nie.
+ */
+export function anmeldenAdresse(url: Pick<URL, 'pathname' | 'search'>): string {
+	return `/anmelden?ziel=${encodeURIComponent(url.pathname + url.search)}&umgeleitet=1`;
 }
 
 /** Die Antwort, die der Server ohne Anmeldung gäbe (Körper wie `AppError`). */

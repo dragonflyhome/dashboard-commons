@@ -14,6 +14,14 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Behoben
+- Wer angemeldet ist, kommt über das Schloss oben wieder zur Passkey-Seite
+  und kann dort einen Passkey anlegen oder verwalten. Bisher sprang die
+  Seite gleich zurück. Weiter springt sie nur noch nach einer Umleitung
+  zur Anmeldung. Auch der Satz „Anmeldung nötig“ steht nur noch nach so
+  einer Umleitung, nicht mehr, wenn man die Seite selbst über das Schloss
+  öffnet.
+
 0.13.0 - 2026-11-15
 -------------------
 

@@ -129,7 +129,7 @@ describe('/anleitung (Etappe 6b): die Abschnitte aus docs/anleitung', () => {
 
 describe('/anleitung ohne Anmeldung (Schritt E2)', () => {
 	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
-		expect(await leitetZurAnmeldung('/anleitung')).toBe('/anmelden?ziel=%2Fanleitung');
+		expect(await leitetZurAnmeldung('/anleitung')).toBe('/anmelden?ziel=%2Fanleitung&umgeleitet=1');
 	});
 
 	it('mit Anmeldung: lädt /api/anleitung', async () => {

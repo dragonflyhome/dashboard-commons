@@ -38,7 +38,7 @@ describe('Fehlerseite „Anmeldung nötig“ (Schritt E2)', () => {
 		expect(edge).toHaveAttribute('href', 'http://localhost:8788/pc?x=1');
 		expect(screen.getByRole('link', { name: 'Zur Anmeldung' })).toHaveAttribute(
 			'href',
-			'http://localhost:8788/anmelden?ziel=%2Fpc%3Fx%3D1'
+			'http://localhost:8788/anmelden?ziel=%2Fpc%3Fx%3D1&umgeleitet=1'
 		);
 		expect(document.body.textContent).not.toMatch(/jedem Browser|auch ohne/);
 	});
@@ -58,7 +58,7 @@ describe('Fehlerseite „Anmeldung nötig“ (Schritt E2)', () => {
 			expect(document.body.textContent).not.toMatch(/auch ohne|jedem Browser/);
 			expect(screen.getByRole('link', { name: /Zur Anmeldung/ })).toHaveAttribute(
 				'href',
-				'http://localhost:8788/anmelden?ziel=%2Fpc%3Fx%3D1'
+				'http://localhost:8788/anmelden?ziel=%2Fpc%3Fx%3D1&umgeleitet=1'
 			);
 			cleanup();
 		}

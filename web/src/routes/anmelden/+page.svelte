@@ -19,11 +19,13 @@
 	 * Hinweis.
 	 *
 	 * Schritt E2: Ohne Anmeldung leitet jede andere Seite hierher
-	 * (`?ziel=<pfad>`, `+layout.ts`). Beim Laden fragt die Seite
-	 * `/api/passkey/stand`: Gilt schon eine Anmeldung (etwa ein Passkey, dessen
-	 * Cookie nach einem Link von außen in der Kette fehlte), geht es sofort
-	 * weiter zum Ziel, damit sich niemand zweimal anmeldet. Ohne `ziel` (das
-	 * Schloss oben) bleibt die Seite, zum Verwalten und Abmelden. Und sie fragt
+	 * (`?ziel=<pfad>&umgeleitet=1`, `anmeldenAdresse` in `+layout.ts`, dazu der
+	 * Server). Beim Laden fragt die Seite `/api/passkey/stand`: Gilt schon eine
+	 * Anmeldung (etwa ein Passkey, dessen Cookie nach einem Link von außen in der
+	 * Kette fehlte), geht es nur nach so einer Umleitung sofort weiter zum Ziel,
+	 * damit sich niemand zweimal anmeldet. Das Schloss oben trägt auch `?ziel=`,
+	 * aber nie `umgeleitet`: Dann bleibt die Seite, zum Anlegen, Verwalten und
+	 * Abmelden; `ziel` ist nur der Weg zurück („Weiter“). Und sie fragt
 	 * `/api/anmeldung/wer`: unter Windows der Satz zu Edge unter localhost,
 	 * sonst der Satz zum Passkey.
 	 */
@@ -60,8 +62,8 @@
 	import type { AntragErgebnis, EigeneAntraege, PasskeyStand } from '$vertrag';
 
 	const ziel = $derived(zielPruefen(page.url.searchParams.get('ziel')));
-	/** Kam die Seite über die Weiterleitung (mit Ziel)? Dann geht es angemeldet sofort weiter. */
-	const umgeleitet = $derived(page.url.searchParams.has('ziel'));
+	/** Kam die Seite über die Umleitung ohne Anmeldung (`anmeldenAdresse`)? Dann geht es angemeldet sofort weiter. */
+	const umgeleitet = $derived(page.url.searchParams.get('umgeleitet') === '1');
 	let weg = $state<AnmeldeWeg | null>(null);
 	const lokal = $derived(aufLocalhost(page.url.href));
 

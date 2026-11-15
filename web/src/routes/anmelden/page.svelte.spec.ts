@@ -1,10 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as PasskeyModul from '#lib/passkey.ts';
+import { schlossZiel } from '#lib/verbindung.ts';
 import type { PasskeyStand } from '$vertrag';
 
-// Schritt E2: Ohne Anmeldung leitet jede Seite nach /anmelden?ziel=<pfad>. Die Seite fragt
-// /api/passkey/stand (gilt schon eine Anmeldung, geht es sofort weiter) und
+// Schritt E2: Ohne Anmeldung leitet jede Seite nach /anmelden?ziel=<pfad>&umgeleitet=1. Die Seite
+// fragt /api/passkey/stand (gilt schon eine Anmeldung, geht es nach so einer Umleitung sofort weiter) und
 // /api/anmeldung/wer (Windows: der Satz zu Edge; sonst der Satz zum Passkey).
 const { ort, passkey } = vi.hoisted(() => ({
 	ort: { url: new URL('http://localhost:8787/anmelden') },
@@ -63,16 +64,62 @@ describe('/anmelden (Schritt E2)', () => {
 	it.each([
 		['Passkey', MIT_PASSKEY],
 		['Windows (Hauptkonto)', { ...KEINE, wie: 'hauptkonto' } satisfies PasskeyStand]
-	])('mit gültiger Anmeldung (%s) und Ziel: geht sofort weiter zum Ziel', async (_, gilt) => {
+	])('umgeleitet, mit gültiger Anmeldung (%s): geht sofort weiter zum Ziel', async (_, gilt) => {
 		wer(200);
 		passkey.stand.mockResolvedValue(gilt);
-		ort.url = new URL('http://localhost:8787/anmelden?ziel=%2Fprojects%2Fbeispiel%3Fx%3D1');
+		ort.url = new URL(
+			'http://localhost:8787/anmelden?ziel=%2Fprojects%2Fbeispiel%3Fx%3D1&umgeleitet=1'
+		);
 		render(Page);
 		await vi.waitFor(() => {
 			expect(passkey.weiter).toHaveBeenCalledWith('/projects/beispiel?x=1');
 		});
 		expect(passkey.stand).toHaveBeenCalled();
 	});
+
+	// Das Schloss trägt den Rückweg (?ziel=), aber nie die Markierung: Die Seite bleibt zum Anlegen.
+	it.each([
+		['Passkey', MIT_PASSKEY],
+		['Windows (Hauptkonto)', { ...KEINE, wie: 'hauptkonto' } satisfies PasskeyStand]
+	])(
+		'angemeldet (%s) über das Schloss: bleibt, Passkey anlegen, Weiter zum Ziel',
+		async (_, gilt) => {
+			wer(200);
+			passkey.stand.mockResolvedValue(gilt);
+			// Wie ein echter Sprung zum Ziel: Die Seite ist danach weg, der Antrag unten nicht mehr da.
+			passkey.weiter.mockImplementation(() => {
+				cleanup();
+			});
+			const ziel = schlossZiel('angemeldet', '/anstehend?stufe=jetzt');
+			ort.url = new URL(ziel, 'http://localhost:8787');
+			render(Page);
+			const weiter = await screen.findByRole('link', { name: 'Weiter' });
+			expect(weiter).toHaveAttribute('href', '/anstehend?stufe=jetzt');
+			// Das Laden beim Öffnen ist durch (stand geholt, Entscheidung gefallen), der Antrag steht noch da.
+			await vi.waitFor(() => {
+				expect(passkey.stand).toHaveBeenCalled();
+			});
+			await new Promise((fertig) => setTimeout(fertig, 0));
+			// toBeInTheDocument statt not.toBeNull: `?.` ergäbe ohne Seite undefined und ginge durch.
+			expect(document.querySelector('#passkey-anlegen #geraet')).toBeInTheDocument();
+			expect(passkey.weiter).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each(['https://fremd.example/', '//fremd.example/x', '/anmelden?ziel=%2Fpc&umgeleitet=1'])(
+		'umgeleitet mit fremdem Ziel %s: nur zur Startseite (zielPruefen), keine offene Umleitung',
+		async (fremd) => {
+			wer(200);
+			passkey.stand.mockResolvedValue(MIT_PASSKEY);
+			ort.url = new URL(
+				`http://localhost:8787/anmelden?ziel=${encodeURIComponent(fremd)}&umgeleitet=1`
+			);
+			render(Page);
+			await vi.waitFor(() => {
+				expect(passkey.weiter).toHaveBeenCalledWith('/');
+			});
+		}
+	);
 
 	it('mit gültigem Passkey ohne Ziel (Schloss oben): bleibt zum Verwalten und Abmelden', async () => {
 		wer(200);
@@ -82,9 +129,9 @@ describe('/anmelden (Schritt E2)', () => {
 		expect(passkey.weiter).not.toHaveBeenCalled();
 	});
 
-	it('ohne Anmeldung mit Ziel: kein Weiter, der Satz zur Anmeldung', async () => {
+	it('umgeleitet ohne Anmeldung: kein Weiter, der Satz zur Anmeldung', async () => {
 		wer(501);
-		ort.url = new URL('http://localhost:8787/anmelden?ziel=%2Fpc');
+		ort.url = new URL('http://localhost:8787/anmelden?ziel=%2Fpc&umgeleitet=1');
 		render(Page);
 		expect(
 			await screen.findByText(

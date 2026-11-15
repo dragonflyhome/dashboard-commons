@@ -88,7 +88,7 @@ describe('Ohne Anmeldung: jede Seite leitet auf /anmelden (Schritt E2)', () => {
 				if (OEFFENTLICHE_SEITEN.has(pfad)) {
 					expect(r, pfad).toEqual({ daten: { leisteProjekte: null, projektListe: null } });
 				} else {
-					const ziel = `/anmelden?ziel=${encodeURIComponent(`${pfad}?filter=a%20b`)}`;
+					const ziel = `/anmelden?ziel=${encodeURIComponent(`${pfad}?filter=a%20b`)}&umgeleitet=1`;
 					expect(r, pfad).toEqual({ ziel });
 					// Das Ziel kommt auf /anmelden unverändert an (zielPruefen lässt es durch).
 					const zurueck = new URL(ziel, 'http://localhost:8787').searchParams.get('ziel');
@@ -120,13 +120,13 @@ describe('Ohne Anmeldung: jede Seite leitet auf /anmelden (Schritt E2)', () => {
 			'/pc',
 			projekte(401, { fehler: 'Bitte mit dem Windows-Konto anmelden.', art: 'anmeldung' })
 		);
-		expect(r).toEqual({ ziel: '/anmelden?ziel=%2Fpc' });
+		expect(r).toEqual({ ziel: '/anmelden?ziel=%2Fpc&umgeleitet=1' });
 		expect(zugang.stand).toBe('fehlt');
 	});
 
 	it('Anmeldestand unbekannt, /api/projects sagt „fremdes Konto“: gilt als „fremd“ und leitet weiter', async () => {
 		const r = await lade('/pc', projekte(403, { fehler: 'x', art: 'fremdes-konto' }));
-		expect(r).toEqual({ ziel: '/anmelden?ziel=%2Fpc' });
+		expect(r).toEqual({ ziel: '/anmelden?ziel=%2Fpc&umgeleitet=1' });
 		expect(zugang.stand).toBe('fremd');
 	});
 
