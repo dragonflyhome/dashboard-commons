@@ -203,9 +203,24 @@ impl AppState {
         } = q;
         let snapshot: system::SharedSnapshot = Default::default();
         system::spawn_collector(snapshot.clone());
+        // Etappe 7c: Ort des Schlüssels der Ausweise. Er steht vor dem Öffnen
+        // des Speichers fest, weil außerhalb von Windows der Schlüssel der
+        // Aufgaben-Links immer daneben liegt und der Speicher seinen Ort braucht.
+        let jwt_datei = match &einstellungen {
+            Some(e) => Some(e.jwt_schluessel_datei()),
+            None => jwt_schluessel_datei(&daten),
+        };
         let geoeffnet = match &sicherung {
             Some(ordner) => Speicher::oeffnen_mit_sicherung(&daten, ordner),
             None => Speicher::oeffnen(&daten),
+        };
+        #[cfg(not(windows))]
+        let geoeffnet = {
+            let ort = speicher::verschluesselung::links_schluessel_neben(jwt_datei.as_deref());
+            if ort.is_none() {
+                error!("{}", speicher::verschluesselung::KEIN_ORT_SATZ);
+            }
+            geoeffnet.map(|s| s.mit_links_schluessel(ort))
         };
         let aenderungen = crate::aenderungen::Melder::neu();
         let (speicher, speicher_fehler, speicher_zu_neu) = match geoeffnet {
@@ -306,10 +321,6 @@ impl AppState {
         };
         api::events::spawn_watcher(events.clone(), inhalt.clone(), git.clone(), bote.clone(), weitere, aus);
         // Etappe 7c: Schlüssel der Ausweise; beim ersten Start mit enger Freigabe angelegt.
-        let jwt_datei = match &einstellungen {
-            Some(e) => Some(e.jwt_schluessel_datei()),
-            None => jwt_schluessel_datei(&daten),
-        };
         let jwt = match &jwt_datei {
             Some(datei) => match crate::passkey::geheim::laden_oder_anlegen(datei) {
                 Ok(k) => {

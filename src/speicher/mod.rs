@@ -25,8 +25,6 @@ pub mod passkeys;
 pub mod pc_ereignisse;
 pub mod pc_verlauf;
 pub mod projekte;
-#[cfg(all(target_os = "macos", not(test)))]
-mod schluesselbund;
 pub mod schritte;
 pub mod sicherung;
 pub mod tabellen;
@@ -130,6 +128,10 @@ pub struct Speicher {
     sicherungs_ordner: PathBuf,
     /// Hält zwei Sicherungsläufe auseinander (Knopf und nächtliche Sicherung).
     sicherungs_riegel: std::sync::Mutex<()>,
+    /// Außerhalb von Windows: woher der Schlüssel der Aufgaben-Links kommt
+    /// (`mit_links_schluessel`). Unter Windows gibt es das Feld nicht, dort gilt DPAPI.
+    #[cfg(not(windows))]
+    links: verschluesselung::LinksSchluessel,
     /// Testdatei (nur in Tests abgefragt).
     #[cfg_attr(not(test), allow(dead_code))]
     temporaer: bool,
@@ -190,6 +192,12 @@ impl Speicher {
             pfad: pfad.to_path_buf(),
             sicherungs_ordner,
             sicherungs_riegel: std::sync::Mutex::new(()),
+            // Im Testbau der Bibliothek der feste Testschlüssel, sonst kein Ort:
+            // Das Programm setzt den Ort ausdrücklich (`mit_links_schluessel`).
+            #[cfg(all(not(windows), test))]
+            links: verschluesselung::LinksSchluessel::fuer_tests(),
+            #[cfg(all(not(windows), not(test)))]
+            links: verschluesselung::LinksSchluessel::kein_ort(),
             temporaer: aufraeumen.is_some(),
             melder: std::sync::OnceLock::new(),
             _aufraeumen: aufraeumen,
@@ -206,6 +214,43 @@ impl Speicher {
         let ordner = pfad.with_extension("sicherung");
         let aufraeumen = Aufraeumen { datei: pfad.clone(), ordner: ordner.clone() };
         Self::oeffnen_mit(&pfad, ordner, Some(aufraeumen), migration::SCHRITTE).expect("Testdatenbank lässt sich anlegen")
+    }
+
+    /// Außerhalb von Windows: setzt, wo der Schlüssel der Aufgaben-Links
+    /// liegt (immer neben dem Schlüssel der Ausweise,
+    /// `verschluesselung::links_schluessel_neben`). `None` heißt: Es gibt
+    /// keinen Ort; Aufgaben mit Link werden abgelehnt, und Lesen liefert
+    /// nichts. Geladen oder angelegt wird hier nichts, das geschieht erst
+    /// beim ersten Link.
+    #[cfg(not(windows))]
+    pub fn mit_links_schluessel(mut self, ort: Option<PathBuf>) -> Speicher {
+        self.links = verschluesselung::LinksSchluessel::an(ort);
+        self
+    }
+
+    /// Verschlüsselt einen Link: unter Windows DPAPI, sonst die Mischform mit
+    /// dem Schlüssel dieses Speichers.
+    pub(crate) fn link_verschliessen(&self, klartext: &[u8]) -> Result<Vec<u8>, String> {
+        #[cfg(windows)]
+        {
+            verschluesselung::verschluesseln(klartext)
+        }
+        #[cfg(not(windows))]
+        {
+            self.links.verschliessen(klartext)
+        }
+    }
+
+    /// Entschlüsselt einen gespeicherten Link, das Gegenstück zu `link_verschliessen`.
+    pub(crate) fn link_oeffnen(&self, geheim: &[u8]) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
+        #[cfg(windows)]
+        {
+            verschluesselung::entschluesseln(geheim)
+        }
+        #[cfg(not(windows))]
+        {
+            self.links.oeffnen(geheim)
+        }
     }
 
     pub fn pfad(&self) -> &Path {

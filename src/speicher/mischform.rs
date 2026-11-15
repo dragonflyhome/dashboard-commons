@@ -1,13 +1,14 @@
 //! Mischform für die Links der Aufgaben außerhalb von Windows: Verschlüsselt
 //! wird im Programm mit XChaCha20-Poly1305 (RustCrypto), der Schlüssel von
-//! 32 Bytes liegt unter macOS im Anmelde-Schlüsselbund.
+//! 32 Bytes liegt als Datei im Schlüsselordner, neben dem Schlüssel der
+//! Ausweise (`verschluesselung::LinksSchluessel`, `passkey::geheim`).
 //!
 //! Was das schützt: Kopien des Datenspeichers (die tägliche Sicherung, eine
 //! kopierte Datei) und andere Konten am selben Rechner. Es schützt nicht gegen
-//! Programme desselben Kontos und nicht gegen jemanden, der eine Sicherung des
-//! ganzen Benutzerordners samt Anmeldekennwort hat. Fehlt der Schlüssel
-//! (anderer Rechner, Sicherung ohne Schlüsselbund), sind gespeicherte Links
-//! unlesbar und laufen nur ab, wie bei DPAPI auf einem anderen PC.
+//! Programme desselben Kontos und nicht gegen eine Kopie des Schlüsselordners.
+//! Fehlt der Schlüssel (anderer Rechner, Sicherung ohne den Schlüsselordner),
+//! sind gespeicherte Links unlesbar und laufen nur ab, wie bei DPAPI auf
+//! einem anderen PC.
 //!
 //! Format eines Werts: [`KOPF`] (drei Bytes), 24 Bytes Nonce aus dem Zufall
 //! des Systems, dann das Chiffrat mit Prüfsumme (16 Bytes). Gebunden sind
@@ -39,60 +40,6 @@ pub const PRUEFSUMME: usize = 16;
 
 /// Der Schlüssel der Links, in einem Puffer, der beim Freigeben überschrieben wird.
 pub type Schluessel = Zeroizing<[u8; 32]>;
-
-/// Fehler aus dem Schlüsselbund, den der Server nicht übergeht (`errSecItemNotFound`).
-pub const NICHT_GEFUNDEN: i32 = -25300;
-/// `errSecDuplicateItem`.
-pub const GIBT_ES_SCHON: i32 = -25299;
-/// `errSecInteractionNotAllowed`.
-pub const GESPERRT: i32 = -25308;
-/// `errSecAuthFailed`. Am Gerät gemessen: Das meldet der Anmelde-Schlüsselbund
-/// bei gesperrten Dialogen, wenn ein anderes Programm als das anlegende den
-/// Eintrag lesen will, also auch dasselbe Programm nach einem Neubau ohne
-/// feste Signatur.
-pub const VERWEIGERT: i32 = -25293;
-
-/// Was eine Nummer aus dem Schlüsselbund bedeutet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fehlerart {
-    /// Es gibt den Eintrag nicht. Nur hier wird angelegt.
-    NichtGefunden,
-    /// Beim Anlegen: Es gibt den Eintrag schon. Einmal neu lesen, nie schreiben.
-    GibtEsSchon,
-    /// Der Schlüsselbund ist gesperrt, oder die Sitzung hat keine Anmeldung (etwa über SSH).
-    Gesperrt,
-    /// Der Schlüsselbund gibt den Eintrag diesem Programm nicht.
-    Verweigert,
-    /// Alles andere, mit der Nummer.
-    Anderer(i32),
-}
-
-/// Ordnet die Nummer des Schlüsselbunds ein. Reine Funktion.
-pub fn fehlerart(nummer: i32) -> Fehlerart {
-    match nummer {
-        NICHT_GEFUNDEN => Fehlerart::NichtGefunden,
-        GIBT_ES_SCHON => Fehlerart::GibtEsSchon,
-        GESPERRT => Fehlerart::Gesperrt,
-        VERWEIGERT => Fehlerart::Verweigert,
-        n => Fehlerart::Anderer(n),
-    }
-}
-
-/// Der feste Satz zu einem Fehler des Schlüsselbunds: die Art und die Nummer,
-/// nie ein Inhalt.
-pub fn schluesselbund_satz(nummer: i32) -> String {
-    match fehlerart(nummer) {
-        Fehlerart::NichtGefunden => {
-            format!("Der Schlüssel der Aufgaben-Links fehlt im Schlüsselbund ({nummer}); gespeicherte Links sind nicht lesbar und laufen nur ab.")
-        }
-        Fehlerart::GibtEsSchon => format!("Der Schlüssel der Aufgaben-Links ist schon im Schlüsselbund und wird nie überschrieben ({nummer})."),
-        Fehlerart::Gesperrt => format!("Schlüsselbund gesperrt oder eine Sitzung ohne Anmeldung ({nummer})."),
-        Fehlerart::Verweigert => {
-            format!("Der Schlüsselbund gibt den Schlüssel der Aufgaben-Links diesem Programm nicht (etwa nach einem Neubau ohne feste Signatur) ({nummer}).")
-        }
-        Fehlerart::Anderer(n) => format!("Der Schlüsselbund hat den Schlüssel der Aufgaben-Links nicht herausgegeben (Fehler {n})."),
-    }
-}
 
 /// Warum ein Wert nicht lesbar ist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,14 +86,6 @@ pub fn neue_nonce() -> Result<[u8; NONCE], String> {
     Ok(n)
 }
 
-/// 32 Bytes für einen neuen Schlüssel, aus demselben Zufall.
-pub fn neuer_schluessel() -> Result<Schluessel, String> {
-    use rand_core::{OsRng, RngCore};
-    let mut s = Zeroizing::new([0u8; 32]);
-    OsRng.try_fill_bytes(s.as_mut_slice()).map_err(|_| ZUFALL_SATZ.to_string())?;
-    Ok(s)
-}
-
 /// Verschlüsselt `klartext` mit `schluessel` und `nonce` in das Format DL1.
 /// Die Nonce darf sich je Schlüssel nie wiederholen; im Betrieb kommt sie aus
 /// [`neue_nonce`].
@@ -184,50 +123,6 @@ pub fn oeffnen(schluessel: &[u8; 32], geheim: &[u8]) -> Result<Zeroizing<Vec<u8>
     Ok(puffer)
 }
 
-/// Holt den Schlüssel aus einer Ablage oder legt ihn dort an. Die Ablage ist
-/// eingespeist (`lesen`, `anlegen`, je mit der Nummer des Schlüsselbunds als
-/// Fehler), damit die Regeln auf jeder Plattform prüfbar sind, ohne einen
-/// Schlüsselbund zu berühren.
-///
-/// Die Regeln: Angelegt wird nur, wenn das Lesen ausdrücklich „nicht
-/// gefunden“ meldet. Bei jedem anderen Fehler entsteht kein Schlüssel. Meldet
-/// das Anlegen „gibt es schon“ (ein anderer Lauf war schneller), wird genau
-/// einmal neu gelesen und nie geschrieben. Ein Eintrag mit anderer Länge als
-/// 32 Bytes ist ein Fehler und bleibt, wie er ist.
-pub fn schluessel_holen(
-    lesen: &dyn Fn() -> Result<Zeroizing<Vec<u8>>, i32>,
-    anlegen: &dyn Fn(&[u8; 32]) -> Result<(), i32>,
-    neu: &dyn Fn() -> Result<Schluessel, String>,
-) -> Result<Schluessel, String> {
-    match lesen() {
-        Ok(bytes) => aus_eintrag(&bytes),
-        Err(nummer) if fehlerart(nummer) == Fehlerart::NichtGefunden => {
-            let frisch = neu()?;
-            match anlegen(&frisch) {
-                Ok(()) => Ok(frisch),
-                Err(n) if fehlerart(n) == Fehlerart::GibtEsSchon => match lesen() {
-                    Ok(bytes) => aus_eintrag(&bytes),
-                    Err(n) => Err(schluesselbund_satz(n)),
-                },
-                Err(n) => Err(schluesselbund_satz(n)),
-            }
-        }
-        Err(nummer) => Err(schluesselbund_satz(nummer)),
-    }
-}
-
-/// Holt den Schlüssel nur, ohne je anzulegen: für das Entschlüsseln. Dort
-/// gibt es schon einen gespeicherten Wert; fehlt der Schlüssel dazu (Eintrag
-/// entfernt, anderer Rechner, Sicherung ohne Schlüsselbund), würde ein neuer
-/// Schlüssel ihn nicht öffnen, und kehrte der alte Eintrag zurück, stünde er
-/// neben einem neuen. Darum hier bei „nicht gefunden“ nur der feste Satz.
-pub fn schluessel_nur_lesen(lesen: &dyn Fn() -> Result<Zeroizing<Vec<u8>>, i32>) -> Result<Schluessel, String> {
-    match lesen() {
-        Ok(bytes) => aus_eintrag(&bytes),
-        Err(nummer) => Err(schluesselbund_satz(nummer)),
-    }
-}
-
 /// Der Zwischenspeicher für den Schlüssel: Die Quelle wird erst beim ersten
 /// Bedarf gefragt, nach einem Erfolg nie wieder. Ein Fehler wird nicht
 /// gemerkt; der nächste Aufruf fragt wieder. Die Sperre gilt für die ganze
@@ -244,22 +139,9 @@ pub fn zwischengespeichert(ablage: &std::sync::Mutex<Option<Schluessel>>, quelle
     Ok(s)
 }
 
-/// Fester Satz für einen Eintrag mit falscher Länge.
-pub const LAENGE_SATZ: &str = "Der Eintrag für den Schlüssel der Aufgaben-Links hat nicht genau 32 Bytes; er wird nicht benutzt und nicht überschrieben.";
-
-fn aus_eintrag(bytes: &[u8]) -> Result<Schluessel, String> {
-    let mut s = Zeroizing::new([0u8; 32]);
-    if bytes.len() != s.len() {
-        return Err(LAENGE_SATZ.to_string());
-    }
-    s.copy_from_slice(bytes);
-    Ok(s)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::{Cell, RefCell};
 
     /// Erfundener Testwert, kein echter Link.
     const PROBE: &str = "https://beispiel.invalid/anmelden?token=erfunden-0815";
@@ -363,145 +245,6 @@ mod tests {
         let (a, b) = (neue_nonce().unwrap(), neue_nonce().unwrap());
         assert_ne!(a, b);
         assert_ne!(versiegeln(&SCHLUESSEL, &a, PROBE.as_bytes()).unwrap(), versiegeln(&SCHLUESSEL, &b, PROBE.as_bytes()).unwrap());
-        assert_ne!(*neuer_schluessel().unwrap(), *neuer_schluessel().unwrap());
-    }
-
-    /// Die Nummern des Schlüsselbunds, als reine Funktion.
-    #[test]
-    fn fehlerart_aus_der_nummer() {
-        assert_eq!(fehlerart(-25300), Fehlerart::NichtGefunden);
-        assert_eq!(fehlerart(-25299), Fehlerart::GibtEsSchon);
-        assert_eq!(fehlerart(-25308), Fehlerart::Gesperrt);
-        assert_eq!(fehlerart(-25293), Fehlerart::Verweigert);
-        for n in [-25294, -25307, -128, -34018, 0, 1, i32::MIN, i32::MAX] {
-            assert_eq!(fehlerart(n), Fehlerart::Anderer(n), "{n}");
-        }
-    }
-
-    /// Eine Ablage für die Tests: zählt Lesen und Anlegen und antwortet der Reihe nach.
-    struct Ablage {
-        lesen: RefCell<Vec<Result<Vec<u8>, i32>>>,
-        anlegen: RefCell<Vec<Result<(), i32>>>,
-        gelesen: Cell<u32>,
-        angelegt: RefCell<Vec<[u8; 32]>>,
-    }
-
-    impl Ablage {
-        fn neu(lesen: Vec<Result<Vec<u8>, i32>>, anlegen: Vec<Result<(), i32>>) -> Ablage {
-            Ablage { lesen: RefCell::new(lesen), anlegen: RefCell::new(anlegen), gelesen: Cell::new(0), angelegt: RefCell::new(Vec::new()) }
-        }
-        fn holen(&self) -> Result<Schluessel, String> {
-            schluessel_holen(
-                &|| {
-                    self.gelesen.set(self.gelesen.get() + 1);
-                    self.lesen.borrow_mut().remove(0).map(Zeroizing::new)
-                },
-                &|b| {
-                    self.angelegt.borrow_mut().push(*b);
-                    self.anlegen.borrow_mut().remove(0)
-                },
-                &|| Ok(Zeroizing::new([5u8; 32])),
-            )
-        }
-        fn nur_lesen(&self) -> Result<Schluessel, String> {
-            schluessel_nur_lesen(&|| {
-                self.gelesen.set(self.gelesen.get() + 1);
-                self.lesen.borrow_mut().remove(0).map(Zeroizing::new)
-            })
-        }
-    }
-
-    /// Der Eintrag ist da: einmal lesen, nie anlegen.
-    #[test]
-    fn vorhandener_schluessel_wird_gelesen() {
-        let a = Ablage::neu(vec![Ok(vec![9u8; 32])], vec![]);
-        assert_eq!(*a.holen().unwrap(), [9u8; 32]);
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
-    }
-
-    /// Nur „nicht gefunden“ legt an, und zwar genau einmal den neuen Schlüssel.
-    #[test]
-    fn nur_nicht_gefunden_legt_an() {
-        let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN)], vec![Ok(())]);
-        assert_eq!(*a.holen().unwrap(), [5u8; 32]);
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().as_slice()), (1, &[[5u8; 32]][..]));
-    }
-
-    /// Jeder andere Fehler beim Lesen: kein Schlüssel, kein Anlegen, der Satz mit der Nummer.
-    #[test]
-    fn anderer_fehler_legt_nie_an() {
-        for nummer in [GESPERRT, VERWEIGERT, GIBT_ES_SCHON, -25294, -25307, -128, 1] {
-            let a = Ablage::neu(vec![Err(nummer)], vec![]);
-            let satz = a.holen().unwrap_err();
-            assert!(satz.contains(&nummer.to_string()), "{satz}");
-            assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0), "{nummer}");
-        }
-        let a = Ablage::neu(vec![Err(GESPERRT)], vec![]);
-        assert_eq!(a.holen().unwrap_err(), "Schlüsselbund gesperrt oder eine Sitzung ohne Anmeldung (-25308).");
-        // Am Gerät gemessen: Nach einem Neubau ohne feste Signatur kommt -25293. Auch dann entsteht kein zweiter Schlüssel.
-        let a = Ablage::neu(vec![Err(VERWEIGERT)], vec![]);
-        assert_eq!(
-            a.holen().unwrap_err(),
-            "Der Schlüsselbund gibt den Schlüssel der Aufgaben-Links diesem Programm nicht (etwa nach einem Neubau ohne feste Signatur) (-25293)."
-        );
-        assert_eq!(a.angelegt.borrow().len(), 0);
-    }
-
-    /// „Gibt es schon“ beim Anlegen: genau ein weiterer Leseversuch, der
-    /// vorhandene Schlüssel gilt, und es wird kein zweites Mal geschrieben.
-    #[test]
-    fn auf_gibt_es_schon_wird_nie_geschrieben() {
-        let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN), Ok(vec![9u8; 32])], vec![Err(GIBT_ES_SCHON)]);
-        assert_eq!(*a.holen().unwrap(), [9u8; 32], "der Schlüssel des anderen Laufs gilt, nicht der eigene");
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (2, 1));
-        // Auch das zweite Lesen findet nichts: Fehler, kein weiterer Versuch, kein weiteres Anlegen.
-        let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN), Err(NICHT_GEFUNDEN)], vec![Err(GIBT_ES_SCHON)]);
-        assert!(a.holen().is_err());
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (2, 1));
-    }
-
-    /// Scheitert das Anlegen aus einem anderen Grund, gibt es keinen Schlüssel:
-    /// Ein Schlüssel, der nicht gespeichert ist, würde Links unlesbar machen.
-    #[test]
-    fn gescheitertes_anlegen_gibt_keinen_schluessel() {
-        for nummer in [GESPERRT, VERWEIGERT, -128] {
-            let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN)], vec![Err(nummer)]);
-            assert!(a.holen().unwrap_err().contains(&nummer.to_string()));
-            assert_eq!(a.gelesen.get(), 1);
-        }
-    }
-
-    /// Ein Eintrag mit falscher Länge wird nicht benutzt und nicht ersetzt.
-    #[test]
-    fn falsche_laenge_wird_nicht_ersetzt() {
-        for laenge in [0, 31, 33, 64] {
-            let a = Ablage::neu(vec![Ok(vec![9u8; laenge])], vec![]);
-            assert_eq!(a.holen().unwrap_err(), LAENGE_SATZ);
-            assert_eq!(a.angelegt.borrow().len(), 0);
-        }
-    }
-
-    /// Das Entschlüsseln holt nur: Bei „nicht gefunden“ entsteht kein
-    /// Schlüssel, und es kommt der feste Satz. Auch sonst wird nie angelegt
-    /// und genau einmal gelesen.
-    #[test]
-    fn lesen_allein_legt_nie_an() {
-        let a = Ablage::neu(vec![Err(NICHT_GEFUNDEN)], vec![]);
-        assert_eq!(
-            a.nur_lesen().unwrap_err(),
-            "Der Schlüssel der Aufgaben-Links fehlt im Schlüsselbund (-25300); gespeicherte Links sind nicht lesbar und laufen nur ab."
-        );
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
-        let a = Ablage::neu(vec![Ok(vec![9u8; 32])], vec![]);
-        assert_eq!(*a.nur_lesen().unwrap(), [9u8; 32]);
-        assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
-        for nummer in [GESPERRT, VERWEIGERT, GIBT_ES_SCHON, -128] {
-            let a = Ablage::neu(vec![Err(nummer)], vec![]);
-            assert!(a.nur_lesen().unwrap_err().contains(&nummer.to_string()));
-            assert_eq!((a.gelesen.get(), a.angelegt.borrow().len()), (1, 0));
-        }
-        let a = Ablage::neu(vec![Ok(vec![9u8; 31])], vec![]);
-        assert_eq!(a.nur_lesen().unwrap_err(), LAENGE_SATZ);
     }
 
     /// Der Zwischenspeicher: Ein Fehler wird nicht gemerkt, der zweite Aufruf
@@ -580,13 +323,11 @@ mod tests {
         let geheim = versiegeln(&SCHLUESSEL, &N, PROBE.as_bytes()).unwrap();
         let mut saetze: Vec<String> =
             [FormatFehler::ZuKurz, FormatFehler::Kopf, FormatFehler::Pruefsumme].into_iter().map(|f| format_satz(f).to_string()).collect();
-        saetze.extend([NICHT_GEFUNDEN, GIBT_ES_SCHON, GESPERRT, VERWEIGERT, -128].into_iter().map(schluesselbund_satz));
-        saetze.extend([VERSIEGELN_SATZ, ZUFALL_SATZ, LAENGE_SATZ].into_iter().map(str::to_string));
-        // Die Sätze, die beim echten Scheitern entstehen.
+        saetze.extend([VERSIEGELN_SATZ, ZUFALL_SATZ].into_iter().map(str::to_string));
+        // Der Satz, der beim echten Scheitern entsteht.
         let mut kaputt = geheim.clone();
         kaputt[40] ^= 1;
         saetze.push(format_satz(oeffnen(&SCHLUESSEL, &kaputt).unwrap_err()).to_string());
-        saetze.push(Ablage::neu(vec![Ok(SCHLUESSEL[..31].to_vec())], vec![]).holen().unwrap_err());
         let schluessel_hex: String = SCHLUESSEL.iter().map(|b| format!("{b:02x}")).collect();
         let wert_hex: String = geheim.iter().map(|b| format!("{b:02x}")).collect();
         for satz in &saetze {

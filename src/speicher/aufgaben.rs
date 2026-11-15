@@ -28,7 +28,7 @@ use zeroize::Zeroizing;
 
 use super::tabellen::{self, AUFGABEN, AUFGABEN_ARCHIV, AUFGABEN_LINKS, META, META_AUFGABE_ZAEHLER};
 use super::vorgaenge::{json_lesen, vorgang_anlegen_in, vorgang_anlegen_mit_notiz_in};
-use super::{Speicher, SpeicherFehler, verschluesselung};
+use super::{Speicher, SpeicherFehler};
 use crate::api::vertrag::{Aufgabe, AufgabeAnsicht, AufgabeVerlauf, AufgabeVerlaufArt, AufgabenZustand, Ereignis, Stufe, Vorgang, VorgangsArt};
 use crate::vertrag::daten::ETWAS_ANDERES;
 
@@ -267,7 +267,7 @@ fn abschliessen(txn: &WriteTransaction, a: &mut Aufgabe, zustand: AufgabenZustan
 /// Der Link einer Aufgabe im Klartext, nur wenn sie offen und nicht
 /// abgelaufen ist. Lässt er sich nicht entschlüsseln (anderes Konto, Datei
 /// von einem anderen PC), `None` und ein Satz im Protokoll ohne Inhalt.
-fn link_fuer<T: ReadableTable<&'static str, &'static [u8]>>(links: Option<&T>, a: &Aufgabe, jetzt: &Zeit) -> Option<String> {
+fn link_fuer<T: ReadableTable<&'static str, &'static [u8]>>(speicher: &Speicher, links: Option<&T>, a: &Aufgabe, jetzt: &Zeit) -> Option<String> {
     if a.zustand != AufgabenZustand::Offen || !a.hat_link || abgelaufen(a, jetzt) {
         return None;
     }
@@ -279,7 +279,7 @@ fn link_fuer<T: ReadableTable<&'static str, &'static [u8]>>(links: Option<&T>, a
             return None;
         }
     };
-    match verschluesselung::entschluesseln(&geheim) {
+    match speicher.link_oeffnen(&geheim) {
         Ok(klar) => match std::str::from_utf8(&klar) {
             Ok(t) => Some(t.to_string()),
             Err(_) => {
@@ -410,7 +410,7 @@ impl Speicher {
     /// `aufgaben_links`, beides in einer Transaktion.
     pub fn aufgabe_anlegen(&self, neu: NeueAufgabe, jetzt: &Zeit) -> Result<Aufgabe, SpeicherFehler> {
         let geheim = match &neu.link {
-            Some(link) => Some(verschluesselung::verschluesseln(link.as_bytes()).map_err(SpeicherFehler::Verschluesselung)?),
+            Some(link) => Some(self.link_verschliessen(link.as_bytes()).map_err(SpeicherFehler::Verschluesselung)?),
             None => None,
         };
         let txn = self.db.begin_write()?;
@@ -468,7 +468,7 @@ impl Speicher {
             if filter.nur_offen && !ist_offen {
                 continue;
             }
-            let link = link_fuer(links.as_ref(), &a, jetzt);
+            let link = link_fuer(self, links.as_ref(), &a, jetzt);
             let v = ansicht(a, link, jetzt);
             if ist_offen { offen.push(v) } else { alte.push(v) }
         }
@@ -492,7 +492,7 @@ impl Speicher {
             return Ok(a.map(|a| ansicht(a, None, jetzt)));
         };
         let links = tabellen::lesen(AUFGABEN_LINKS, &txn)?;
-        let link = link_fuer(links.as_ref(), &a, jetzt);
+        let link = link_fuer(self, links.as_ref(), &a, jetzt);
         Ok(Some(ansicht(a, link, jetzt)))
     }
 
@@ -787,6 +787,7 @@ impl Speicher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::speicher::verschluesselung;
     use chrono::TimeZone;
 
     /// Erfundener Testwert, kein echter Link.
@@ -1080,6 +1081,60 @@ mod tests {
         assert_eq!(verschluesselung::entschluesselt_in_diesem_thread(), vorher, "ohne Link entschlüsselt nichts");
         assert!(s.aufgabe(&a.id, &zeit(10, 1)).unwrap().unwrap().link.is_some());
         assert_eq!(verschluesselung::entschluesselt_in_diesem_thread(), vorher + 1, "Gegenprobe");
+    }
+
+    /// Schritt 4b, der Weg im Betrieb: Ein Speicher ohne Ort für den Schlüssel
+    /// der Links lehnt eine Aufgabe mit Link ab, mit dem festen Satz, und
+    /// legt nichts an; der Link wird nie still weggelassen. Aufgaben ohne
+    /// Link gehen weiter.
+    #[cfg(not(windows))]
+    #[test]
+    fn ohne_ort_wird_die_aufgabe_mit_link_abgelehnt() {
+        let s = Speicher::temporaer().mit_links_schluessel(None);
+        let e = s.aufgabe_anlegen(neu("dashboard", "mit Link", Some(LINK), None), &zeit(10, 0)).unwrap_err();
+        assert!(matches!(&e, SpeicherFehler::Verschluesselung(satz) if satz == verschluesselung::KEIN_ORT_SATZ), "{e:?}");
+        assert!(!format!("{e:?}").contains("erfunden"), "kein Teil des Links im Fehler");
+        assert_eq!(s.aufgaben_offen_zaehlen(&zeit(10, 1)).unwrap(), 0, "nichts angelegt, auch nicht ohne Link");
+        let a = s.aufgabe_anlegen(neu("dashboard", "ohne Link", None, None), &zeit(10, 2)).unwrap();
+        assert!(s.aufgabe(&a.id, &zeit(10, 3)).unwrap().unwrap().link.is_none());
+        assert_eq!(s.aufgaben_offen_zaehlen(&zeit(10, 3)).unwrap(), 1);
+    }
+
+    /// Schritt 4b, die Verdrahtung: Ein Speicher mit Ort legt die
+    /// Schlüsseldatei erst mit dem ersten Link an und liest den Link wieder.
+    /// Ohne Ort liest derselbe Speicher den gespeicherten Link nicht (`None`),
+    /// und mit einem anderen Ort auch nicht; dort entsteht dabei keine Datei.
+    #[cfg(unix)]
+    #[test]
+    fn schluesseldatei_entsteht_mit_dem_ersten_link() {
+        let ordner = std::env::temp_dir().join(format!("dashboard-aufgaben-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        let ort = ordner.join("dashboard-schluessel").join(verschluesselung::LINKS_SCHLUESSEL_DATEI);
+        let anderer = ordner.join("anderer-ordner").join(verschluesselung::LINKS_SCHLUESSEL_DATEI);
+
+        let s = Speicher::temporaer().mit_links_schluessel(Some(ort.clone()));
+        let ohne = s.aufgabe_anlegen(neu("dashboard", "ohne Link", None, None), &zeit(10, 0)).unwrap();
+        assert!(s.aufgabe(&ohne.id, &zeit(10, 1)).unwrap().is_some());
+        assert!(!ordner.exists(), "ohne Link entsteht nichts: weder beim Setzen des Orts noch beim Anlegen oder Lesen");
+
+        let a = s.aufgabe_anlegen(neu("dashboard", "mit Link", Some(LINK), None), &zeit(10, 2)).unwrap();
+        assert_eq!(std::fs::read(&ort).unwrap().len(), 32, "die Schlüsseldatei ist da");
+        assert_eq!(s.aufgabe(&a.id, &zeit(10, 3)).unwrap().unwrap().link.as_deref(), Some(LINK));
+
+        // Derselbe Speicher mit anderem Ort: kein Link, und dort entsteht nichts.
+        let s = s.mit_links_schluessel(Some(anderer.clone()));
+        assert!(s.aufgabe(&a.id, &zeit(10, 4)).unwrap().unwrap().link.is_none(), "der Link ist da, aber nicht lesbar");
+        assert!(!anderer.parent().unwrap().exists(), "am anderen Ort entsteht beim Lesen kein Ordner und keine Datei");
+        // Ohne Ort: ebenso kein Link.
+        let s = s.mit_links_schluessel(None);
+        assert!(s.aufgabe(&a.id, &zeit(10, 5)).unwrap().unwrap().link.is_none());
+        // Wieder mit dem richtigen Ort: der Link ist lesbar, der Schlüssel derselbe geblieben.
+        let vorher = std::fs::read(&ort).unwrap();
+        let s = s.mit_links_schluessel(Some(ort.clone()));
+        assert_eq!(s.aufgabe(&a.id, &zeit(10, 6)).unwrap().unwrap().link.as_deref(), Some(LINK));
+        assert_eq!(std::fs::read(&ort).unwrap(), vorher);
+        drop(s);
+        let _ = std::fs::remove_dir_all(&ordner);
     }
 
     #[test]

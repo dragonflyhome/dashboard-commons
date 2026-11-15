@@ -85,11 +85,6 @@ libc = "=0.2.191"
 [target.'cfg(not(windows))'.dependencies]
 chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc", "zeroize"] }
 
-# Anmelde-Schlüsselbund von macOS für den Schlüssel der Links: drei Aufrufe (lesen, hinzufügen,
-# Dialoge sperren). Ohne Merkmale; das unsafe liegt in der Kiste.
-[target.'cfg(target_os = "macos")'.dependencies]
-security-framework = { version = "=3.7.0", default-features = false }
-
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
 # windows-service bleibt bei 0.8.1: Dienst-Modus (`--dienst`, Etappe 7a). Bauprobe bestanden.

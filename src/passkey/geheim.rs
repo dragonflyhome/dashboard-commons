@@ -184,10 +184,45 @@ pub fn datei_urteil(stand: Stand, eigene_uid: u32) -> Result<(), Mangel> {
     Ok(())
 }
 
-/// Der Satz zu einem Mangel, mit dem, was zu tun ist. `ordner` und `datei`
-/// kommen schon so, wie sie gezeigt werden dürfen (ohne Profil und Namen).
+/// Was einen Schlüssel in einer Datei vom anderen unterscheidet: die Sätze
+/// und eine Regel. Der Kern (`schluessel_datei`) ist für beide derselbe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rahmen {
+    /// Was ausbleibt, als eigener Satz (ohne Punkt), etwa „Die Anmeldung mit Passkey bleibt aus“.
+    pub folge: &'static str,
+    /// Dasselbe mitten im Satz, klein begonnen.
+    pub folge_im_satz: &'static str,
+    /// Wie der Schlüssel im Protokoll heißt, etwa „Schlüssel für die Ausweise“.
+    pub name: &'static str,
+    /// Was geschieht, wenn jemand eine zu offene Datei entfernt, etwa „dann entsteht ein neuer Schlüssel“.
+    pub nach_dem_entfernen: &'static str,
+    /// Satz, wenn Ordner oder Datei fehlen und nicht angelegt werden darf.
+    pub fehlt: &'static str,
+    /// Die Ausnahme für die Sicherung auch dann setzen, wenn die Datei in
+    /// einem schon vorhandenen Ordner neu entsteht.
+    pub ausnahme_bei_neuer_datei: bool,
+}
+
+/// Der Rahmen für den Schlüssel der Ausweise (Passkey, JWT).
+pub const RAHMEN_AUSWEISE: Rahmen = Rahmen {
+    folge: "Die Anmeldung mit Passkey bleibt aus",
+    folge_im_satz: "die Anmeldung mit Passkey bleibt aus",
+    name: "Schlüssel für die Ausweise",
+    nach_dem_entfernen: "dann entsteht ein neuer Schlüssel",
+    fehlt: "Der Schlüssel für die Ausweise fehlt; die Anmeldung mit Passkey bleibt aus",
+    ausnahme_bei_neuer_datei: false,
+};
+
+/// Der Satz zu einem Mangel am Schlüssel der Ausweise, mit dem, was zu tun
+/// ist. `ordner` und `datei` kommen schon so, wie sie gezeigt werden dürfen
+/// (ohne Profil und Namen).
 pub fn mangel_satz(mangel: Mangel, ordner: &str, datei: &str) -> String {
-    let aus = "Die Anmeldung mit Passkey bleibt aus";
+    mangel_satz_mit(mangel, ordner, datei, &RAHMEN_AUSWEISE)
+}
+
+/// Wie [`mangel_satz`], mit den Sätzen aus `rahmen`.
+pub fn mangel_satz_mit(mangel: Mangel, ordner: &str, datei: &str, rahmen: &Rahmen) -> String {
+    let aus = rahmen.folge;
     match mangel {
         Mangel::OrdnerKeinOrdner => format!("Der Schlüsselordner {ordner} ist kein Ordner oder eine Verknüpfung. {aus}."),
         Mangel::OrdnerFremd => format!("Der Schlüsselordner {ordner} gehört einem anderen Konto. {aus}."),
@@ -195,9 +230,10 @@ pub fn mangel_satz(mangel: Mangel, ordner: &str, datei: &str) -> String {
         Mangel::DateiKeineDatei => format!("Der Schlüssel {datei} ist keine gewöhnliche Datei (Verknüpfung, Ordner oder Ähnliches). {aus}."),
         Mangel::DateiFremd => format!("Der Schlüssel {datei} gehört einem anderen Konto. {aus}."),
         Mangel::DateiOffen => format!(
-            "Der Schlüssel {datei} ist für andere Konten lesbar. Bitte die Rechte 600 setzen oder die Datei entfernen (dann entsteht ein neuer Schlüssel). {aus}, bis das geschehen ist."
+            "Der Schlüssel {datei} ist für andere Konten lesbar. Bitte die Rechte 600 setzen oder die Datei entfernen ({}). {aus}, bis das geschehen ist.",
+            rahmen.nach_dem_entfernen
         ),
-        Mangel::DateiGroesse => format!("{datei} hat nicht genau 32 Bytes; die Anmeldung mit Passkey bleibt aus"),
+        Mangel::DateiGroesse => format!("{datei} hat nicht genau 32 Bytes; {}", rahmen.folge_im_satz),
     }
 }
 
@@ -213,7 +249,7 @@ pub fn laden_oder_anlegen(pfad: &Path) -> Result<JwtSchluessel, String> {
 /// Schlüsselordner von der Sicherung aus (in Tests eine eigene Funktion).
 #[cfg(unix)]
 pub(crate) fn laden_oder_anlegen_mit(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(), String>) -> Result<JwtSchluessel, String> {
-    laden_oder_anlegen_versuch(pfad, ausnehmen, true)
+    schluessel_datei_mit(pfad, &RAHMEN_AUSWEISE, true, ausnehmen).map(|b| JwtSchluessel::aus_bytes(&b))
 }
 
 /// Ob der Schlüsselordner von der Sicherung ausgenommen wird: nur ein Ordner,
@@ -226,23 +262,58 @@ fn ausnahme_setzen(neu_angelegt: bool, ordner: &Path) -> bool {
     neu_angelegt && ordner.is_absolute()
 }
 
+/// Der Kern für jeden Schlüssel von 32 Bytes in einer Datei: Ordner und Datei
+/// prüfen, laden, und wenn `anlegen` gilt, bei Bedarf anlegen. Die Sätze und
+/// die Regel zur Ausnahme kommen aus `rahmen`. Die Bytes liegen in einem
+/// Puffer, der beim Freigeben überschrieben wird.
+///
+/// Mit `anlegen = false` entsteht nichts: kein Ordner, keine Datei, keine
+/// Ausnahme für die Sicherung. Geprüft wird trotzdem; fehlen Ordner oder
+/// Datei, kommt der Satz `rahmen.fehlt`.
+#[cfg(unix)]
+pub fn schluessel_datei(pfad: &Path, rahmen: &Rahmen, anlegen: bool) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
+    schluessel_datei_mit(pfad, rahmen, anlegen, &time_machine_ausnehmen)
+}
+
+/// Wie [`schluessel_datei`], mit eingespeister Ausnahme für die Sicherung.
+#[cfg(unix)]
+pub(crate) fn schluessel_datei_mit(
+    pfad: &Path,
+    rahmen: &Rahmen,
+    anlegen: bool,
+    ausnehmen: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
+    schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, true)
+}
+
 /// `nochmal`: Kommt ein anderer Lauf beim Anlegen zuvor, wird genau einmal neu geladen, nicht beliebig tief.
 #[cfg(unix)]
-fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(), String>, nochmal: bool) -> Result<JwtSchluessel, String> {
+fn schluessel_datei_versuch(
+    pfad: &Path,
+    rahmen: &Rahmen,
+    anlegen: bool,
+    ausnehmen: &dyn Fn(&Path) -> Result<(), String>,
+    nochmal: bool,
+) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
     use std::io::Read;
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
     let zeigen = |p: &Path| crate::datenschutz::verbergen(&p.display().to_string());
-    let ordner = pfad
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .ok_or_else(|| format!("{} nennt keinen Ordner; die Anmeldung mit Passkey bleibt aus", zeigen(pfad)))?;
-    let satz = |m: Mangel| mangel_satz(m, &zeigen(ordner), &zeigen(pfad));
+    let ordner =
+        pfad.parent().filter(|p| !p.as_os_str().is_empty()).ok_or_else(|| format!("{} nennt keinen Ordner; {}", zeigen(pfad), rahmen.folge_im_satz))?;
+    // Ohne Dateinamen gäbe es keinen Namen für die Zwischendatei beim Anlegen.
+    if pfad.file_name().and_then(|n| n.to_str()).is_none_or(str::is_empty) {
+        return Err(format!("{} nennt keine Datei; {}", zeigen(pfad), rahmen.folge_im_satz));
+    }
+    let satz = |m: Mangel| mangel_satz_mit(m, &zeigen(ordner), &zeigen(pfad), rahmen);
     let eigene_uid = crate::unix::eigene_uid();
     // Der Ordner: anlegen, wenn er fehlt (0700, auch für fehlende Ordner darüber).
     let mut neu_angelegt = false;
     if let Err(e) = std::fs::symlink_metadata(ordner) {
         if e.kind() != std::io::ErrorKind::NotFound {
             return Err(format!("Der Schlüsselordner {} ist nicht lesbar: {e}", zeigen(ordner)));
+        }
+        if !anlegen {
+            return Err(rahmen.fehlt.to_string());
         }
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -268,15 +339,29 @@ fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(
     let mut datei = match oeffnen {
         Ok(d) => d,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let mut b = [0u8; 32];
+            if !anlegen {
+                return Err(rahmen.fehlt.to_string());
+            }
+            let mut b = zeroize::Zeroizing::new([0u8; 32]);
             b.copy_from_slice(&super::zufall(32));
             return match ohne_halbstand_anlegen(ordner, pfad, &b) {
                 Ok(()) => {
-                    tracing::info!("Schlüssel für die Ausweise neu angelegt: {}", zeigen(pfad));
-                    Ok(JwtSchluessel::aus_bytes(&b))
+                    tracing::info!("{} neu angelegt: {}", rahmen.name, zeigen(pfad));
+                    // Die Datei ist in einem Ordner entstanden, den es schon gab:
+                    // Für manche Schlüssel wird die Ausnahme auch dann gesetzt, erst
+                    // nach dem gelungenen Anlegen und darum genau einmal. Wer den
+                    // Wettlauf verliert, kommt nicht hierher.
+                    if rahmen.ausnahme_bei_neuer_datei
+                        && !neu_angelegt
+                        && ausnahme_setzen(true, ordner)
+                        && let Err(e) = ausnehmen(ordner)
+                    {
+                        tracing::warn!("Ausnahme für Time Machine nicht gesetzt ({e}).");
+                    }
+                    Ok(b)
                 }
                 // Ein anderer Lauf war schneller: dessen Datei gilt. Höchstens ein erneuter Versuch.
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && nochmal => laden_oder_anlegen_versuch(pfad, ausnehmen, false),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && nochmal => schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, false),
                 Err(e) => Err(format!("{} ließ sich nicht anlegen: {e}", zeigen(pfad))),
             };
         }
@@ -289,11 +374,11 @@ fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(
     // Prüfen am geöffneten Handle, nicht noch einmal über den Pfad: kein Wettlauf zwischen Prüfen und Lesen.
     let m = datei.metadata().map_err(|e| format!("{} ist nicht lesbar: {e}", zeigen(pfad)))?;
     datei_urteil(Stand { richtige_art: m.file_type().is_file(), uid: m.uid(), modus: m.mode(), groesse: m.len() }, eigene_uid).map_err(satz)?;
-    let mut b = [0u8; 32];
-    datei.read_exact(&mut b).map_err(|_| satz(Mangel::DateiGroesse))?;
+    let mut b = zeroize::Zeroizing::new([0u8; 32]);
+    datei.read_exact(b.as_mut_slice()).map_err(|_| satz(Mangel::DateiGroesse))?;
     let mut rest = [0u8; 1];
     match datei.read(&mut rest) {
-        Ok(0) => Ok(JwtSchluessel::aus_bytes(&b)),
+        Ok(0) => Ok(b),
         Ok(_) => Err(satz(Mangel::DateiGroesse)),
         Err(e) => Err(format!("{} ist nicht lesbar: {e}", zeigen(pfad))),
     }
@@ -311,7 +396,13 @@ fn laden_oder_anlegen_versuch(pfad: &Path, ausnehmen: &dyn Fn(&Path) -> Result<(
 fn ohne_halbstand_anlegen(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     let zusatz: String = super::zufall(8).iter().map(|b| format!("{b:02x}")).collect();
-    let zwischen = ordner.join(format!(".{SCHLUESSEL_DATEI}.neu-{}-{zusatz}", std::process::id()));
+    // Die Zwischendatei heißt nach der Datei selbst; so stören sich zwei Schlüssel im selben Ordner nicht.
+    let dateiname = pfad
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "der Pfad nennt keine Datei"))?;
+    let zwischen = ordner.join(format!(".{dateiname}.neu-{}-{zusatz}", std::process::id()));
     let geschrieben = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -897,5 +988,49 @@ mod tests {
             assert_eq!(std::fs::read(&pfad).unwrap(), inhalt);
         }
         let _ = std::fs::remove_dir_all(&o);
+    }
+
+    /// Die Sätze nehmen Folge und Rat aus dem Rahmen; mit dem Rahmen der
+    /// Ausweise sind sie wortgleich mit `mangel_satz`.
+    #[test]
+    fn saetze_folgen_dem_rahmen() {
+        let anderer = Rahmen {
+            folge: "Der Dienst X bleibt aus",
+            folge_im_satz: "der Dienst X bleibt aus",
+            name: "Schlüssel X",
+            nach_dem_entfernen: "dann geschieht Y",
+            fehlt: "Der Schlüssel X fehlt.",
+            ausnahme_bei_neuer_datei: true,
+        };
+        for m in [
+            Mangel::OrdnerKeinOrdner,
+            Mangel::OrdnerFremd,
+            Mangel::OrdnerOffen,
+            Mangel::DateiKeineDatei,
+            Mangel::DateiFremd,
+            Mangel::DateiOffen,
+            Mangel::DateiGroesse,
+        ] {
+            assert_eq!(mangel_satz_mit(m, "<o>", "<d>", &RAHMEN_AUSWEISE), mangel_satz(m, "<o>", "<d>"), "{m:?}");
+            let satz = mangel_satz_mit(m, "<o>", "<d>", &anderer);
+            assert!(satz.contains("er Dienst X bleibt aus") && !satz.contains("Passkey"), "{m:?}: {satz}");
+        }
+        assert_eq!(
+            mangel_satz_mit(Mangel::DateiOffen, "<o>", "<d>", &anderer),
+            "Der Schlüssel <d> ist für andere Konten lesbar. Bitte die Rechte 600 setzen oder die Datei entfernen (dann geschieht Y). Der Dienst X bleibt aus, bis das geschehen ist."
+        );
+        assert_eq!(mangel_satz_mit(Mangel::DateiGroesse, "<o>", "<d>", &anderer), "<d> hat nicht genau 32 Bytes; der Dienst X bleibt aus");
+        // Der Rahmen der Ausweise, Feld für Feld festgehalten.
+        assert_eq!(
+            RAHMEN_AUSWEISE,
+            Rahmen {
+                folge: "Die Anmeldung mit Passkey bleibt aus",
+                folge_im_satz: "die Anmeldung mit Passkey bleibt aus",
+                name: "Schlüssel für die Ausweise",
+                nach_dem_entfernen: "dann entsteht ein neuer Schlüssel",
+                fehlt: "Der Schlüssel für die Ausweise fehlt; die Anmeldung mit Passkey bleibt aus",
+                ausnahme_bei_neuer_datei: false,
+            }
+        );
     }
 }
