@@ -29,6 +29,11 @@ Hinzugefügt
 - Gibt es für den Schlüssel der Aufgaben-Links keinen Ort, steht das
   beim Start im Protokoll, und Aufgaben mit Link werden abgelehnt.
 
+Behoben
+- Unter macOS ging der Schlüssel der Aufgaben-Links bei einem Neubau des
+  Programms verloren, weil der Eintrag im Schlüsselbund an das alte
+  Programm gebunden war; gespeicherte Links waren danach nicht mehr
+  lesbar. Die Datei im Schlüsselordner übersteht jeden Neubau.
 Entfernt
 - Die Kiste security-framework und die Anbindung an den Schlüsselbund
   von macOS.
