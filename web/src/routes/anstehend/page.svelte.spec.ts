@@ -230,7 +230,7 @@ describe('Seite „Anstehend“', () => {
 
 	it('ohne Anmeldung (Schritt E2): leitet auf /anmelden, mit Filtern im Ziel', async () => {
 		expect(await leitetZurAnmeldung('/anstehend?stufe=jetzt')).toBe(
-			'/anmelden?ziel=%2Fanstehend%3Fstufe%3Djetzt'
+			'/anmelden?ziel=%2Fanstehend%3Fstufe%3Djetzt&umgeleitet=1'
 		);
 	});
 });

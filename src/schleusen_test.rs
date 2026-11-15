@@ -1324,7 +1324,7 @@ async fn browser_ohne_anmeldung_bekommt_eine_seite_in_einfachem_deutsch() {
     assert!(html.contains("Anmeldung nötig. Ohne Anmeldung zeigt das Dashboard nur die Anmeldeseite."), "{html}");
     assert!(html.contains("öffnet sich diese Seite in Microsoft Edge unter"), "{html}");
     assert!(html.contains("Andere Browser schicken deine Windows-Anmeldung nicht mit."), "{html}");
-    assert!(html.contains("href=\"http://localhost:8787/anmelden?ziel=/schluessel%3Fx%3D%2522%253C\">Zur Anmeldung</a>"), "{html}");
+    assert!(html.contains("href=\"http://localhost:8787/anmelden?ziel=/schluessel%3Fx%3D%2522%253C&amp;umgeleitet=1\">Zur Anmeldung</a>"), "{html}");
     assert!(!html.contains("in jedem Browser"), "der alte Satz ist falsch: {html}");
     assert!(html.contains("value=\"http://localhost:8787/schluessel?x=%22%3C\""), "{html}");
     assert!(!html.contains('"') || !html.contains("x=\"<"), "Adresse ist ersetzt");
@@ -1346,7 +1346,7 @@ async fn browser_ohne_anmeldung_geht_zur_anmeldung() {
         let req = Request::get("/projects/schaufenster?x=1").header(header::HOST, host).header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
         let res = schicke(&app, req).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER, "{host}");
-        assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/projects/schaufenster%3Fx%3D1", "{host}");
+        assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/projects/schaufenster%3Fx%3D1&umgeleitet=1", "{host}");
     }
     let api = anfrage(Method::GET, "/api/projects").header("sec-fetch-dest", "document").header(header::ACCEPT, "text/html").body(Body::empty()).unwrap();
     let res = schicke(&app, api).await;
@@ -1738,7 +1738,7 @@ async fn fremdes_konto_ohne_ausweis_muss_zum_passkey() {
     let req = anfrage(Method::GET, "/vorgaenge?x=1").header("sec-fetch-dest", "document").body(Body::empty()).unwrap();
     let res = schicke(&app, ueber(req, v)).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
-    assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/vorgaenge%3Fx%3D1");
+    assert_eq!(kopf(&res, "location"), "http://localhost:8787/anmelden?ziel=/vorgaenge%3Fx%3D1&umgeleitet=1");
     // Öffentliche Wege bleiben für die fremde Verbindung offen; /api/pc nicht (Schritt E2).
     let res = schicke(&app, ueber(hole("/api/betrieb"), v)).await;
     assert_eq!(res.status(), StatusCode::OK);

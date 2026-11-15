@@ -12,6 +12,7 @@
 	import { statusSatz } from '#lib/api/client.ts';
 	import OldLink from '#lib/components/OldLink.svelte';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
+	import { anmeldenAdresse } from '#lib/zugang.ts';
 
 	const art = $derived(page.error?.art);
 	// Dieselbe Seite unter localhost (Port bleibt); dort meldet Windows von selbst an.
@@ -23,12 +24,7 @@
 	});
 	// Etappe 7c: zur Anmeldung mit Passkey (immer über localhost), danach zurück hierher.
 	const passkeyZiel = $derived(
-		localhostAdresse(
-			new URL(
-				`/anmelden?ziel=${encodeURIComponent(page.url.pathname + page.url.search)}`,
-				page.url.href
-			).href
-		)
+		localhostAdresse(new URL(anmeldenAdresse(page.url), page.url.href).href)
 	);
 
 	/**

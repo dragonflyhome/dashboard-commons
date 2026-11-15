@@ -423,6 +423,8 @@ fn nach_localhost(req: &Request, port: u16) -> Option<String> {
 
 /// Die Adresse der Passkey-Anmeldung mit dem Ziel `ziel` (Pfad und Abfrage,
 /// prozentkodiert), immer über localhost (Passkeys gehen nicht mit einer IP).
+/// `umgeleitet=1` heißt: Weg ohne Anmeldung; nur dann springt /anmelden bei
+/// gültiger Anmeldung gleich weiter (wie `anmeldenAdresse` in der Oberfläche).
 pub fn anmelden_adresse(port: u16, ziel: &str) -> String {
     let mut kodiert = String::with_capacity(ziel.len());
     for b in ziel.bytes() {
@@ -432,7 +434,7 @@ pub fn anmelden_adresse(port: u16, ziel: &str) -> String {
             kodiert.push_str(&format!("%{b:02X}"));
         }
     }
-    format!("http://localhost:{port}/anmelden?ziel={kodiert}")
+    format!("http://localhost:{port}/anmelden?ziel={kodiert}&umgeleitet=1")
 }
 
 /// Ein anderes Windows-Konto ohne gültigen Ausweis auf einem geschützten Weg
@@ -473,7 +475,7 @@ fn passkey_noetig(req: &Request, port: u16) -> Response {
 ///   ohne Nachweis 401 mit `WWW-Authenticate: Negotiate` (Art `anmeldung`),
 ///   bei einer Browser-Navigation über 127.0.0.1 307 auf localhost.
 /// - Außerhalb von Windows ohne gültigen Ausweis: eine Seitennavigation 303 auf
-///   `/anmelden?ziel=<pfad>` (`ohne_anmeldung`), alles andere 401 JSON (Art `anmeldung`).
+///   `/anmelden?ziel=<pfad>&umgeleitet=1` (`ohne_anmeldung`), alles andere 401 JSON (Art `anmeldung`).
 /// - Kein Modulweg ist öffentlich (`Modul::freie_wege` wirkt seit E2 nicht mehr).
 /// - Die Anträge auf einen Passkey (`api::passkey::konto_noetig`) brauchen
 ///   Negotiate mit irgendeinem Konto (der echte Kontoname), der Inhaber nicht.
@@ -537,7 +539,7 @@ async fn mit_ausweis(mut req: Request, next: Next, sitzung: &crate::anmeldung::P
 }
 
 /// Außerhalb von Windows auf einem nicht öffentlichen Weg ohne gültigen
-/// Ausweis: Eine Seitennavigation bekommt 303 auf `/anmelden?ziel=<pfad>`
+/// Ausweis: Eine Seitennavigation bekommt 303 auf `/anmelden?ziel=<pfad>&umgeleitet=1`
 /// (über localhost, Passkeys gehen nicht mit einer IP), alles andere 401 JSON
 /// mit Art `anmeldung` (`bitte_anmelden`, wie unter Windows mit `Negotiate`, das
 /// hier kein Browser aushandelt). Gleich für jeden Weg, ohne Blick in den Bestand.

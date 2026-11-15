@@ -192,6 +192,6 @@ describe('/zielbild mit Blöcken', () => {
 
 describe('/zielbild ohne Anmeldung (Schritt E2)', () => {
 	it('leitet auf /anmelden, die Seite lädt nicht', async () => {
-		expect(await leitetZurAnmeldung('/zielbild')).toBe('/anmelden?ziel=%2Fzielbild');
+		expect(await leitetZurAnmeldung('/zielbild')).toBe('/anmelden?ziel=%2Fzielbild&umgeleitet=1');
 	});
 });

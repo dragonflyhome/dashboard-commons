@@ -19,7 +19,7 @@ const LEER: Daten = { leisteProjekte: null, projektListe: null };
 /**
  * Schritt E2, die eine Stelle für die Anmeldung: Ohne Anmeldung (`zugang`
  * „fehlt“ oder „fremd“) lädt nur eine Seite aus `OEFFENTLICHE_SEITEN`; jede
- * andere geht zu `/anmelden?ziel=<pfad>`. Den Pfad liest `load` nur dann:
+ * andere geht zu `/anmelden?ziel=<pfad>&umgeleitet=1`. Den Pfad liest `load` nur dann:
  * So läuft es ohne Anmeldung bei jedem Seitenwechsel neu, angemeldet nicht.
  */
 function zurAnmeldung(url: URL): Daten {
