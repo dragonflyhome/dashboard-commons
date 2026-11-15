@@ -9,7 +9,14 @@ import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ThemaSchalter from './components/ThemaSchalter.svelte';
-import { THEMA_SCHLUESSEL, themaAnwenden, themaLesen, themaSetzen } from './thema.ts';
+import {
+	THEMA_SCHLUESSEL,
+	THEMEN,
+	istThema,
+	themaAnwenden,
+	themaLesen,
+	themaSetzen
+} from './thema.ts';
 
 const APP_HTML = readFileSync(join(import.meta.dirname, '..', 'app.html'), 'utf8');
 
@@ -62,6 +69,31 @@ describe('Skript in app.html (kein Aufblitzen)', () => {
 		vorlageAusfuehren();
 		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
 		localStorage.setItem(THEMA_SCHLUESSEL, 'lila');
+		vorlageAusfuehren();
+		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+		expect(themaLesen()).toBe('system');
+	});
+
+	/**
+	 * Etappe S1: Das Skript kennt seine Werte von Hand (es kann nichts
+	 * importieren, und die CSP erlaubt es nur über seine Prüfsumme). Darum
+	 * hält dieser Test es an der Liste fest: Jeder Wert aus THEMEN außer
+	 * `system` muss dort ankommen.
+	 */
+	it.each(THEMEN.map((t) => t.wert).filter((w) => w !== 'system'))(
+		'Wert „%s“ aus THEMEN: das Skript setzt data-theme',
+		(wert) => {
+			localStorage.setItem(THEMA_SCHLUESSEL, wert);
+			vorlageAusfuehren();
+			expect(document.documentElement.getAttribute('data-theme')).toBe(wert);
+			expect(themaLesen()).toBe(wert);
+		}
+	);
+
+	it('ein Wert, der nicht in THEMEN steht: das Skript setzt kein data-theme', () => {
+		const fremd = 'kein-thema-der-liste';
+		expect(THEMEN.some((t) => (t.wert as string) === fremd)).toBe(false);
+		localStorage.setItem(THEMA_SCHLUESSEL, fremd);
 		vorlageAusfuehren();
 		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
 		expect(themaLesen()).toBe('system');
@@ -135,5 +167,37 @@ describe('ThemaSchalter', () => {
 		await fireEvent.click(screen.getByRole('radio', { name: 'System' }));
 		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
 		expect(localStorage.getItem(THEMA_SCHLUESSEL)).toBeNull();
+	});
+});
+
+describe('Etappe S1: die Liste THEMEN ist die eine Quelle', () => {
+	it('istThema kennt genau die Werte der Liste', () => {
+		for (const { wert } of THEMEN) expect(istThema(wert)).toBe(true);
+		for (const fremd of ['lila', '', 'HELL', ' hell', null, undefined, 0, {}]) {
+			expect(istThema(fremd)).toBe(false);
+		}
+	});
+
+	it('themaLesen gibt jeden gemerkten Wert der Liste zurück, sonst system', () => {
+		for (const { wert } of THEMEN) {
+			localStorage.setItem(THEMA_SCHLUESSEL, wert);
+			expect(themaLesen()).toBe(wert);
+		}
+		localStorage.setItem(THEMA_SCHLUESSEL, 'kein-thema-der-liste');
+		expect(themaLesen()).toBe('system');
+		localStorage.clear();
+		expect(themaLesen()).toBe('system');
+	});
+
+	it('der Schalter zeigt genau die Einträge der Liste, in ihrer Reihenfolge', () => {
+		render(ThemaSchalter);
+		const knoepfe = screen.getAllByRole('radio');
+		expect(knoepfe.map((k) => k.textContent.trim())).toEqual(THEMEN.map((t) => t.text));
+	});
+
+	it('jeder Eintrag hat einen eigenen Wert und einen eigenen Namen', () => {
+		expect(new Set(THEMEN.map((t) => t.wert)).size).toBe(THEMEN.length);
+		expect(new Set(THEMEN.map((t) => t.text)).size).toBe(THEMEN.length);
+		expect(THEMEN.some((t) => t.wert === 'system')).toBe(true);
 	});
 });
