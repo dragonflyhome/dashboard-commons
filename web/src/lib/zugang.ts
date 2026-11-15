@@ -112,10 +112,39 @@ export class Zugang {
 		this.#laeuft = null;
 		this.#art = null;
 	}
+
+	/**
+	 * Schritt E2b: Ist der gemerkte Stand `fehlt` oder `fremd`, ihn vergessen und
+	 * neu fragen (etwa nach der Anmeldung in einem anderen Tab); sonst nichts.
+	 * Bis die Antwort da ist, gehen geschützte Abfragen ins Netz.
+	 */
+	auffrischen(fetchFn?: typeof fetch): Promise<Zugangsstand> {
+		if (!this.gesperrt) return Promise.resolve(this.stand);
+		this.vergessen();
+		return this.pruefen(fetchFn);
+	}
 }
 
 /** Der eine Zugang für die ganze Seite. */
 export const zugang = new Zugang();
+
+/**
+ * Schritt E2b: Kommt der Tab zurück (sichtbar oder Fokus), gilt ein gemerktes
+ * `fehlt` nicht weiter (`auffrischen`): Wer sich in einem neuen Tab angemeldet
+ * hat, speichert im alten gleich wieder übers Netz statt bis zu `FRIST_MS`
+ * lang mit einer lokalen 401. Gibt die Abmeldung der Ereignisse zurück.
+ */
+export function beiRueckkehrAuffrischen(z: Zugang = zugang, w: Window = window): () => void {
+	const los = (): void => {
+		if (w.document.visibilityState === 'visible') void z.auffrischen();
+	};
+	w.addEventListener('focus', los);
+	w.document.addEventListener('visibilitychange', los);
+	return () => {
+		w.removeEventListener('focus', los);
+		w.document.removeEventListener('visibilitychange', los);
+	};
+}
 
 /**
  * Schritt E2: die Seiten, die ohne Anmeldung laden. Jede andere leitet die

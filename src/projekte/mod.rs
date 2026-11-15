@@ -11,8 +11,8 @@
 //! Das Register
 //! - hängt den Router jedes Moduls unter `/api/projekte/<slug>/x/` ein, im
 //!   Rahmen des SDK (Absturz je Anfrage gefangen, Körper ≤ 64 KiB, Fehlerform
-//!   `{ fehler, art }`). Lesen ist frei wie bei 4v; schreibende Wege brauchen
-//!   die Windows-Anmeldung (`sicherheit::anmeldung_pflicht`) und die
+//!   `{ fehler, art }`). Seit Schritt E2 verlangen alle Wege
+//!   die Anmeldung (`sicherheit::anmeldung_pflicht`) und die
 //!   Herkunftsprüfung (`sicherheit::herkunft_pflicht`), wie überall;
 //! - richtet beim Start die Tabellen der Module ein (`speicher::projekte`);
 //! - ruft die Hooks: `nach_lesen` im Leseweg von 4v (`api::neue_form`),

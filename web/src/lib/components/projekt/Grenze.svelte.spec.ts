@@ -1,14 +1,23 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
-import Grenze from './Grenze.svelte';
+import type * as Ladefehler from '#lib/ladefehler.ts';
+import { zugang } from '#lib/zugang.ts';
 import Gut from './probe/Gut.svelte';
 import Wirft from './probe/Wirft.svelte';
 import WirftWennKaputt from './probe/WirftWennKaputt.svelte';
 import { schalter } from './probe/schalter.ts';
+import { rollenBeobachten } from './probe/rollen.ts';
 import { umgebung, zuruecksetzen } from '#lib/fassung.ts';
 
 // Vitest kennt keine Fassung des Baus; das Neuladen merkt sich, aus welcher es kam.
 vi.mock('$app/env', () => ({ version: 'probe', browser: true, building: false, dev: false }));
+// Schritt E2b: sonst wie echt; ein Test lässt die Anmeldung ablaufen.
+vi.mock('#lib/ladefehler.ts', async (echt) => {
+	const m = await echt<typeof Ladefehler>();
+	return { ...m, teilFehlt: vi.fn(m.teilFehlt) };
+});
+const { teilFehlt } = await import('#lib/ladefehler.ts');
+const { default: Grenze } = await import('./Grenze.svelte');
 
 describe('Grenze um eine Projektseite', () => {
 	it('zeigt die Seite, wenn sie geht', async () => {
@@ -74,6 +83,45 @@ describe('Grenze um eine Projektseite', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: 'neu versuchen' }));
 		expect(await screen.findByText('Seite ist da')).toBeInTheDocument();
 		expect(mal).toBe(2);
+	});
+
+	it('Schritt E2b: Anmeldung abgelaufen bei offener Eingabe: Hinweis statt Fehlerbild; „neu versuchen“ fragt die Anmeldung neu und lädt noch einmal', async () => {
+		vi.mocked(teilFehlt).mockResolvedValueOnce('abgelaufen');
+		const auffrischen = vi.spyOn(zugang, 'auffrischen').mockResolvedValue('da');
+		const feld = document.body.appendChild(document.createElement('input'));
+		feld.focus();
+		const { rollen, hinweisDa, ende } = rollenBeobachten();
+		let mal = 0;
+		render(Grenze, {
+			lade: () => {
+				mal += 1;
+				return mal === 1
+					? Promise.reject(new TypeError('Failed to fetch dynamically imported module: x'))
+					: Promise.resolve({ default: Gut });
+			},
+			datei: 'projects/x/Seite.svelte'
+		});
+		const hinweis = await screen.findByRole('alert');
+		// Nach dem Zeichnen des Hinweises das Feld mit dem Fokus ins Bild, der Fokus bleibt.
+		await vi.waitFor(() => {
+			expect(rollen).toHaveBeenCalledTimes(1);
+		});
+		ende();
+		expect(rollen.mock.contexts[0]).toBe(feld);
+		expect(rollen).toHaveBeenCalledWith({ block: 'nearest' });
+		expect(hinweisDa).toEqual([true]);
+		expect(document.activeElement).toBe(feld);
+		feld.remove();
+		expect(hinweis).toHaveTextContent('Anmeldung abgelaufen');
+		expect(hinweis).not.toHaveTextContent('Diese Seite hat gerade einen Fehler');
+		const link = screen.getByRole('link', { name: 'In neuem Tab anmelden' });
+		expect(link).toHaveAttribute('target', '_blank');
+		expect(link).toHaveAttribute('rel', 'noopener');
+		await fireEvent.click(screen.getByRole('button', { name: 'neu versuchen' }));
+		expect(auffrischen).toHaveBeenCalledTimes(1);
+		expect(await screen.findByText('Seite ist da')).toBeInTheDocument();
+		expect(mal).toBe(2);
+		auffrischen.mockRestore();
 	});
 
 	it('Nachtrag: fehlt nur ein Teil eines alten Baus, lädt die Seite einmal neu statt des Fehlerbilds', async () => {

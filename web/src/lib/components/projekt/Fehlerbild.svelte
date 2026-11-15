@@ -15,8 +15,10 @@
 		datei: string | null;
 		/** „neu versuchen“: die Seite noch einmal zeichnen oder laden. */
 		neu: () => void;
+		/** Beschriftung des Knopfs; „schließen“, wenn die Seite stehen bleibt. */
+		knopf?: string;
 	}
-	let { satz, fehler, datei, neu }: Props = $props();
+	let { satz, fehler, datei, neu, knopf = 'neu versuchen' }: Props = $props();
 
 	function meldung(e: unknown): string {
 		if (e instanceof Error) return e.message;
@@ -36,7 +38,7 @@
 	<h2>Diese Seite hat gerade einen Fehler</h2>
 	<p>{satz} Der Rest des Dashboards läuft weiter.</p>
 	<p>
-		<button type="button" class="button primary" onclick={neu}>neu versuchen</button>
+		<button type="button" class="button primary" onclick={neu}>{knopf}</button>
 	</p>
 	<details>
 		<summary class="muted small">Meldung für den Chat</summary>
@@ -49,7 +51,8 @@
 
 <style>
 	.fehlerbild {
-		margin-top: 16px;
+		/* Im haftenden Stapel (NeueFormRahmen) 0, dort trägt gap den Abstand. */
+		margin-top: var(--karte-oben, 16px);
 		border-left: 4px solid var(--bad);
 	}
 	.fehlerbild h2 {

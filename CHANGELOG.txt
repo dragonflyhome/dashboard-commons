@@ -14,6 +14,63 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Bruch: Ohne Anmeldung liefert das Dashboard unter /_app/ nur noch die
+  Bau-Dateien der Oberfläche selbst. Welche das sind, schreibt der Bau in
+  _app/oeffentlich.json. Die Bau-Dateien der eigenen Projektseiten und die
+  Liste der Projekte mit eigener Seite verlangen die Anmeldung. Fehlt die
+  Liste oder ist sie kaputt, ist ohne Anmeldung unter /_app/ nichts
+  öffentlich. Damit nennt ohne Anmeldung keine Bau-Datei mehr einen
+  Projektnamen oder einen festen Text einer eigenen Projektseite.
+- Der Bau bricht ab, wenn eine öffentliche Bau-Datei Teile eigener
+  Projektseiten enthielte oder ihre Liste der Projekte, und wenn die
+  Oberfläche eine Projektseite an dieser Liste vorbei einbindet. Eine Probe
+  nach jedem Bau (npm run build) sucht in allen öffentlichen Dateien nach
+  den Namen und Texten der Projektseiten; findet sie etwas, scheitert der
+  Bau, die Liste der öffentlichen Dateien heißt danach
+  oeffentlich.json.fund, und Fund-Dateien außerhalb von /_app/ liegen unter
+  _app/fund/, sodass dieser Bau sie ohne Anmeldung nicht herausgibt. Kann
+  die Probe nicht prüfen (sie fände die Texte nicht einmal in den
+  geschützten Dateien, eine Seitendatei fehlt, Bau und Liste der Projekte
+  passen nicht zusammen), scheitert der Bau ebenso, mit der Marke
+  _app/oeffentlich.blind. Zeichenketten im Skript einer Seite liest sie
+  aus dem Syntaxbaum: Kommentare und Typen zählen nicht als Seitentext, ein
+  regulärer Ausdruck verschluckt keinen Text, und eine Seite, die sie
+  nicht lesen kann, macht sie blind. Sie nennt nur Dateien und Zahlen.
+  scripts\Dienst.ps1 meldet einen Fund als Sicherheitsfund der Oberfläche
+  und eine blinde Probe als „Die Probe kann den Bau nicht prüfen“, beides
+  nicht als Fehler eines Projekts; scripts\Start-Dashboard.ps1 startet nach
+  einem gescheiterten Bau nicht mehr und rät nach Fund oder blinder Probe
+  nicht zu -SkipWeb. Beide Skripte nennen am Ende Laufzeit und
+  Kernauslastung.
+- Auch Projekte ohne eigene Seite zeigen kurz „Seite wird geladen …“, bis
+  die Liste der Projektseiten geladen ist.
+- Bruch: Dateien unter /projects/<slug>/assets und die Bau-Dateien unter
+  /_app/ lassen sich von keiner fremden Seite mehr laden, auch Bilder nicht
+  (403, gleich ob es die Datei gibt). Bisher konnte eine fremde Seite über
+  die Windows-Anmeldung erfahren, ob es ein Bild gibt. Der Entwurf in der
+  Vorschau zeigt seine Bilder weiter eingebettet. Bilder aus srcset,
+  Adressen mit ?…, von Skripten gebaute Namen und Bilder über der Grenze
+  von 8 MiB zeigt er im Rahmen nicht mehr, auch angemeldet.
+- Geschützte Bau-Dateien bleiben nicht im Zwischenspeicher des Browsers.
+- Läuft die Anmeldung auf einer Projektseite ab oder wird sie widerrufen
+  und lädt die Seite danach einen Teil des Baus, führt sie zur Anmeldung,
+  statt neu zu laden. Ist etwas eingegeben (auch in einem Feld außerhalb
+  eines Formulars), bleibt die Seite mit dem Text stehen; ein Hinweis
+  „Anmeldung abgelaufen“ (bei einem fremden Windows-Konto mit dessen Satz)
+  öffnet die Anmeldung in einem neuen Tab, danach geht es mit „neu
+  versuchen“ weiter. Der Hinweis haftet am unteren Rand, solange die Seite
+  zu sehen ist, höchstens 40 % des Fensters hoch, ohne das Feld mit dem
+  Fokus zu verdecken (erscheint er, rollt die Seite dieses Feld ins Bild);
+  er nimmt nie den Fokus und steht hinter den
+  Eingaben, sodass Tab ihn erreicht. Auch eine gewählte Datei zählt als Eingabe. Scheitert
+  eine Bedienung bei eingegebenem Text, bleibt die Seite stehen, das
+  Fehlerbild haftet dahinter (mit dem Hinweis untereinander, nicht
+  übereinander) und hat „schließen“ statt „neu versuchen“.
+- Kommt der Tab zurück (sichtbar oder Fokus), fragt die Seite bei
+  fehlender Anmeldung neu, statt sie bis zu fünf Minuten zu glauben; nach
+  der Anmeldung in einem anderen Tab speichert der alte gleich wieder.
+
 0.13.1 - 2026-11-15
 -------------------
 
@@ -53,12 +110,10 @@ Geändert
 - Anleitung und Leitfaden nennen als frei nur noch die öffentlichen Wege.
   Die Edge-Proben prüfen ohne Anmeldung die Weiterleitung zur Anmeldung,
   keinen Projekttitel im DOM und 401 auf /api/projects.
-- Bekannt: Die Bau-Dateien der eigenen Projektseiten unter /_app/ nennen
-  ohne Anmeldung noch Projektnamen und feste Seitentexte; das schließt der
-  nächste Schritt.
 - Die Vorschau eines Entwurfs bringt die Bilder aus assets/, die sie nennt,
   eingebettet mit, weil der abgeschirmte Rahmen keine Anmeldung mitschickt;
-  höchstens 8 MB je Antwort (ein mehrfach genanntes Bild zählt je Nennung),
+  höchstens 8 MiB Bild-Bytes vor base64 je Antwort (ein mehrfach genanntes
+  Bild zählt je Nennung),
   in der Reihenfolge, in der der Entwurf sie nennt, die übrigen bleiben
   Adressen.
 - Bau-Dateien der Oberfläche sind ohne Anmeldung nur in ihrer echten
@@ -68,8 +123,9 @@ Geändert
 Entfernt
 - Bruch: Modul::freie_wege wirkt nicht mehr; kein Weg eines Moduls ist
   ohne Anmeldung lesbar.
-- Bruch: /api/projekte/<slug>/stand nennt kein Feld zahlen mehr; es stand
-  nur ohne Anmeldung da, angemeldet war es immer null.
+- Bruch: /api/projekte/<slug>/stand und /stand/voll nennen kein Feld
+  zahlen mehr (Typ ProjektStand); es stand nur ohne Anmeldung da,
+  angemeldet war es immer null.
 
 0.12.0 - 2026-11-15
 -------------------

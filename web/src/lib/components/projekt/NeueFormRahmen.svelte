@@ -21,10 +21,10 @@
 	import ProjektTeile from '#lib/components/projekt/ProjektTeile.svelte';
 	import BauKopf from '#lib/components/projekt/BauKopf.svelte';
 	import Fehlerbild from '#lib/components/projekt/Fehlerbild.svelte';
+	import AnmeldungAbgelaufen from '#lib/components/projekt/AnmeldungAbgelaufen.svelte';
 	import AbschnittVerzeichnis from '#lib/components/projekt/AbschnittVerzeichnis.svelte';
 	import { aufgaben } from '#lib/aufgaben.svelte.ts';
-	import { istChunkFehler } from '#lib/fassung.ts';
-	import { fassung } from '#lib/fassung.svelte.ts';
+	import { eingabeDa, fokusZeigen, teilFehlt } from '#lib/ladefehler.ts';
 	import type { ProjektAntwort } from '$vertrag';
 
 	interface Props {
@@ -57,9 +57,15 @@
 	 * Fehlergrenze nicht (so die Svelte-Doku). Der Rahmen hört darum am Fenster
 	 * auf `error` und `unhandledrejection` (auch eine async-Funktion, die
 	 * scheitert) und zeigt dieselbe Meldung an Stelle der Seite; Kopf,
-	 * Navigation und der Rest des Dashboards laufen weiter.
+	 * Navigation und der Rest des Dashboards laufen weiter. Ist auf der Seite
+	 * etwas eingegeben (`eingabeDa`), bleibt die Seite stehen, die Meldung haftet
+	 * hinter ihr am unteren Rand (`ueber`), und „schließen“ schließt sie nur, ohne
+	 * die Seite neu zu zeichnen. Ebenso der Hinweis `AnmeldungAbgelaufen`: hinter
+	 * der Seite, damit Tab vom Textfeld aus hinkommt; der Fokus bleibt, wo er ist.
 	 */
-	let fensterFehler = $state.raw<{ fehler: unknown } | null>(null);
+	let fensterFehler = $state.raw<{ fehler: unknown; ueber: boolean } | null>(null);
+	/** Anmeldung abgelaufen (oder fremdes Konto) bei offener Eingabe: Die Seite bleibt, dazu der Hinweis. */
+	let anmeldung = $state<'abgelaufen' | 'fremd' | null>(null);
 	/** Teile und Inhalt der Seite: daraus liest das Inhaltsverzeichnis die Abschnitte. */
 	let seiteEl = $state<HTMLElement | null>(null);
 	/** „neu versuchen“: die Seite noch einmal zeichnen. */
@@ -67,18 +73,31 @@
 	$effect(() => {
 		if (eingebettet) return;
 		// Gemeldet wird selbst (Konsole); preventDefault: der Fehler ist hier behandelt.
+		// Fehlt ein Teil des Baus: abgemeldet zur Anmeldung, alter Bau einmal neu laden
+		// (`teilFehlt`, Schritt E2b); abgemeldet mit offener Eingabe: die Seite
+		// stehen lassen, dahinter der Hinweis; sonst das Fehlerbild.
+		// Ein spätes Ergebnis nach einem Seitenwechsel gilt nicht mehr (wie in Grenze und Bauliste).
+		const zeigen = (f: unknown): void => {
+			const fuer = gezeigt;
+			void teilFehlt(f).then((wie) => {
+				if (wie === 'weiter' || fuer !== gezeigt) return;
+				if (wie === 'abgelaufen' || wie === 'fremd') {
+					anmeldung = wie;
+					void fokusZeigen();
+					return;
+				}
+				console.error('Fehler auf der Projektseite:', f);
+				fensterFehler = { fehler: f, ueber: eingabeDa(document) };
+				void fokusZeigen();
+			});
+		};
 		const beiFehler = (e: ErrorEvent): void => {
 			e.preventDefault();
-			// Fehlt nur ein Teil eines alten Baus: einmal neu laden statt des Fehlerbilds.
-			if (istChunkFehler(e.error ?? e.message) && fassung.chunkFehler()) return;
-			console.error('Fehler auf der Projektseite:', e.error ?? e.message);
-			fensterFehler = { fehler: e.error ?? e.message };
+			zeigen(e.error ?? e.message);
 		};
 		const beiAbgelehnt = (e: PromiseRejectionEvent): void => {
 			e.preventDefault();
-			if (istChunkFehler(e.reason) && fassung.chunkFehler()) return;
-			console.error('Fehler auf der Projektseite:', e.reason);
-			fensterFehler = { fehler: e.reason };
+			zeigen(e.reason);
 		};
 		window.addEventListener('error', beiFehler);
 		window.addEventListener('unhandledrejection', beiAbgelehnt);
@@ -97,6 +116,7 @@
 		if (jetzt !== gezeigt) {
 			gezeigt = jetzt;
 			fensterFehler = null;
+			anmeldung = null;
 		}
 	});
 </script>
@@ -170,20 +190,46 @@
 	{/if}
 
 	<div class="inhalt">
-		{#if fensterFehler !== null}
+		{#if fensterFehler !== null && !fensterFehler.ueber}
 			<Fehlerbild
 				satz="Bei einer Bedienung der Seite ist etwas schiefgegangen; der Chat des Projekts kann es beheben."
 				fehler={fensterFehler.fehler}
 				datei={null}
 				neu={() => {
-					fensterFehler = null;
 					runde += 1;
+					fensterFehler = null;
 				}}
 			/>
 		{:else}
 			{#key runde}
 				{@render children()}
 			{/key}
+		{/if}
+		<!-- Hinter der Seite (Tab-Reihenfolge nach den Eingaben), beide in einem Behälter am unteren Rand haftend. -->
+		{#if anmeldung !== null || fensterFehler?.ueber}
+			<div class="haftend stapel">
+				{#if anmeldung !== null}
+					<AnmeldungAbgelaufen
+						fremd={anmeldung === 'fremd'}
+						satz="Die Seite bleibt mit allem Eingegebenen stehen. Bitte in einem neuen Tab anmelden und die Bedienung danach noch einmal versuchen."
+						knopf="Hinweis schließen"
+						neu={() => {
+							anmeldung = null;
+						}}
+					/>
+				{/if}
+				{#if fensterFehler?.ueber}
+					<Fehlerbild
+						satz="Bei einer Bedienung der Seite ist etwas schiefgegangen; die Seite bleibt mit allem Eingegebenen stehen."
+						fehler={fensterFehler.fehler}
+						datei={null}
+						knopf="schließen"
+						neu={() => {
+							fensterFehler = null;
+						}}
+					/>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </div>
@@ -219,6 +265,15 @@
 	.seite,
 	.inhalt {
 		min-width: 0;
+	}
+	/* Hinweis und Fehlerbild bei offener Eingabe: untereinander statt übereinander
+	   in einem haftenden Behälter (.haftend in app.css). */
+	.stapel {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		/* Den Abstand trägt gap; der margin-top beider Karten fällt im Stapel weg. */
+		--karte-oben: 0;
 	}
 	/* Kopfleiste, Fassung 3: Am Rechner (ab 1024 px) stehen die Unterseiten in
 	   der Seitenleiste unter dem Projekt; die Chips bleiben nur darunter. */

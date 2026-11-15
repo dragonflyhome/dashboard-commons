@@ -10,11 +10,14 @@
 	 *
 	 * Fehlt nur ein Teil eines alten Baus (nach einer neuen Fassung, 404),
 	 * lädt die Seite einmal neu statt des Fehlerbilds (`#lib/fassung.svelte.ts`).
+	 * Schritt E2b: Gilt die Anmeldung nicht mehr (401 auf den geschützten Teil),
+	 * geht es stattdessen zur Anmeldung (`#lib/ladefehler.ts`); ist dabei etwas
+	 * Ungesichertes offen, bleibt die Seite mit dem Hinweis `AnmeldungAbgelaufen`.
 	 */
 	import type { Component } from 'svelte';
-	import { istChunkFehler } from '#lib/fassung.ts';
-	import { fassung } from '#lib/fassung.svelte.ts';
+	import { fokusZeigen, teilFehlt } from '#lib/ladefehler.ts';
 	import Fehlerbild from './Fehlerbild.svelte';
+	import AnmeldungAbgelaufen from './AnmeldungAbgelaufen.svelte';
 
 	interface Props {
 		lade: () => Promise<{ default: Component }>;
@@ -27,7 +30,9 @@
 	let versuch = $state(0);
 	/** Die geladene Seite; erst danach zeichnet die Grenze sie (synchron, damit sie Fehler fängt). */
 	let Seite = $state.raw<Component | null>(null);
-	let ladefehler = $state.raw<{ fehler: unknown } | null>(null);
+	let ladefehler = $state.raw<{ fehler: unknown; wie: 'abgelaufen' | 'fremd' | 'fehler' } | null>(
+		null
+	);
 	$effect(() => {
 		const laden = lade;
 		// Gelesen, damit „neu versuchen“ (versuch + 1) noch einmal lädt.
@@ -40,9 +45,14 @@
 				if (aktuell && nr === versuch) Seite = m.default;
 			},
 			(e: unknown) => {
-				// Alter Bau: neu laden; bis dahin bleibt „Seite wird geladen …“ stehen.
-				if (aktuell && istChunkFehler(e) && fassung.chunkFehler()) return;
-				if (aktuell) ladefehler = { fehler: e };
+				// Abgemeldet: zur Anmeldung; alter Bau: neu laden. Bis dahin bleibt
+				// „Seite wird geladen …“ stehen.
+				void teilFehlt(e).then((wie) => {
+					if (aktuell && nr === versuch && wie !== 'weiter') {
+						ladefehler = { fehler: e, wie };
+						void fokusZeigen();
+					}
+				});
 			}
 		);
 		return () => {
@@ -55,7 +65,16 @@
 	}
 </script>
 
-{#if ladefehler !== null}
+{#if ladefehler !== null && ladefehler.wie !== 'fehler'}
+	<AnmeldungAbgelaufen
+		fremd={ladefehler.wie === 'fremd'}
+		satz="Dieser Teil der Seite lässt sich ohne Anmeldung nicht laden; was sonst auf der Seite eingegeben ist, bleibt stehen. Bitte in einem neuen Tab anmelden und dann neu versuchen."
+		knopf="neu versuchen"
+		neu={() => {
+			versuch += 1;
+		}}
+	/>
+{:else if ladefehler !== null}
 	<Fehlerbild
 		satz="Die Seite ließ sich nicht laden."
 		fehler={ladefehler.fehler}

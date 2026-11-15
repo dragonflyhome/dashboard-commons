@@ -126,13 +126,14 @@ pub async fn nur_eigene_adresse(State(state): State<AppState>, req: Request, nex
 /// solche Anfragen durch, weil sie von keinem Browser stammen können; hier
 /// geht es aber um Passwörter, darum lieber zu streng.
 ///
-/// Unter `/api/*` und für Projektdateien (`/projects/<slug>/assets/<datei>`)
-/// gilt die Browser-Regel (`Sec-Fetch-Site: cross-site` oder `same-site` → 403)
-/// auch für lesende Anfragen: Eine fremde Seite soll weder Daten lesen noch
+/// Unter `/api/*`, für Projektdateien (`/projects/<slug>/assets/<datei>`) und
+/// seit E2b für die Bau-Dateien unter `/_app/…` gilt die Browser-Regel
+/// (`Sec-Fetch-Site: cross-site` oder `same-site` → 403) auch für lesende
+/// Anfragen ([`nur_von_hier`]): Eine fremde Seite soll weder Daten lesen noch
 /// etwa `/api/pruefung` immer wieder auslösen. `same-origin`, `none` (Adresse
 /// eingetippt) und ohne Kopfzeile (curl) bleiben erlaubt. Unter `/api/vorgaenge`
-/// und `/api/aufgaben` zählt beim Lesen zusätzlich ein fremder `Origin`. Die Oberfläche selbst
-/// (`/`, Seiten, `/_app/…`) bleibt für Links von außen erreichbar.
+/// und `/api/aufgaben` zählt beim Lesen zusätzlich ein fremder `Origin`. Die Seiten
+/// der Oberfläche (`/`, `/anmelden` …) bleiben für Links von außen erreichbar.
 pub async fn herkunft_pflicht(State(state): State<AppState>, req: Request, next: Next) -> Response {
     // Die Chats melden Vorgänge (Etappe 2b) und Aufgaben (5a) per curl ohne
     // Browser-Kopfzeilen. Für diese Pfade gilt nur die Browser-Regel (cross-site
@@ -156,9 +157,6 @@ pub async fn herkunft_pflicht(State(state): State<AppState>, req: Request, next:
     let fremd = h.get("sec-fetch-site").and_then(|v| v.to_str().ok()).is_some_and(|v| matches!(v, "cross-site" | "same-site"));
     // Beim Lesen prüft die Schicht von tower-http den Origin nicht; für die Vorgänge hier selbst.
     let fremder_origin = chat_weg && h.get(header::ORIGIN).is_some_and(|o| !o.to_str().is_ok_and(|o| eigene_herkuenfte(state.port).iter().any(|e| e == o)));
-    if fremd && !fremder_origin && bild_im_rahmen(&req) {
-        return next.run(req).await;
-    }
     if fremd || fremder_origin {
         tracing::warn!("{} {} von fremder Seite abgelehnt", req.method(), req.uri().path());
         return if lesend { abgelehnt_lesend() } else { abgelehnt() };
@@ -179,34 +177,22 @@ pub async fn herkunft_pflicht(State(state): State<AppState>, req: Request, next:
     next.run(req).await
 }
 
-/// Wege, die auch lesend nur das Dashboard selbst abrufen darf: `/api/*` und
-/// `/projects/<slug>/assets/<datei>`.
+/// Wege, die auch lesend nur das Dashboard selbst abrufen darf: `/api/*`,
+/// `/projects/<slug>/assets/<datei>` und seit E2b `/_app/*` (die Teile des
+/// Baus lädt nur die eigene Seite; von einer fremden Seite im angemeldeten
+/// Browser lüde Edge einen geschützten Teil sonst mit der Windows-Anmeldung).
+///
+/// Schritt E2b: Auch Bilder aus dem Vorschau-Rahmen (undurchsichtige Herkunft,
+/// darum `cross-site`) bekommen hier 403; die frühere Ausnahme für sie ließ jede
+/// fremde Seite ein vorhandenes Bild über die Windows-Anmeldung laden und so
+/// erfahren, ob es die Datei gibt. Der Entwurf bringt seine Bilder eingebettet
+/// mit (`api::projekte::asset`, `data:`).
 pub fn nur_von_hier(pfad: &str) -> bool {
-    if pfad == "/api" || pfad.starts_with("/api/") {
+    if pfad == "/api" || pfad.starts_with("/api/") || pfad == "/_app" || pfad.starts_with("/_app/") {
         return true;
     }
     let mut t = pfad.split('/');
     t.next() == Some("") && t.next() == Some("projects") && t.next().is_some() && t.next() == Some("assets") && t.next().is_some_and(|d| !d.is_empty())
-}
-
-/// Enge Ausnahme für die Vorschau: Der Vorschau-Rahmen (`sandbox` ohne
-/// `allow-same-origin`) hat eine undurchsichtige Herkunft, der Browser schickt
-/// darum für seine Bilder `Sec-Fetch-Site: cross-site`. Erlaubt ist trotzdem
-/// genau: GET auf `/projects/<slug>/assets/<datei>` mit Bildendung (svg, png,
-/// jpg, jpeg, webp, gif), `Sec-Fetch-Dest: image` und `Sec-Fetch-Mode: no-cors`.
-/// Ein Bild im no-cors-Modus liefert dem Aufrufer keine Daten zurück, und die
-/// SVG-CSP (`ASSET_SVG_CSP`) verhindert Skripte. Alles andere bleibt 403.
-/// Seit Schritt E2 verlangen die Dateien zudem die Anmeldung, die der Rahmen
-/// nicht mitschickt; darum bettet `api::projekte::asset` die Bilder ein.
-fn bild_im_rahmen(req: &Request) -> bool {
-    const BILDENDUNGEN: [&str; 6] = ["svg", "png", "jpg", "jpeg", "webp", "gif"];
-    let h = req.headers();
-    let kopf_ist = |name: &str, wert: &str| h.get(name).and_then(|v| v.to_str().ok()) == Some(wert);
-    let pfad = req.uri().path();
-    let bild = pfad.starts_with("/projects/")
-        && nur_von_hier(pfad)
-        && pfad.rsplit_once('.').is_some_and(|(_, e)| !e.contains('/') && BILDENDUNGEN.contains(&e.to_ascii_lowercase().as_str()));
-    *req.method() == Method::GET && bild && kopf_ist("sec-fetch-dest", "image") && kopf_ist("sec-fetch-mode", "no-cors")
 }
 
 /// Antwort der Herkunftsprüfung bei lesenden Anfragen (kein Formular im Spiel).
@@ -304,12 +290,16 @@ pub fn pfad_dekodiert(roh: &str) -> Option<String> {
 /// Der Abgleich ist streng (nach dem Muster von `projekte::modul_weg_frei`):
 /// exakt und groß/klein-sensitiv, ohne Präfix und ohne Schrägstrich am Ende;
 /// der rohe **und** der dekodierte Pfad müssen passen, eine kaputte oder
-/// doppelte Kodierung ist nie öffentlich. Einzige Präfixe: `/_app/` (mit
-/// `sicherer_teilpfad`) und `/neu/` (nur Umleitung, ohne Blick in den Bestand).
-/// `bau_datei` sagt, ob es den Teilpfad als Datei im Ordner der Oberfläche
-/// gibt (`oberflaeche::bau_datei`); so sind nur Bau-Dateien öffentlich.
+/// doppelte Kodierung ist nie öffentlich. Einziges Präfix: `/neu/` (nur
+/// Umleitung, ohne Blick in den Bestand). `bau_datei` sagt, ob der Teilpfad
+/// eine öffentliche Datei im Ordner der Oberfläche ist (`oberflaeche::bau_datei`):
+/// so sind nur Bau-Dateien öffentlich, unter `/_app/` seit Schritt E2b nur die
+/// aus der öffentlichen Liste des Baus (`_app/oeffentlich.json`). Die Teile
+/// eigener Projektseiten und die Bauliste verlangen die Anmeldung; eine
+/// erfundene Datei antwortet wie eine geschützte (kein Orakel).
 pub fn oeffentlich(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::Path) -> bool) -> bool {
-    oeffentlich_roh(methode, pfad, bau_datei) && pfad_dekodiert(pfad).is_some_and(|d| oeffentlich_roh(methode, &d, bau_datei))
+    // Ohne %-Kodierung ist der dekodierte Pfad derselbe: nicht zweimal auf die Platte.
+    oeffentlich_roh(methode, pfad, bau_datei) && pfad_dekodiert(pfad).is_some_and(|d| d == pfad || oeffentlich_roh(methode, &d, bau_datei))
 }
 
 /// Der Abgleich eines Pfads ohne Dekodieren (siehe [`oeffentlich`]).
@@ -325,7 +315,7 @@ fn oeffentlich_roh(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::
         "/api/passkey/antrag" | "/api/passkey/antrag/beginn" | "/api/passkey/antrag/ende" => get || post,
         _ if pfad.ends_with('/') || api_weg(pfad) => false,
         _ if pfad.starts_with("/neu/") => lesen,
-        _ if pfad.starts_with("/_app/") => lesen && crate::oberflaeche::sicherer_teilpfad(pfad).is_some(),
+        // Schritt E2b: auch unter `/_app/` nur Bau-Dateien, dort zudem nur aus der öffentlichen Liste (`bau_datei`).
         _ => lesen && crate::oberflaeche::sicherer_teilpfad(pfad).is_some_and(|rel| !rel.as_os_str().is_empty() && bau_datei(&rel)),
     }
 }
@@ -515,6 +505,9 @@ pub async fn anmeldung_pflicht(State(state): State<AppState>, req: Request, next
             res.headers_mut().append(header::SET_COOKIE, crate::passkey::cookie::loeschen());
         }
         _ => {}
+    }
+    if !geschuetzt {
+        res.extensions_mut().insert(OeffentlicherWeg);
     }
     res
 }
@@ -829,9 +822,21 @@ pub async fn kopfzeilen(State(state): State<AppState>, req: Request, next: Next)
 
 // ----- 8 Zwischenspeicher -----
 
+/// Schritt E2b: An der Antwort, wenn die Anmeldeschicht (4b) den Weg nach der
+/// Positivliste als öffentlich eingestuft hat. Nur die Schicht setzt es.
+#[derive(Clone, Copy)]
+pub struct OeffentlicherWeg;
+
+/// Schleuse 8: `public, immutable` nur für öffentliche Dateien unter
+/// `/_app/immutable/` (Schritt E2b: das Urteil der Anmeldeschicht über die
+/// Positivliste, [`OeffentlicherWeg`] an der Antwort, ohne die Prüfung zu
+/// wiederholen). Fehlt es, etwa bei einer anderen Reihenfolge der Schichten,
+/// bleibt es bei `no-store`, nie `public`; ebenso für die geschützten Teile
+/// eigener Projektseiten und jede andere Antwort.
 pub async fn zwischenspeicher(req: Request, next: Next) -> Response {
     let unveraenderlich = req.uri().path().starts_with("/_app/immutable/");
     let mut res = next.run(req).await;
+    let unveraenderlich = unveraenderlich && res.extensions().get::<OeffentlicherWeg>().is_some();
     let wert = if unveraenderlich && res.status().is_success() { "public, max-age=31536000, immutable" } else { "no-store" };
     res.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(wert));
     res
@@ -941,9 +946,11 @@ pub fn percent_encode(s: &str) -> String {
 mod tests {
     use super::*;
 
-    /// `oeffentlich` mit einer Oberfläche, deren Bau nur `favicon.ico` hat.
+    /// `oeffentlich` mit einer Oberfläche, deren öffentlicher Bau nur `favicon.ico`,
+    /// `_app/immutable/a.js` und `_app/version.json` hat (Schritt E2b: unter `_app/`
+    /// steht in `bau_datei` auch die öffentliche Liste).
     fn oeff(m: &Method, p: &str) -> bool {
-        oeffentlich(m, p, &|rel| rel == std::path::Path::new("favicon.ico"))
+        oeffentlich(m, p, &|rel| ["favicon.ico", "_app/immutable/a.js", "_app/version.json"].iter().any(|d| rel == std::path::Path::new(d)))
     }
 
     /// Schritt E2: Die System-Seiten und ihre Daten sind nicht öffentlich,
@@ -968,7 +975,8 @@ mod tests {
     }
 
     /// Schritt E2: Bau-Dateien nur, wenn es sie gibt, ohne Schrägstrich am Ende;
-    // `/_app/` mit sicherem Teilpfad; `/neu` nur lesend; nie unter `/api`.
+    /// `/neu` nur lesend; nie unter `/api`. Schritt E2b: unter `/_app/` nur, was
+    /// `bau_datei` nennt (kein Präfix mehr), und nur mit sicherem Teilpfad.
     #[test]
     fn bau_dateien_und_umleitungen() {
         assert!(oeff(&Method::GET, "/favicon.ico") && oeff(&Method::HEAD, "/favicon.ico"));
@@ -977,7 +985,17 @@ mod tests {
         }
         assert!(!oeff(&Method::POST, "/favicon.ico"));
         assert!(oeff(&Method::GET, "/_app/immutable/a.js") && oeff(&Method::HEAD, "/_app/version.json"));
-        for p in ["/_app/", "/_app/../x", "/_app/%2e%2e/x", "/_app/a%2Fb", "/_App/a.js", "/_app/.x"] {
+        for p in [
+            "/_app/",
+            "/_app/../x",
+            "/_app/%2e%2e/x",
+            "/_app/a%2Fb",
+            "/_App/a.js",
+            "/_app/.x",
+            "/_app/immutable/b.js",
+            "/_app/immutable/a.js/",
+            "/_app/oeffentlich.json",
+        ] {
             assert!(!oeff(&Method::GET, p), "{p}");
         }
         for p in ["/neu", "/neu/", "/neu/projects/beispiel"] {
@@ -1046,7 +1064,16 @@ mod tests {
 
     #[test]
     fn lesend_nur_von_hier() {
-        for p in ["/api", "/api/", "/api/pruefung", "/api/projects/x", "/projects/schaufenster/assets/bild.svg", "/projects/a/assets/x/y"] {
+        for p in [
+            "/api",
+            "/api/",
+            "/api/pruefung",
+            "/api/projects/x",
+            "/projects/schaufenster/assets/bild.svg",
+            "/projects/a/assets/x/y",
+            "/_app/immutable/a.js",
+            "/_app/version.json",
+        ] {
             assert!(nur_von_hier(p), "{p}");
         }
         for p in [
@@ -1055,7 +1082,7 @@ mod tests {
             "/projects/schaufenster",
             "/projects/schaufenster/assets",
             "/projects/schaufenster/assets/",
-            "/_app/immutable/a.js",
+            "/_appx/a.js",
             "/apix",
             "/projects/a/vorschau",
         ] {

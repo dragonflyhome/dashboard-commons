@@ -658,6 +658,40 @@ pub(crate) mod tests {
         assert!(set.unwrap().contains("Max-Age=0"), "ungültiges Cookie wird gelöscht");
     }
 
+    /// Schritt E2b, mögliche Schleife zwischen einer Seite und `/anmelden`:
+    /// `/api/passkey/stand` meldet eine Anmeldung genau dann, wenn ein
+    /// geschützter Weg (`/api/projects`, `/api/vorgaenge/uebersicht`) durchgeht.
+    /// Beide entscheidet dieselbe Schleuse (`sicherheit::anmeldung_pflicht`) aus
+    /// Verbindung und Ausweis; nur zwischen zwei Anfragen kann sich der Stand
+    /// ändern (Ablauf, Abmelden), und dann meldet auch der Stand „keine“.
+    #[tokio::test]
+    async fn stand_und_geschuetzter_weg_stimmen_ueberein() {
+        let state = zustand();
+        let mut a = PruefAuthenticator::es256();
+        assert_eq!(anlegen(&router_angemeldet(state.clone()), &a).await.0, StatusCode::CREATED);
+        let (s, ausweis) = anmelden(&ohne(&state), &mut a, HERKUNFT).await;
+        assert_eq!(s, StatusCode::OK);
+        let ausweis = ausweis.unwrap();
+        let pruefen = |name: &'static str, app: Router, cookie: Option<String>| async move {
+            let (_, _, j) = schicke(&app, get("/api/passkey/stand", cookie.as_deref())).await;
+            let angemeldet = j["wie"].as_str().unwrap() != "keine";
+            for weg in ["/api/projects", "/api/vorgaenge/uebersicht"] {
+                let (s, _, _) = schicke(&app, get(weg, cookie.as_deref())).await;
+                assert_eq!(s == StatusCode::OK, angemeldet, "{name}: Stand {j}, {weg} {s}");
+            }
+            angemeldet
+        };
+        assert!(!pruefen("ohne alles", ohne(&state), None).await);
+        assert!(!pruefen("fremdes Konto", fremd(&state), None).await);
+        assert!(!pruefen("kaputter Ausweis", ohne(&state), Some("a.b.c".into())).await);
+        assert!(pruefen("Hauptkonto", router_angemeldet(state.clone()), None).await);
+        assert!(pruefen("Passkey", ohne(&state), Some(ausweis.clone())).await);
+        assert!(pruefen("fremdes Konto mit Passkey", fremd(&state), Some(ausweis.clone())).await);
+        let (s, _, _) = schicke(&ohne(&state), post("/api/passkey/abmelden", serde_json::json!({}), Some(&ausweis))).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(!pruefen("abgemeldet", ohne(&state), Some(ausweis)).await);
+    }
+
     /// Abnahme 7c: Eine Anmeldung mit falscher Art oder Herkunft verbraucht die
     /// Challenge; ein zweiter Versuch mit derselben Challenge (jetzt richtig)
     /// wird als unbekannt oder schon benutzt abgewiesen.

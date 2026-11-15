@@ -538,58 +538,66 @@ async fn svg_und_andere_dateien_mit_eigener_csp() {
     let _ = std::fs::remove_dir_all(&wurzel);
 }
 
-/// Nachzug 2c: Bilder aus dem Vorschau-Rahmen (undurchsichtige Herkunft, darum
-/// `cross-site`) gehen als `Sec-Fetch-Dest: image` im no-cors-Modus durch,
-/// aber nur mit Bildendung und nur als Bild; sonst bleibt es 403.
-///
-/// Schritt E2: Die Fälle mit 200 tragen den Ausweis des Tests. Ein Browser
-/// schickt das Passkey-Cookie (SameSite=Strict) aus dem Rahmen nie mit; ohne
-/// Ausweis gibt es 401. Darum bettet der Server die Bilder in den Entwurf ein
-/// (`entwurf_bekommt_seine_bilder_eingebettet`).
+/// Schritt E2b: Die Ausnahme für Bilder aus dem Vorschau-Rahmen ist weg. Jede
+/// Anfrage von fremder Herkunft (`cross-site`, `same-site`) auf eine Projektdatei
+/// bekommt 403 aus der Herkunftsprüfung, vor der Anmeldung: gleich für
+/// vorhandene und erfundene Dateien, mit und ohne Ausweis, über 127.0.0.1 und
+/// localhost. So erfährt eine fremde Seite nicht, ob es ein Bild gibt (vorher
+/// lud Edge ein vorhandenes mit der Windows-Anmeldung, ein erfundenes nicht).
+/// Dasselbe für die Teile des Baus unter `/_app/` (Gegenprüfung E2b): Ein
+/// geschützter Teil wäre sonst über `<link>` oder `<script>` einer fremden
+/// Seite mit der Windows-Anmeldung ladbar.
 #[tokio::test]
-async fn bilder_fuer_den_vorschau_rahmen_trotz_cross_site() {
+async fn bilder_von_fremder_herkunft_immer_403() {
     let (wurzel, assets) = temp_repo("rahmen");
     std::fs::write(assets.join("bild.png"), [0x89, b'P', b'N', b'G']).unwrap();
     std::fs::write(assets.join("plan.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
-    std::fs::write(assets.join("daten.json"), "{}").unwrap();
     std::fs::write(assets.join("vorschau.html"), "<!doctype html><p>x</p>").unwrap();
-    let app = router_angemeldet(AppState::fuer_tests(&wurzel));
-    let mit = |pfad: &str, methode: Method, ziel: &str, modus: &str| {
-        anfrage(methode, pfad)
-            .header("sec-fetch-site", "cross-site")
-            .header("sec-fetch-dest", ziel)
-            .header("sec-fetch-mode", modus)
-            .header(header::ORIGIN, "null")
-            .body(Body::empty())
-            .unwrap()
-    };
-    let faelle = [
-        ("/projects/p/assets/bild.png", Method::GET, "image", "no-cors", StatusCode::OK),
-        ("/projects/p/assets/plan.svg", Method::GET, "image", "no-cors", StatusCode::OK),
-        ("/projects/p/assets/vorschau.html", Method::GET, "iframe", "navigate", StatusCode::FORBIDDEN),
-        ("/projects/p/assets/vorschau.html", Method::GET, "image", "no-cors", StatusCode::FORBIDDEN),
-        ("/projects/p/assets/daten.json", Method::GET, "image", "no-cors", StatusCode::FORBIDDEN),
-        ("/projects/p/assets/bild.png", Method::GET, "image", "cors", StatusCode::FORBIDDEN),
-        ("/projects/p/assets/bild.png", Method::GET, "empty", "no-cors", StatusCode::FORBIDDEN),
-        ("/projects/p/assets/bild.png", Method::HEAD, "image", "no-cors", StatusCode::FORBIDDEN),
-        ("/api/projects", Method::GET, "image", "no-cors", StatusCode::FORBIDDEN),
-    ];
-    let mut ergebnisse = Vec::new();
-    for (pfad, methode, ziel, modus, _) in &faelle {
-        ergebnisse.push(schicke(&app, mit(pfad, methode.clone(), ziel, modus)).await.status());
-    }
+    let mit_ausweis = router_angemeldet(AppState::fuer_tests(&wurzel));
     let ohne_ausweis = router(AppState::fuer_tests(&wurzel));
-    let mut ohne = Vec::new();
-    for pfad in ["/projects/p/assets/bild.png", "/projects/p/assets/plan.svg"] {
-        ohne.push((pfad, schicke(&ohne_ausweis, mit(pfad, Method::GET, "image", "no-cors")).await.status()));
+    let mut antworten = Vec::new();
+    for (wer, app) in [("mit Ausweis", &mit_ausweis), ("ohne Ausweis", &ohne_ausweis)] {
+        for host in ["127.0.0.1:8787", "localhost:8787"] {
+            for (seite, origin) in [("cross-site", "null"), ("cross-site", "http://127.0.0.1:9789"), ("same-site", "http://localhost:9789")] {
+                for (ziel, modus) in [("image", "no-cors"), ("empty", "cors"), ("iframe", "navigate")] {
+                    for pfad in [
+                        "/projects/p/assets/bild.png",
+                        "/projects/p/assets/plan.svg",
+                        "/projects/p/assets/vorschau.html",
+                        "/projects/p/assets/erfunden.png",
+                        "/projects/erfunden/assets/bild.png",
+                        "/_app/immutable/chunks/geschuetzt.js",
+                        "/_app/immutable/assets/geschuetzt.css",
+                        "/_app/version.json",
+                    ] {
+                        let req = Request::get(pfad)
+                            .header(header::HOST, host)
+                            .header("sec-fetch-site", seite)
+                            .header("sec-fetch-dest", ziel)
+                            .header("sec-fetch-mode", modus)
+                            .header(header::ORIGIN, origin)
+                            .body(Body::empty())
+                            .unwrap();
+                        let res = schicke(app, req).await;
+                        let status = res.status();
+                        antworten.push((format!("{wer} {host} {seite} {ziel} {pfad}"), status, text(res).await));
+                    }
+                }
+            }
+        }
     }
+    // Gegenprobe: dieselbe Datei von hier selbst (same-origin) mit Ausweis.
+    let req = anfrage(Method::GET, "/projects/p/assets/bild.png").header("sec-fetch-site", "same-origin").body(Body::empty()).unwrap();
+    let selbst = schicke(&mit_ausweis, req).await.status();
     let _ = std::fs::remove_dir_all(&wurzel);
-    for ((pfad, methode, ziel, modus, soll), ist) in faelle.iter().zip(ergebnisse) {
-        assert_eq!(ist, *soll, "mit Ausweis (nur im Test): {methode} {pfad} dest={ziel} mode={modus}");
+    assert!(antworten.len() >= 288, "{}", antworten.len());
+    let erste = antworten[0].2.clone();
+    for (fall, status, koerper) in &antworten {
+        assert_eq!(*status, StatusCode::FORBIDDEN, "{fall}");
+        assert_eq!(*koerper, erste, "{fall}: derselbe Körper für jeden Fall");
     }
-    for (pfad, ist) in ohne {
-        assert_eq!(ist, StatusCode::UNAUTHORIZED, "ohne Ausweis, wie aus dem Rahmen: {pfad}");
-    }
+    assert!(erste.contains("nicht vom Dashboard selbst"), "{erste}");
+    assert_eq!(selbst, StatusCode::OK);
 }
 
 /// Schritt E2: Der angemeldet geöffnete Entwurf bringt seine Bilder als
@@ -727,26 +735,118 @@ async fn zu_grosse_datei_gibt_413() {
 // Schleuse 8: Zwischenspeicher-Regeln
 // ---------------------------------------------------------------------------
 
-/// Unabhängig vom Live-Betrieb: ein eigenes Web-Verzeichnis im Temp-Ordner
-/// (`build/` ohne `builds/`), nicht `web/build` des Repos. Dort baut der
-/// Bote im Haupt-Repo `web/builds/aktuell`, und `WebOrt` folgte diesem
-/// Zeiger; die Datei aus `web/build` gab es dann nicht (404).
-#[tokio::test]
-async fn unveraenderliche_dateien_lange_im_zwischenspeicher() {
-    let wurzel = std::env::temp_dir().join(format!("dashboard-schleuse8-{}", std::process::id()));
+/// Ein eigener Bau im Temp-Ordner (`build/` ohne `builds/`), nicht `web/build`
+/// des Repos (dort baut der Bote im Haupt-Repo `web/builds/aktuell`, und
+/// `WebOrt` folgte diesem Zeiger). Schritt E2b: zwei Dateien unter
+/// `_app/immutable/`, die Hülle in der öffentlichen Liste, die Seite nicht;
+/// `liste`: der Inhalt von `_app/oeffentlich.json` (`None`: keine Liste).
+fn bau_mit_liste(name: &str, liste: Option<&str>) -> (PathBuf, AppState) {
+    let wurzel = std::env::temp_dir().join(format!("dashboard-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&wurzel);
     let build = wurzel.join("build");
     let entry = build.join("_app").join("immutable").join("entry");
+    let chunks = build.join("_app").join("immutable").join("chunks");
     std::fs::create_dir_all(&entry).unwrap();
+    std::fs::create_dir_all(&chunks).unwrap();
     std::fs::write(build.join("index.html"), "<!doctype html><title>Probe</title>").unwrap();
-    std::fs::write(entry.join("start.Ab12Cd.js"), "export const x = 1;\n").unwrap();
-    let state = AppState::fuer_tests(&beispiel()).mit_web(build.clone());
-    let pfad = "/_app/immutable/entry/start.Ab12Cd.js";
-    let res = schicke(&router_angemeldet(state), hole(pfad)).await;
+    std::fs::write(build.join("_app").join("version.json"), "{\"version\":\"1\"}").unwrap();
+    std::fs::write(
+        entry.join("start.Ab12Cd.js"),
+        "export const x = 1;
+",
+    )
+    .unwrap();
+    std::fs::write(
+        chunks.join("Seite12.js"),
+        "export const s = 'Projektseite';
+",
+    )
+    .unwrap();
+    if let Some(l) = liste {
+        std::fs::write(build.join("_app").join("oeffentlich.json"), l).unwrap();
+    }
+    (wurzel.clone(), AppState::fuer_tests(&beispiel()).mit_web(build))
+}
+
+const HUELLE: &str = "/_app/immutable/entry/start.Ab12Cd.js";
+const SEITE: &str = "/_app/immutable/chunks/Seite12.js";
+const ERFUNDEN: &str = "/_app/immutable/chunks/Erfunden9.js";
+const LISTE_HUELLE: &str = r#"["_app/immutable/entry/start.Ab12Cd.js", "_app/version.json", "_app/oeffentlich.json"]"#;
+
+#[tokio::test]
+async fn unveraenderliche_dateien_lange_im_zwischenspeicher() {
+    let (wurzel, state) = bau_mit_liste("schleuse8", Some(LISTE_HUELLE));
+    let an = router_angemeldet(state.clone());
+    let frei = router(state);
+    let mut faelle = Vec::new();
+    for (wer, app) in [("angemeldet", &an), ("ohne Anmeldung", &frei)] {
+        for pfad in [HUELLE, SEITE, ERFUNDEN, "/_app/version.json"] {
+            let res = schicke(app, hole(pfad)).await;
+            faelle.push((wer, pfad, res.status(), kopf(&res, "cache-control"), res.headers().get_all("cache-control").iter().count()));
+        }
+    }
     let _ = std::fs::remove_dir_all(&wurzel);
-    assert_eq!(res.status(), StatusCode::OK, "{pfad}");
-    assert_eq!(kopf(&res, "cache-control"), "public, max-age=31536000, immutable", "{pfad}");
-    assert_eq!(res.headers().get_all("cache-control").iter().count(), 1, "genau eine Regel");
+    let immer = "public, max-age=31536000, immutable";
+    let soll = [
+        ("angemeldet", HUELLE, StatusCode::OK, immer),
+        // Schritt E2b: geschützt (nicht in der Liste), auch angemeldet nie im Zwischenspeicher.
+        ("angemeldet", SEITE, StatusCode::OK, "no-store"),
+        ("angemeldet", ERFUNDEN, StatusCode::NOT_FOUND, "no-store"),
+        ("angemeldet", "/_app/version.json", StatusCode::OK, "no-store"),
+        ("ohne Anmeldung", HUELLE, StatusCode::OK, immer),
+        ("ohne Anmeldung", SEITE, StatusCode::UNAUTHORIZED, "no-store"),
+        ("ohne Anmeldung", ERFUNDEN, StatusCode::UNAUTHORIZED, "no-store"),
+        ("ohne Anmeldung", "/_app/version.json", StatusCode::OK, "no-store"),
+    ];
+    for ((wer, pfad, status, regel, anzahl), (w, p, s, r)) in faelle.into_iter().zip(soll) {
+        assert_eq!((wer, pfad, status, regel.as_str(), anzahl), (w, p, s, r, 1), "{wer} {pfad}");
+    }
+}
+
+/// Schritt E2b: die Positivliste unter `/_app/` über den ganzen Router.
+/// Ohne Anmeldung: Datei in der Liste 200, Datei außerhalb 401, eine
+/// erfundene Datei genau wie eine geschützte (Status und Körper, kein Orakel).
+/// Angemeldet: alles, was es gibt. Fehlt die Liste oder ist sie kaputt: ohne
+/// Anmeldung ist unter `/_app/immutable/` alles 401, angemeldet geht es weiter.
+#[tokio::test]
+async fn app_dateien_nur_aus_der_liste() {
+    for (name, liste) in [("liste-gut", Some(LISTE_HUELLE)), ("liste-fehlt", None), ("liste-kaputt", Some("[\"_app/immutable/entry/start"))] {
+        let (wurzel, state) = bau_mit_liste(name, liste);
+        let an = router_angemeldet(state.clone());
+        let frei = router(state);
+        let mut ohne = Vec::new();
+        for pfad in [HUELLE, SEITE, ERFUNDEN, "/_app/immutable/entry/START.Ab12Cd.js"] {
+            for kopf_paar in [None, Some(("sec-fetch-dest", "script"))] {
+                let mut b = anfrage(Method::GET, pfad);
+                if let Some((k, v)) = kopf_paar {
+                    b = b.header(k, v).header("sec-fetch-mode", "cors").header("sec-fetch-site", "same-origin");
+                }
+                let res = schicke(&frei, b.body(Body::empty()).unwrap()).await;
+                let status = res.status();
+                ohne.push((pfad, kopf_paar.is_some(), status, text(res).await));
+            }
+        }
+        let an_huelle = schicke(&an, hole(HUELLE)).await.status();
+        let an_seite = schicke(&an, hole(SEITE)).await;
+        let an_seite = (an_seite.status(), text(an_seite).await);
+        let an_erfunden = schicke(&an, hole(ERFUNDEN)).await.status();
+        let _ = std::fs::remove_dir_all(&wurzel);
+        let gut = liste == Some(LISTE_HUELLE);
+        for (pfad, modul, status, koerper) in &ohne {
+            let soll = if gut && *pfad == HUELLE { StatusCode::OK } else { StatusCode::UNAUTHORIZED };
+            assert_eq!(*status, soll, "{name}, ohne Anmeldung: {pfad} (Modul {modul}): {koerper}");
+            assert!(!koerper.contains("Projektseite") || soll == StatusCode::OK, "{name}: {pfad} gibt Inhalt heraus");
+        }
+        // Kein Orakel: die geschützte und die erfundene Datei antworten gleich.
+        let je = |p: &str, m: bool| ohne.iter().find(|(q, n, ..)| *q == p && *n == m).map(|(_, _, s, k)| (*s, k.clone())).unwrap();
+        for modul in [false, true] {
+            assert_eq!(je(SEITE, modul), je(ERFUNDEN, modul), "{name}: geschützt und erfunden gleich (Modul {modul})");
+        }
+        assert_eq!(an_huelle, StatusCode::OK, "{name}");
+        assert_eq!(an_seite.0, StatusCode::OK, "{name}");
+        assert!(an_seite.1.contains("Projektseite"), "{name}");
+        assert_eq!(an_erfunden, StatusCode::NOT_FOUND, "{name}");
+    }
 }
 
 #[tokio::test]
@@ -1757,8 +1857,9 @@ async fn fremdes_konto_ohne_ausweis_muss_zum_passkey() {
 #[test]
 fn liste_der_oeffentlichen_wege() {
     use crate::sicherheit::oeffentlich;
-    // Die Oberfläche hat in diesem Test nur favicon.ico und robots.txt.
-    let bau = |rel: &std::path::Path| rel == std::path::Path::new("favicon.ico") || rel == std::path::Path::new("robots.txt");
+    // Die Oberfläche hat in diesem Test nur favicon.ico, robots.txt und zwei Dateien
+    // unter _app/ aus der öffentlichen Liste (Schritt E2b: die Liste prüft `bau_datei`).
+    let bau = |rel: &std::path::Path| ["favicon.ico", "robots.txt", "_app/immutable/a.js", "_app/version.json"].iter().any(|d| rel == std::path::Path::new(d));
     let (get, head, post) = (Method::GET, Method::HEAD, Method::POST);
     for (m, p) in [
         (&get, "/healthz"),
@@ -1843,6 +1944,9 @@ fn liste_der_oeffentlichen_wege() {
         (&get, "/x/favicon.ico"),
         (&get, "/_app/"),
         (&get, "/_app/../index.html"),
+        // Schritt E2b: unter /_app/ nur die öffentliche Liste, kein Präfix.
+        (&get, "/_app/immutable/geschuetzt.js"),
+        (&get, "/_app/immutable/chunks/gibt-es-nicht.js"),
         // Alle übrigen Seiten und Wege.
         (&get, "/pc"),
         (&get, "/anstehend"),

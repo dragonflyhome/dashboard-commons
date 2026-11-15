@@ -8,10 +8,10 @@
 //! beides nur. „Läuft“ kommt aus der Warteschlange des Baumeisters (bestellt
 //! oder gerade im Bau).
 //!
-//! Was frei ist und was geschützt (Plan 4 sagt dazu nichts; Auslegung des
-//! Betreuers des Dashboards): Zustand und Zeit stehen frei in `/api/projects` (Feld
-//! `bau`), wie Status und Git-Stand. Der Satz bei rot und bei nicht geprüft steht nur geschützt
-//! unter `GET /api/bauen`, wie das Ereignis `bau` nur im geschützten Kanal.
+//! Wo was steht: Zustand und Zeit in `/api/projects` (Feld `bau`), wie Status
+//! und Git-Stand; der Satz bei rot und bei nicht geprüft unter `GET /api/bauen`,
+//! das Ereignis `bau` im geschützten Kanal. Seit Schritt E2 verlangen alle drei
+//! die Anmeldung.
 //! Der Satz nennt nie Pfade, Dateien oder Prüfwerkzeuge; die Einzelheiten
 //! sieht der Chat mit `npm run pruefe -- <slug>`.
 

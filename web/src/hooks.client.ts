@@ -1,6 +1,6 @@
 import type { ClientInit, HandleClientError } from '@sveltejs/kit/hooks';
 import { ApiError, istNetzfehler, SATZ_KEINE_VERBINDUNG } from '#lib/api/client.ts';
-import { zugang } from '#lib/zugang.ts';
+import { beiRueckkehrAuffrischen, zugang } from '#lib/zugang.ts';
 import { istChunkFehler } from '#lib/fassung.ts';
 import { fassung } from '#lib/fassung.svelte.ts';
 
@@ -12,8 +12,11 @@ export const SATZ_NEUE_FASSUNG = 'Es gibt eine neue Fassung; die Seite lädt sie
  * (`zugang.ts`). Ohne Anmeldung (127.0.0.1 ohne Passkey) gehen die
  * geschützten Abfragen dann nicht mehr ins Netz; die Schleusen im Server
  * bleiben, wie sie sind. Höchstens `ZUGANG_FRIST_MS`, dann geht es weiter.
+ * Kommt der Tab zurück, fragt die Seite bei fehlender Anmeldung neu
+ * (`beiRueckkehrAuffrischen`, Schritt E2b).
  */
 export const init: ClientInit = async () => {
+	beiRueckkehrAuffrischen();
 	await zugang.pruefen();
 };
 

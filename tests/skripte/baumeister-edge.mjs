@@ -50,7 +50,8 @@
  *   6. Bau-Stand (Etappe 4c; nur die
  *      Statuszeile, ohne Zeitzeile und ohne Kreispfeil zum
  *      Bauen), mit eigenem Probe-Projekt:
- *      a) Angemeldet (localhost): Kopf grün „Seite in Ordnung“, keine
+ *      a) Angemeldet (localhost): grün zeigt keinen Bau-Hinweis im Kopf und
+ *      keine Marke in der Leiste (seit B8), keine
  *      Zeitzeile, kein Knopf im Kopf, keine Ansage-Region; bei 360 px ohne
  *      seitliches Scrollen. Bau-Tempo, Zweig C: Während eines Baus steht
  *      „prüft Projekt x von y“ im Kopf, keine Live-Region nennt den Schritt.
@@ -98,7 +99,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, portePruefen, inhaltOrt, ohneAnmeldungPruefen, projektSlugs, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -493,7 +494,9 @@ async function edgeStarten({ anmelden = false } = {}) {
       "--disable-component-update",
       "--disable-extensions",
       "--disable-component-extensions-with-background-pages",
-      ...(anmelden ? ["--auth-server-allowlist=localhost"] : []),
+      // Das freie Edge meldet sich nirgends an: Ohne die Liste folgte es der 307 von
+      // 127.0.0.1 auf localhost und meldete sich dort still mit Negotiate an (E2b).
+      anmelden ? "--auth-server-allowlist=localhost" : "--auth-server-allowlist=nicht-dieser-pc.invalid",
       "--window-size=1280,900",
       "about:blank",
     ],
@@ -516,6 +519,14 @@ async function edgeStarten({ anmelden = false } = {}) {
   await cdp.netzSperren({ anmelden });
   cdp.browserSperre = await browserSperren(debugPort, cdp.gesperrt, { ausser: ziel.id });
   await cdp.senden("Runtime.enable");
+  if (!anmelden) {
+    // Selbstprüfung: Auch über localhost bekommt das freie Edge 401, sonst prüfte 6c angemeldet.
+    cdp.basis = BASIS_ANGEMELDET;
+    await cdp.oeffnen("/anmelden");
+    const status = await cdp.rufe(async () => (await fetch("/api/projects", { headers: { accept: "application/json" } })).status).catch(() => 0);
+    cdp.basis = BASIS;
+    if (status !== 401) throw new Error(`Das freie Edge bekommt auf localhost /api/projects ${status} statt 401; es ist angemeldet, die Prüfung ohne Anmeldung gälte nicht.`);
+  }
   return cdp;
 }
 
@@ -998,6 +1009,7 @@ function bauStand(cdp) {
       ansage: bau?.querySelector('[role="status"]')?.textContent?.trim() ?? "",
       knopf: knopf === null ? null : { name: knopf.getAttribute("aria-label"), gesperrt: knopf.getAttribute("aria-disabled"), busy: knopf.getAttribute("aria-busy"), disabled: knopf.disabled, hoehe: Math.round(r.height), breite: Math.round(r.width) },
       breit: document.documentElement.scrollWidth,
+      link: document.querySelector(`.leiste a[href$="/projects/${slug}"]`) !== null,
       leiste: document.querySelector(`.leiste a[href$="/projects/${slug}"] .bau-marke`)?.getAttribute("data-bau") ?? null,
       inhalt: document.querySelector("main .inhalt")?.innerText ?? "",
     };
@@ -1076,22 +1088,32 @@ async function knopfPruefen(frei) {
   mkdirSync(p, { recursive: true });
   writeFileSync(join(p, "projekt.toml"), KNOPF_KOPF);
   let alt = zeiger();
+  const liste = () => fetch(`${BASIS}/_app/oeffentlich.json`).then((r) => (r.ok ? r.text() : `${r.status}`), () => "");
+  const listeVorher = await liste();
   writeFileSync(join(p, "Seite.svelte"), KNOPF_GUT);
   pruefe((await neueFassung(alt)) !== null, "6: Probe-Projekt gebaut (Beobachter)");
+  // Schritt E2b: der neue Bau bringt seine eigene öffentliche Liste mit (ohne Anmeldung lesbar).
+  const listeNachher = await liste();
+  pruefe(listeNachher.startsWith("[") && listeNachher !== listeVorher && !listeNachher.includes(KNOPF_PROBE), "6: nach dem Live-Neubau eine neue öffentliche Liste, ohne den Slug", `${listeVorher.length} -> ${listeNachher.length} Zeichen`);
 
   // a) Angemeldet: grün, nur die Statuszeile (kein Kreispfeil, keine Zeitzeile).
   await bisSichtbar(cdp, pfad, /Die Knopf-Probe ist gut/);
   await bisWahr(cdp, () => document.querySelector('.live[data-zustand="angemeldet"]') !== null, null, 15000);
-  await bisWahr(cdp, () => document.querySelector("main .bau") !== null, null, 15000);
+  // Seit B8 zeigen Kopf und Leiste bei grün nichts (nur Auffälliges; die Marke in der
+  // Leiste nur bei nicht grün). Grün heißt darum: der Bau-Stand sagt grün, `main .bau`
+  // fehlt, der Link steht in der Leiste und trägt keine Marke. `main .bau` fehlt allein
+  // auch, solange der Stand noch nicht geladen ist; darum zuerst stand.json.
+  pruefe((await standAbwarten((p) => p[KNOPF_PROBE]?.gruen === true, 60000)) !== null, "6a: Bau-Stand des Probe-Projekts grün (stand.json)");
+  await bisWahr(cdp, (slug) => document.querySelector(`.leiste a[href$="/projects/${slug}"]`) !== null, KNOPF_PROBE, 15000);
   // Die Sätze (angemeldet, /api/bauen) sind da: Früher kam dann der Kreispfeil.
   await pause(1500);
   let s = await bauStand(cdp);
-  pruefe(s.zustand === "gruen" && s.zeile === "Seite in Ordnung", "6a: Kopf zeigt grün „Seite in Ordnung“", s.zeile);
+  pruefe(s.zustand === null && s.link && s.leiste === null, "6a: grün: kein Bau-Hinweis im Kopf, in der Leiste der Link ohne Marke", JSON.stringify({ kopf: s.zustand, link: s.link, leiste: s.leiste }));
   pruefe(s.knopf === null && s.generiert === "" && s.ansage === "", "6a: angemeldet kein Kreispfeil, keine Zeile „Seite wurde vor … generiert“, keine Ansage-Region im Kopf", JSON.stringify({ knopf: s.knopf, generiert: s.generiert, ansage: s.ansage }));
   const ohneGeneriert = await cdp.rufe(() => !/generiert|Neugenerierung/.test(document.querySelector("main .bau")?.textContent ?? "") && document.querySelector("[data-neu-generieren]") === null);
   pruefe(ohneGeneriert, "6a: nirgends „generiert“ oder „Neugenerierung“ im Kopf, kein Attribut des alten Knopfs");
   let eng = await schmal(cdp);
-  pruefe(eng.breit <= 360 && eng.zustand === "gruen", "6a: bei 360 px kein seitliches Scrollen", JSON.stringify({ breit: eng.breit, zeile: eng.zeile }));
+  pruefe(eng.breit <= 360 && eng.zustand === null, "6a: bei 360 px kein seitliches Scrollen", JSON.stringify({ breit: eng.breit, zeile: eng.zeile }));
 
   // Bau-Tempo, Zweig C: Während eines Baus steht der Schritt im Kopf („prüft
   // Projekt x von y“), angesagt wird nur das Ergebnis (6a). Ohne Anmeldung
@@ -1194,8 +1216,9 @@ async function knopfPruefen(frei) {
   pruefe((await neueFassung(alt)) !== null && (await standAbwarten((p) => p[vorn]?.rot_art === "zusammenbau")) !== null, "6e: nur die Gesamtprüfung rot: der Bau läuft trotzdem durch");
   const v = await projektLesen(cdp, vorn, "Gesamt-Probe 0", (st) => st.zustand === "rot" && st.inhalt.includes("Gesamt-Probe 0"));
   pruefe(v.inhalt.includes("Gesamt-Probe 0 alt") && !v.inhalt.includes("Gesamt-Probe 0 neu") && /zeigt die letzte gute Fassung von /.test(v.zeile), "6e: das geänderte (vorn) fällt auf seine alte Fassung zurück", `${v.zeile} | ${v.inhalt.slice(0, 60)}`);
-  const a = await projektLesen(cdp, "zz-gesamt-a", "Gesamt-Probe A", (st) => st.zustand === "gruen" && st.inhalt.includes("Gesamt-Probe A ist da"), 30000);
-  pruefe(a.pfad === "/projects/zz-gesamt-a" && a.zustand === "gruen", "6e: das unveränderte (hinten) bleibt grün", `${a.pfad}: ${a.zustand}`);
+  // Seit B8: grün zeigt keinen Bau-Hinweis im Kopf (`main .bau` fehlt).
+  const a = await projektLesen(cdp, "zz-gesamt-a", "Gesamt-Probe A", (st) => st.zustand === null && st.inhalt.includes("Gesamt-Probe A ist da"), 30000);
+  pruefe(a.pfad === "/projects/zz-gesamt-a" && a.zustand === null, "6e: das unveränderte (hinten) bleibt grün (kein Bau-Hinweis im Kopf)", `${a.pfad}: ${a.zustand}`);
   const stand = JSON.parse(readFileSync(join(repo, "web", ".projekte-gruen", "stand.json"), "utf8"));
   pruefe(stand.projekte?.[vorn]?.rot_art === "zusammenbau" && stand.projekte?.["zz-gesamt-a"]?.gruen === true, "6e: stand.json: das geänderte zurückgesetzt, das unveränderte grün", JSON.stringify({ vorn: stand.projekte?.[vorn], a: stand.projekte?.["zz-gesamt-a"] }));
   // Die Probe-Typen gelten sonst für alle späteren Gesamtprüfungen der Kopie.
@@ -1208,6 +1231,8 @@ async function knopfPruefen(frei) {
     { oeffnen: (p) => frei.oeffnen(p), werte: async (a) => (await frei.senden("Runtime.evaluate", { expression: a, awaitPromise: true, returnByValue: true })).result.value },
     [pfad, "/"],
     projektTitel(join(repo, "projects")),
+    10000,
+    projektSlugs(join(repo, "projects")),
   );
   for (const e of ohneAnmeldung) pruefe(e.maengel.length === 0, `6c: ohne Anmeldung: ${e.pfad} führt zur Anmeldung, ohne Projekttitel, /api/projects 401`, e.maengel.join("; "));
   const bauSichtbar = await frei.rufe(() => document.querySelector(".pill.bau, main .bau") !== null || /letzte gute Fassung/.test(document.body?.innerText ?? ""));

@@ -61,7 +61,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektSlugs, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -799,6 +799,8 @@ const freierWeg = {
       { oeffnen: (p) => cdp.oeffnen(p), werte: (a) => cdp.auswerten(a) },
       ["/pc", "/"],
       projektTitel(join(ordner, "repo", "projects")),
+      10000,
+      projektSlugs(join(ordner, "repo", "projects")),
     );
     const status = await cdp.auswerten(OHNE_ANMELDUNG_401);
     cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);

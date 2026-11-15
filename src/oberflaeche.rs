@@ -184,10 +184,25 @@ pub fn sicherer_teilpfad(pfad: &str) -> Option<std::path::PathBuf> {
 /// Gibt es `rel` (aus [`sicherer_teilpfad`]) als Datei im Ordner, aus dem die
 /// Oberfläche gerade kommt? Dieselbe Prüfung wie in [`web`]; nur solche
 /// Bau-Dateien sind ohne Anmeldung öffentlich (`sicherheit::oeffentlich`).
+///
+/// Schritt E2b: Unter `_app/` zählt eine Datei nur, wenn sie zudem in der
+/// öffentlichen Liste des Baus steht (`WebOrt::in_oeffentlicher_liste`); die
+/// Teile eigener Projektseiten und die Bauliste stehen nicht darin. Ob die
+/// Liste gilt, entscheidet der aufgelöste Pfad auf der Platte, nicht die
+/// Schreibweise der Anfrage: Auch `/_APP/…` oder `/_app./…` fänden unter
+/// Windows und macOS dieselbe Datei.
 pub fn bau_datei(web: &crate::app::WebOrt, rel: &std::path::Path) -> bool {
     let ordner = web.ordner();
     let datei = ordner.join(rel);
-    datei.is_file() && liegt_unter(&datei, &ordner) && genau_so_geschrieben(&datei, &ordner, rel)
+    if !datei.is_file() {
+        return false;
+    }
+    let (Ok(d), Ok(o)) = (datei.canonicalize(), ordner.canonicalize()) else { return false };
+    // Wie `liegt_unter` und `genau_so_geschrieben`, mit nur einem Auflösen je Pfad.
+    let Ok(echt) = d.strip_prefix(&o) else { return false };
+    let unter_app = echt.iter().next() == Some(std::ffi::OsStr::new("_app"));
+    let echte_schreibweise = !echt.as_os_str().is_empty() && echt.components().map(|c| c.as_os_str()).eq(rel.components().map(|c| c.as_os_str()));
+    echte_schreibweise && (!unter_app || web.in_oeffentlicher_liste(&ordner, echt))
 }
 
 /// Heißt die Datei auf der Platte Teil für Teil genau `rel`? Windows und macOS
@@ -232,8 +247,9 @@ mod tests {
     /// Befund zu E2: Öffentlich ist eine Bau-Datei nur in ihrer echten
     /// Schreibweise. Windows und macOS fänden `INDEX.HTML` und `index.html.`
     /// sonst als `index.html` (Prüfung mit dem echten Dateisystem). Unter
-    /// `/_app/` ist jeder sichere Teilpfad öffentlich; dort liefert `web` nur die
-    /// echte Schreibweise (`app::tests::adressen_mit_laufwerk_wurzel_oder_strom_sind_404`).
+    /// `/_app/` gilt seit E2b zudem nur die öffentliche Liste, entschieden nach
+    /// dem aufgelösten Pfad: Eine geschützte Datei bleibt auch über `/_APP/`
+    /// oder `/_app./` geschützt, selbst ohne den Vergleich der Schreibweise.
     #[test]
     fn bau_datei_nur_in_echter_schreibweise() {
         let web = std::env::temp_dir().join(format!("dashboard-bau-schreibweise-{}", std::process::id()));
@@ -245,10 +261,19 @@ mod tests {
         std::fs::write(web.join("icons").join("symbol-192.png"), b"png").unwrap();
         std::fs::write(web.join("_app").join("version.json"), "{}").unwrap();
         std::fs::write(web.join("_app").join("immutable").join("x.js"), "export {};").unwrap();
+        std::fs::write(web.join("_app").join("immutable").join("seite.js"), "export const geschuetzt = 1;").unwrap();
+        std::fs::write(web.join("_app").join("oeffentlich.json"), r#"["_app/version.json", "_app/immutable/x.js", "_app/oeffentlich.json"]"#).unwrap();
         let ort = crate::app::WebOrt::neu(web.clone());
         let oeff = |p: &str| crate::sicherheit::oeffentlich(&Method::GET, p, &|rel| bau_datei(&ort, rel));
         for p in ["/index.html", "/favicon.ico", "/icons/symbol-192.png", "/_app/version.json", "/_app/immutable/x.js"] {
             assert!(oeff(p), "{p}");
+        }
+        // Die geschützte Datei (nicht in der Liste) in jeder Schreibweise des ersten Teils.
+        for p in ["/_app/immutable/seite.js", "/_APP/immutable/seite.js", "/_App/immutable/seite.js", "/_app./immutable/seite.js", "/_APP./immutable/seite.js"]
+        {
+            assert!(!oeff(p), "{p}");
+            let rel = sicherer_teilpfad(p).expect(p);
+            assert!(!bau_datei(&ort, &rel), "{p}: auch ohne den Umweg über oeffentlich");
         }
         for p in [
             "/INDEX.HTML",
@@ -261,9 +286,67 @@ mod tests {
             "/_APP/version.json",
             "/_App/version.json",
             "/_app./version.json",
+            "/_APP/immutable/x.js",
+            "/_app/IMMUTABLE/x.js",
+            "/_app/immutable/X.js",
         ] {
             assert!(!oeff(p), "{p}");
         }
+        let _ = std::fs::remove_dir_all(&web);
+    }
+
+    /// Schritt E2b: Unter `/_app/` ist nur öffentlich, was es gibt UND was in
+    /// `_app/oeffentlich.json` steht. Fehlt die Liste, ist sie kaputt oder hat
+    /// sie eine andere Form, ist dort nichts öffentlich (fail closed). Eine
+    /// neue Liste gilt ohne Neustart (Änderungszeit), außerhalb von `/_app/`
+    /// zählt sie nicht.
+    #[test]
+    fn app_dateien_nur_aus_der_oeffentlichen_liste() {
+        let web = std::env::temp_dir().join(format!("dashboard-bau-liste-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&web);
+        let imm = web.join("_app").join("immutable");
+        std::fs::create_dir_all(&imm).unwrap();
+        std::fs::write(web.join("index.html"), "<!doctype html>").unwrap();
+        std::fs::write(web.join("favicon.ico"), b"ico").unwrap();
+        std::fs::write(web.join("_app").join("version.json"), "{}").unwrap();
+        std::fs::write(imm.join("huelle.js"), "export {};").unwrap();
+        std::fs::write(imm.join("seite.js"), "export {};").unwrap();
+        let liste = web.join("_app").join("oeffentlich.json");
+        let schreiben = |inhalt: &str| {
+            std::fs::write(&liste, inhalt).unwrap();
+            // Eine andere Änderungszeit, auch wenn das Dateisystem grob zählt.
+            let f = std::fs::File::options().write(true).open(&liste).unwrap();
+            let zeit = std::time::SystemTime::now() + std::time::Duration::from_secs(inhalt.len() as u64 + 5);
+            f.set_modified(zeit).unwrap();
+        };
+        let ort = crate::app::WebOrt::neu(web.clone());
+        let oeff = |p: &str| crate::sicherheit::oeffentlich(&Method::GET, p, &|rel| bau_datei(&ort, rel));
+        let app = ["/_app/version.json", "/_app/immutable/huelle.js", "/_app/immutable/seite.js", "/_app/oeffentlich.json"];
+
+        schreiben(r#"["_app/version.json", "_app/immutable/huelle.js", "_app/oeffentlich.json", "_app/immutable/erfunden.js"]"#);
+        assert!(oeff("/_app/version.json") && oeff("/_app/immutable/huelle.js") && oeff("/_app/oeffentlich.json"));
+        assert!(!oeff("/_app/immutable/seite.js"), "nicht in der Liste");
+        assert!(!oeff("/_app/immutable/erfunden.js"), "in der Liste, aber keine Datei");
+        assert!(!oeff("/_app/immutable/gibt-es-nicht.js"));
+        assert!(oeff("/favicon.ico") && oeff("/index.html"), "außerhalb von /_app/ zählt die Liste nicht");
+
+        // Eine neue Liste gilt ohne Neustart.
+        schreiben(r#"["_app/immutable/seite.js"]"#);
+        assert!(oeff("/_app/immutable/seite.js") && !oeff("/_app/immutable/huelle.js"));
+
+        // Kaputt, andere Form, Einträge außerhalb von _app/, leer, fehlend: nichts unter /_app/.
+        for kaputt in ["", "[", "{\"dateien\": [\"_app/version.json\"]}", "[1]", "[\"_app/version.json\", \"index.html\"]", "[]"] {
+            schreiben(kaputt);
+            for p in app {
+                assert!(!oeff(p), "{kaputt}: {p}");
+            }
+            assert!(oeff("/favicon.ico"), "{kaputt}");
+        }
+        std::fs::remove_file(&liste).unwrap();
+        for p in app {
+            assert!(!oeff(p), "ohne Liste: {p}");
+        }
+        assert!(oeff("/favicon.ico"));
         let _ = std::fs::remove_dir_all(&web);
     }
 }

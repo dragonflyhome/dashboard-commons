@@ -712,6 +712,19 @@ struct Quellen {
 /// Repos, und ein neuerer Grundbau kann Wege brauchen, die der laufende Dienst
 /// noch nicht kennt. Er wartet dann auf Dienst.ps1 -Neustart ([`WebOrt::wartender_bau`]);
 /// bis dahin bleibt der letzte gültige Bau des Boten, ohne ihn die Kopie.
+///
+/// Schritt E2b: Ohne Anmeldung ist unter `/_app/` nur öffentlich, was in
+/// `_app/oeffentlich.json` des Ordners steht ([`WebOrt::in_oeffentlicher_liste`],
+/// geschrieben von web/scripts/oeffentlich.mjs). Ältere Bau-Ordner unter
+/// `web/builds/` haben keine Liste und tragen die Bauliste in einer
+/// gewöhnlichen Bau-Datei. Der Ort fällt auf einen Ordner unter `web/builds/`
+/// nur über den Zeiger oder den zuletzt gültigen Bau zurück, mit Kopie nur bei
+/// gleichem Grundbau (also aus demselben `web/src`, seit E2b immer mit Liste);
+/// ohne Liste ist unter `/_app/` nichts öffentlich. Ein alter Ordner wird so
+/// ohne Anmeldung nie unter `/_app/` gelesen; gelöscht wird er nicht. Ohne
+/// Kopie (Start aus dem Repo) gilt jeder Zeiger: Zeigt er auf einen Bau von
+/// vor E2b, hat auch /anmelden ohne Anmeldung kein JavaScript, bis ein neuer
+/// Bau des Boten den Zeiger versetzt.
 pub struct WebOrt {
     /// `web/build`: Rückfall ohne Kopie; daneben liegen `builds` und die grünen Kopien.
     build: PathBuf,
@@ -720,7 +733,23 @@ pub struct WebOrt {
     /// Die eingespielte Kopie der Oberfläche (`None`: keine, etwa beim Start aus dem Repo).
     kopie: Option<PathBuf>,
     stand: std::sync::RwLock<Option<ZeigerStand>>,
+    /// Schritt E2b: die öffentliche Liste des Ordners, gemerkt mit Ordner und Änderungszeit.
+    liste: std::sync::RwLock<Option<ListenStand>>,
 }
+
+/// Die gelesene `_app/oeffentlich.json` eines Bau-Ordners; `dateien` ist `None`,
+/// wenn sie fehlt oder nicht lesbar ist (dann ist unter `/_app/` nichts öffentlich).
+struct ListenStand {
+    ordner: PathBuf,
+    zeit: Option<std::time::SystemTime>,
+    dateien: Option<Arc<std::collections::HashSet<String>>>,
+}
+
+/// Name der öffentlichen Liste unter `_app/` (web/scripts/oeffentlich.mjs, `LISTE`).
+pub const OEFFENTLICHE_LISTE: &str = "oeffentlich.json";
+
+/// Höchstgröße der öffentlichen Liste; was größer ist, gilt als kaputt.
+const LISTE_HOECHSTENS: u64 = 4 * 1024 * 1024;
 
 /// Zuletzt gesehener Zeiger: sein Inhalt (`None`: fehlt oder zu groß) und
 /// der gewählte Ordner.
@@ -740,7 +769,7 @@ impl WebOrt {
     }
 
     pub fn mit_builds(build: PathBuf, builds: PathBuf) -> Self {
-        Self { build, builds, kopie: None, stand: std::sync::RwLock::new(None) }
+        Self { build, builds, kopie: None, stand: std::sync::RwLock::new(None), liste: std::sync::RwLock::new(None) }
     }
 
     /// Derselbe Ort mit der eingespielten Kopie `kopie` (ohne gültigen Zeiger
@@ -831,6 +860,30 @@ impl WebOrt {
         Ok(ordner)
     }
 
+    /// Schritt E2b: Steht `rel` (ein Teilpfad unter `ordner`, etwa
+    /// `_app/immutable/x.js`) in der öffentlichen Liste des Bau-Ordners? Fehlt
+    /// die Liste oder ist sie kaputt: nein (fail closed). Gelesen wird sie nur,
+    /// wenn sich Ordner oder Änderungszeit der Datei ändern, nicht je Anfrage.
+    pub fn in_oeffentlicher_liste(&self, ordner: &Path, rel: &Path) -> bool {
+        let Some(name) = rel.iter().map(|t| t.to_str()).collect::<Option<Vec<_>>>().map(|t| t.join("/")) else { return false };
+        let datei = ordner.join("_app").join(OEFFENTLICHE_LISTE);
+        let zeit = std::fs::metadata(&datei).and_then(|m| m.modified()).ok();
+        if let Ok(s) = self.liste.read()
+            && let Some(s) = s.as_ref().filter(|s| s.ordner == ordner && s.zeit == zeit)
+        {
+            return s.dateien.as_ref().is_some_and(|d| d.contains(&name));
+        }
+        let dateien = oeffentliche_liste_lesen(&datei).map(Arc::new);
+        if dateien.is_none() {
+            warn!("{} fehlt oder ist nicht lesbar; ohne Anmeldung ist unter /_app/ nichts öffentlich", datei.display());
+        }
+        let gefunden = dateien.as_ref().is_some_and(|d| d.contains(&name));
+        if let Ok(mut s) = self.liste.write() {
+            *s = Some(ListenStand { ordner: ordner.to_path_buf(), zeit, dateien });
+        }
+        gefunden
+    }
+
     /// Der Ordner, aus dem jetzt ausgeliefert wird.
     pub fn ordner(&self) -> PathBuf {
         let stempel = self.stempel();
@@ -864,6 +917,19 @@ impl WebOrt {
         }
         ordner
     }
+}
+
+/// Liest die öffentliche Liste (ein JSON-Feld aus Teilpfaden unter `_app/`);
+/// `None`, wenn sie fehlt, zu groß ist oder eine andere Form hat.
+fn oeffentliche_liste_lesen(datei: &Path) -> Option<std::collections::HashSet<String>> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(datei).ok()?.take(LISTE_HOECHSTENS + 1).read_to_string(&mut text).ok()?;
+    if text.len() as u64 > LISTE_HOECHSTENS {
+        return None;
+    }
+    let dateien: Vec<String> = serde_json::from_str(&text).ok()?;
+    dateien.iter().all(|d| d.starts_with("_app/")).then(|| dateien.into_iter().collect())
 }
 
 /// Störung, solange ein Bau des Boten auf den Neustart wartet.
