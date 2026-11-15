@@ -283,7 +283,31 @@ pub(crate) fn schluessel_datei_mit(
     anlegen: bool,
     ausnehmen: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
-    schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, true)
+    schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, &ohne_halbstand_anlegen, true)
+}
+
+/// Was die Datei unter ihrem Namen anlegt (Ordner, Pfad, Bytes). Im Betrieb
+/// immer [`ohne_halbstand_anlegen`]; ein Test speist eine eigene Funktion
+/// ein, um den verlorenen Wettlauf sicher nachzustellen.
+#[cfg(unix)]
+pub(crate) type Anleger<'a> = &'a dyn Fn(&Path, &Path, &[u8; 32]) -> std::io::Result<()>;
+
+/// Nur für Tests: wie [`schluessel_datei_mit`] mit `anlegen = true`, mit
+/// eingespeistem Anlegen der Datei.
+#[cfg(all(unix, test))]
+pub(crate) fn schluessel_datei_mit_anleger(
+    pfad: &Path,
+    rahmen: &Rahmen,
+    ausnehmen: &dyn Fn(&Path) -> Result<(), String>,
+    anleger: Anleger<'_>,
+) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
+    schluessel_datei_versuch(pfad, rahmen, true, ausnehmen, anleger, true)
+}
+
+/// Nur für Tests: das Anlegen ohne Halbstand, wie der Betrieb es nimmt.
+#[cfg(all(unix, test))]
+pub(crate) fn anlegen_wie_im_betrieb(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::io::Result<()> {
+    ohne_halbstand_anlegen(ordner, pfad, bytes)
 }
 
 /// `nochmal`: Kommt ein anderer Lauf beim Anlegen zuvor, wird genau einmal neu geladen, nicht beliebig tief.
@@ -293,6 +317,7 @@ fn schluessel_datei_versuch(
     rahmen: &Rahmen,
     anlegen: bool,
     ausnehmen: &dyn Fn(&Path) -> Result<(), String>,
+    anleger: Anleger<'_>,
     nochmal: bool,
 ) -> Result<zeroize::Zeroizing<[u8; 32]>, String> {
     use std::io::Read;
@@ -301,7 +326,8 @@ fn schluessel_datei_versuch(
     let ordner =
         pfad.parent().filter(|p| !p.as_os_str().is_empty()).ok_or_else(|| format!("{} nennt keinen Ordner; {}", zeigen(pfad), rahmen.folge_im_satz))?;
     // Ohne Dateinamen gäbe es keinen Namen für die Zwischendatei beim Anlegen.
-    if pfad.file_name().and_then(|n| n.to_str()).is_none_or(str::is_empty) {
+    // Geprüft wird nur, ob es einen gibt, nicht seine Kodierung.
+    if pfad.file_name().is_none() {
         return Err(format!("{} nennt keine Datei; {}", zeigen(pfad), rahmen.folge_im_satz));
     }
     let satz = |m: Mangel| mangel_satz_mit(m, &zeigen(ordner), &zeigen(pfad), rahmen);
@@ -342,9 +368,14 @@ fn schluessel_datei_versuch(
             if !anlegen {
                 return Err(rahmen.fehlt.to_string());
             }
+            // Der neue Schlüssel entsteht gleich in dem Puffer, der beim Freigeben
+            // überschrieben wird; fehlt dem System der Zufall, kommt ein Satz.
             let mut b = zeroize::Zeroizing::new([0u8; 32]);
-            b.copy_from_slice(&super::zufall(32));
-            return match ohne_halbstand_anlegen(ordner, pfad, &b) {
+            {
+                use rand_core::{OsRng, RngCore};
+                OsRng.try_fill_bytes(b.as_mut_slice()).map_err(|_| format!("Das System liefert keinen Zufall; {} wird nicht angelegt.", rahmen.name))?;
+            }
+            return match anleger(ordner, pfad, &b) {
                 Ok(()) => {
                     tracing::info!("{} neu angelegt: {}", rahmen.name, zeigen(pfad));
                     // Die Datei ist in einem Ordner entstanden, den es schon gab:
@@ -361,7 +392,9 @@ fn schluessel_datei_versuch(
                     Ok(b)
                 }
                 // Ein anderer Lauf war schneller: dessen Datei gilt. Höchstens ein erneuter Versuch.
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && nochmal => schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, false),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && nochmal => {
+                    schluessel_datei_versuch(pfad, rahmen, anlegen, ausnehmen, anleger, false)
+                }
                 Err(e) => Err(format!("{} ließ sich nicht anlegen: {e}", zeigen(pfad))),
             };
         }
@@ -397,12 +430,12 @@ fn ohne_halbstand_anlegen(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::
     use std::os::unix::fs::OpenOptionsExt;
     let zusatz: String = super::zufall(8).iter().map(|b| format!("{b:02x}")).collect();
     // Die Zwischendatei heißt nach der Datei selbst; so stören sich zwei Schlüssel im selben Ordner nicht.
-    let dateiname = pfad
-        .file_name()
-        .and_then(|n| n.to_str())
-        .filter(|n| !n.is_empty())
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "der Pfad nennt keine Datei"))?;
-    let zwischen = ordner.join(format!(".{dateiname}.neu-{}-{zusatz}", std::process::id()));
+    // Als OsString gebaut: Der Dateiname muss kein UTF-8 sein.
+    let dateiname = pfad.file_name().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "der Pfad nennt keine Datei"))?;
+    let mut name = std::ffi::OsString::from(".");
+    name.push(dateiname);
+    name.push(format!(".neu-{}-{zusatz}", std::process::id()));
+    let zwischen = ordner.join(name);
     let geschrieben = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)

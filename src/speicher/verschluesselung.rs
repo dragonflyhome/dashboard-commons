@@ -62,7 +62,10 @@ pub fn links_schluessel_neben(jwt_datei: Option<&std::path::Path>) -> Option<std
     let jwt = jwt_datei?;
     jwt.file_name()?;
     let links = jwt.with_file_name(LINKS_SCHLUESSEL_DATEI);
-    if links == jwt { None } else { Some(links) }
+    // Ohne Rücksicht auf Groß- und Kleinschreibung: APFS unterscheidet sie
+    // gewöhnlich nicht, „Aufgaben-Links-Schluessel“ wäre dort dieselbe Datei.
+    let gleich = |a: &std::path::Path, b: &std::path::Path| a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase();
+    if gleich(&links, jwt) { None } else { Some(links) }
 }
 
 /// Woher ein Speicher den Schlüssel der Links nimmt.
@@ -325,8 +328,10 @@ mod tests {
         assert_eq!(neben("/x/dashboard-schluessel/jwt-schluessel"), Some(PathBuf::from("/x/dashboard-schluessel/aufgaben-links-schluessel")));
         assert_eq!(neben("/daten/geheim/irgendein-name"), Some(PathBuf::from("/daten/geheim/aufgaben-links-schluessel")));
         assert_eq!(neben("jwt-schluessel"), Some(PathBuf::from("aufgaben-links-schluessel")));
-        // Dieselbe Datei wie der Schlüssel der Ausweise: kein Ort.
+        // Dieselbe Datei wie der Schlüssel der Ausweise: kein Ort, auch in anderer Groß- und Kleinschreibung.
         assert_eq!(neben("/x/dashboard-schluessel/aufgaben-links-schluessel"), None);
+        assert_eq!(neben("/x/dashboard-schluessel/Aufgaben-Links-Schluessel"), None);
+        assert_eq!(neben("/x/dashboard-schluessel/AUFGABEN-LINKS-SCHLUESSEL"), None);
         // Kein Dateiname oder gar kein Ort für die Ausweise: kein Ort.
         assert_eq!(neben("/"), None);
         assert_eq!(neben(""), None);
@@ -515,11 +520,113 @@ mod tests {
     fn unix_pfad_ohne_ordner_oder_datei() {
         use crate::passkey::geheim::schluessel_datei_mit;
         let nie = |_: &std::path::Path| -> Result<(), String> { panic!("keine Ausnahme ohne Schlüssel") };
+        let folge = "Aufgaben mit Link werden abgelehnt, gespeicherte Links nicht gelesen";
+        // Kein Ordner: ein bloßer Name und die Wurzel.
         for pfad in ["aufgaben-links-schluessel", "/"] {
             let e = schluessel_datei_mit(std::path::Path::new(pfad), &RAHMEN_LINKS, true, &nie).unwrap_err();
-            assert!(e.contains("nennt keinen Ordner") || e.contains("nennt keine Datei"), "{pfad}: {e}");
-            assert!(e.contains("Aufgaben mit Link werden abgelehnt"), "{e}");
+            assert_eq!(e, format!("{pfad} nennt keinen Ordner; {folge}"));
         }
+        // Ein Ordner, aber kein Dateiname: der andere Satz, für Anlegen und für Lesen.
+        let o = ordner("ohne-dateinamen");
+        let ohne_namen = o.join("x").join("..");
+        assert!(ohne_namen.parent().is_some() && ohne_namen.file_name().is_none());
+        let gezeigt = crate::datenschutz::verbergen(&ohne_namen.display().to_string());
+        for anlegen in [true, false] {
+            let e = schluessel_datei_mit(&ohne_namen, &RAHMEN_LINKS, anlegen, &nie).unwrap_err();
+            assert_eq!(e, format!("{gezeigt} nennt keine Datei; {folge}"));
+        }
+        assert!(!o.exists(), "nichts entsteht");
+    }
+
+    /// Ein Dateiname, der kein UTF-8 ist, ist erlaubt: Der Schlüssel entsteht
+    /// und wird wieder gelesen, und die Zwischendatei bleibt nicht liegen.
+    #[cfg(unix)]
+    #[test]
+    fn unix_dateiname_ohne_utf8() {
+        use crate::passkey::geheim::schluessel_datei_mit;
+        use std::os::unix::ffi::OsStrExt;
+        let o = ordner("ohne-utf8");
+        let pfad = o.join("dashboard-schluessel").join(std::ffi::OsStr::from_bytes(b"schl\xfcssel"));
+        assert!(pfad.file_name().unwrap().to_str().is_none());
+        // Manche Dateisysteme (APFS) nehmen solche Namen nicht an; dann prüft der Test nichts weiter.
+        match schluessel_datei_mit(&pfad, &RAHMEN_LINKS, true, &|_| Ok(())) {
+            Ok(erster) => {
+                assert_eq!(*schluessel_datei_mit(&pfad, &RAHMEN_LINKS, false, &|_| Ok(())).unwrap(), *erster);
+                assert_eq!(std::fs::read_dir(pfad.parent().unwrap()).unwrap().count(), 1);
+            }
+            Err(e) => assert!(e.contains("ließ sich nicht anlegen"), "nur das Dateisystem darf ablehnen: {e}"),
+        }
+        let _ = std::fs::remove_dir_all(&o);
+    }
+
+    /// Die Ausnahme für die Sicherung bei neuer Datei, mit Zähler und ohne
+    /// Zufall im Ablauf: Wer den Wettlauf verliert (die Datei entsteht zwischen
+    /// Prüfung und Anlegen), ruft sie nicht und bekommt den Schlüssel des
+    /// Gewinners. Der Gewinner ruft sie genau einmal. Neuer Ordner und neue
+    /// Datei zusammen: genau einmal.
+    #[cfg(unix)]
+    #[test]
+    fn unix_ausnahme_nur_beim_gewinner_des_wettlaufs() {
+        use crate::passkey::geheim::{anlegen_wie_im_betrieb, schluessel_datei_mit_anleger};
+        use std::cell::Cell;
+        use std::path::Path;
+        let gerufen = Cell::new(0u32);
+        let zaehlen = |_: &Path| {
+            gerufen.set(gerufen.get() + 1);
+            Ok(())
+        };
+        let o = ordner("wettlauf");
+        let schluesselordner = o.join("dashboard-schluessel");
+        std::fs::create_dir_all(&schluesselordner).unwrap();
+        std::fs::set_permissions(&schluesselordner, std::os::unix::fs::PermissionsExt::from_mode(0o700)).unwrap();
+        let pfad = schluesselordner.join(LINKS_SCHLUESSEL_DATEI);
+
+        // Der Verlierer: Zwischen seiner Prüfung (keine Datei) und seinem Anlegen
+        // legt ein anderer Lauf die Datei an. Sein eigenes Anlegen meldet „gibt es schon“.
+        let versuche = Cell::new(0u32);
+        let ein_anderer_war_schneller = |ordner: &Path, ziel: &Path, eigene: &[u8; 32]| {
+            versuche.set(versuche.get() + 1);
+            anlegen_wie_im_betrieb(ordner, ziel, &[9u8; 32]).expect("der Gewinner legt an");
+            anlegen_wie_im_betrieb(ordner, ziel, eigene)
+        };
+        let verlierer = schluessel_datei_mit_anleger(&pfad, &RAHMEN_LINKS, &zaehlen, &ein_anderer_war_schneller).unwrap();
+        assert_eq!(*verlierer, [9u8; 32], "der Schlüssel des Gewinners gilt");
+        assert_eq!(versuche.get(), 1, "genau ein Versuch anzulegen, danach nur noch laden");
+        assert_eq!(gerufen.get(), 0, "wer den Wettlauf verliert, ruft die Ausnahme nicht");
+        assert_eq!(std::fs::read(&pfad).unwrap(), [9u8; 32]);
+        assert_eq!(std::fs::read_dir(&schluesselordner).unwrap().count(), 1, "keine Zwischendatei bleibt liegen");
+
+        // Der Gewinner in einem vorhandenen Ordner: genau einmal.
+        std::fs::remove_file(&pfad).unwrap();
+        let gewinner = schluessel_datei_mit_anleger(&pfad, &RAHMEN_LINKS, &zaehlen, &anlegen_wie_im_betrieb).unwrap();
+        assert_eq!(std::fs::read(&pfad).unwrap(), *gewinner);
+        assert_eq!(gerufen.get(), 1, "der Gewinner ruft die Ausnahme genau einmal");
+        // Danach lädt jeder nur noch: keine weitere Ausnahme.
+        assert_eq!(*schluessel_datei_mit_anleger(&pfad, &RAHMEN_LINKS, &zaehlen, &anlegen_wie_im_betrieb).unwrap(), *gewinner);
+        assert_eq!(gerufen.get(), 1);
+
+        // Neuer Ordner und neue Datei zusammen: genau einmal, nicht zweimal.
+        gerufen.set(0);
+        let frisch = o.join("zweiter-ordner").join(LINKS_SCHLUESSEL_DATEI);
+        schluessel_datei_mit_anleger(&frisch, &RAHMEN_LINKS, &zaehlen, &anlegen_wie_im_betrieb).unwrap();
+        assert_eq!(gerufen.get(), 1);
+
+        // Neuer Ordner, aber der Wettlauf um die Datei geht verloren: einmal für den
+        // Ordner (den hat dieser Lauf angelegt), nicht noch einmal für die Datei.
+        gerufen.set(0);
+        versuche.set(0);
+        let dritter = o.join("dritter-ordner").join(LINKS_SCHLUESSEL_DATEI);
+        assert_eq!(*schluessel_datei_mit_anleger(&dritter, &RAHMEN_LINKS, &zaehlen, &ein_anderer_war_schneller).unwrap(), [9u8; 32]);
+        assert_eq!((gerufen.get(), versuche.get()), (1, 1));
+
+        // Scheitert das Anlegen aus einem anderen Grund, gibt es keinen Schlüssel und keine Ausnahme.
+        gerufen.set(0);
+        std::fs::remove_file(&pfad).unwrap();
+        let scheitert = |_: &Path, _: &Path, _: &[u8; 32]| Err(std::io::Error::other("erfunden"));
+        let e = schluessel_datei_mit_anleger(&pfad, &RAHMEN_LINKS, &zaehlen, &scheitert).unwrap_err();
+        assert!(e.contains("ließ sich nicht anlegen") && !pfad.exists(), "{e}");
+        assert_eq!(gerufen.get(), 0);
+        let _ = std::fs::remove_dir_all(&o);
     }
 
     /// Viele Läufe zugleich am selben Ort: alle bekommen denselben Schlüssel.
