@@ -559,7 +559,10 @@ async function schlossKlicken(cdp, stand, anker, zustand) {
 	await cdp.auswerten(`document.querySelector('header a[data-schloss]').click()`);
 	await cdp.bis(`location.pathname === '/anmelden' && location.hash === '${anker}'`, 15000, `/anmelden${anker}`);
 	await cdp.bis(`document.querySelector('#geraet') || document.querySelector('.vergleich')`, 15000, 'Antrag auf /anmelden');
-	pruefe(true, `schloss: Klick führt auf /anmelden${anker}, der Antrag steht dort`);
+	// Ein Weiterspringen käme erst nach /api/passkey/stand: kurz warten, dann muss die Seite noch stehen.
+	await new Promise((ok) => setTimeout(ok, 1500));
+	const bleibt = await cdp.auswerten(`location.pathname === '/anmelden' && location.hash === '${anker}' && document.querySelector('#geraet, .vergleich') !== null`);
+	pruefe(bleibt, `schloss: Klick führt auf /anmelden${anker}, der Antrag steht dort und die Seite springt nicht weiter`);
 }
 
 /** Die Zeile eines Passkeys in der Liste auf /anmelden: Text und Knöpfe. */

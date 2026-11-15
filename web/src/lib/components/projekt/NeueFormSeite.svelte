@@ -3,8 +3,12 @@
 	 * Hauptseite der neuen Form: Seite.svelte des Projekts aus der Bauliste
 	 * (nur Projekte mit grüner Prüfung) in einer Fehlergrenze; sonst der
 	 * Standardaufbau mit dem Grund. Steht unter `/projects/<slug>`.
+	 *
+	 * Schritt E2b: Die Bauliste kommt dynamisch (`Bauliste`), als eigener,
+	 * geschützter Teil des Baus.
 	 */
-	import { projektSeiten } from '#lib/projekte.generated.ts';
+	import Bauliste from '#lib/components/projekt/Bauliste.svelte';
+	import type { Liste } from '#lib/components/projekt/bauliste-laden.ts';
 	import Grenze from '#lib/components/projekt/Grenze.svelte';
 	import Standardaufbau from '#lib/components/projekt/Standardaufbau.svelte';
 	import type { ProjektAntwort } from '$vertrag';
@@ -15,14 +19,18 @@
 	let { kopf }: Props = $props();
 
 	const slug = $derived(kopf.slug);
-	// Nur eigene Einträge: sonst lieferte etwa „constructor“ eine Funktion von Object.
-	const lade = $derived(Object.hasOwn(projektSeiten, slug) ? projektSeiten[slug] : undefined);
+	// In der Liste zählen nur eigene Einträge: sonst lieferte etwa „constructor“ eine Funktion von Object.
 </script>
 
-{#if lade}
-	{#key slug}
-		<Grenze {lade} datei="projects/{slug}/Seite.svelte" />
-	{/key}
-{:else}
-	<Standardaufbau {kopf} />
-{/if}
+<Bauliste datei="projects/{slug}/Seite.svelte">
+	{#snippet mit(liste: Liste)}
+		{@const lade = Object.hasOwn(liste.projektSeiten, slug) ? liste.projektSeiten[slug] : undefined}
+		{#if lade}
+			{#key slug}
+				<Grenze {lade} datei="projects/{slug}/Seite.svelte" />
+			{/key}
+		{:else}
+			<Standardaufbau {kopf} />
+		{/if}
+	{/snippet}
+</Bauliste>

@@ -640,7 +640,8 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert!(!text.contains(GEHEIM), "{text}");
         let v: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!((v["sichtbar"].as_bool(), v["zahlen"].clone()), (Some(true), Value::Null), "mit Anmeldung zählt die Oberfläche");
+        assert_eq!(v["sichtbar"].as_bool(), Some(true));
+        assert!(v.get("zahlen").is_none(), "das Feld gibt es nicht mehr: {v}");
         assert_eq!((v.get("form"), v["schwerpunkt"].as_str()), (None, Some("Bienen und Honig")));
         assert_eq!(
             (v["gesamt"]["ampel"].as_str(), v["gesamt"]["grund"].as_str(), v["gesamt"]["status"].as_str()),

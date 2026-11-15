@@ -346,7 +346,7 @@ fn utf16_und_fehlende_datei_sind_keine_lesefehler() {
     assert!(b.haupt("alt").is_err(), "UTF-16 muss als Fehler dastehen");
     assert_eq!(b.liste().1.len(), 1, "rote Karte");
     assert!(b.projekt("alt").unwrap().lesefehler.is_empty());
-    // Ohne ganzen Pfad (der nennt den Windows-Benutzer, /api/pc ist frei).
+    // Ohne ganzen Pfad (der nennt den Windows-Benutzer; der Satz steht in /api/pc).
     assert!(b.pc.as_ref().unwrap_err().starts_with("data/pc.toml lässt sich nicht lesen: "), "{:?}", b.pc);
     assert!(b.lesefehler_befunde().is_empty());
     assert!(!pc_lesen(&o.0.join("data/pc.toml")).1, "fehlt: nicht gesperrt");

@@ -4,6 +4,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { grundbauFassung } from './scripts/grundbau.mjs';
+import { oeffentlicheListe } from './scripts/oeffentlich.mjs';
 
 /** Der Rust-Server, der Daten liefert und im Betrieb das Build ausliefert. */
 const backend = 'http://127.0.0.1:8787';
@@ -44,7 +45,9 @@ export default defineConfig({
 			// gleichem Grundbau wie die eingespielte Oberfläche an (scripts/grundbau.mjs).
 			version: { name: grundbauFassung(ordner('./src')) }
 		}),
-		svelteTesting()
+		svelteTesting(),
+		// Schritt E2b: _app/oeffentlich.json, die Bau-Dateien, die der Dienst ohne Anmeldung ausliefert.
+		oeffentlicheListe({ tabelle: ordner('./src/lib/projekte.generated.ts') })
 	],
 	// Der Vertrag mit dem Rust-Server: von `cargo test` erzeugte Typen
 	// (src/vertrag/export.rs). Import: `import type { X } from '$vertrag';`.

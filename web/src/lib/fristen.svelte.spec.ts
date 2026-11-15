@@ -1,7 +1,8 @@
 /**
  * Etappe B3, Modul Fristen: Worte der Fristenliste, die nächste Frist aus
- * Einträgen und fristen.toml (wie der Server, `anstehend::stand_zahlen`), der
- * Baustein `Fristenliste` und das Widget „Fristen“ mit Fristen aus der Datei.
+ * Einträgen und fristen.toml (wie der Server in `anstehend::stand` mit
+ * `fristen::datei_fristen_mit_datum`), der Baustein `Fristenliste` und das
+ * Widget „Fristen“ mit Fristen aus der Datei.
  * Alle Beispiele sind erfunden.
  */
 import { render, screen, waitFor, within } from '@testing-library/svelte';

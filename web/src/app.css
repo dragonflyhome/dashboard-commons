@@ -411,6 +411,26 @@ blockquote {
 	gap: 14px;
 }
 
+/* Hinweise bei offener Eingabe (Schritt E2b): haften am unteren Rand, solange
+   ihr Bereich zu sehen ist, höchstens 40vh hoch (sonst rollen sie selbst);
+   ineinander haftet nur der äußere. scroll-padding hält das Feld mit dem Fokus
+   über ihnen (Fokus nicht verdeckt, WCAG 2.4.11). */
+.haftend {
+	position: sticky;
+	bottom: 8px;
+	z-index: 2;
+	max-height: 40vh;
+	overflow-y: auto;
+}
+.haftend .haftend {
+	position: static;
+	max-height: none;
+	overflow-y: visible;
+}
+html:has(.haftend) {
+	scroll-padding-bottom: calc(40vh + 16px);
+}
+
 /* Bedeutungen (Vertrag: ok, laeuft, wartet, problem, info, neutral). Eine
    Klasse je Bedeutung, vergeben nur von klasse() in #lib/bedeutung.ts. Sie
    setzt nur den Ton --ton; Punkte, Lampen, Balken und Ringe malen damit

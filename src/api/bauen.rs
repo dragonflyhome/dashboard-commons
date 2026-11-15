@@ -2,7 +2,7 @@
 //!
 //! - `GET /api/bauen`: der Bau-Stand aller Projekte mit eigener Seite, bei rot
 //!   mit Satz (geschützt: `/api/bauen` steht nicht in `sicherheit::oeffentlich`).
-//!   Zustand und Zeit stehen frei in `/api/projects`.
+//!   Zustand und Zeit stehen in `/api/projects` (seit Schritt E2 ebenfalls geschützt).
 //!
 //! Einen Bau bestellt niemand hier: Die Oberfläche baut von selbst nach dem
 //! Speichern, Chats bestellen einen Bau mit dem Vorgang `bau`. Den Weg
@@ -112,8 +112,8 @@ mod tests {
         assert!(state.baumeister.im_bau().is_empty());
     }
 
-    /// Der Bau-Stand sagt „läuft“, solange ein Bau ansteht: frei in
-    /// /api/projects, geschützt mit /api/bauen; ohne eigene Seite kein Stand.
+    /// Der Bau-Stand sagt „läuft“, solange ein Bau ansteht: in /api/projects
+    /// und mit Satz in /api/bauen (beide geschützt); ohne eigene Seite kein Stand.
     #[tokio::test]
     async fn bau_stand_frei_und_geschuetzt() {
         let state = zustand("stand");

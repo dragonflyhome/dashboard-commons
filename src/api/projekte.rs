@@ -237,7 +237,7 @@ const EINBETTEN_GRENZE: u64 = 8 * 1024 * 1024;
 /// Je Antwort höchstens `grenze` Bytes Bilder (ein mehrfach genanntes Bild
 /// zählt je Nennung), in der Reihenfolge, in der der Entwurf sie zuerst nennt;
 /// ab dem ersten Bild, das nicht mehr passt, bleiben die übrigen Adressen.
-/// shortcut: srcset-Listen, Adressen mit `?…`, von Skripten gebaute Namen und Bilder über [`EINBETTEN_GRENZE`] (8 MB je Antwort) bleiben Adressen (401), aufrüsten, wenn ein Entwurf sie braucht.
+/// shortcut: srcset-Listen, Adressen mit `?…`, von Skripten gebaute Namen und Bilder über [`EINBETTEN_GRENZE`] (8 MiB Bild-Bytes vor base64 je Antwort) bleiben Adressen und zeigen im Rahmen kein Bild, seit Schritt E2b auch angemeldet (Anfragen aus dem Rahmen sind cross-site und bekommen 403 aus der Herkunftsprüfung), aufrüsten, wenn ein Entwurf sie braucht.
 fn bilder_einbetten(html: Vec<u8>, namen: &[String], lesen: &dyn Fn(&str) -> Option<Vec<u8>>, grenze: u64) -> Vec<u8> {
     let mut text = match String::from_utf8(html) {
         Ok(t) => t,

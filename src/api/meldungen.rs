@@ -364,7 +364,7 @@ mod tests {
         }
         // Mit Anmeldung: Titel und Texte, keine Zahlen (die zählt die Oberfläche).
         let (_, v) = schicke(&state, get("/api/projekte/dashboard/stand")).await;
-        assert_eq!(v["zahlen"], Value::Null);
+        assert!(v.get("zahlen").is_none(), "das Feld gibt es nicht mehr: {v}");
         let meldungen: Vec<&Value> = v["aktualisierungen"].as_array().unwrap().iter().filter(|a| a["quelle"] == "meldung").collect();
         assert_eq!((meldungen.len(), meldungen.iter().filter(|a| a["gelesen"] == false).count()), (3, 2));
         let titel: Vec<&str> = v["aktualisierungen"].as_array().unwrap().iter().filter_map(|a| a["titel"].as_str()).collect();

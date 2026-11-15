@@ -104,6 +104,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -111,7 +112,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
-import { beiAbbruch, browserSperren, mitFrist, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektTitel } from "./edge-gemeinsam.mjs";
+import { beiAbbruch, browserSperren, mitFrist, ohneProjektseiten, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektSlugs, projektTitel } from "./edge-gemeinsam.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Umzug des Inhalts: Kopien aus dashboard-inhalt, wenn es ihn gibt (edge-gemeinsam.mjs).
@@ -1406,7 +1407,8 @@ async function kopfleiste2Pruefen(cdp, mitAnmeldung) {
       const ziel = await cdp.rufe(() => ({ pfad: location.pathname, anker: location.hash, suche: location.search, abschnitt: location.hash ? document.getElementById(location.hash.slice(1))?.querySelector("h2")?.textContent.trim() ?? null : null }));
       const zurueck = mitAnmeldung ? "/pc" : start;
       pruefe(ziel.pfad === "/anmelden" && ziel.anker === soll.anker && ziel.suche.includes(`ziel=${encodeURIComponent(zurueck)}`), `${t}: Schloss führt zur Passkey-Seite (${soll.anker}), zurück nach ${zurueck}`, JSON.stringify(ziel));
-      if (breite === 1280) {
+      // Nur auf /anmelden selbst (sonst stünde schon oben ein Mangel, und die Teile fehlten nur als Folge).
+      if (breite === 1280 && ziel.pfad === "/anmelden") {
         const teile = await cdp.rufe(() => ({
           antrag: document.getElementById("passkey-anlegen") !== null,
           anmelden: document.getElementById("mit-passkey-anmelden") !== null,
@@ -1615,6 +1617,8 @@ async function freierWegPruefen(frei) {
       { oeffnen: (p) => frei.oeffnen(p), werte: async (a) => (await frei.senden("Runtime.evaluate", { expression: a, awaitPromise: true, returnByValue: true })).result.value },
       pfade,
       projektTitel(join(ordner, "repo", "projects")),
+      10000,
+      projektSlugs(join(ordner, "repo", "projects")),
     );
     k.stopp();
     for (const e of ergebnis) pruefe(e.maengel.length === 0, `anmeldung: ${e.pfad} führt ohne Anmeldung zur Anmeldung, ohne Projekttitel, /api/projects 401`, e.maengel.join("; "));
@@ -1793,6 +1797,15 @@ async function unterseiteFinden(cdp) {
 async function main() {
   if (!existsSync(EXE)) throw new Error(`Programm fehlt: ${EXE}`);
   if (!existsSync(join(WEB, "index.html"))) throw new Error(`Oberfläche fehlt: ${WEB}`);
+  // Die Probe prüft eigene Projektseiten; eine leere Bauliste (ohne vorher
+  // `dashboard pruefe --bauliste --svelte`, wie scripts\Dienst.ps1) hat keine.
+  // Maßgeblich ist die Bauliste selbst, nicht die Zahl geschützter Teile: Auch
+  // die leere Bauliste ist ein geschützter Teil. Dazu braucht der ausgelieferte
+  // Bau (--web) seine öffentliche Liste.
+  const baulisteDatei = join(REPO, "web", "src", "lib", "projekte.generated.ts");
+  const ohne = ohneProjektseiten(existsSync(baulisteDatei) ? readFileSync(baulisteDatei, "utf8") : null, existsSync(join(WEB, "_app", "oeffentlich.json")));
+  if (ohne !== null)
+    throw new Error(`${ohne} Der Bau unter ${WEB} hat so keine eigenen Projektseiten. Vor npm run build erst dashboard pruefe --bauliste --svelte, wie scripts\\Dienst.ps1; dann noch einmal.`);
   await portePruefen();
   mkdirSync(join(ordner, "bin"), { recursive: true });
   mkdirSync(join(ordner, "profil"), { recursive: true });

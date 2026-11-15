@@ -91,6 +91,7 @@ import {
 	portePruefen,
 	inhaltOrt,
 	ohneAnmeldungPruefen,
+	projektSlugs,
 	projektTitel
 } from './edge-gemeinsam.mjs';
 
@@ -1062,7 +1063,9 @@ const freierWeg = {
 		const ergebnis = await ohneAnmeldungPruefen(
 			{ oeffnen: (p) => cdp.oeffnen(p), werte: (a) => cdp.auswerten(a) },
 			pfade,
-			projektTitel(join(ordner, 'repo', 'projects'))
+			projektTitel(join(ordner, 'repo', 'projects')),
+			10000,
+			projektSlugs(join(ordner, 'repo', 'projects'))
 		);
 		const status = await cdp.auswerten(OHNE_ANMELDUNG_401);
 		cdp.hoerer.splice(cdp.hoerer.indexOf(h), 1);

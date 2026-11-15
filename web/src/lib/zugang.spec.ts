@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FRIST_MS } from './rueckfall.ts';
-import { ZUGANG_ADRESSE, Zugang, antwortOhneZugang, mitZugang } from './zugang.ts';
+import {
+	ZUGANG_ADRESSE,
+	Zugang,
+	antwortOhneZugang,
+	beiRueckkehrAuffrischen,
+	mitZugang
+} from './zugang.ts';
 import { ladeAnstehend } from './anstehend.ts';
 import { ladeAnzahl } from './aufgaben.ts';
 
@@ -82,6 +88,59 @@ describe('Zugang (Etappe 3b: weniger 401 ohne Anmeldung)', () => {
 		vi.advanceTimersByTime(1);
 		expect(z.stand).toBe('unbekannt');
 		expect(z.gesperrt).toBe(false);
+	});
+
+	it('Schritt E2b: auffrischen fragt nur bei fehlt oder fremd neu, sonst bleibt der Stand', async () => {
+		for (const stand of ['fehlt', 'fremd'] as const) {
+			const z = new Zugang();
+			z.setzen(stand);
+			const f = antwort(200, {});
+			expect(await z.auffrischen(f as unknown as typeof fetch)).toBe('da');
+			expect(f).toHaveBeenCalledTimes(1);
+			expect(z.gesperrt).toBe(false);
+		}
+		for (const stand of ['da', 'unbekannt'] as const) {
+			const z = new Zugang();
+			z.setzen(stand);
+			const f = antwort(401);
+			expect(await z.auffrischen(f as unknown as typeof fetch)).toBe(stand);
+			expect(f).not.toHaveBeenCalled();
+		}
+	});
+
+	it('Schritt E2b: zurück im Tab (sichtbar oder Fokus) gilt ein gemerktes fehlt nicht weiter', () => {
+		const doc = Object.assign(new EventTarget(), { visibilityState: 'hidden' });
+		const w = Object.assign(new EventTarget(), { document: doc }) as unknown as Window;
+		const z = new Zugang();
+		const auffrischen = vi.spyOn(z, 'auffrischen').mockResolvedValue('da');
+		const ab = beiRueckkehrAuffrischen(z, w);
+		// Unsichtbar (in den anderen Tab gewechselt): nichts.
+		doc.dispatchEvent(new Event('visibilitychange'));
+		expect(auffrischen).not.toHaveBeenCalled();
+		doc.visibilityState = 'visible';
+		doc.dispatchEvent(new Event('visibilitychange'));
+		w.dispatchEvent(new Event('focus'));
+		expect(auffrischen).toHaveBeenCalledTimes(2);
+		ab();
+		w.dispatchEvent(new Event('focus'));
+		expect(auffrischen).toHaveBeenCalledTimes(2);
+	});
+
+	it('Schritt E2b: nach der Anmeldung im anderen Tab geht die nächste geschützte Abfrage ins Netz', async () => {
+		const z = new Zugang();
+		z.setzen('fehlt');
+		const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+		const w = Object.assign(new EventTarget(), { document: doc }) as unknown as Window;
+		const ab = beiRueckkehrAuffrischen(z, w);
+		const netz = antwort(200, { offen: 3 });
+		const f = mitZugang(netz, z);
+		expect(await ladeAnzahl(f)).toBeNull();
+		expect(netz).not.toHaveBeenCalled();
+		w.dispatchEvent(new Event('focus'));
+		// Der Stand ist vergessen, noch bevor die neue Antwort da ist.
+		expect(z.gesperrt).toBe(false);
+		expect(await ladeAnzahl(f)).toBe(3);
+		ab();
 	});
 
 	it('die Antwort ohne Zugang hat Code, Satz und art wie der Server', async () => {

@@ -123,6 +123,60 @@ $aufgabenOrdner = "\$Dienstname\"
 $aufgabenName = "$Dienstname-Bote"
 $programme = @('dashboard.exe', 'dashboard-bote.exe', 'dashboard-herzschlag.exe')
 
+# Gesamtlaufzeit und mittlere Auslastung aller Kerne (Zähler des Systems, also
+# auch cargo und npm) für die letzte Zeile jedes Laufs (Laufzeit).
+$uhr = [Diagnostics.Stopwatch]::StartNew()
+$kerneStart = Get-CimInstance Win32_PerfRawData_PerfOS_Processor -Filter "Name='_Total'" -ErrorAction SilentlyContinue
+
+function Laufzeit {
+    $jetzt = Get-CimInstance Win32_PerfRawData_PerfOS_Processor -Filter "Name='_Total'" -ErrorAction SilentlyContinue
+    $last = 'unbekannt'
+    if ($kerneStart -and $jetzt -and $jetzt.Timestamp_Sys100NS -gt $kerneStart.Timestamp_Sys100NS) {
+        # Der Rohwert zählt die Leerlaufzeit (PERF_100NSEC_TIMER_INV).
+        $last = '{0:P0}' -f (1 - ($jetzt.PercentProcessorTime - $kerneStart.PercentProcessorTime) / ($jetzt.Timestamp_Sys100NS - $kerneStart.Timestamp_Sys100NS))
+    }
+    Write-Host ('Gesamtlaufzeit {0:N1} s, Kernauslastung im Mittel {1} über {2} Kerne' -f $uhr.Elapsed.TotalSeconds, $last, [Environment]::ProcessorCount)
+}
+
+# Schritt E2b: Was die Probe nach npm run build (web\scripts\oeffentlich-probe.mjs)
+# im Bau hinterlässt: 'fund' (die Liste heißt oeffentlich.json.fund), 'blind'
+# (die Marke oeffentlich.blind: sie kann nicht prüfen) oder '' (keins davon).
+function ProbenBefund([string]$build) {
+    if (Test-Path -LiteralPath (Join-Path $build '_app\oeffentlich.json.fund')) { return 'fund' }
+    if (Test-Path -LiteralPath (Join-Path $build '_app\oeffentlich.blind')) { return 'blind' }
+    return ''
+}
+
+# Vor jedem Bau: Ein alter Befund gälte sonst für einen Bau, der vor der Probe scheitert.
+function ProbenBefundEntfernen([string]$build) {
+    foreach ($n in @('_app\oeffentlich.json.fund', '_app\oeffentlich.blind')) {
+        $p = Join-Path $build $n
+        Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $p) { return "$p ließ sich nicht entfernen" }
+    }
+    return $null
+}
+
+# Die Sätze je Befund (ProbenBefund): beim ersten Scheitern, nach dem Bau ohne
+# Projektseiten, und wenn auch der scheitert. {0}: die Projekte im Bau.
+$probenSaetze = @{
+    'fund'  = @{
+        Vor  = 'Sicherheitsfund im Bau: Öffentliche Dateien der Oberfläche nennen Namen oder Texte eigener Projektseiten (Probe nach npm run build). Das ist kein Fehler eines Projekts, sondern der Oberfläche selbst. Baue einmal ohne Projektseiten ...'
+        Nach = 'Hinweis: Gebaut ohne Projektseiten wegen des Sicherheitsfunds. Die Seiten kommen erst zurück, wenn die Oberfläche (web\src) keine Namen oder Texte von Projektseiten mehr in öffentliche Dateien bringt.'
+        Ende = 'Sicherheitsfund im Bau: Öffentliche Dateien der Oberfläche nennen Namen oder Texte eigener Projektseiten. Der Dienst läuft unverändert weiter.'
+    }
+    'blind' = @{
+        Vor  = 'Die Probe kann den Bau nicht prüfen (ihr Satz steht oben); kein Fehler eines Projekts. Baue einmal ohne Projektseiten ...'
+        Nach = 'Hinweis: Gebaut ohne Projektseiten, weil die Probe den Bau mit ihnen nicht prüfen konnte. Die Seiten kommen zurück, wenn die Probe (web\scripts\oeffentlich-probe.mjs) sie wieder sieht.'
+        Ende = 'Die Probe kann den Bau nicht prüfen; kein Fehler eines Projekts. Der Dienst läuft unverändert weiter.'
+    }
+    ''      = @{
+        Vor  = 'npm run build ist mit den Projekten im Bau ({0}) gescheitert. Baue einmal ohne Projektseiten ...'
+        Nach = 'Hinweis: Gebaut ohne Projektseiten. Erst wenn das Projekt repariert ist, kommen die Seiten mit dem nächsten Bau zurück.'
+        Ende = 'npm run build ist gescheitert. Der Dienst läuft unverändert weiter.'
+    }
+}
+
 function Starte([string]$exe, [string]$argumente) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $exe
@@ -147,6 +201,7 @@ function ScExe([string]$argumente) { Starte $scPfad $argumente }
 
 function Ende([int]$code, [string]$satz) {
     Write-Host $satz
+    Laufzeit
     exit $code
 }
 
@@ -698,6 +753,7 @@ if ($PSCmdlet.ParameterSetName -eq 'Status') {
     }
     $fb = Get-ChildItem -LiteralPath (Join-Path $protokoll 'bote') -Filter 'bote-*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
     if ($fb) { Write-Host "Bote-Log:   $($fb.FullName)" }
+    Laufzeit
     if ($gut) { exit 0 }
     exit 1
 }
@@ -832,6 +888,9 @@ try {
             if ($fehlen.Count -gt 0) { Write-Host "Ohne Seite in diesem Bau (rot oder nicht geprüft, ohne grüne Kopie): $($fehlen -join ', ')" }
             $gebaut = @($bauliste | ForEach-Object { if ($_ -match '^GEBAUT (.+)$' -and $Matches[1] -ne 'keins') { $Matches[1] } })
             Write-Host 'Baue die Oberfläche (web\build) ...'
+            $buildOrdner = Join-Path $web 'build'
+            $f = ProbenBefundEntfernen $buildOrdner
+            if ($f) { Ende 1 "$f; gebaut wird nicht (der alte Befund der Probe gälte sonst für diesen Bau). Der Dienst läuft unverändert weiter." }
             Push-Location $web
             try {
                 $ErrorActionPreference = 'Continue'
@@ -839,10 +898,14 @@ try {
                 $code = $LASTEXITCODE
                 $ErrorActionPreference = 'Stop'
             } finally { Pop-Location }
+            # Schritt E2b: Die Probe nach dem Bau hinterlässt bei einem Fund oder blind ihren Befund.
+            $befund = ProbenBefund $buildOrdner
             if ($code -ne 0 -and -not $ohneSeiten -and $gebaut.Count -gt 0) {
                 # Ein Projekt im Bau bricht ihn (etwas, das svelte-check nicht
-                # sieht): einmal ohne Projektseiten, damit das Dashboard selbst neu kommt.
-                Write-Host "npm run build ist mit den Projekten im Bau ($($gebaut -join ', ')) gescheitert. Baue einmal ohne Projektseiten ..."
+                # sieht), oder die Probe: einmal ohne Projektseiten, damit das Dashboard selbst neu kommt.
+                Write-Host ($probenSaetze[$befund].Vor -f ($gebaut -join ', '))
+                $f = ProbenBefundEntfernen $buildOrdner
+                if ($f) { Ende 1 "$f. Der Dienst läuft unverändert weiter." }
                 try {
                     [IO.File]::WriteAllText($baulisteDatei, $leereBauliste, [Text.UTF8Encoding]::new($false))
                 } catch {
@@ -855,9 +918,10 @@ try {
                     $code = $LASTEXITCODE
                     $ErrorActionPreference = 'Stop'
                 } finally { Pop-Location }
-                if ($code -eq 0) { Write-Host 'Hinweis: Gebaut ohne Projektseiten. Erst wenn das Projekt repariert ist, kommen die Seiten mit dem nächsten Bau zurück.' }
+                if ($code -eq 0) { Write-Host $probenSaetze[$befund].Nach }
+                else { $befund = ProbenBefund $buildOrdner }
             }
-            if ($code -ne 0) { Ende 1 'npm run build ist gescheitert. Der Dienst läuft unverändert weiter.' }
+            if ($code -ne 0) { Ende 1 $probenSaetze[$befund].Ende }
             # Die Kopie für den Dienst, noch bei laufendem Dienst (er liest bin\web, nicht web.neu),
             # und dieselbe neben den Programmen im Bauordner für Dienst-Einrichten.ps1.
             $f = OberflaecheBereitlegen (Join-Path $web 'build') (Join-Path $quelle 'web')

@@ -19,8 +19,11 @@
 	 * Hinweis.
 	 *
 	 * Schritt E2: Ohne Anmeldung leitet jede andere Seite hierher
-	 * (`?ziel=<pfad>&umgeleitet=1`, `anmeldenAdresse` in `+layout.ts`, dazu der
-	 * Server). Beim Laden fragt die Seite `/api/passkey/stand`: Gilt schon eine
+	 * (`?ziel=<pfad>&umgeleitet=1`). Die Markierung setzen `anmeldenAdresse`
+	 * (`+layout.ts`, `#lib/ladefehler.ts`), der Link „Zur Anmeldung“ in
+	 * `+error.svelte` und der Server (`sicherheit::anmelden_adresse`: die
+	 * 401-Seite, die Weiterleitung eines fremden Kontos `passkey_noetig` und die
+	 * 303 außerhalb von Windows). Beim Laden fragt die Seite `/api/passkey/stand`: Gilt schon eine
 	 * Anmeldung (etwa ein Passkey, dessen Cookie nach einem Link von außen in der
 	 * Kette fehlte), geht es nur nach so einer Umleitung sofort weiter zum Ziel,
 	 * damit sich niemand zweimal anmeldet. Das Schloss oben trägt auch `?ziel=`,

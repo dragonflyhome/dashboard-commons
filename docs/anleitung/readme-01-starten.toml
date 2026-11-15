@@ -36,4 +36,4 @@ Beenden mit Strg+C im Terminal.
 
 Die Website ist nur von diesem PC aus erreichbar. Schlüssel, Vorgänge und Daten sieht nur Ihr Windows-Konto; Windows meldet Sie dafür im Browser von selbst an (Abschnitt „Anmeldung“).
 
-Ist das Dashboard als Dienst eingerichtet (nächster Abschnitt), startet Start-Dashboard.ps1 kein zweites, sondern sagt, wie man den Dienst neu startet. Ist der Port schon belegt, hört es mit einem Satz auf (Rückgabe 3).'''
+Ist das Dashboard als Dienst eingerichtet (nächster Abschnitt), startet Start-Dashboard.ps1 kein zweites, sondern sagt, wie man den Dienst neu startet. Ist der Port schon belegt, hört es mit einem Satz auf (Rückgabe 3). Scheitert der Bau der Oberfläche, startet es nicht (ohne Neubau starten: -SkipWeb).'''
