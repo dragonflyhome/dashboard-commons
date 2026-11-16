@@ -86,7 +86,13 @@ export default defineConfig(
 	{
 		languageOptions: {
 			globals: { ...globals.browser, ...globals.node },
-			parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname }
+			// extraFileExtensions für alle Dateien gleich: Wechselt die Liste von Datei zu
+			// Datei, lädt der projectService das ganze Projekt neu (Minuten statt Sekunden).
+			parserOptions: {
+				projectService: true,
+				tsconfigRootDir: import.meta.dirname,
+				extraFileExtensions: ['.svelte']
+			}
 		},
 		rules: {
 			// typescript-eslint rät von no-undef in TS-Projekten ab.

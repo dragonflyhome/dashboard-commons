@@ -34,7 +34,7 @@ fi
 git diff --cached --name-only --diff-filter=ACMR -z -- web/ | tr '\0' '\n' | grep -q . || exit 0
 # Prettier läuft in web/, damit Konfiguration, Plugins und .prettierignore greifen.
 if ! command -v node >/dev/null 2>&1 || [ ! -f web/node_modules/prettier/bin/prettier.cjs ]; then
-  echo "pre-commit: Node oder Prettier fehlt in web/node_modules. Bitte in web/ npm install ausführen (im Worktree: Junction auf das node_modules des Haupt-Repos), dann erneut committen." >&2
+  echo "pre-commit: Node oder Prettier fehlt in web/node_modules. Bitte in web/ npm install ausführen (im Worktree: npm ci --offline, keine Junction), dann erneut committen." >&2
   exit 1
 fi
 git diff --cached --name-only --diff-filter=ACMR -z -- web/ | sed -z 's#^web/##' |

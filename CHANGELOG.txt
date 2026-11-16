@@ -14,6 +14,16 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Behoben
+- Die Prüfung der Oberfläche meldet in einem zweiten Arbeitsordner dasselbe
+  wie im Haupt-Repo. Sind die Module dort nur ein Verweis auf die des
+  Haupt-Repos, brechen Prüfung und Tests mit einem Satz ab, statt falsche
+  Fehler zu melden oder in das Haupt-Repo zu schreiben.
+- Die Stilprüfung (ESLint) über die ganze Oberfläche dauert rund eine halbe
+  Minute statt bis zu einer halben Stunde, mit denselben Meldungen. Sie
+  prüft immer ohne Zwischenspeicher, damit sie keinen Fehler übersieht; mit
+  Zwischenspeicher gibt es einen getrennten schnellen Lauf zum Entwickeln.
+
 0.16.0 - 2026-11-16
 -------------------
 
@@ -59,6 +69,7 @@ Behoben
 Entfernt
 - Die Kiste security-framework und die Anbindung an den Schlüsselbund
   von macOS.
+
 0.14.1 - 2026-11-15
 -------------------
 
