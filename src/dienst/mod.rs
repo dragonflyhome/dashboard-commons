@@ -333,11 +333,26 @@ pub async fn betreiben(
     // noch ein Sammler gestartet.
     let lauscher = binden(port).await?;
     let (state, abschalter) = zustand().map_err(|e| StartFehler::Sonst(format!("Der Server lässt sich nicht aufbauen: {e:#}")))?;
+    #[cfg(unix)]
+    let kanal_ort = state.kanal_ort.clone();
     let adressen = lauscher.adressen().join(" und ");
     let port = lauscher.v4.local_addr().map_err(|e| StartFehler::Sonst(e.to_string()))?.port();
     let router = app::router(state);
     // Trägt nach dem Signal die Frist für offene Antworten.
     let (gesendet_tx, gesendet_rx) = watch::channel(None::<Duration>);
+    // Etappe 7a der macOS-Folge: der lokale Kanal, erst nach dem Binden der
+    // Ports. Lässt er sich nicht starten, läuft der Server ohne ihn weiter.
+    // Mit dem Abschaltsignal nimmt er keine Verbindung mehr an, wie die
+    // TCP-Seite; der Wert lebt bis zum Ende von `betreiben`, mit ihm
+    // verschwindet der Socket.
+    #[cfg(unix)]
+    let _kanal = {
+        let rx = gesendet_rx.clone();
+        let ende = async move {
+            stopp_abwarten(rx).await;
+        };
+        kanal_starten(kanal_ort.as_deref().map(|p| p.as_path()), crate::unix::eigene_uid(), ende)
+    };
     // Jede angenommene Verbindung bekommt eine fortlaufende Nummer
     // (`ConnectInfo<Verbindung>`), für die Windows-Anmeldung je Verbindung (7b).
     let dienst = || router.clone().into_make_service_with_connect_info::<Verbindung>();
@@ -381,6 +396,19 @@ pub async fn betreiben(
     }
     info!("Dashboard beendet.");
     Ok(())
+}
+
+/// Startet den lokalen Kanal, wenn es einen Ort gibt. Ein Fehler ist eine
+/// Zeile im Protokoll, kein Grund, den Server nicht zu starten.
+#[cfg(unix)]
+fn kanal_starten(ort: Option<&Path>, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) -> Option<crate::kanal::Kanal> {
+    match crate::kanal::starten(ort?, erwartete_uid, ende) {
+        Ok(kanal) => Some(kanal),
+        Err(satz) => {
+            error!("{satz}");
+            None
+        }
+    }
 }
 
 /// Führt `f` in einer eigenen Tokio-Laufzeit aus; Hintergrundarbeiten
@@ -748,6 +776,143 @@ mod tests {
         let dauer = start.elapsed();
         assert!(dauer >= Duration::from_millis(450) && dauer < Duration::from_secs(3), "Ende nach {dauer:?}");
         drop(halb);
+    }
+
+    /// Etappe 7a der macOS-Folge: Hat der Zustand einen Ort, läuft der lokale
+    /// Kanal, sobald der Server bereit ist, und nach dem geordneten Ende ist
+    /// der Socket weg.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn betreiben_startet_den_lokalen_kanal_und_raeumt_ihn_am_ende_weg() {
+        use std::os::unix::fs::DirBuilderExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let ordner = std::env::temp_dir().join(format!("dk-{}-dienst", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::DirBuilder::new().mode(0o700).create(&ordner).unwrap();
+        let ort = ordner.join(crate::kanal::KANAL_DATEI);
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
+        let (bereit_tx, mut bereit_rx) = watch::channel(false);
+        let (signal_tx, signal_rx) = watch::channel(None);
+        let bereit = move || {
+            bereit_tx.send_replace(true);
+        };
+        let ort_im_zustand = ort.clone();
+        let zustand = move || {
+            let (state, abschalter) = AppState::fuer_tests_mit_abschalter(&app::beispiel_fuer_tests(), port);
+            Ok((state.mit_kanal_ort(ort_im_zustand), abschalter))
+        };
+        let server = betreiben(port, zustand, &bereit, stopp_abwarten(signal_rx), "Test");
+        let ort_der_pruefung = ort.clone();
+        let pruefung = async move {
+            let _ = bereit_rx.wait_for(|&b| b).await;
+            let mut v = tokio::net::UnixStream::connect(&ort_der_pruefung).await.expect("der Kanal läuft, sobald der Server bereit ist");
+            v.write_all(b"{\"befehl\":\"wer\"}\n").await.unwrap();
+            let mut antwort = String::new();
+            v.read_to_string(&mut antwort).await.unwrap();
+            signal_tx.send_replace(Some(Duration::from_millis(200)));
+            antwort
+        };
+        let (ergebnis, antwort) =
+            tokio::time::timeout(Duration::from_secs(20), async { tokio::join!(server, pruefung) }).await.expect("Server und Prüfung enden");
+        assert!(ergebnis.is_ok(), "{ergebnis:?}");
+        let antwort: serde_json::Value = serde_json::from_str(antwort.trim_end()).unwrap();
+        assert_eq!(antwort, serde_json::json!({ "fassung": env!("CARGO_PKG_VERSION"), "hauptkonto": true }));
+        assert!(std::fs::symlink_metadata(&ort).is_err(), "der Socket liegt nach dem Ende noch da");
+        let _ = std::fs::remove_dir_all(&ordner);
+    }
+
+    /// Etappe 7a der macOS-Folge: Nach dem Abschaltsignal und vor der Rückkehr
+    /// von `betreiben` (eine hängende Anfrage hält den Server noch offen) wird
+    /// auf dem lokalen Kanal keine neue Verbindung mehr bedient.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn nach_dem_signal_bedient_der_lokale_kanal_keine_neue_verbindung() {
+        use std::os::unix::fs::DirBuilderExt;
+        use tokio::io::AsyncWriteExt;
+        let ordner = std::env::temp_dir().join(format!("dk-{}-dienst-signal", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::DirBuilder::new().mode(0o700).create(&ordner).unwrap();
+        let ort = ordner.join(crate::kanal::KANAL_DATEI);
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
+        let (bereit_tx, mut bereit_rx) = watch::channel(false);
+        let (signal_tx, signal_rx) = watch::channel(None);
+        let bereit = move || {
+            bereit_tx.send_replace(true);
+        };
+        let ort_im_zustand = ort.clone();
+        let zustand = move || {
+            let (state, abschalter) = AppState::fuer_tests_mit_abschalter(&app::beispiel_fuer_tests(), port);
+            Ok((state.mit_kanal_ort(ort_im_zustand), abschalter))
+        };
+        let (zurueck_tx, zurueck_rx) = watch::channel(false);
+        let server = async {
+            let r = betreiben(port, zustand, &bereit, stopp_abwarten(signal_rx), "Test").await;
+            zurueck_tx.send_replace(true);
+            r
+        };
+        let ort_der_pruefung = ort.clone();
+        let pruefung = async move {
+            let _ = bereit_rx.wait_for(|&b| b).await;
+            // Vor dem Signal läuft der Kanal.
+            tokio::net::UnixStream::connect(&ort_der_pruefung).await.expect("der Kanal läuft vor dem Signal");
+            // Eine halbe Anfrage hält den Server nach dem Signal noch offen.
+            let mut halb = tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
+            halb.write_all(b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\n").await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            signal_tx.send_replace(Some(Duration::from_millis(1500)));
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let noch_offen = !*zurueck_rx.borrow();
+            let danach = tokio::net::UnixStream::connect(&ort_der_pruefung).await.map(|_| ()).map_err(|e| e.kind());
+            (halb, noch_offen, danach)
+        };
+        let (ergebnis, (halb, noch_offen, danach)) =
+            tokio::time::timeout(Duration::from_secs(20), async { tokio::join!(server, pruefung) }).await.expect("Server und Prüfung enden");
+        assert!(ergebnis.is_ok(), "{ergebnis:?}");
+        assert!(noch_offen, "betreiben war schon zurück; der Test hat nicht die Zeit dazwischen geprüft");
+        assert_eq!(danach, Err(std::io::ErrorKind::ConnectionRefused));
+        assert!(std::fs::symlink_metadata(&ort).is_err(), "der Socket liegt nach dem Ende noch da");
+        drop(halb);
+        let _ = std::fs::remove_dir_all(&ordner);
+    }
+
+    /// Etappe 7a der macOS-Folge: Lässt sich der Kanal nicht starten (hier ein
+    /// zu offener Ordner), läuft der Server ohne ihn weiter.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ohne_kanal_laeuft_der_server_weiter() {
+        use std::os::unix::fs::DirBuilderExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let ordner = std::env::temp_dir().join(format!("dk-{}-dienst-offen", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ordner);
+        std::fs::DirBuilder::new().mode(0o755).create(&ordner).unwrap();
+        let ort = ordner.join(crate::kanal::KANAL_DATEI);
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
+        let (bereit_tx, mut bereit_rx) = watch::channel(false);
+        let (signal_tx, signal_rx) = watch::channel(None);
+        let bereit = move || {
+            bereit_tx.send_replace(true);
+        };
+        let ort_im_zustand = ort.clone();
+        let zustand = move || {
+            let (state, abschalter) = AppState::fuer_tests_mit_abschalter(&app::beispiel_fuer_tests(), port);
+            Ok((state.mit_kanal_ort(ort_im_zustand), abschalter))
+        };
+        let server = betreiben(port, zustand, &bereit, stopp_abwarten(signal_rx), "Test");
+        let pruefung = async move {
+            let _ = bereit_rx.wait_for(|&b| b).await;
+            let mut v = tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
+            v.write_all(format!("GET /healthz HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+            let mut antwort = String::new();
+            v.read_to_string(&mut antwort).await.unwrap();
+            signal_tx.send_replace(Some(Duration::from_millis(200)));
+            antwort
+        };
+        let (ergebnis, antwort) =
+            tokio::time::timeout(Duration::from_secs(20), async { tokio::join!(server, pruefung) }).await.expect("Server und Prüfung enden");
+        assert!(ergebnis.is_ok(), "{ergebnis:?}");
+        assert!(antwort.starts_with("HTTP/1.1 200"), "{antwort}");
+        assert!(std::fs::symlink_metadata(&ort).is_err(), "trotz offenem Ordner ist ein Socket entstanden");
+        let _ = std::fs::remove_dir_all(&ordner);
     }
 
     #[test]

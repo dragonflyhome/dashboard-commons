@@ -119,6 +119,11 @@ pub struct AppState {
     /// `None`, wenn sich die Schlüsseldatei nicht laden oder anlegen ließ; dann
     /// geht nur die Windows-Anmeldung (Grund im Protokoll).
     pub jwt: Option<Arc<crate::passkey::jwt::JwtSchluessel>>,
+    /// Etappe 7a der macOS-Folge: Ort des lokalen Kanals, neben dem Schlüssel
+    /// der Ausweise. Der Kanal selbst startet erst in `dienst::betreiben`,
+    /// nie beim Bau des Zustands; in Tests ist der Ort `None`.
+    #[cfg(unix)]
+    pub kanal_ort: Option<Arc<PathBuf>>,
     /// Kopfleiste, Fassung 3: die Ereignisnummern für `/api/stand` (frei und
     /// geschützt); im Dienst zählt eine Aufgabe mit (`api::stand::zaehlen_starten`).
     pub zaehler: Arc<api::stand::Ereigniszaehler>,
@@ -177,6 +182,13 @@ impl AppState {
             einstellungen: Some(Arc::new(e.clone())),
             modus: Modus::Konsole,
         })
+    }
+
+    /// Nur für Tests: derselbe Zustand mit einem Ort für den lokalen Kanal.
+    #[cfg(all(unix, test))]
+    pub fn mit_kanal_ort(mut self, ort: PathBuf) -> Self {
+        self.kanal_ort = Some(Arc::new(ort));
+        self
     }
 
     /// Derselbe Zustand mit anderem Modus (Startzeit bleibt).
@@ -339,6 +351,16 @@ impl AppState {
                 None
             }
         };
+        // Etappe 7a der macOS-Folge: der Ort des lokalen Kanals. Gestartet wird
+        // er in `dienst::betreiben`, nach dem Binden der Ports.
+        #[cfg(unix)]
+        let kanal_ort = {
+            let ort = crate::kanal::ort_neben(jwt_datei.as_deref());
+            if ort.is_none() {
+                error!("{}", crate::kanal::KEIN_ORT_SATZ);
+            }
+            ort.map(Arc::new)
+        };
         let csp = Arc::new(CspCache::neu(web.clone()));
         let mut state = Self {
             quellen: Arc::new(if quellen_pfade.len() > 1 { quellen_pfade } else { vec![dir.clone()] }),
@@ -370,6 +392,8 @@ impl AppState {
             einstellungen,
             bote,
             git,
+            #[cfg(unix)]
+            kanal_ort,
             inhalt,
             lauf: Arc::new(Lauf::jetzt(modus)),
             sitzung: Default::default(),
@@ -605,6 +629,8 @@ impl AppState {
             lauf: Arc::new(Lauf::jetzt(Modus::Umgebung)),
             sitzung: Default::default(),
             jwt: Some(Arc::new(crate::passkey::jwt::JwtSchluessel::zufaellig())),
+            #[cfg(unix)]
+            kanal_ort: None,
             zaehler: api::stand::neu(),
             oeffnen: Default::default(),
             projekte: Arc::new(crate::projekte::Register::leer()),
