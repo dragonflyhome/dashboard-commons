@@ -1,14 +1,12 @@
 /**
- * Etappe 3b: Thema-Schalter. Das Skript in app.html (vor dem ersten Bild) und
+ * Etappe 3b: Thema. Das Skript in app.html (vor dem ersten Bild) und
  * #lib/thema.ts müssen dieselben Schlüssel und Werte nehmen; der Test führt
  * das Skript aus app.html in jsdom aus. Die Prüfsumme für die CSP hält
  * src/sicherheit.rs fest (thema_skript_der_vorlage).
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ThemaSchalter from './components/ThemaSchalter.svelte';
 import {
 	THEMA_SCHLUESSEL,
 	THEMEN,
@@ -143,33 +141,6 @@ describe('thema.ts', () => {
 	});
 });
 
-describe('ThemaSchalter', () => {
-	it('drei Optionsfelder in einer benannten Gruppe; die gemerkte Wahl ist gewählt', async () => {
-		localStorage.setItem(THEMA_SCHLUESSEL, 'dunkel');
-		render(ThemaSchalter);
-		const gruppe = await screen.findByRole('radiogroup', { name: 'Farben' });
-		expect(gruppe).toBeInTheDocument();
-		const felder = screen.getAllByRole('radio');
-		expect(felder.map((f) => f.textContent.trim())).toEqual(['System', 'Hell', 'Dunkel']);
-		expect(screen.getByRole('radio', { name: 'Dunkel' })).toHaveAttribute('aria-checked', 'true');
-	});
-
-	it('Klick und Pfeiltaste wählen, merken und setzen data-theme', async () => {
-		render(ThemaSchalter);
-		const hell = screen.getByRole('radio', { name: 'Hell' });
-		await fireEvent.click(hell);
-		expect(document.documentElement.getAttribute('data-theme')).toBe('hell');
-		expect(localStorage.getItem(THEMA_SCHLUESSEL)).toBe('hell');
-		hell.focus();
-		await fireEvent.keyDown(hell, { key: 'ArrowRight' });
-		expect(screen.getByRole('radio', { name: 'Dunkel' })).toHaveAttribute('aria-checked', 'true');
-		expect(document.documentElement.getAttribute('data-theme')).toBe('dunkel');
-		await fireEvent.click(screen.getByRole('radio', { name: 'System' }));
-		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
-		expect(localStorage.getItem(THEMA_SCHLUESSEL)).toBeNull();
-	});
-});
-
 describe('Etappe S1: die Liste THEMEN ist die eine Quelle', () => {
 	it('istThema kennt genau die Werte der Liste', () => {
 		for (const { wert } of THEMEN) expect(istThema(wert)).toBe(true);
@@ -187,12 +158,6 @@ describe('Etappe S1: die Liste THEMEN ist die eine Quelle', () => {
 		expect(themaLesen()).toBe('system');
 		localStorage.clear();
 		expect(themaLesen()).toBe('system');
-	});
-
-	it('der Schalter zeigt genau die Einträge der Liste, in ihrer Reihenfolge', () => {
-		render(ThemaSchalter);
-		const knoepfe = screen.getAllByRole('radio');
-		expect(knoepfe.map((k) => k.textContent.trim())).toEqual(THEMEN.map((t) => t.text));
 	});
 
 	it('jeder Eintrag hat einen eigenen Wert und einen eigenen Namen', () => {

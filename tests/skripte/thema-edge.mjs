@@ -18,7 +18,8 @@
  *     und data-theme im ersten Bild (requestAnimationFrame), bei
  *     DOMContentLoaded und nach load; alle drei müssen das gewählte Thema
  *     zeigen
- *   - Schalter mit der Tastatur: Fokus auf „System“, Pfeil rechts wählt
+ *   - Wahl „Farben“ auf /einstellungen (seit S2) mit der Tastatur: Fokus
+ *     auf „Wie mein PC“, Pfeil rechts wählt
  *     „Hell“, noch einmal „Dunkel“; gemerkt nach Neuladen
  *   - Startseite „Spalten“ (gemerkt je Browser): bei 375 px untereinander,
  *     kein seitliches Scrollen; bei 1280 px nebeneinander; Zahl in den
@@ -517,6 +518,9 @@ async function speicherSetzen(cdp, eintraege) {
   })()`);
 }
 
+/** Der Name einer Karte der Wahl „Farben“: das Element, auf das aria-labelledby zeigt. */
+const KARTEN_NAME = `(e) => document.getElementById(e?.getAttribute('aria-labelledby') ?? '')?.textContent.trim()`;
+
 async function themaPruefen(cdp, system, wahl) {
   const soll =
     wahl === "dunkel" || (wahl === null && system === "dark") ? DUNKEL : HELL;
@@ -542,13 +546,16 @@ async function themaPruefen(cdp, system, wahl) {
     `${name}: keine CSP-Verletzung`,
     JSON.stringify(m?.csp),
   );
+  // Etappe S2: Die Wahl steht auf der Seite Einstellungen, nicht mehr im Fuß.
+  await cdp.oeffnen("/einstellungen");
+  await pause(300);
   const gewaehlt = await cdp.auswerten(
-    `document.querySelector('footer [role="radio"][aria-checked="true"]')?.textContent.trim()`,
+    `(${KARTEN_NAME})(document.querySelector('main [role="radio"][aria-checked="true"]'))`,
   );
   pruefe(
     gewaehlt ===
-      (wahl === "hell" ? "Hell" : wahl === "dunkel" ? "Dunkel" : "System"),
-    `${name}: der Schalter zeigt die Wahl`,
+      (wahl === "hell" ? "Hell" : wahl === "dunkel" ? "Dunkel" : "Wie mein PC"),
+    `${name}: die Seite Einstellungen zeigt die Wahl`,
     String(gewaehlt),
   );
   pruefe(
@@ -609,24 +616,24 @@ async function main() {
   await themaPruefen(cdp, "light", null);
   await themaPruefen(cdp, "dark", null);
 
-  console.log("\n== Schalter mit der Tastatur ==");
+  console.log("\n== Farben auf /einstellungen mit der Tastatur ==");
   await cdp.system("light");
   await speicherSetzen(cdp, {});
-  await cdp.oeffnen("/");
+  await cdp.oeffnen("/einstellungen");
   const fokus = await cdp.auswerten(`(() => {
-    const e = document.querySelector('footer [role="radio"][aria-checked="true"]');
+    const e = document.querySelector('main [role="radio"][aria-checked="true"]');
     e?.scrollIntoView({ block: 'center' });
     e?.focus();
-    return document.activeElement?.textContent.trim();
+    return (${KARTEN_NAME})(document.activeElement);
   })()`);
   pruefe(
-    fokus === "System",
-    "Tab-Ziel ist die gewählte Möglichkeit „System“",
+    fokus === "Wie mein PC",
+    "Tab-Ziel ist die gewählte Möglichkeit „Wie mein PC“",
     String(fokus),
   );
   await cdp.taste("ArrowRight", 39);
   let z = await cdp.auswerten(
-    `({ thema: document.documentElement.getAttribute('data-theme'), gemerkt: localStorage.getItem('${SCHLUESSEL}'), hintergrund: getComputedStyle(document.body).backgroundColor, fokus: document.activeElement?.textContent.trim() })`,
+    `({ thema: document.documentElement.getAttribute('data-theme'), gemerkt: localStorage.getItem('${SCHLUESSEL}'), hintergrund: getComputedStyle(document.body).backgroundColor, fokus: (${KARTEN_NAME})(document.activeElement) })`,
   );
   pruefe(
     z.thema === "hell" &&

@@ -826,7 +826,15 @@ einheit = "GB"              # „0,2 von 1,5 GB“`,
 	zeitgantt: `<Gantt data={plan} />  <!-- zeit/Gantt.svelte, Daten aus gantt() in #lib/daten.ts -->
 <Textfassung fassung={ganttText(plan)} />`,
 	wahl: `<Wahl bind:wert={ansicht} beschriftung="Ansicht"
-  optionen={[{ wert: 'kacheln', text: 'Kacheln' }, { wert: 'spalten', text: 'Spalten' }]} />`,
+  optionen={[{ wert: 'kacheln', text: 'Kacheln' }, { wert: 'spalten', text: 'Spalten' }]} />
+
+<!-- Als Karten: Name und Beschreibung tragen die übergebenen Kennungen -->
+<Wahl bind:wert={groesse} beschriftung="Größe" optionen={GROESSEN}>
+  {#snippet karte(o, ids)}
+    <span id={ids.name}>{o.text}</span>
+    <span id={ids.beschreibung}>Leichter zu lesen.</span>
+  {/snippet}
+</Wahl>`,
 	textGantt: `<Gantt data={plan} />
 <Textfassung fassung={ganttText(plan)} />  <!-- #lib/textfassung.ts -->`,
 	textDichte: `<Dichtestreifen {ereignisse} aus={ausgeblendet} />

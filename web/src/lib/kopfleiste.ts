@@ -36,7 +36,8 @@ export interface Seite {
 		| '/daten'
 		| '/anleitung'
 		| '/zielbild'
-		| '/entscheidungen';
+		| '/entscheidungen'
+		| '/einstellungen';
 	label: string;
 }
 
@@ -51,7 +52,8 @@ export const SEITEN: readonly Seite[] = [
 	{ schluessel: 'daten', pfad: '/daten', label: 'Daten' },
 	{ schluessel: 'anleitung', pfad: '/anleitung', label: 'Anleitung' },
 	{ schluessel: 'zielbild', pfad: '/zielbild', label: 'Zielbild' },
-	{ schluessel: 'entscheidungen', pfad: '/entscheidungen', label: 'Entscheidungen' }
+	{ schluessel: 'entscheidungen', pfad: '/entscheidungen', label: 'Entscheidungen' },
+	{ schluessel: 'einstellungen', pfad: '/einstellungen', label: 'Einstellungen' }
 ];
 
 /** Seiten mit festem Namen (auch die, die nicht in der Leiste stehen). */

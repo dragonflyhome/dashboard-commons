@@ -21,7 +21,7 @@ function weg(k: ReturnType<typeof kopfleiste>): string[] {
 }
 
 describe('Kopfleiste, Fassung 3: Route zu Brotkrumen und Markierung der Seitenleiste', () => {
-	it('Leiste: oben Anstehend, abgesetzt Schlüssel, Hallo, Vorgänge, Daten, Anleitung, Zielbild, Entscheidungen; PC nicht', () => {
+	it('Leiste: oben Anstehend, abgesetzt Schlüssel, Hallo, Vorgänge, Daten, Anleitung, Zielbild, Entscheidungen, Einstellungen; PC nicht', () => {
 		expect(ANSTEHEND.label).toBe('Anstehend');
 		expect(SEITEN.map((s) => s.label)).toEqual([
 			'Schlüssel',
@@ -30,7 +30,8 @@ describe('Kopfleiste, Fassung 3: Route zu Brotkrumen und Markierung der Seitenle
 			'Daten',
 			'Anleitung',
 			'Zielbild',
-			'Entscheidungen'
+			'Entscheidungen',
+			'Einstellungen'
 		]);
 		expect(SEITEN.some((s) => s.label === 'PC')).toBe(false);
 	});
@@ -50,7 +51,8 @@ describe('Kopfleiste, Fassung 3: Route zu Brotkrumen und Markierung der Seitenle
 		['/hallo', 'Hallo', 'hallo'],
 		['/anleitung', 'Anleitung', 'anleitung'],
 		['/zielbild', 'Zielbild', 'zielbild'],
-		['/entscheidungen', 'Entscheidungen', 'entscheidungen']
+		['/entscheidungen', 'Entscheidungen', 'entscheidungen'],
+		['/einstellungen', 'Einstellungen', 'einstellungen']
 	])('%s: Blatt „%s“, in der Leiste markiert', (route, blatt, seite) => {
 		const k = kopfleiste(route, {}, { irgendwas: 1 });
 		expect(weg(k)).toEqual([blatt]);

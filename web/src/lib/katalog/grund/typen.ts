@@ -8,6 +8,12 @@ export interface Option {
 	gesperrt?: boolean;
 }
 
+/** Die Kennungen, die der Inhalt einer Karte in `<Wahl>` an Namen und Beschreibung setzt. */
+export interface KartenIds {
+	name: string;
+	beschreibung: string;
+}
+
 /** Eine Spalte in `<Tabelle>` (Form mit Daten). */
 export interface Spalte {
 	/** Schlüssel in jeder Zeile. */
