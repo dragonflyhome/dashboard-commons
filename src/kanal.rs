@@ -72,8 +72,10 @@ impl KanalKonto {
 }
 
 /// Nur für Tests: die Befähigung, wie der Lauscher sie nach der Prüfung
-/// gibt. Außerhalb des Testbaus entsteht sie nur dort.
-#[cfg(test)]
+/// gibt. Außerhalb des Testbaus entsteht sie nur dort. Gebraucht von den
+/// Tests der Wege über einen Einmal-Code, die es nur unter Unix gibt; darum
+/// auch nur dort vorhanden (unter Windows wäre die Funktion unbenutzt).
+#[cfg(all(test, unix))]
 pub(crate) fn konto_fuer_tests() -> KanalKonto {
     KanalKonto::nach_pruefung(0)
 }
