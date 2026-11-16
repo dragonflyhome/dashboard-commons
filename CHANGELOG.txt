@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.16.1 - 2026-11-16
+-------------------
+
 Behoben
 - Die Prüfung der Oberfläche meldet in einem zweiten Arbeitsordner dasselbe
   wie im Haupt-Repo. Sind die Module dort nur ein Verweis auf die des
