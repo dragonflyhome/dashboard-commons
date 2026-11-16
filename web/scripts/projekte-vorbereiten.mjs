@@ -4,16 +4,33 @@
 // und test auch in einem frischen Stand. Gibt es die Datei, bleibt sie, wie sie ist.
 //
 // Aufruf (über package.json vor build, check und test):
-//   node scripts/projekte-vorbereiten.mjs [ziel]
+//   node scripts/projekte-vorbereiten.mjs [--eigene-module] [ziel]
 // Ohne Abhängigkeiten.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+//
+// --eigene-module (vor lint, check und test, auch lint:schnell, check:watch, test:unit): Abbruch, wenn web/node_modules eine
+// Verknüpfung (Junction, Symlink) ist. TypeScript löst $app/tsconfig dann hinter
+// dem Link auf; dessen rootDirs gehören zum anderen Checkout, ./$types bleibt
+// ungelöst (falsche eslint-Meldungen), und svelte-kit sync schreibt dorthin.
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ziel = process.argv[2]
-	? resolve(process.argv[2])
-	: resolve(web, 'src', 'lib', 'projekte.generated.ts');
+const argumente = process.argv.slice(2);
+const zielArg = argumente.find((a) => !a.startsWith('--'));
+const ziel = zielArg ? resolve(zielArg) : resolve(web, 'src', 'lib', 'projekte.generated.ts');
+
+const modulOrdner = join(web, 'node_modules');
+if (
+	argumente.includes('--eigene-module') &&
+	existsSync(modulOrdner) &&
+	realpathSync(modulOrdner) !== join(realpathSync(web), 'node_modules')
+) {
+	console.error(
+		`projekte-vorbereiten: ${modulOrdner} ist eine Verknüpfung (Ziel ${realpathSync(modulOrdner)}). Prüfungen brauchen eigene Module: Link entfernen, dann in web/ npm ci --offline (ohne npm-Cache: npm ci).`
+	);
+	process.exit(1);
+}
 
 // Genau die Form aus src/werkzeug/scanner.rs (bauliste_text), mit leeren Listen.
 const leer = [
