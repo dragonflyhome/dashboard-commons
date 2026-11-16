@@ -187,8 +187,9 @@
     Basis-Repo gelten die Liste nur_basis und die Ortsregeln des Code-Repos
     (Positivliste, Orte des Inhalts, projects/<allgemeiner slug>,
     Projektmodule, Binärdateien außerhalb der Positivliste). Im Projekt-Repo
-    gilt eine eigene Positivliste: projects/<slug>/** für genau einen Slug (der
-    auf main des Remotes, sonst der erste, den der Lauf sieht; jeder weitere
+    gilt eine eigene Positivliste: projects/<slug>/** für genau einen Slug,
+    auch im Archivbereich projects/_archiv/<slug>/**, wo _archiv nie selbst
+    ein Slug ist (der Slug ist der auf main des Remotes, sonst der erste, den der Lauf sieht; jeder weitere
     ist ein Fund „fremdes Projekt“; mit der Liste slugs der Ausnahmedatei
     unten genau deren Slugs, exakt verglichen, und jeder Ordner unter projects/
     außerhalb der Liste ist ein Fund, auch nur im fernen Stand; ein Slug der
@@ -395,6 +396,8 @@ $script:istBasis = $true
 $script:istProjekt = $false
 # Der eine Slug eines Projekt-Repos: der erste Ordner unter projects/, den der Lauf sieht.
 $script:projektSlug = $null
+# Ein Pfad eines Projekt-Repos und sein Slug, auch im Archivbereich (projects/_archiv/<slug>/…).
+$projektPfad = [regex]::new('^projects/(?:_archiv/)?(?!_archiv/)([^/]+)/.', [Text.RegularExpressions.RegexOptions]::Compiled)
 # Die erlaubten Slugs aus der Liste slugs der Ausnahmedatei (exakt verglichen); $null: die Ein-Slug-Regel oben.
 $script:projektSlugs = $null
 # Der ungekürzte Regex von sensibel, wenn die Ausnahmedatei Werte herausnimmt (nur zum Verbergen).
@@ -788,7 +791,7 @@ foreach ($k in $listenMuster.Keys) {
 $kiBinaer = Rx ('(?<![a-z0-9])(?:' + (($kiNamen -split '\|' | Where-Object { $_ -cne 'g[p]t' }) -join '|') + ')(?![a-z0-9])')
 # shortcut: Cargo.lock in der Wurzel nennt Pakete Dritter (etwa ein Paket für ein seltenes Betriebssystem), darum dort keine KI-Namen im Inhalt; aufrüsten, wenn die Sperrdatei von Hand bearbeitet wird.
 $sperrdatei = Rx '^Cargo\.lock$'
-$allgemeinPfad = Rx ('projects[\\/]+(?:' + (Escape-Liste $listen.allgemein) + ')(?![a-z0-9_-])')
+$allgemeinPfad = Rx ('projects[\\/]+(?:_archiv[\\/]+)?(?:' + (Escape-Liste $listen.allgemein) + ')(?![a-z0-9_-])')
 $allgemeinKiste = Rx ('projekt[-_](?:' + ((($listen.allgemein | ForEach-Object { ([regex]::Escape($_)).Replace('-', '[-_]') })) -join '|') + ')(?![a-z0-9_-])')
 $modulPfad = Rx 'path\s*=\s*"[^"]*projects[\\/]+(?!_vorlage[\\/"])'
 # Ein privater Schlüssel (PEM, OpenSSH, PGP, PuTTY) ist in jedem Text ein Fund; ein öffentlicher Block (KONTAKT-PGP.asc) nicht.
@@ -955,7 +958,8 @@ function PfadPruefen([string]$pfad) {
         elseif (-not $ok) { Fund $pfad 0 'Ordner oder Datei nicht in der Positivliste' }
     } elseif ($script:istProjekt) {
         # Overlay: genau ein projects/<slug>/**, der erste Slug des Laufs; jeder weitere ist fremd. Mit Liste slugs: nur deren Slugs.
-        $m = [regex]::Match($p, '^projects/([^/]+)/.')
+        # Archivbereich: projects/_archiv/<slug>/** zählt für denselben Slug; _archiv selbst ist nie ein Slug.
+        $m = $projektPfad.Match($p)
         if ($m.Success -and $null -ne $script:projektSlugs) {
             if (-not $script:projektSlugs.Contains($m.Groups[1].Value)) { Fund $pfad 0 'fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)' }
         } elseif ($m.Success) {
@@ -1733,11 +1737,15 @@ if ($script:istProjekt) {
     foreach ($s in $fernStaende) {
         # -z: ohne es setzt git einen Namen mit Sonderzeichen in Anführungszeichen (anderer Slug).
         $ordner = @((Git @('ls-tree', '-d', '--name-only', '-z', $s, 'projects/')) -split "`0" | Where-Object { $_ })
+        # Archivbereich: statt projects/_archiv die Ordner darin (der Slug ist eine Ebene tiefer).
+        if ($ordner -ccontains 'projects/_archiv') {
+            $ordner = @($ordner | Where-Object { $_ -cne 'projects/_archiv' }) + @((Git @('ls-tree', '-d', '--name-only', '-z', $s, 'projects/_archiv/')) -split "`0" | Where-Object { $_ })
+        }
         if ($null -ne $script:projektSlugs) { foreach ($o in $ordner) { [void]$fernOrdner.Add($o) } }
-        elseif (-not $script:projektSlug -and $ordner.Count -gt 0) { $script:projektSlug = $ordner[0].Substring(9) }
+        elseif (-not $script:projektSlug -and $ordner.Count -gt 0) { $script:projektSlug = $ordner[0] -creplace '^projects/(?:_archiv/)?', '' }
     }
     foreach ($o in $fernOrdner) {
-        if (-not $script:projektSlugs.Contains($o.Substring(9))) { Fund "$o (ferner Stand)" 0 'fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)' }
+        if (-not $script:projektSlugs.Contains(($o -creplace '^projects/(?:_archiv/)?', ''))) { Fund "$o (ferner Stand)" 0 'fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)' }
     }
 }
 foreach ($z in $hookZeilen) {

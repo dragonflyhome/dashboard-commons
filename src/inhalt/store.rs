@@ -124,7 +124,10 @@ pub struct ProjektStand {
     /// `status = …` ([`status_locker`]). So hebt ein Tippfehler im Kopf das
     /// Archiv nicht auf.
     pub archiviert: bool,
-    /// Ließ sich der Status streng lesen (Kopf in Ordnung)?
+    /// Entscheidung archivbereich: Der Ordner liegt unter `projects/_archiv/`.
+    /// Dann ist das Projekt archiviert, gleich was im Kopf steht.
+    pub im_archiv: bool,
+    /// Ließ sich der Status streng lesen (Kopf in Ordnung, oder Lage im Archiv)?
     archiv_streng: bool,
 }
 
@@ -184,6 +187,7 @@ impl ProjektStand {
                 gut: true,
                 gesperrt: Vec::new(),
                 archiviert: false,
+                im_archiv: crate::quellen::im_archiv(dir),
                 archiv_streng: false,
             }
         });
@@ -194,8 +198,8 @@ impl ProjektStand {
             (_, Some(Ok((k, _)))) => Some(k.status == projekt::Status::Archiviert),
             _ => None,
         };
-        p.archiv_streng = streng.is_some();
-        p.archiviert = streng.unwrap_or_else(|| status_locker(&ordner).is_some_and(|s| projekt::ist_archiviert(&s)));
+        p.archiv_streng = streng.is_some() || p.im_archiv;
+        p.archiviert = p.im_archiv || streng.unwrap_or_else(|| status_locker(&ordner).is_some_and(|s| projekt::ist_archiviert(&s)));
         Some(p)
     }
 
@@ -413,7 +417,8 @@ impl Bestand {
             }
         };
         let mut aus = Vec::new();
-        for p in self.projekte.values() {
+        // Archivbereich: Projekte im Archiv werden nicht geprüft, auch nicht auf Lesefehler.
+        for p in self.projekte.values().filter(|p| !p.im_archiv) {
             let gelesen = p.gelesen.format("%d.%m. %H:%M").to_string();
             for h in &p.lesefehler {
                 aus.push((p.slug.clone(), Befund::fehler(h.datei.clone(), None, satz(h, p.gut.then_some(gelesen.as_str())))));
@@ -599,24 +604,25 @@ impl ContentStore {
         s
     }
 
-    /// Mehrere Quellen: ihre Projekte (Slug → Elternordner). `None` bei einer.
-    fn orte(&self) -> Option<crate::quellen::Quellen> {
-        (!self.quellen.is_empty()).then(|| crate::quellen::Quellen::aus_liste(self.quellen.clone()))
-    }
-
-    /// Sätze zu abweichenden Versionsdateien, auch bei nur einer Quelle (eine
-    /// Datei lesen, meist fehlt sie). Unlesbar ist eine einzige Quelle schon
-    /// über `ordner_lesbar` gemeldet, darum gibt es dafür hier keinen Satz.
-    fn version_saetze(&self, orte: &Option<crate::quellen::Quellen>) -> Vec<String> {
-        match orte {
-            Some(q) => q.version.clone(),
-            None => crate::quellen::version_ordner(&self.projekte),
+    /// Die Quellen mit ihren Projekten (Slug → Elternordner), auch bei nur
+    /// einer (Entscheidung archivbereich: so kommen die Projekte im Archiv mit).
+    fn orte(&self) -> crate::quellen::Quellen {
+        if self.quellen.is_empty() {
+            crate::quellen::Quellen::nur_ordner(self.projekte.clone())
+        } else {
+            crate::quellen::Quellen::aus_liste(self.quellen.clone())
         }
     }
 
-    /// Der Elternordner eines Projekts (bei einer Quelle immer `projekte`).
-    fn eltern_von(&self, orte: &Option<crate::quellen::Quellen>, slug: &str) -> PathBuf {
-        orte.as_ref().and_then(|q| q.eltern(slug)).map(Path::to_path_buf).unwrap_or_else(|| self.projekte.clone())
+    /// Je unlesbarer Quelle ein Satz. Unlesbar ist eine einzige Quelle schon
+    /// über `ordner_lesbar` gemeldet, darum gibt es dafür hier keinen Satz.
+    fn unlesbar_saetze(&self, orte: &crate::quellen::Quellen) -> Vec<String> {
+        if self.quellen.is_empty() { Vec::new() } else { orte.unlesbar_saetze() }
+    }
+
+    /// Der Elternordner eines Projekts, auch im Archiv (sonst `projekte`).
+    fn eltern_von(&self, orte: &crate::quellen::Quellen, slug: &str) -> PathBuf {
+        orte.eltern_mit_archiv(slug).map(Path::to_path_buf).unwrap_or_else(|| self.projekte.clone())
     }
 
     pub fn ordner(&self) -> &Path {
@@ -691,14 +697,16 @@ impl ContentStore {
             return Aenderungen::default();
         }
         let orte = self.orte();
-        // Projekte einer unlesbaren weiteren Quelle: nicht neu auflösen, der letzte gute Stand bleibt (wie beim ersten Ordner).
-        let gesperrt = orte.as_ref().map(crate::quellen::Quellen::unlesbare_pfade).unwrap_or_default();
+        // Projekte einer unlesbaren weiteren Quelle oder eines unlesbaren Archivbereichs: nicht neu auflösen,
+        // der letzte gute Stand bleibt (wie beim ersten Ordner).
+        let mut gesperrt = if self.quellen.is_empty() { Vec::new() } else { orte.unlesbare_pfade() };
+        gesperrt.extend(orte.archiv_unlesbar.iter().cloned());
         let alte_eltern = std::mem::take(&mut blick.eltern);
         let in_gesperrter = |s: &str| alte_eltern.get(s).is_some_and(|e| gesperrt.iter().any(|g| *g == *e || *g == e.join(s)));
-        blick.eltern = orte.as_ref().map(|q| q.projekte().clone()).unwrap_or_default();
+        blick.eltern = orte.alle_projekte();
         blick.eltern.extend(alte_eltern.iter().filter(|(s, _)| in_gesperrter(s)).map(|(s, e)| (s.clone(), e.clone())));
-        let unlesbar = orte.as_ref().map(crate::quellen::Quellen::unlesbar_saetze).unwrap_or_default();
-        let version = self.version_saetze(&orte);
+        let unlesbar = self.unlesbar_saetze(&orte);
+        let version = orte.version.clone();
         let stempel = self.stempel_lesen_aus(&orte);
         let mut pfade: Vec<String> = Vec::new();
         for (pfad, s) in &stempel {
@@ -709,6 +717,13 @@ impl ContentStore {
         for pfad in blick.stempel.keys() {
             if !stempel.contains_key(pfad) {
                 pfade.push(pfad.clone());
+            }
+        }
+        // Ein Lagewechsel ohne geänderte Datei (Umzug ins Archiv und zurück) zählt als Änderung am Kopf: Prüflauf und Git-Ziele laufen.
+        for (s, e) in &alte_eltern {
+            let kopf = format!("projects/{s}/projekt.toml");
+            if blick.eltern.get(s).is_some_and(|n| n != e) && !pfade.contains(&kopf) {
+                pfade.push(kopf);
             }
         }
         blick.stempel = stempel;
@@ -814,8 +829,8 @@ impl ContentStore {
                 b.daten_versionen.insert(name.clone(), v);
                 aenderungen.daten.push((name.clone(), v));
             }
-            b.quellen_doppelt = orte.as_ref().map(|q| q.doppelt.clone()).unwrap_or_default();
-            b.quellen_rechenteile = orte.as_ref().map(|q| q.rechenteile.clone()).unwrap_or_default();
+            b.quellen_doppelt = orte.doppelt.clone();
+            b.quellen_rechenteile = orte.rechenteile.clone();
             b.quellen_unlesbar = unlesbar;
             b.quellen_version = version;
             if !aenderungen.projekte.is_empty() || !aenderungen.daten.is_empty() {
@@ -837,16 +852,13 @@ impl ContentStore {
         }
     }
 
-    fn stempel_lesen_aus(&self, orte: &Option<crate::quellen::Quellen>) -> BTreeMap<String, Stempel> {
+    /// Je Projekt sein Ordner unter dem Schlüssel `projects/<slug>/…`, auch im
+    /// Archiv (ein Umzug ändert so keinen Schlüssel). Ordner ohne gültigen
+    /// Slug (`_archiv`, `_vorlage`) werden nicht durchsucht.
+    fn stempel_lesen_aus(&self, orte: &crate::quellen::Quellen) -> BTreeMap<String, Stempel> {
         let mut m = BTreeMap::new();
-        match orte {
-            // Mehrere Quellen: je Projekt sein Ordner, unter demselben Schlüssel `projects/<slug>/…`.
-            Some(q) => {
-                for (slug, eltern) in q.projekte() {
-                    scan(&eltern.join(slug), &format!("projects/{slug}/"), &mut m);
-                }
-            }
-            None => scan(&self.projekte, "projects/", &mut m),
+        for (slug, eltern) in orte.alle_projekte() {
+            scan(&eltern.join(&slug), &format!("projects/{slug}/"), &mut m);
         }
         scan(&self.daten_ordner, "data/", &mut m);
         m
@@ -858,20 +870,12 @@ impl ContentStore {
         let start = Instant::now();
         let orte = self.orte();
         blick.stempel = self.stempel_lesen_aus(&orte);
-        blick.eltern = orte.as_ref().map(|q| q.projekte().clone()).unwrap_or_default();
+        blick.eltern = orte.alle_projekte();
         let lesbar = std::fs::read_dir(&self.projekte).is_ok();
-        let mut slugs: Vec<String> = match &orte {
-            Some(q) => {
-                for satz in &q.doppelt {
-                    warn!("Inhaltsquellen: {satz}");
-                }
-                q.projekte().keys().cloned().collect()
-            }
-            None => std::fs::read_dir(&self.projekte)
-                .map(|rd| rd.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).filter(|s| seite::is_valid_slug(s)).collect())
-                .unwrap_or_default(),
-        };
-        slugs.sort();
+        for satz in &orte.doppelt {
+            warn!("Inhaltsquellen: {satz}");
+        }
+        let slugs: Vec<String> = blick.eltern.keys().cloned().collect();
         let mut projekte: BTreeMap<String, Arc<ProjektStand>> = BTreeMap::new();
         for p in slugs.iter().filter_map(|s| ProjektStand::lesen(&self.eltern_von(&orte, s), s, heute)) {
             let (stand, wieder, _) = uebernehmen(None, p);
@@ -916,10 +920,10 @@ impl ContentStore {
             b.tag = heute;
             b.ordner_lesbar = lesbar;
             b.geladen_in_ms = ms;
-            b.quellen_doppelt = orte.as_ref().map(|q| q.doppelt.clone()).unwrap_or_default();
-            b.quellen_rechenteile = orte.as_ref().map(|q| q.rechenteile.clone()).unwrap_or_default();
-            b.quellen_unlesbar = orte.as_ref().map(crate::quellen::Quellen::unlesbar_saetze).unwrap_or_default();
-            b.quellen_version = self.version_saetze(&orte);
+            b.quellen_doppelt = orte.doppelt.clone();
+            b.quellen_rechenteile = orte.rechenteile.clone();
+            b.quellen_unlesbar = self.unlesbar_saetze(&orte);
+            b.quellen_version = orte.version.clone();
         });
         blick.geladen = true;
         if self.modus == Abgleich::Beobachter {
@@ -1011,13 +1015,15 @@ fn daten_lesefehler(liste: &mut Vec<LeseHinweis>, datei: &str, satz: &str) {
 ///
 /// - Ohne gesperrte Datei: der neue Stand, geändert.
 /// - Gesperrt, und es gab einen Stand davor: der alte bleibt (die Lesefehler
-///   vermerkt), nicht geändert, wieder lesen.
+///   vermerkt; Lage und Archiv-Status aber neu), geändert nur, wenn sich die
+///   Lage änderte, wieder lesen.
 /// - Gesperrt ohne Stand davor: der neue, so wie er gelesen wurde (`gut`
 ///   ist dann `false`), geändert, wieder lesen.
 fn uebernehmen(alt: Option<&Arc<ProjektStand>>, mut neu: ProjektStand) -> (Arc<ProjektStand>, bool, bool) {
     // Archiv-Status: Lässt sich der Kopf nicht lesen, gilt der zuletzt bekannte.
+    // Kam es eben aus dem Archiv zurück, gilt der alte Stand nicht (dann die Zeile `status`).
     if !neu.archiv_streng
-        && let Some(a) = alt
+        && let Some(a) = alt.filter(|a| !a.im_archiv)
     {
         neu.archiviert = a.archiviert;
     }
@@ -1044,7 +1050,11 @@ fn uebernehmen(alt: Option<&Arc<ProjektStand>>, mut neu: ProjektStand) -> (Arc<P
         Some(alt) => {
             let mut behalten = (**alt).clone();
             behalten.lesefehler = hinweise;
-            (Arc::new(behalten), true, false)
+            // Die Lage gilt immer neu: Ein Umzug ins Archiv oder zurück wartet nicht auf die Sperre.
+            let lage = (behalten.im_archiv, behalten.archiviert) != (neu.im_archiv, neu.archiviert);
+            behalten.im_archiv = neu.im_archiv;
+            behalten.archiviert = neu.archiviert;
+            (Arc::new(behalten), true, lage)
         }
         None => {
             neu.lesefehler = hinweise;

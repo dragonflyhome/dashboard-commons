@@ -203,6 +203,34 @@ pub fn pruefe_quellen(quellen: &[std::path::PathBuf]) -> BTreeMap<String, Vec<Be
     }
 }
 
+// ----- Archivbereich (Entscheidung archivbereich) -----
+
+/// Hinweis für ein archiviertes Projekt außerhalb von `projects/_archiv`: die Befehle des Umzugs
+/// (`git mv` legt den Zielordner nicht an, darum zuerst `mkdir`).
+/// shortcut: Der Umzug ist ein `git mv` durch einen Chat, kein eigener Unterbefehl; aufrüsten, wenn mehrere Projekte im Monat archiviert werden.
+pub fn satz_ins_archiv(slug: &str) -> String {
+    format!(
+        "Das Projekt ist archiviert, liegt aber nicht im Archivbereich. Bitte im Inhalts-Repo umziehen: falls projects/_archiv noch fehlt, zuerst `mkdir projects/_archiv`; \
+         dann `git mv projects/{slug} projects/_archiv/{slug}`, \
+         dann nur diese Pfade committen: `git commit -m \"chore: {slug} ins Archiv\" -- projects/{slug} projects/_archiv/{slug}`. \
+         Danach wird es weder gebaut noch geprüft und steht nur noch in der Archivansicht."
+    )
+}
+
+/// Satz für ein Projekt im Archiv, dessen Status nicht `archiviert` ist.
+pub const SATZ_ARCHIV_OHNE_STATUS: &str = "Das Projekt liegt im Archivbereich, aber `status` ist nicht \"archiviert\". Bitte `status = \"archiviert\"` \
+     (mit `archiviert_seit`) eintragen, oder das Projekt zurückholen: `git mv projects/_archiv/<slug> projects/<slug>`, `archiviert_seit` entfernen, \
+     nur diese Pfade committen und danach `dashboard pruefe <slug>`.";
+
+/// Satz für einen Rechenteil im Archiv.
+pub const SATZ_ARCHIV_RECHENTEIL: &str = "Ein Projekt im Archivbereich wird nicht gebaut; sein Rechenteil läuft darum nicht. \
+     Bitte den Ordner server/ und den Eintrag in kisten.toml herausnehmen, oder das Projekt zurückholen.";
+
+/// Satz für ein archiviertes Projekt, das selbst eine Inhaltsquelle ist.
+pub const SATZ_ARCHIV_EIGENE_QUELLE: &str = "Das Projekt ist archiviert und selbst eine Inhaltsquelle; so lässt es sich nicht in den Archivbereich verschieben. \
+     Bitte aus [inhalt] projekte nehmen (dienst.toml) und den Ordner nach projects/_archiv/<slug> einer Inhaltsquelle verschieben, \
+     sonst fehlt das Projekt ganz.";
+
 // ----- Steuerzeichen in Texten (Etappe 3b, Fund des Prüfers) -----
 
 /// Satz zu einem Text, in dem ein Steuerzeichen steckt.
@@ -442,6 +470,11 @@ fn kopf_pruefen(ordner: &Path, slug: &str, kopf: &Projekt, quelle: &str, datei: 
             "`archiviert_seit` gilt nur mit `status = \"archiviert\"`; bei einem anderen Status bitte die Zeile entfernen.",
         )),
         _ => {}
+    }
+    // Entscheidung archivbereich: archiviert gehört nach projects/_archiv.
+    let im_archiv = ordner.parent().is_some_and(crate::quellen::im_archiv);
+    if kopf.status == crate::vertrag::projekt::Status::Archiviert && !im_archiv {
+        befunde.push(Befund::hinweis(datei, zeile_mit(quelle, "status", "archiviert"), satz_ins_archiv(slug)));
     }
     if let Some(v) = kopf.vorschau.as_deref() {
         vorschau_pruefen(ordner, v, datei, zeile_mit(quelle, "vorschau", v), befunde);
@@ -864,12 +897,10 @@ pub fn pruefe_schwerpunkte(datei_pfad: &Path, quellen: &[std::path::PathBuf]) ->
         }
     }
     // Alle Quellen, wie `pruefe_quellen` (sortiert, da BTreeMap).
-    let da: Vec<String> = crate::quellen::Quellen::aus_liste(quellen.to_vec())
-        .projekte()
-        .iter()
-        .filter(|(slug, eltern)| ist_projekt(eltern, slug))
-        .map(|(slug, _)| slug.clone())
-        .collect();
+    let q = crate::quellen::Quellen::aus_liste(quellen.to_vec());
+    let da: Vec<String> = q.projekte().iter().filter(|(slug, eltern)| ist_projekt(eltern, slug)).map(|(slug, _)| slug.clone()).collect();
+    // Ein Projekt im Archivbereich darf hier stehen, braucht aber keinen Schwerpunkt (Entscheidung archivbereich).
+    let im_archiv = |p: &str| q.archiv().get(p).is_some_and(|e| ist_projekt(e, p));
     // Wo steht ein Projekt? Je Vorkommen der Name des Schwerpunkts.
     let mut wo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for sp in &s.schwerpunkt {
@@ -883,7 +914,7 @@ pub fn pruefe_schwerpunkte(datei_pfad: &Path, quellen: &[std::path::PathBuf]) ->
             let liste = schwerpunkte.iter().map(|n| format!("„{n}“")).collect::<Vec<_>>().join(" und ");
             befunde.push(Befund::fehler(DATEI, zeile, format!("Das Projekt „{p}“ steht mehrfach ({liste}). Jedes Projekt gehört zu genau einem Schwerpunkt.")));
         }
-        if !da.iter().any(|d| d == p) {
+        if !da.iter().any(|d| d == p) && !im_archiv(p) {
             befunde.push(Befund::hinweis(
                 DATEI,
                 nte_zeile_mit(&text, &format!("\"{p}\""), 1),
@@ -917,7 +948,8 @@ pub fn pruefe_gruppen(datei_pfad: &Path, quellen: &[std::path::PathBuf]) -> Vec<
         return Vec::new();
     }
     let q = crate::quellen::Quellen::aus_liste(quellen.to_vec());
-    let ist_da = |slug: &str| q.eltern(slug).is_some_and(|e| ist_projekt(e, slug));
+    // Ein Projekt im Archivbereich gibt es weiter (Entscheidung archivbereich).
+    let ist_da = |slug: &str| q.eltern_mit_archiv(slug).is_some_and(|e| ist_projekt(e, slug));
     let text = match neu_lesen(datei_pfad, DATEI) {
         Ok(t) => t,
         Err(b) => return vec![b],

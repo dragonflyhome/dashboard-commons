@@ -112,6 +112,8 @@ fn entscheidungen_befunde(state: &AppState) -> Vec<(String, Befund)> {
 fn von_der_platte(state: &AppState) -> Vec<(String, Befund)> {
     let mut b = ohne_zusammenbau(state);
     b.extend(entscheidungen_befunde(state));
+    // Entscheidung archivbereich: Archiv ohne Status, Rechenteil im Archiv, archivierte Einzelquelle.
+    b.extend(crate::quellen::archiv_befunde(&state.alle_quellen(), &state.projekte.slugs()));
     b
 }
 

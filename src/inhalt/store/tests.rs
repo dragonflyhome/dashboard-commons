@@ -745,3 +745,198 @@ fn mehrere_quellen_vereinigt_erste_bleibt() {
     assert_eq!(eine.bestand().projekte.keys().collect::<Vec<_>>(), ["alpha", "doppelt"]);
     assert!(eine.bestand().quellen_doppelt.is_empty());
 }
+
+/// Archivbereich, Punkt 1 (erster roter Test): Der Ordner zieht bei
+/// laufendem Bestand nach `projects/_archiv/<slug>` (was `git mv` auf der
+/// Platte tut: ein Umbenennen). Der nächste Blick des Beobachters erkennt den
+/// Umzug ohne Neustart: Das Projekt bleibt unter seinem Slug, ist archiviert,
+/// und es gibt ein Ereignis. Zurück ebenso.
+#[test]
+fn umzug_ins_archiv_im_laufenden_bestand() {
+    let o = Ordner::neu("archiv-umzug");
+    o.projekt("alpha", 10);
+    o.projekt("beta", 20);
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"archiviert\"\n").unwrap();
+    let store = o.store();
+    let mut rx = store.abonnieren();
+    assert_eq!(store.bestand().archivierte().into_iter().collect::<Vec<_>>(), ["beta"]);
+
+    std::fs::create_dir_all(o.projekte().join("_archiv")).unwrap();
+    std::fs::rename(o.projekte().join("beta"), o.projekte().join("_archiv/beta")).unwrap();
+    let a = store.abgleichen();
+    let b = store.bestand();
+    assert_eq!(b.projekte.keys().collect::<Vec<_>>(), ["alpha", "beta"], "{a:?}");
+    assert_eq!(b.archivierte().into_iter().collect::<Vec<_>>(), ["beta"]);
+    assert_eq!(b.daten("beta", "fortschritt").unwrap().map(|(_, t)| t["zeile"][0]["prozent"].as_integer()), Some(Some(20)));
+    assert!(!b.projekte.contains_key("_archiv"));
+    assert_eq!(a.projekte.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["beta"], "der Umzug ist eine Änderung an beta");
+    assert_eq!(a.pfade, ["projects/beta/projekt.toml"], "ohne geänderte Datei: der Kopf, damit Prüflauf und Git-Ziele laufen");
+    assert_eq!(ereignisse(&mut rx).len(), 1);
+    // Eine Änderung im Archiv kommt unter dem Schlüssel des Projekts an.
+    fortschritt(&o.projekte().join("_archiv/beta"), 33);
+    let a = store.abgleichen();
+    assert_eq!(a.pfade, ["projects/beta/daten/fortschritt.toml"]);
+    assert_eq!(store.bestand().daten("beta", "fortschritt").unwrap().map(|(_, t)| t["zeile"][0]["prozent"].as_integer()), Some(Some(33)));
+
+    // Zurück, mit Status aktiv: wieder sichtbar.
+    std::fs::rename(o.projekte().join("_archiv/beta"), o.projekte().join("beta")).unwrap();
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"aktiv\"\n").unwrap();
+    store.abgleichen();
+    let b = store.bestand();
+    assert_eq!(b.projekte.keys().collect::<Vec<_>>(), ["alpha", "beta"]);
+    assert!(b.archivierte().is_empty());
+    assert_eq!(b.liste_sichtbar().0.len(), 2);
+}
+
+/// Archivbereich, Abnahme S1: Lässt sich `projects/_archiv` nicht lesen (eine
+/// Datei statt des Ordners; unter Windows auch ein verweigertes Auflisten),
+/// bleiben die Projekte darin mit dem letzten Stand archiviert, statt still
+/// aus dem Bestand zu fallen. Fehlt der Ordner wirklich, sind sie weg.
+#[test]
+fn unlesbares_archiv_haelt_den_letzten_stand() {
+    let o = Ordner::neu("archiv-unlesbar");
+    o.projekt("alpha", 10);
+    o.projekt("beta", 20);
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"archiviert\"\n").unwrap();
+    let archiv = o.projekte().join("_archiv");
+    std::fs::create_dir_all(&archiv).unwrap();
+    std::fs::rename(o.projekte().join("beta"), archiv.join("beta")).unwrap();
+    let store = o.store();
+    let archivierte = |s: &ContentStore| s.bestand().archivierte().into_iter().collect::<Vec<_>>();
+    let slugs = |s: &ContentStore| s.bestand().projekte.keys().cloned().collect::<Vec<_>>();
+    assert_eq!(archivierte(&store), ["beta"]);
+
+    let weg = o.0.join("archiv-weg");
+    std::fs::rename(&archiv, &weg).unwrap();
+    std::fs::write(&archiv, "").unwrap();
+    store.abgleichen();
+    assert_eq!((slugs(&store), archivierte(&store)), (vec!["alpha".to_string(), "beta".to_string()], vec!["beta".to_string()]), "unlesbar: letzter Stand");
+    std::fs::remove_file(&archiv).unwrap();
+    std::fs::rename(&weg, &archiv).unwrap();
+    store.abgleichen();
+    assert_eq!(archivierte(&store), ["beta"]);
+
+    #[cfg(windows)]
+    {
+        let programm = PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into())).join("System32").join("icacls.exe");
+        let icacls = |args: &[&str]| assert!(crate::dienst::programme::eigener_befehl(&programm).arg(&archiv).args(args).output().unwrap().status.success());
+        icacls(&["/deny", "*S-1-1-0:(RD)"]);
+        let greift = std::fs::read_dir(&archiv).is_err();
+        store.abgleichen();
+        let unter_sperre = archivierte(&store);
+        icacls(&["/remove:d", "*S-1-1-0"]);
+        assert!(greift, "die Sperre greift");
+        assert_eq!(unter_sperre, ["beta"], "ohne Leserecht: letzter Stand");
+    }
+
+    std::fs::remove_dir_all(&archiv).unwrap();
+    store.abgleichen();
+    assert_eq!((slugs(&store), archivierte(&store)), (vec!["alpha".to_string()], Vec::<String>::new()), "fehlt: weg");
+}
+
+/// Archivbereich, Punkt 2: Die Lage im Archiv macht archiviert, auch mit
+/// kaputtem Kopf und ohne alten Stand (Start). So steht ein Projekt im
+/// Archiv nie in der Seitenleiste, auch nicht unter den kaputten Seiten.
+#[test]
+fn kaputter_kopf_im_archiv_bleibt_archiviert() {
+    let o = Ordner::neu("archiv-kaputt");
+    o.projekt("alpha", 10);
+    let p = o.projekte().join("_archiv/beta");
+    std::fs::create_dir_all(p.join("daten")).unwrap();
+    std::fs::write(p.join("projekt.toml"), "schema = 3\ntitle = \"B\"\nstatus = \"aktiv\"\ntitel = \"Tippfehler\"\n").unwrap();
+    let store = o.store();
+    let b = store.bestand();
+    let stand = b.projekt("beta").unwrap();
+    assert!(stand.im_archiv && stand.archiviert);
+    let (sichtbar, kaputt) = b.liste_sichtbar();
+    assert_eq!(sichtbar.iter().map(|p| p.slug.as_str()).collect::<Vec<_>>(), ["alpha"]);
+    assert!(kaputt.is_empty(), "{kaputt:?}");
+    assert_eq!(b.liste().1.len(), 1, "kaputt, aber nur im Archiv");
+    // Zurückgeholt mit kaputtem Kopf: Die Lage im Archiv vererbt sich nicht, es zählt die Zeile status.
+    std::fs::rename(&p, o.projekte().join("beta")).unwrap();
+    store.abgleichen();
+    let b = store.bestand();
+    assert!(!b.archiviert("beta"));
+    assert_eq!(b.liste_sichtbar().1.iter().map(|k| k.slug.as_str()).collect::<Vec<_>>(), ["beta"], "als kaputte Seite sichtbar");
+}
+
+/// Archivbereich, Punkt 4: Eine gesperrte Datei im Archiv gibt keinen Befund
+/// (Projekte im Archiv werden nicht geprüft); dieselbe Sperre außerhalb schon.
+#[cfg(windows)]
+#[test]
+fn gesperrte_datei_im_archiv_ohne_befund() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let o = Ordner::neu("archiv-gesperrt");
+    o.projekt("alpha", 10);
+    std::fs::create_dir_all(o.projekte().join("_archiv")).unwrap();
+    o.projekt("beta", 20);
+    std::fs::rename(o.projekte().join("beta"), o.projekte().join("_archiv/beta")).unwrap();
+    let oeffnen = |p: PathBuf| std::fs::OpenOptions::new().read(true).share_mode(0).open(p).unwrap();
+    let _s1 = oeffnen(o.projekte().join("_archiv/beta/daten/fortschritt.toml"));
+    let _s2 = oeffnen(o.projekte().join("alpha/daten/fortschritt.toml"));
+    let b = o.store().bestand();
+    assert_eq!(b.projekt("beta").unwrap().lesefehler.len(), 1, "gelesen und gemerkt wird weiter");
+    let funde = b.lesefehler_befunde();
+    assert_eq!(funde.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["alpha"], "{funde:?}");
+}
+
+/// Archivbereich: Eine gesperrte Datei hält den alten Stand fest, die Lage
+/// aber nicht. Zurückgeholt (Status aktiv) ist das Projekt sofort wieder
+/// sichtbar, und seine Sperre ist ein Befund; ins Archiv gezogen ist es
+/// archiviert, und die Sperre ist keiner.
+#[cfg(windows)]
+#[test]
+fn gesperrte_datei_beim_umzug_nimmt_die_lage() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let oeffnen = |p: PathBuf| std::fs::OpenOptions::new().read(true).share_mode(0).open(p).unwrap();
+    let o = Ordner::neu("archiv-umzug-gesperrt");
+    o.projekt("alpha", 10);
+    std::fs::create_dir_all(o.projekte().join("_archiv")).unwrap();
+    o.projekt("beta", 20);
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"archiviert\"\n").unwrap();
+    std::fs::rename(o.projekte().join("beta"), o.projekte().join("_archiv/beta")).unwrap();
+    let store = o.store();
+    let mut rx = store.abonnieren();
+    assert!(store.bestand().archiviert("beta"));
+
+    // Zurück mit Status aktiv, danach eine Datei gesperrt (unter Windows hielte die Sperre schon das Umbenennen auf).
+    std::fs::rename(o.projekte().join("_archiv/beta"), o.projekte().join("beta")).unwrap();
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"aktiv\"\n").unwrap();
+    let sperre = oeffnen(o.projekte().join("beta/daten/fortschritt.toml"));
+    store.abgleichen();
+    let b = store.bestand();
+    let stand = b.projekt("beta").unwrap();
+    assert!(!stand.im_archiv && !stand.archiviert, "zurückgeholt trotz Sperre");
+    assert_eq!(b.liste_sichtbar().0.len(), 2);
+    assert_eq!(b.lesefehler_befunde().iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["beta"]);
+    assert!(!ereignisse(&mut rx).is_empty(), "die Seitenleiste erfährt es");
+    drop(sperre);
+    store.abgleichen();
+
+    // Wieder ins Archiv, danach gesperrt: archiviert, kein Befund.
+    std::fs::write(o.projekte().join("beta/projekt.toml"), "schema = 3\ntitle = \"Projekt beta\"\nstatus = \"archiviert\"\n").unwrap();
+    store.abgleichen();
+    std::fs::rename(o.projekte().join("beta"), o.projekte().join("_archiv/beta")).unwrap();
+    let _sperre = oeffnen(o.projekte().join("_archiv/beta/daten/fortschritt.toml"));
+    store.abgleichen();
+    let b = store.bestand();
+    let stand = b.projekt("beta").unwrap();
+    assert!(stand.im_archiv && stand.archiviert);
+    assert!(b.lesefehler_befunde().is_empty(), "{:?}", b.lesefehler_befunde());
+}
+
+/// Archivbereich: Mit einer Quelle liest der Bestand `projects/` immer als
+/// Ordner mit Projekten. Eine streunende `projects/projekt.toml` macht den
+/// ganzen Ordner nicht zu einem Projekt „projects“, beim Laden wie im Abgleich.
+#[test]
+fn streunende_projekt_toml_leert_den_bestand_nicht() {
+    let o = Ordner::neu("streunend");
+    o.projekt("alpha", 10);
+    o.projekt("beta", 20);
+    std::fs::write(o.projekte().join("projekt.toml"), "schema = 3\ntitle = \"Verirrt\"\nstatus = \"aktiv\"\n").unwrap();
+    let store = o.store();
+    assert_eq!(store.bestand().projekte.keys().collect::<Vec<_>>(), ["alpha", "beta"]);
+    o.projekt("gamma", 30);
+    store.abgleichen();
+    assert_eq!(store.bestand().projekte.keys().collect::<Vec<_>>(), ["alpha", "beta", "gamma"]);
+}

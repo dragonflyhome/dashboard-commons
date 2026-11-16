@@ -264,9 +264,13 @@ pub fn projekt_weg_aus(quellen: &[PathBuf], slug: &str) -> bool {
 /// Ordner noch da, aber ohne projekt.toml (etwa während ein Chat schreibt),
 /// bleibt sie, wie sie ist. Dateien, die sich nicht lesen lassen, sind in
 /// der Prüfung selbst Fehler, also nie ein Beheben.
-/// Geprüft wird in der Quelle, in der das Projekt liegt (Etappe 4b).
+/// Geprüft wird in der Quelle, in der das Projekt liegt (Etappe 4b); ein
+/// Projekt im Archivbereich nie (Entscheidung archivbereich).
 pub async fn pruefung_lauf(state: &AppState, slug: &str, jetzt: Zeit) {
     let dir = state.projekt_eltern(slug);
+    if crate::quellen::im_archiv(&dir) {
+        return;
+    }
     let quellen = state.quellen.to_vec();
     let s = slug.to_string();
     let ergebnis = tokio::task::spawn_blocking(move || {
@@ -656,7 +660,7 @@ impl GelesenerOrdner {
 }
 
 /// Alle Ordner, die der Server liest: jede Inhaltsquelle (`projects`, bei
-/// mehreren `projects (2)` …), `data` (der Daten-Ordner des Inhalts), `web`
+/// mehreren `projects (2)` …) mit ihrem Archivbereich (`projects\_archiv`), `data` (der Daten-Ordner des Inhalts), `web`
 /// (der Ordner der Oberfläche, aus dem er gerade ausliefert),
 /// `docs\entscheidungen` (seit dem Umzug im privaten Inhalt),
 /// `docs\zielbild` und `docs\anleitung` (Code-Repo, die Anleitung seit 6b).
@@ -668,6 +672,9 @@ pub fn gelesene_ordner(state: &AppState) -> Vec<GelesenerOrdner> {
     for (nr, q) in state.quellen.iter().enumerate() {
         let kennung = if nr == 0 { "projects".to_string() } else { format!("projects-{}", nr + 1) };
         v.push(GelesenerOrdner::neu(&kennung, &crate::quellen::name(nr), q.clone()));
+        // Ohne Leserecht auf den Archivbereich fielen ruhende Projekte unbemerkt aus (fehlt er, bleibt es still).
+        let archiv = crate::quellen::ARCHIV;
+        v.push(GelesenerOrdner::neu(&format!("{kennung}-archiv"), &format!(r"{}\{archiv}", crate::quellen::name(nr)), q.join(archiv)));
     }
     v.push(GelesenerOrdner::neu("data", "data", state.daten_ordner()));
     v.push(GelesenerOrdner::neu("web", "web", state.web.ordner()));
@@ -927,7 +934,7 @@ mod tests {
         assert!(meldungen(&state).is_empty());
         assert_eq!(ordner_lesbar(&beispiel().join("gibt-es-nicht")).unwrap_err().kind(), std::io::ErrorKind::NotFound);
         let namen: Vec<String> = gelesene_ordner(&state).into_iter().map(|o| o.name).collect();
-        assert_eq!(namen, ["projects", "data", "web", r"docs\entscheidungen", r"docs\zielbild", r"docs\anleitung"]);
+        assert_eq!(namen, ["projects", r"projects\_archiv", "data", "web", r"docs\entscheidungen", r"docs\zielbild", r"docs\anleitung"]);
         // Auflage 6d: wer das Lese-Recht setzt, je Ordner (Chat nur im Code-Repo, "kein Chat" im Inhalt; -Inhalt nie, das Skript liest [inhalt]).
         for (name, chat, inhalt) in [
             ("projects", false, true),
@@ -959,14 +966,31 @@ mod tests {
         state.entscheidungen_dir = std::sync::Arc::new(extra.join("docs-privat"));
         let o = gelesene_ordner(&state);
         let namen: Vec<&str> = o.iter().map(|o| o.name.as_str()).collect();
-        assert_eq!(namen, ["projects", "projects (2)", "data", "web", r"docs\entscheidungen", r"docs\zielbild", r"docs\anleitung"]);
-        assert_eq!(o[1].pfad, extra);
-        assert_eq!(o[4].pfad, extra.join("docs-privat"));
-        let g = extra.clone();
+        assert_eq!(
+            namen,
+            [
+                "projects",
+                r"projects\_archiv",
+                "projects (2)",
+                r"projects (2)\_archiv",
+                "data",
+                "web",
+                r"docs\entscheidungen",
+                r"docs\zielbild",
+                r"docs\anleitung"
+            ]
+        );
+        assert_eq!(o[2].pfad, extra);
+        assert_eq!(o[1].pfad, beispiel().join("projects/_archiv"));
+        assert_eq!(o[6].pfad, extra.join("docs-privat"));
+        // Eine gesperrte zweite Quelle und ein Archivbereich ohne Leserecht: je eine Meldung.
+        let (g, a) = (extra.clone(), o[1].pfad.clone());
         let nicht =
-            lesbarkeit_lauf_mit(&state, move |p: &Path| if p == g { Err(Error::from(ErrorKind::PermissionDenied)) } else { Ok(()) }, zeit(31, 10, 0)).await;
-        assert_eq!(nicht, ["projects (2)"]);
+            lesbarkeit_lauf_mit(&state, move |p: &Path| if p == g || p == a { Err(Error::from(ErrorKind::PermissionDenied)) } else { Ok(()) }, zeit(31, 10, 0))
+                .await;
+        assert_eq!(nicht, [r"projects\_archiv", "projects (2)"]);
         assert!(meldungen(&state).iter().any(|m| m.titel == "Das Dashboard darf den Ordner projects (2) nicht lesen."));
+        assert!(meldungen(&state).iter().any(|m| m.titel == r"Das Dashboard darf den Ordner projects\_archiv nicht lesen."));
         let _ = std::fs::remove_dir_all(&extra);
     }
 

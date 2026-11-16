@@ -15,6 +15,12 @@
 //! Jedes Projekt wird hier als (Elternordner, Slug) geführt, denn die Prüfung
 //! und das Lesen arbeiten mit `dir.join(slug)`: für einen Ordner mit Projekten
 //! ist das der Ordner selbst, für ein einzelnes Projekt sein Elternordner.
+//!
+//! **Archivbereich** (Entscheidung archivbereich): In einem Ordner mit
+//! Projekten liegen archivierte Projekte unter `_archiv/<slug>` ([`ARCHIV`]). `_` ist
+//! kein gültiger Slug, darum kommen sie in [`Quellen::projekte`] nie vor
+//! (Bau, Prüfung, Bauliste und Bote lassen sie aus); der Bestand liest sie
+//! über [`Quellen::archiv`] mit.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -30,6 +36,32 @@ static EINZELPROJEKTE: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
 
 /// Die Fassung dieses Dashboards, wie sie in der [`VERSIONSDATEI`] steht.
 const EIGENE: &str = concat!("v", env!("CARGO_PKG_VERSION"));
+
+/// Der Archivbereich in einem Ordner mit Projekten (`projects/_archiv/<slug>`).
+pub const ARCHIV: &str = "_archiv";
+
+/// Liegt ein Projekt mit diesem Elternordner im Archivbereich?
+pub fn im_archiv(eltern: &Path) -> bool {
+    eltern.file_name().is_some_and(|n| n == ARCHIV)
+}
+
+/// Die Projekte unter `<ordner>/_archiv` (gültige Slugs, Ordner oder Verknüpfung), sortiert.
+/// Fehlt der Ordner, keine; jeder andere Lesefehler geht an den Aufrufer (sonst kämen
+/// ruhende Projekte still zurück).
+fn archiv_lesen(ordner: &Path) -> std::io::Result<Vec<String>> {
+    let rd = match std::fs::read_dir(ordner.join(ARCHIV)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        r => r?,
+    };
+    let mut v: Vec<String> = rd
+        .filter_map(Result::ok)
+        .filter(|d| d.file_type().is_ok_and(|t| t.is_dir() || t.is_symlink()))
+        .filter_map(|d| d.file_name().into_string().ok())
+        .filter(|s| seite::is_valid_slug(s))
+        .collect();
+    v.sort();
+    Ok(v)
+}
 
 /// Trennzeichen der Liste in `DASHBOARD_PROJECTS_DIR`.
 pub const TRENNER: char = ';';
@@ -56,6 +88,9 @@ pub struct Quellen {
     pub eintraege: Vec<Quelle>,
     /// Slug → Elternordner (das Projekt liegt in `<eltern>/<slug>`).
     projekte: BTreeMap<String, PathBuf>,
+    /// Archivbereich: Slug → `<ordner>/_archiv` (nur Ordner mit Projekten;
+    /// ein Slug, den es schon in [`Self::projekte`] gibt, fehlt hier und steht in `doppelt`).
+    archiv: BTreeMap<String, PathBuf>,
     /// Je doppeltem Slug ein Satz.
     pub doppelt: Vec<String>,
     /// Je Projekt einer weiteren Quelle mit `server/` (Rechenteil) ein Hinweis:
@@ -63,6 +98,9 @@ pub struct Quellen {
     pub rechenteile: Vec<(String, String)>,
     /// Nummern der Einträge, deren Ordner sich nicht lesen lässt (Satz: [`satz_unlesbar`]).
     pub unlesbar: Vec<usize>,
+    /// Archivbereiche (`<ordner>/_archiv`), die es gibt, die sich aber nicht lesen lassen:
+    /// Ihre Projekte hält der Bestand mit dem letzten Stand (Meldung über die Lese-Prüfung).
+    pub archiv_unlesbar: Vec<PathBuf>,
     /// Je Quelle mit abweichender oder kaputter [`VERSIONSDATEI`] ein Satz.
     pub version: Vec<String>,
 }
@@ -102,11 +140,6 @@ fn satz_version(nr: usize, wurzel: &Path, eigene: &str) -> Option<String> {
     }
 }
 
-/// Mit nur einem Ordner mit Projekten: der Satz zur [`VERSIONSDATEI`] über ihm.
-pub fn version_ordner(ordner: &Path) -> Vec<String> {
-    ordner.parent().and_then(|w| satz_version(0, w, EIGENE)).into_iter().collect()
-}
-
 /// Hinweis für ein Projekt aus einer weiteren Inhaltsquelle mit `server/`.
 /// Entscheidung `inhaltsquellen` [geteilt_merge_first]: Ein
 /// Rechenteil aus einer fremden Quelle kommt erst nach Durchsicht hinein, über
@@ -132,6 +165,11 @@ pub fn satz_doppelt(slug: &str, erste: &Path, zweite: &Path) -> String {
         erste.display(),
         zweite.display()
     )
+}
+
+/// Der Satz für einen Slug, der laufend und im Archiv liegt (ohne Pfade).
+pub fn satz_laufend_und_archiv(slug: &str) -> String {
+    format!("Das Projekt „{slug}“ liegt laufend und im Archiv. Gezeigt wird das laufende; eines davon bitte entfernen.")
 }
 
 impl Quellen {
@@ -170,6 +208,15 @@ impl Quellen {
         Self::aus_liste(vec![ordner])
     }
 
+    /// Ein Ordner mit Projekten, ohne die Erkennung eines einzelnen Projekts:
+    /// für den Bestand mit einer Quelle, damit eine streunende `projects/projekt.toml`
+    /// ihn nicht leert (so las er vor dem Archivbereich auch).
+    pub fn nur_ordner(ordner: PathBuf) -> Quellen {
+        let mut q = Quellen { eintraege: vec![Quelle { pfad: ordner, art: Art::Ordner }], ..Default::default() };
+        q.aufloesen();
+        q
+    }
+
     /// Dieselbe Liste noch einmal von der Platte (neue oder entfernte Projekte).
     pub fn neu_lesen(&self) -> Quellen {
         Self::aus_liste(self.eintraege.iter().map(|e| e.pfad.clone()).collect())
@@ -177,10 +224,12 @@ impl Quellen {
 
     fn aufloesen(&mut self) {
         let mut projekte: BTreeMap<String, PathBuf> = BTreeMap::new();
+        let mut archiv: BTreeMap<String, PathBuf> = BTreeMap::new();
         let mut doppelt = Vec::new();
         let mut rechenteile = Vec::new();
         let mut unlesbar = Vec::new();
         let mut version = Vec::new();
+        let mut archiv_unlesbar = Vec::new();
         for (nr, e) in self.eintraege.iter().enumerate() {
             // Repo-Wurzel: über dem Ordner mit Projekten (bei einem einzelnen Projekt über seinem Elternordner).
             let basis = if e.art == Art::Projekt { e.pfad.parent() } else { Some(e.pfad.as_path()) };
@@ -229,10 +278,29 @@ impl Quellen {
                 }
             }
         }
+        // Erst alle laufenden Projekte, dann das Archiv: Ein Slug in beiden bleibt laufend.
+        for e in self.eintraege.iter().filter(|e| e.art == Art::Ordner) {
+            let eltern = e.pfad.join(ARCHIV);
+            let slugs = archiv_lesen(&e.pfad).unwrap_or_else(|_| {
+                archiv_unlesbar.push(eltern.clone());
+                Vec::new()
+            });
+            for slug in slugs {
+                match (projekte.contains_key(&slug), archiv.get(&slug)) {
+                    (true, _) => doppelt.push(satz_laufend_und_archiv(&slug)),
+                    (false, Some(erste)) => doppelt.push(satz_doppelt(&slug, &erste.join(&slug), &eltern.join(&slug))),
+                    (false, None) => {
+                        archiv.insert(slug, eltern.clone());
+                    }
+                }
+            }
+        }
         self.projekte = projekte;
+        self.archiv = archiv;
         self.doppelt = doppelt;
         self.rechenteile = rechenteile;
         self.unlesbar = unlesbar;
+        self.archiv_unlesbar = archiv_unlesbar;
         self.version = version;
     }
 
@@ -267,6 +335,23 @@ impl Quellen {
         &self.projekte
     }
 
+    /// Die Projekte im Archivbereich: Slug → `<ordner>/_archiv`.
+    pub fn archiv(&self) -> &BTreeMap<String, PathBuf> {
+        &self.archiv
+    }
+
+    /// Alle Projekte mit Archiv (für den Bestand): Slug → Elternordner.
+    pub fn alle_projekte(&self) -> BTreeMap<String, PathBuf> {
+        let mut alle = self.archiv.clone();
+        alle.extend(self.projekte.iter().map(|(s, e)| (s.clone(), e.clone())));
+        alle
+    }
+
+    /// Wie [`Self::eltern`], auch im Archivbereich (Auslieferung und Prüfung je Projekt).
+    pub fn eltern_mit_archiv(&self, slug: &str) -> Option<&Path> {
+        self.eltern(slug).or_else(|| self.archiv.get(slug).map(PathBuf::as_path))
+    }
+
     /// Der Elternordner eines Projekts (`None`: gibt es in keiner Quelle).
     pub fn eltern(&self, slug: &str) -> Option<&Path> {
         self.projekte.get(slug).map(PathBuf::as_path)
@@ -294,6 +379,32 @@ impl Quellen {
     pub fn als_text(&self) -> String {
         self.wurzeln().iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(";")
     }
+}
+
+/// Befunde zum Archivbereich über alle Quellen: ein Projekt im Archiv ohne
+/// Status `archiviert` (Fehler), eines mit Rechenteil (`server/` oder ein in
+/// diesem Programm angemeldetes Modul, also ein Eintrag in kisten.toml;
+/// Fehler) und ein archiviertes Projekt, das selbst eine Quelle ist
+/// (Hinweis). Für /api/pruefung; liest die Platte.
+pub fn archiv_befunde(q: &Quellen, angemeldet: &[&str]) -> Vec<(String, crate::inhalt::pruefung::Befund)> {
+    use crate::inhalt::pruefung::{Befund, SATZ_ARCHIV_EIGENE_QUELLE, SATZ_ARCHIV_OHNE_STATUS, SATZ_ARCHIV_RECHENTEIL};
+    let archiviert = |ordner: &Path| crate::inhalt::store::status_locker(ordner).is_some_and(|s| crate::vertrag::projekt::ist_archiviert(&s));
+    let mut aus = Vec::new();
+    for (slug, eltern) in q.archiv() {
+        let ordner = eltern.join(slug);
+        let kopf = format!("projects/{ARCHIV}/{slug}/projekt.toml");
+        if !archiviert(&ordner) {
+            aus.push((slug.clone(), Befund::fehler(kopf, None, SATZ_ARCHIV_OHNE_STATUS.replace("<slug>", slug))));
+        }
+        if ordner.join("server").is_dir() || angemeldet.contains(&slug.as_str()) {
+            aus.push((slug.clone(), Befund::fehler(format!("projects/{ARCHIV}/{slug}/server"), None, SATZ_ARCHIV_RECHENTEIL)));
+        }
+    }
+    for e in q.eintraege.iter().filter(|e| e.art == Art::Projekt && archiviert(&e.pfad)) {
+        let slug = e.pfad.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        aus.push((slug.clone(), Befund::hinweis(format!("projects/{slug}/projekt.toml"), None, SATZ_ARCHIV_EIGENE_QUELLE.replace("<slug>", &slug))));
+    }
+    aus
 }
 
 #[cfg(test)]
@@ -503,5 +614,68 @@ mod tests {
         let q = Quellen::aus_liste(vec![o.0.join("gleich/projects"), o.0.join("anders/projects/anders")]);
         assert_eq!(q.version.len(), 1);
         assert!(q.version[0].starts_with("Die Inhaltsquelle projects (2) ist gegen das Dashboard v0.0.0-alt"), "{:?}", q.version);
+    }
+
+    /// Archivbereich: `projects/_archiv/<slug>` steht in `archiv`, nie in
+    /// `projekte`; `_archiv` selbst und ungültige Namen darin sind keine
+    /// Projekte; ein Slug laufend und im Archiv ergibt einen Satz, laufend
+    /// bleibt; ein einzelnes Projekt als Quelle hat kein Archiv.
+    #[test]
+    fn archivbereich_eigene_karte() {
+        let o = ort("archiv");
+        let ordner = o.0.join("repo/projects");
+        projekt(&ordner.join("alpha"));
+        projekt(&ordner.join("_archiv/alt"));
+        projekt(&ordner.join("_archiv/alpha"));
+        projekt(&ordner.join("_archiv/_tief"));
+        std::fs::write(ordner.join("_archiv/datei.toml"), "").unwrap();
+        projekt(&o.0.join("solo/eins"));
+        projekt(&o.0.join("solo/eins/_archiv/zwei"));
+        let q = Quellen::aus_liste(vec![ordner.clone(), o.0.join("solo/eins")]);
+        assert_eq!(q.projekte().keys().collect::<Vec<_>>(), ["alpha", "eins"]);
+        assert_eq!(q.archiv().keys().collect::<Vec<_>>(), ["alt"]);
+        assert_eq!(q.eltern("alt"), None, "Bau und Prüfung sehen es nicht");
+        assert_eq!(q.eltern_mit_archiv("alt"), Some(ordner.join(ARCHIV).as_path()));
+        assert_eq!(q.eltern_mit_archiv("alpha"), Some(ordner.as_path()));
+        assert_eq!(q.alle_projekte().keys().collect::<Vec<_>>(), ["alpha", "alt", "eins"]);
+        assert_eq!(q.doppelt.len(), 1, "{:?}", q.doppelt);
+        assert_eq!(q.doppelt, [satz_laufend_und_archiv("alpha")]);
+        assert!(im_archiv(&ordner.join(ARCHIV)) && !im_archiv(&ordner));
+    }
+
+    /// Archivbereich, Punkte 6 und 7: Befunde über alle Quellen.
+    #[test]
+    fn archiv_befunde_je_fall() {
+        use crate::inhalt::pruefung::{SATZ_ARCHIV_EIGENE_QUELLE, SATZ_ARCHIV_OHNE_STATUS, SATZ_ARCHIV_RECHENTEIL, Schwere};
+        let o = ort("archiv-befunde");
+        let ordner = o.0.join("repo/projects");
+        let status = |p: &Path, wort: &str| {
+            std::fs::create_dir_all(p).unwrap();
+            std::fs::write(p.join("projekt.toml"), format!("schema = 3\ntitle = \"T\"\nstatus = \"{wort}\"\n")).unwrap();
+        };
+        status(&ordner.join("_archiv/still"), "archiviert");
+        status(&ordner.join("_archiv/ohne"), "aktiv");
+        status(&ordner.join("_archiv/rechnet"), "Archiviert");
+        std::fs::create_dir_all(ordner.join("_archiv/rechnet/server")).unwrap();
+        status(&ordner.join("_archiv/modul"), "archiviert");
+        status(&o.0.join("fremd/einzeln"), "archiviert");
+        status(&o.0.join("fremd2/laeuft"), "aktiv");
+        let q = Quellen::aus_liste(vec![ordner, o.0.join("fremd/einzeln"), o.0.join("fremd2/laeuft")]);
+        let b = archiv_befunde(&q, &["modul", "anderes"]);
+        let kurz: Vec<(&str, Schwere, &str)> = b.iter().map(|(s, b)| (s.as_str(), b.schwere, b.text.as_str())).collect();
+        let ohne = SATZ_ARCHIV_OHNE_STATUS.replace("<slug>", "ohne");
+        let einzeln = SATZ_ARCHIV_EIGENE_QUELLE.replace("<slug>", "einzeln");
+        assert_eq!(
+            kurz,
+            [
+                ("modul", Schwere::Fehler, SATZ_ARCHIV_RECHENTEIL),
+                ("ohne", Schwere::Fehler, ohne.as_str()),
+                ("rechnet", Schwere::Fehler, SATZ_ARCHIV_RECHENTEIL),
+                ("einzeln", Schwere::Hinweis, einzeln.as_str()),
+            ]
+        );
+        assert!(ohne.contains("git mv projects/_archiv/ohne projects/ohne"), "{ohne}");
+        assert!(einzeln.contains("nach projects/_archiv/einzeln einer Inhaltsquelle verschieben"), "{einzeln}");
+        assert_eq!(b[1].1.datei, "projects/_archiv/ohne/projekt.toml");
     }
 }

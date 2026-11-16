@@ -661,6 +661,11 @@ fn orte_und_dateien() {
         o.datei("src/a.rs", b"// siehe projects\\beta-zwei\\Seite.svelte\n");
         o.commit("x", &[]);
     });
+    // Auch in der Schreibweise des Archivbereichs (Abnahme archivbereich S2).
+    abgewiesen("Projektname im Archiv als Pfad", "Projektname als Pfad", |o| {
+        o.datei("src/a.rs", b"// siehe projects/_archiv/alpha/projekt.toml\n");
+        o.commit("x", &[]);
+    });
     abgewiesen("Projektmodul in Cargo.toml", "Projektmodul", |o| {
         o.datei("Cargo.toml", b"[package]\nname = \"x\"\n[dependencies]\nm = { path = \"projects/neu/server\" }\n");
         o.commit("x", &[]);
@@ -1106,7 +1111,7 @@ fn art_als_zusicherung() {
 /// Positivliste der Art Projekt (Overlay): nur projects/<slug>/** für genau
 /// einen Slug und dashboard-version.toml, .gitignore, .gitattributes und der Leitfaden
 /// CONTRIBUTING.md in der Wurzel; alles andere ist ein Fund, auch nur in der Geschichte.
-/// Jede andere *.md auch hier nicht.
+/// Jede andere *.md auch hier nicht. Dazu der Archivbereich ([`projekt_archivbereich`]).
 #[test]
 fn projekt_positivliste() {
     if !bereit() {
@@ -1190,6 +1195,70 @@ fn projekt_positivliste() {
                 assert_eq!(code, 0, "{name} ({wie}): {text}");
             }
         }
+    }
+    projekt_archivbereich();
+}
+
+/// Wie ein Chat ins Archiv umzieht: `git mv projects/alpha projects/_archiv/alpha`.
+fn ins_archiv(o: &Ort) {
+    std::fs::create_dir_all(o.repo().join("projects").join("_archiv")).unwrap();
+    o.git(&["mv", "projects/alpha", "projects/_archiv/alpha"]);
+}
+
+/// Archivbereich (Entscheidung archivbereich) im Projekt-Repo: Der eigene
+/// Ordner darf nach projects/_archiv/<slug> ziehen (git mv), auch wenn das
+/// Remote ihn schon dort hat; `_archiv` ist nie selbst ein Slug. Ein zweiter
+/// Slug im Archiv ist fremd, eine Datei direkt in `_archiv` liegt außerhalb.
+/// Teil von [`projekt_positivliste`] (kein eigener Testname: auf dem Mac
+/// wäre jeder Test mit `bereit()` ein neuer roter).
+fn projekt_archivbereich() {
+    let fremd = "fremdes Projekt (ein zweiter Ordner unter projects/)";
+    let ausserhalb = "Ordner oder Datei nicht in der Positivliste des Projekt-Repos";
+    let o = Ort::projekt();
+    let vorher = o.git(&["rev-parse", "HEAD"]);
+    o.ueber_merge(ins_archiv);
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&vorher)) {
+        assert_eq!(code, 0, "Umzug ins Archiv ({wie}): {text}");
+    }
+    for (wie, (code, text)) in projekt_laeufe(&o, None) {
+        assert_eq!(code, 0, "Umzug ins Archiv, erster Push ({wie}): {text}");
+    }
+    // Das Remote hat alpha schon im Archiv: Folgepush geht, ein zweiter Slug ist fremd (auch im Archiv).
+    let fern = o.git(&["rev-parse", "HEAD"]);
+    o.ueber_merge(|o| o.datei("projects/_archiv/alpha/b.toml", b"x = 1\n"));
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+        assert_eq!(code, 0, "Folgepush im Archiv ({wie}): {text}");
+    }
+    for (name, pfad, muster) in [
+        ("zweiter Slug", "projects/beta/projekt.toml", fremd),
+        ("zweiter Slug im Archiv", "projects/_archiv/beta/projekt.toml", fremd),
+        ("Datei direkt in _archiv", "projects/_archiv/x.toml", ausserhalb),
+    ] {
+        let o = Ort::projekt();
+        o.ueber_merge(ins_archiv);
+        let fern = o.git(&["rev-parse", "HEAD"]);
+        o.ueber_merge(|o| o.datei(pfad, b"x = 1\n"));
+        for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+            assert_eq!(code, 1, "{name} ({wie}): {text}");
+            assert_eq!(fundzeilen(&text), vec![format!("ABGEWIESEN {pfad}: {muster}")], "{name} ({wie}): {text}");
+        }
+    }
+    // Mit Liste slugs: ein fremder Ordner im Archiv des fernen Stands ist ein Fund, der eigene nicht.
+    let o = Ort::projekt();
+    o.ueber_merge(|o| {
+        o.datei("projects/_archiv/beispiel-x/a.toml", b"x = 1\n");
+        o.datei("projects/_archiv/alpha/a.toml", b"x = 1\n");
+    });
+    let fern = o.git(&["rev-parse", "HEAD"]);
+    o.ueber_merge(|o| {
+        std::fs::remove_dir_all(o.repo().join("projects/_archiv/beispiel-x")).unwrap();
+        o.datei("projects/alpha/b.toml", b"x = 1\n");
+    });
+    o.ausnahmen("projekt", "slugs = [\"alpha\"]\n");
+    for (wie, (code, text)) in projekt_laeufe(&o, Some(&fern)) {
+        assert_eq!(code, 1, "ferner Stand im Archiv ({wie}): {text}");
+        let fund = "fremdes Projekt (nicht in der Liste slugs der Ausnahmedatei)";
+        assert_eq!(fundzeilen(&text), vec![format!("ABGEWIESEN projects/_archiv/beispiel-x (ferner Stand): {fund}")], "({wie}): {text}");
     }
 }
 

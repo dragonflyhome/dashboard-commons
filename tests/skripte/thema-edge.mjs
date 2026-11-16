@@ -50,7 +50,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
 import {
@@ -575,8 +575,10 @@ async function main() {
   mkdirSync(join(ordner, "bin"), { recursive: true });
   mkdirSync(join(ordner, "profil"), { recursive: true });
   copyFileSync(EXE, join(ordner, "bin", "dashboard.exe"));
+  // Ohne den Archivbereich: Die Proben sehen nur laufende Projekte.
   cpSync(INHALT.projects, join(ordner, "repo", "projects"), {
     recursive: true,
+    filter: (q) => basename(q) !== "_archiv",
   });
   datenKopieren();
   console.log(`Temp-Ordner: ${ordner}`);
