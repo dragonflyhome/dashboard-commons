@@ -534,12 +534,12 @@ impl AppState {
     }
 
     /// Der Elternordner eines Projekts: bei einer Quelle `projects_dir`, sonst
-    /// die Quelle, in der es (zuerst) liegt.
+    /// die Quelle, in der es (zuerst) liegt; ein Projekt im Archivbereich hat
+    /// `<quelle>/_archiv` als Eltern (Entscheidung archivbereich). Liest die Platte.
     pub fn projekt_eltern(&self, slug: &str) -> PathBuf {
-        if self.quellen.len() <= 1 {
-            return self.projects_dir.to_path_buf();
-        }
-        self.alle_quellen().eltern(slug).map(Path::to_path_buf).unwrap_or_else(|| self.projects_dir.to_path_buf())
+        // Bei einer Quelle wie der Bestand immer als Ordner: Eine streunende projects/projekt.toml verdeckt sonst das Archiv.
+        let q = if self.quellen.len() <= 1 { crate::quellen::Quellen::nur_ordner(self.projects_dir.to_path_buf()) } else { self.alle_quellen() };
+        q.eltern_mit_archiv(slug).map(Path::to_path_buf).unwrap_or_else(|| self.projects_dir.to_path_buf())
     }
 
     /// Für Tests: das Beenden auslösen, als wäre Strg+C gedrückt.
