@@ -16,7 +16,6 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import type { VerlaufQuelle } from '$vertrag';
 	import type { Zeitraum } from '#lib/zeit/verlauf.ts';
-	import { SATZ_VERLAUF_OHNE_ANMELDUNG, hinweiseFuerKasten } from '#lib/zeit/laden.ts';
 	import { benutzerdaten, stepsToColumns } from '#lib/pc.ts';
 	import Textfassung from '#lib/components/Textfassung.svelte';
 	import { dichteText } from '#lib/textfassung.ts';
@@ -121,9 +120,6 @@
 
 <section class="card" id="historie">
 	<h2>Historie dieses PCs</h2>
-	{#if data.verlauf.ohneAnmeldung && v !== null}
-		<p class="muted small" role="note">{SATZ_VERLAUF_OHNE_ANMELDUNG}</p>
-	{/if}
 	{#if v === null}
 		<p class="block-error">Der Verlauf lässt sich gerade nicht laden: {data.verlauf.fehler}</p>
 	{:else}
@@ -144,7 +140,7 @@
 		<Verlauf
 			ereignisse={v.ereignisse}
 			aus={ausgeblendet}
-			hinweise={hinweiseFuerKasten(v.hinweise, data.verlauf.ohneAnmeldung)}
+			hinweise={v.hinweise.map((h) => h.text)}
 			{sprung}
 			{zeitraum}
 			onzeitraumweg={() => {

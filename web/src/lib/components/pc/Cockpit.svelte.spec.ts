@@ -17,7 +17,7 @@ function bericht(host: string): PcReport {
 			cpu_count: 8,
 			mem_used: 8_000_000_000,
 			mem_total: 16_000_000_000,
-			disks: [{ name: '%VOLUME%', mount: '/', total: 1_000, used: 400, belegung: 'normal' }],
+			disks: [{ name: '', mount: '/', total: 1_000, used: 400, belegung: 'normal' }],
 			uptime_secs: 3600,
 			cpu_belegung: 'normal',
 			mem_belegung: 'normal',

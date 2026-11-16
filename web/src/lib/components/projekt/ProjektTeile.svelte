@@ -64,7 +64,6 @@
 	} from '#lib/projektteile.ts';
 	import { beiTageswechsel } from '#lib/tageswechsel.ts';
 	import { ladeUnterDaten, type UnterDaten } from '#lib/unterdashboard.ts';
-	import { hinweiseFuerKasten } from '#lib/zeit/laden.ts';
 	import { ankerAus, ankerZumEintrag, ansteuern, gleicherAnkerKlick } from '#lib/ziel.ts';
 	import { mitZugang } from '#lib/zugang.ts';
 	import type { Backlog as BacklogDaten, ProjektPlan, Verlauf as VerlaufDaten } from '$vertrag';
@@ -449,7 +448,7 @@
 			{#if verlauf?.wert}
 				<Verlauf
 					{ereignisse}
-					hinweise={hinweiseFuerKasten(verlauf.wert.hinweise, false)}
+					hinweise={verlauf.wert.hinweise.map((h) => h.text)}
 					ebene={3}
 					leer="In diesen Tagen ist nichts geschehen, und nichts steht an."
 				/>

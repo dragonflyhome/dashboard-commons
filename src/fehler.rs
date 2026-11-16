@@ -120,8 +120,8 @@ impl AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        // Kein Fehlersatz nennt das Profil oder den Benutzernamen (`datenschutz`),
-        // auch wenn er einen Pfad aus einem Lesefehler mitbringt.
+        // Fehler können über öffentliche Wege gehen: Kein Fehlersatz nennt das Profil
+        // oder den Benutzernamen (`datenschutz`), auch mit einem Pfad aus einem Lesefehler.
         let fehler = crate::datenschutz::verbergen(&self.fehler);
         let mut res = (self.status, Json(Koerper { fehler: &fehler, art: self.art })).into_response();
         res.extensions_mut().insert(FehlerSatz(fehler));

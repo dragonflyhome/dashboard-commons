@@ -1,9 +1,8 @@
-//! Profilpfad und Benutzername verbergen, bevor ein Text den Server verlässt
-//! (Auftrag der Architektur vor dem ersten Push: `/api/pc` ist ohne Anmeldung
-//! erreichbar). Die eine Stelle dafür ist [`verbergen`], für die freien Wege
-//! und den freien Kanal; die geschützten Wege liefern angemeldet im Klartext.
-//! Die Oberfläche verbirgt nur noch in Linklisten (`LinksListe`,
-//! `profilVerbergen` aus `web/src/lib/pfade.ts`).
+//! Profilpfad und Benutzername verbergen, bevor ein Text ohne Anmeldung den
+//! Server verlässt: auf öffentlichen Wegen, im freien Kanal und in
+//! Fehlerantworten (ein `AppError` kann über einen öffentlichen Weg gehen).
+//! Die eine Stelle dafür ist [`verbergen`]; die geschützten Wege und die
+//! Oberfläche zeigen angemeldet alles im Klartext.
 //!
 //! Ersetzt wird der Teil bis einschließlich des Profilordners durch
 //! `%USERPROFILE%`, der Rest des Pfads bleibt, damit man den Ort erkennt:
@@ -40,11 +39,8 @@
 //! `%USERNAME%`, wenn er bekannt ist und als ganzes Wort dasteht.
 //!
 //! Der Name des Rechners wird zu `%COMPUTERNAME%`: Er trägt oft den Namen der
-//! Person (etwa `<name>s-MacBook`). Das Feld `host` der Rechner-Werte bekommt
-//! fest den Platzhalter ([`rechner_verbergen`]), und in jedem anderen Text
-//! wird der bekannte Name als ganzes Wort ersetzt (etwa `\\<rechner>\…`). Der
-//! Name eines Datenträgers (`DiskInfo.name`) wird zu `%VOLUME%`, wenn er
-//! nicht leer ist: Er ist auf jeder Plattform frei vergeben.
+//! Person (etwa `<name>s-MacBook`). Der bekannte Name wird in jedem Text als
+//! ganzes Wort ersetzt (etwa `\\<rechner>\…`).
 //!
 //! Ohne bekannten Inhaber (Konsole, Tests) gelten das eigene Profil
 //! (`USERPROFILE`, sonst `HOME`) und der eigene Name (`USERNAME`, sonst
@@ -57,13 +53,13 @@ use std::sync::OnceLock;
 use serde::Serialize;
 use serde_json::Value;
 
-/// Platzhalter für das Profil (wie in `speicher::anzeige_pfad` und `pfade.ts`).
+/// Platzhalter für das Profil.
 pub const PROFIL_PLATZHALTER: &str = "%USERPROFILE%";
 /// Platzhalter für den Benutzernamen allein.
 pub const NAME_PLATZHALTER: &str = "%USERNAME%";
 /// Platzhalter für den Namen des Rechners.
 pub const RECHNER_PLATZHALTER: &str = "%COMPUTERNAME%";
-/// Platzhalter für den Namen eines Datenträgers (unter `/Volumes` und in `DiskInfo.name`).
+/// Platzhalter für den Namen eines Datenträgers unter `/Volumes`.
 pub const VOLUME_PLATZHALTER: &str = "%VOLUME%";
 /// Platzhalter für die Benutzernummer in `/run/user/<n>`.
 pub const UID_PLATZHALTER: &str = "%UID%";
@@ -283,56 +279,6 @@ pub fn als_json<T: Serialize>(wert: &T) -> axum::Json<Value> {
     let mut v = serde_json::to_value(wert).unwrap_or(Value::Null);
     json_verbergen(&mut v);
     axum::Json(v)
-}
-
-/// Der Kopf eines Projekts für die freien Wege: Pfade der Repos und Adressen
-/// der Links (ein lokaler Pfad ist dort erlaubt, `pfade.ts`) ohne Profil.
-pub fn projekt_verbergen(p: &mut crate::vertrag::projekt::Projekt) {
-    for l in &mut p.links {
-        l.url = verbergen(&l.url);
-    }
-    for r in &mut p.repos {
-        r.path = verbergen(&r.path);
-    }
-    for c in &mut p.checks {
-        c.url = verbergen(&c.url);
-    }
-    for n in &mut p.processes {
-        *n = verbergen(n);
-    }
-}
-
-/// Die Rechner-Werte für jede Antwort: Der Name des Rechners wird fest der
-/// Platzhalter, auf jeder Plattform und auch mit Anmeldung (wie Profil und
-/// Kontoname), die Namen der Datenträger nach [`platten_verbergen`].
-pub fn rechner_verbergen(s: &mut crate::pc::system::Snapshot) {
-    s.host = RECHNER_PLATZHALTER.to_string();
-    platten_verbergen(&mut s.disks);
-}
-
-/// Der Name jedes Datenträgers wird der Platzhalter. Ein leerer Name bleibt
-/// leer, damit nichts vorgetäuscht wird. `mount` bleibt und läuft wie jeder
-/// Text durch [`verbergen`]; nur ein Einhängepunkt direkt unter `/Volumes`
-/// wird hier schon ganz ersetzt, weil der Name dort Leerzeichen tragen kann
-/// (`/Volumes/<zwei Wörter>`) und [`verbergen`] einen Namen am Leerraum beendet.
-pub fn platten_verbergen(platten: &mut [crate::pc::system::DiskInfo]) {
-    const VOLUMES: &str = "/Volumes/";
-    for p in platten.iter_mut() {
-        if !p.name.is_empty() {
-            p.name = VOLUME_PLATZHALTER.to_string();
-        }
-        let unter_volumes = p.mount.get(..VOLUMES.len()).is_some_and(|v| v.eq_ignore_ascii_case(VOLUMES));
-        if unter_volumes && !p.mount[VOLUMES.len()..].trim_end_matches('/').contains('/') && p.mount.len() > VOLUMES.len() {
-            p.mount = format!("{}{VOLUME_PLATZHALTER}", &p.mount[..VOLUMES.len()]);
-        }
-    }
-}
-
-/// Der Git-Stand eines Repos für die freien Wege: Pfad und Fehlertext.
-pub fn repo_verbergen(mut r: crate::git::RepoStatus) -> crate::git::RepoStatus {
-    r.path = verbergen(&r.path);
-    r.error = r.error.as_deref().map(verbergen);
-    r
 }
 
 // ----- Erkennen -----

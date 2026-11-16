@@ -86,13 +86,6 @@ pub trait Modul: Send + Sync + 'static {
     /// (Herkunftsprüfung), Körper höchstens 64 KiB.
     fn router(&self) -> axum::Router<ProjektKontext>;
 
-    /// Wirkt nicht mehr: Seit Schritt E2 ist kein Weg eines Moduls ohne
-    /// Anmeldung lesbar, was hier steht, wird nicht gelesen. Die Methode
-    /// bleibt bis Schritt E3, damit bestehende Module weiter übersetzen.
-    fn freie_wege(&self) -> &'static [&'static str] {
-        &[]
-    }
-
     /// Woher das Modul stammt; immer `dashboard_projekt::herkunft!()`.
     fn herkunft(&self) -> Herkunft;
 

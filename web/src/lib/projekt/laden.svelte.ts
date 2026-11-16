@@ -106,12 +106,11 @@ const standard: Umgebung = {
 };
 
 /**
- * Etappe B2: Dateien aus `daten/`, deren Weg geschützt ist (nur mit
- * Windows-Anmeldung, `sicherheit::geschuetzt` im Server: `FRAGEN_DATEI`, seit
- * Etappe B3 `FRISTEN_DATEI`).
- * Ohne Anmeldung fragt der Lader sie gar nicht erst an (`mitZugang`), damit
- * eine Seite beim Laden höchstens einen 401 erzeugt; er zeigt gleich den Satz
- * zum Anmelden. `geschuetzt.spec.ts` hält die Liste gleich mit dem Server.
+ * Etappe B2: Dateien aus `daten/` mit persönlichem Inhalt (Fragen, seit
+ * Etappe B3 Fristen). Der Server verlangt für jede Datei die Anmeldung (seit
+ * Schritt E3 auch im Handler selbst). Ohne Anmeldung fragt der Lader diese
+ * gar nicht erst an (`mitZugang`), damit eine Seite beim Laden höchstens einen
+ * 401 erzeugt; er zeigt gleich den Satz zum Anmelden (`geschuetzt.spec.ts`).
  */
 export const GESCHUETZTE_DATEN: readonly string[] = ['fragen', 'fristen'];
 

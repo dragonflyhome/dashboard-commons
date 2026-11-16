@@ -48,7 +48,8 @@ impl DienstAnbindung {
     }
 
     fn speicher(&self) -> Result<&Speicher, Fehler> {
-        self.speicher.as_deref().ok_or_else(|| Fehler::speicher_fehlt(self.speicher_satz.clone()))
+        // Eine Fehlerantwort: verborgen wie bei AppError (der Satz nennt den Sicherungsordner).
+        self.speicher.as_deref().ok_or_else(|| Fehler::speicher_fehlt(crate::datenschutz::verbergen(&self.speicher_satz)))
     }
 }
 
@@ -116,5 +117,24 @@ impl Anbindung for DienstAnbindung {
 
     fn erfolg_melden(&self, slug: &str, wo: &str) {
         self.stoerungen.erfolg(slug, wo);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{AppState, beispiel_fuer_tests};
+
+    /// Schritt E3: Der 503 der Module ist eine Fehlerantwort und bleibt verborgen
+    /// wie bei `AppError`, auch wenn `speicher_satz` den Ordner im Klartext nennt.
+    #[test]
+    fn speicher_fehlt_ohne_profil() {
+        const NAME: &str = "probekonto";
+        let state = AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), "kaputt");
+        let satz = format!(r"Die letzten Sicherungen liegen in C:\Users\{NAME}\x.");
+        let a = DienstAnbindung::neu(state.inhalt.clone(), None, satz, state.git.clone(), Arc::default());
+        let e = a.eintrag_lesen("neu-daten", "protokoll", 1, "k").unwrap_err();
+        assert_eq!((e.status(), e.art.as_str()), (axum::http::StatusCode::SERVICE_UNAVAILABLE, "speicher-fehlt"));
+        assert!(e.fehler.contains("%USERPROFILE%") && !e.fehler.contains(NAME), "{}", e.fehler);
     }
 }

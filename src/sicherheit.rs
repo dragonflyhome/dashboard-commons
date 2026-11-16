@@ -207,26 +207,6 @@ pub fn abgelehnt() -> Response {
 
 // ----- 4b Windows-Anmeldung: das Konto des Inhabers auf den geschützten Wegen -----
 
-/// Etappe B2: die Datei mit den Fragen an den Inhaber (`daten/fragen.toml`); ihr
-/// Weg ist geschützt wie jeder Projektweg (Schritt E2).
-pub const FRAGEN_DATEI: &str = "fragen";
-
-/// Etappe B3: Ereignisse und Fristen (`daten/fristen.toml`); Titel von Fristen
-/// und Namen von Ereignissen sind persönlicher Inhalt wie die Fragen.
-pub const FRISTEN_DATEI: &str = "fristen";
-
-/// Die Liste der besonders geschützten Dateien in `daten/` (ohne `.toml`).
-/// Seit Schritt E2 sind alle Projektwege geschützt (`oeffentlich`); der
-/// Handler `api::neue_form::daten` prüft diese Dateien bis E3 als zweite
-/// Wand am dekodierten Namen.
-pub const GESCHUETZTE_DATEIEN: [&str; 2] = [FRAGEN_DATEI, FRISTEN_DATEI];
-
-/// Ist `name` (ein Dateiname aus `daten/`, ohne `.toml`) geschützt? Groß/Klein
-/// zählt nicht.
-pub fn datei_geschuetzt(name: &str) -> bool {
-    GESCHUETZTE_DATEIEN.iter().any(|d| d.eq_ignore_ascii_case(name))
-}
-
 // ----- 3a Prozentzeichen im Pfad (Hotfix Prozent) -----
 
 /// Der Satz der ersten Wand.
@@ -466,7 +446,7 @@ fn passkey_noetig(req: &Request, port: u16) -> Response {
 ///   bei einer Browser-Navigation über 127.0.0.1 307 auf localhost.
 /// - Außerhalb von Windows ohne gültigen Ausweis: eine Seitennavigation 303 auf
 ///   `/anmelden?ziel=<pfad>&umgeleitet=1` (`ohne_anmeldung`), alles andere 401 JSON (Art `anmeldung`).
-/// - Kein Modulweg ist öffentlich (`Modul::freie_wege` wirkt seit E2 nicht mehr).
+/// - Kein Modulweg ist öffentlich.
 /// - Die Anträge auf einen Passkey (`api::passkey::konto_noetig`) brauchen
 ///   Negotiate mit irgendeinem Konto (der echte Kontoname), der Inhaber nicht.
 ///

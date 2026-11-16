@@ -381,30 +381,6 @@ pub fn sicherungs_ordner_fuer(pfad: &Path) -> PathBuf {
     }
 }
 
-/// Pfad zum Anzeigen: liegt er im Benutzerordner, als `%USERPROFILE%\…`,
-/// damit der Benutzername nicht auf der Seite und in Antworten steht. Danach
-/// noch [`crate::datenschutz::verbergen`]: Im Dienst ist `USERPROFILE` das
-/// Profil des Dienstkontos, die Pfade liegen aber im Profil des Inhabers.
-/// Der Benutzerordner kommt aus `USERPROFILE`, sonst aus `HOME` (macOS, Linux).
-pub fn anzeige_pfad(pfad: &Path) -> String {
-    let heim = heim_aus(std::env::var_os("USERPROFILE"), std::env::var_os("HOME"));
-    crate::datenschutz::verbergen(&anzeige_pfad_mit(pfad, heim.as_deref()))
-}
-
-/// Der Benutzerordner: `USERPROFILE`, und nur wenn das fehlt oder leer ist, `HOME`.
-fn heim_aus(userprofile: Option<std::ffi::OsString>, home: Option<std::ffi::OsString>) -> Option<PathBuf> {
-    userprofile.filter(|p| !p.is_empty()).or(home.filter(|p| !p.is_empty())).map(PathBuf::from)
-}
-
-fn anzeige_pfad_mit(pfad: &Path, heim: Option<&Path>) -> String {
-    let rest = heim.filter(|h| !h.as_os_str().is_empty()).and_then(|h| pfad.strip_prefix(h).ok());
-    match rest {
-        Some(r) if r.as_os_str().is_empty() => "%USERPROFILE%".to_string(),
-        Some(r) => format!("%USERPROFILE%{}{}", std::path::MAIN_SEPARATOR, r.display()),
-        None => pfad.display().to_string(),
-    }
-}
-
 /// Neuer Pfad für eine Testdatei: Prozessnummer und Zähler, damit parallele
 /// Tests sich nie eine Datei teilen.
 #[cfg(test)]
@@ -544,41 +520,9 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn pfade_ohne_benutzernamen() {
-        let heim = PathBuf::from(r"C:\Users\beispiel");
-        let datei = heim.join(".var").join("dashboard").join("dashboard.redb");
-        assert_eq!(anzeige_pfad_mit(&datei, Some(&heim)), r"%USERPROFILE%\.var\dashboard\dashboard.redb");
-        assert_eq!(anzeige_pfad_mit(&heim, Some(&heim)), "%USERPROFILE%");
-        // Nur ganze Ordnernamen: „beispiel2“ beginnt nicht mit dem Ordner „beispiel“.
-        let fremd = PathBuf::from(r"C:\Users\beispiel2\x.redb");
-        assert_eq!(anzeige_pfad_mit(&fremd, Some(&heim)), fremd.display().to_string());
-        assert_eq!(anzeige_pfad_mit(&datei, None), datei.display().to_string());
-        assert_eq!(anzeige_pfad_mit(&datei, Some(Path::new(""))), datei.display().to_string());
-        assert_eq!(sicherungs_ordner_fuer(&datei), heim.join(".var").join("dashboard").join("sicherung"));
-        if let Some(echt) = std::env::var_os("USERPROFILE") {
-            let p = PathBuf::from(echt).join("x.redb");
-            assert_eq!(anzeige_pfad(&p), format!("%USERPROFILE%{}x.redb", std::path::MAIN_SEPARATOR));
-        }
-    }
-
-    /// Der Benutzerordner kommt aus `USERPROFILE`; nur ohne ihn aus `HOME`.
-    /// Mit einem Profil ohne Laufwerk bleibt vom Pfad nur der Teil darunter.
-    #[test]
-    fn benutzerordner_aus_userprofile_sonst_home() {
-        let os = |t: &str| Some(std::ffi::OsString::from(t));
-        assert_eq!(heim_aus(os(r"C:\Users\beispiel"), os("/Users/beispiel2")), Some(PathBuf::from(r"C:\Users\beispiel")));
-        assert_eq!(heim_aus(None, os("/Users/beispiel")), Some(PathBuf::from("/Users/beispiel")));
-        assert_eq!(heim_aus(os(""), os("/Users/beispiel")), Some(PathBuf::from("/Users/beispiel")));
-        assert_eq!(heim_aus(None, os("")), None);
-        assert_eq!(heim_aus(None, None), None);
-        // Gegenprobe: Ohne Benutzerordner bleibt der Pfad, wie er ist.
-        let heim = PathBuf::from("/Users/beispiel");
-        let datei = heim.join("Library").join("x.redb");
-        assert_eq!(anzeige_pfad_mit(&datei, None), datei.display().to_string());
-        assert_eq!(anzeige_pfad_mit(&datei, Some(&heim)), format!("%USERPROFILE%{0}Library{0}x.redb", std::path::MAIN_SEPARATOR));
-        assert_eq!(anzeige_pfad_mit(&heim, Some(&heim)), "%USERPROFILE%");
-        let fremd = PathBuf::from("/Users/beispiel2/x.redb");
-        assert_eq!(anzeige_pfad_mit(&fremd, Some(&heim)), fremd.display().to_string());
+    fn sicherungs_ordner_neben_der_datei() {
+        let datei = PathBuf::from(r"C:\Users\beispiel").join(".var").join("dashboard").join("dashboard.redb");
+        assert_eq!(sicherungs_ordner_fuer(&datei), PathBuf::from(r"C:\Users\beispiel\.var\dashboard\sicherung"));
     }
 
     /// Bewusste Ausnahmen von „nie blankes `txn.commit()`“ (Anleitung,

@@ -79,12 +79,12 @@ pub async fn bericht(state: &AppState) -> Betrieb {
         bote: bote.to_string(),
         bote_seit,
         speicher: speicher_stand(&state).await,
-        sitzung: Some(state.sitzung.lock().map(|w| w.stand()).unwrap_or_default()),
+        sitzung: state.sitzung.lock().map(|w| w.stand()).unwrap_or_default(),
         inhalt: inhalt_stand(&state),
         fassung,
         fassung_gebaut,
         ordner,
-        quellen: Some(quellen_stand(&state)),
+        quellen: quellen_stand(&state),
         stoerungen: stoerungen(&state),
     }
 }

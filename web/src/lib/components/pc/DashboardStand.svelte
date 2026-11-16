@@ -40,12 +40,17 @@
 	let fehler = $state<string | null>(null);
 	const zustand = $derived(vorgegeben === undefined ? freierKanal.zustand : vorgegeben);
 
+	/** Laufende Nummer: eine späte Antwort überschreibt nie eine neuere (wie in ProjektTeile). */
+	let nr = 0;
 	async function neu(): Promise<void> {
+		const n = ++nr;
 		try {
-			b = await laden();
+			const x = await laden();
+			if (n !== nr) return;
+			b = x;
 			fehler = null;
 		} catch (e) {
-			fehler = fehlerText(e);
+			if (n === nr) fehler = fehlerText(e);
 		}
 	}
 
@@ -64,8 +69,6 @@
 			return x.bote_seit ? `verbunden seit ${fmtDateTime(x.bote_seit)}` : 'verbunden';
 		if (x.bote === 'getrennt')
 			return x.bote_seit ? `getrennt, zuletzt erreichbar ${fmtDateTime(x.bote_seit)}` : 'getrennt';
-		// Frei nur „vorgesehen“: ob er läuft, verriete die Anmeldung des Inhabers (nur angemeldet sichtbar).
-		if (x.bote === 'vorgesehen') return 'vorgesehen; ob er läuft, steht nur angemeldet hier';
 		return 'nicht vorgesehen (ohne Einstellungsdatei)';
 	}
 
@@ -75,8 +78,8 @@
 
 	/** Angemeldet: ob der Inhaber an der Konsole angemeldet ist (nur im vollen Bericht). */
 	function konsoleText(x: Betrieb): string | null {
-		const l = x.sitzung?.inhaber_angemeldet;
-		if (l === undefined || l === null) return null;
+		const l = x.sitzung.inhaber_angemeldet;
+		if (l === null) return null;
 		return l ? 'Du bist an diesem PC angemeldet' : 'Du bist an diesem PC nicht angemeldet';
 	}
 

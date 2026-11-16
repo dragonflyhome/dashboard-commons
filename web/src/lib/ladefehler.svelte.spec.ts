@@ -160,11 +160,20 @@ describe('eingabeDa: auch Felder ohne Formular, solange die Anmeldung fehlt', ()
 });
 
 describe('fokusZeigen', () => {
-	it('ohne Fokus (body) rollt nichts, mit Fokus das Feld', async () => {
+	it('ohne Fokus (body) der haftende Hinweis, nie body; mit Fokus das Feld', async () => {
 		const { rollen, ende } = rollenBeobachten();
+		const hinweis = document.body.appendChild(document.createElement('section'));
+		hinweis.className = 'card abgelaufen haftend';
 		try {
 			(document.activeElement as HTMLElement | null)?.blur();
 			expect(document.activeElement).toBe(document.body);
+			await fokusZeigen();
+			expect(rollen.mock.contexts).toEqual([hinweis]);
+			expect(rollen).toHaveBeenCalledWith({ block: 'nearest' });
+			expect(document.activeElement, 'der Fokus bleibt auf body').toBe(document.body);
+			// Ohne Hinweis und ohne Fokus rollt nichts.
+			hinweis.remove();
+			rollen.mockClear();
 			await fokusZeigen();
 			expect(rollen).not.toHaveBeenCalled();
 			const feld = document.body.appendChild(document.createElement('input'));
@@ -173,6 +182,7 @@ describe('fokusZeigen', () => {
 			expect(rollen.mock.contexts).toEqual([feld]);
 			feld.remove();
 		} finally {
+			hinweis.remove();
 			ende();
 		}
 	});

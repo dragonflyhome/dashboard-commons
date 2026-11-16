@@ -44,9 +44,9 @@ einstellungen: string | null,
  * Zustand des Boten: `verbunden` (letzte Anfrage beantwortet),
  * `getrennt` (Bote vorgesehen, aber nicht erreichbar) oder
  * `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). `vorgesehen` steht
- * nur in [`BetriebFrei`]; der Typ bleibt bis zum Umbau der Oberfläche breit.
+ * nur in [`BetriebFrei`].
  */
-bote: "verbunden" | "getrennt" | "vorgesehen" | "nicht vorgesehen", 
+bote: "verbunden" | "getrennt" | "nicht vorgesehen", 
 /**
  * Bei `verbunden`: seit wann; bei `getrennt`: wann er zuletzt antwortete
  * (RFC 3339, `null` wenn nie). Sonst `null`.
@@ -59,10 +59,9 @@ bote_seit: string | null,
  */
 speicher: SpeicherStand, 
 /**
- * Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3); immer
- * gesetzt (der Typ bleibt bis zum Umbau der Oberfläche optional).
+ * Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3).
  */
-sitzung: SitzungsStand | null, 
+sitzung: SitzungsStand, 
 /**
  * Der Inhalt im Arbeitsspeicher (Etappe 2d).
  */
@@ -84,10 +83,9 @@ fassung_gebaut: string | null,
  */
 ordner: Array<OrdnerStand>, 
 /**
- * Woher der Server den Inhalt liest (Umzug des Inhalts); immer gesetzt
- * (der Typ bleibt bis zum Umbau der Oberfläche optional).
+ * Woher der Server den Inhalt liest (Umzug des Inhalts).
  */
-quellen: QuellenStand | null, 
+quellen: QuellenStand, 
 /**
  * Kleinkram 2: Störungen im Betrieb, je ein Satz (leer: keine). Bisher:
  * Der Bote (der Bau-Prüfer) prüft mit einer anderen Fassung des Prüfers

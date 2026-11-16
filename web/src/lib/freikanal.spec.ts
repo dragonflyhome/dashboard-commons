@@ -253,10 +253,12 @@ describe('genau ein Kanal je Seite', () => {
 		geschuetzt().senden('anmeldung', { stand: 'angemeldet' });
 		zustaende.push(k.zustand);
 		bauLage.fortschritt = { schritt: 'pruefung', fertig: 2, gesamt: 3 };
+		bauLage.saetze = { beispiel: 'Der Bau ist rot: Prüfung.' };
 		// Der Server beendet die Sitzung: Schlusswort auf dem geschützten Kanal.
 		geschuetzt().senden('anmeldung', { stand: 'nicht_angemeldet' });
 		zustaende.push(k.zustand);
 		expect(k.aktiv).toBe('frei');
+		expect(bauLage.saetze, 'ohne Anmeldung keine Bau-Sätze').toEqual({});
 		expect(bauLage.fortschritt, 'ohne Anmeldung kein Schrittzähler').toBeNull();
 		// Übergabe: beide offen, bis der freie sein erstes Ereignis hat.
 		expect(FakeSource.offen()).toEqual([GESCHUETZT, FREIER_KANAL]);

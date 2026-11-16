@@ -17,7 +17,6 @@
 	import ProjektSpalten from '#lib/components/ProjektSpalten.svelte';
 	import Wahl from '#lib/katalog/grund/Wahl.svelte';
 	import { stepsToColumns } from '#lib/pc.ts';
-	import { SATZ_VERLAUF_OHNE_ANMELDUNG } from '#lib/zeit/laden.ts';
 	import {
 		ansichtLesen,
 		ansichtMerken,
@@ -200,9 +199,6 @@
 			<p class="muted">Der Verlauf lässt sich gerade nicht laden: {data.verlauf.fehler}</p>
 		{:else}
 			<Verlauf ereignisse={pcVerlauf.ereignisse} leer="In den letzten Tagen ist nichts passiert." />
-			{#if data.verlauf.ohneAnmeldung}
-				<p class="muted small" role="note">{SATZ_VERLAUF_OHNE_ANMELDUNG}</p>
-			{/if}
 		{/if}
 		<p class="small"><a href={resolve('/pc')}>Ganzer Verlauf auf der PC-Seite</a></p>
 	</section>

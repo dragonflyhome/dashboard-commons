@@ -633,33 +633,3 @@ fn rechner_vor_dem_benutzernamen() {
     let b = Bekannt::aus(None, Some("beispiel")).mit_rechner(Some("beispiel-rechner"));
     assert_eq!(verbergen_mit("beispiel-rechner und beispiel", &b), "%COMPUTERNAME% und %USERNAME%");
 }
-
-/// Die Rechner-Werte: `host` fest der Platzhalter, der Name eines
-/// Datenträgers der Platzhalter oder leer.
-#[test]
-fn rechner_werte_ohne_namen() {
-    use crate::pc::system::{DiskInfo, Snapshot};
-    let platte = |name: &str, mount: &str| DiskInfo { name: name.into(), mount: mount.into(), total: 10, used: 1, belegung: Default::default() };
-    let mut s = Snapshot {
-        host: "beispiel-rechner".into(),
-        disks: vec![
-            platte("Beispiel Platte", "/Volumes/Beispiel Platte"),
-            platte("", r"C:\"),
-            platte("Ablage", r"D:\"),
-            platte("x", "/Volumes/Beispiel Platte/unter"),
-            platte("y", "/"),
-        ],
-        ..Default::default()
-    };
-    rechner_verbergen(&mut s);
-    assert_eq!(s.host, "%COMPUTERNAME%");
-    let namen: Vec<&str> = s.disks.iter().map(|d| d.name.as_str()).collect();
-    assert_eq!(namen, ["%VOLUME%", "", "%VOLUME%", "%VOLUME%", "%VOLUME%"]);
-    let orte: Vec<&str> = s.disks.iter().map(|d| d.mount.as_str()).collect();
-    // Der Einhängepunkt direkt unter /Volumes ganz, auch mit Leerzeichen; Laufwerke und die Wurzel bleiben.
-    assert_eq!(orte, ["/Volumes/%VOLUME%", r"C:\", r"D:\", "/Volumes/Beispiel Platte/unter", "/"]);
-    // Ohne Namen des Rechners: trotzdem der Platzhalter, nie leer und nie der echte.
-    let mut leer = Snapshot::default();
-    rechner_verbergen(&mut leer);
-    assert_eq!(leer.host, "%COMPUTERNAME%");
-}

@@ -3,13 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AnmeldungNoetig, ApiError, SATZ_KEINE_VERBINDUNG } from '#lib/api/client.ts';
 import { zaehleProjekte, zaehlzeile } from '#lib/projekte.ts';
 import type * as Client from '#lib/api/client.ts';
-import { rueckfall } from '#lib/rueckfall.ts';
 import type { Bedeutung, PcBenutzer, PcReport, ProjectList, RepoStatus, Verlauf } from '$vertrag';
 
 const projects = vi.fn<() => Promise<ProjectList>>();
 const pc = vi.fn<() => Promise<PcReport>>();
 const pcBenutzer = vi.fn<() => Promise<PcBenutzer>>();
-const verlauf = vi.fn<(seit?: string) => Promise<Verlauf>>();
 const verlaufVoll = vi.fn<(seit?: string) => Promise<Verlauf>>();
 vi.mock('#lib/api/client.ts', async (original) => ({
 	...(await original<typeof Client>()),
@@ -17,7 +15,6 @@ vi.mock('#lib/api/client.ts', async (original) => ({
 		projects: () => projects(),
 		pc: () => pc(),
 		pcBenutzer: () => pcBenutzer(),
-		verlauf: (seit?: string) => verlauf(seit),
 		verlaufVoll: (seit?: string) => verlaufVoll(seit)
 	}
 }));
@@ -44,11 +41,9 @@ async function lade(projektListe: ProjectList | null = null): Promise<unknown> {
 
 describe('Laden der Startseite', () => {
 	beforeEach(() => {
-		rueckfall.vergessen();
 		projects.mockReset().mockResolvedValue(liste);
 		pc.mockReset().mockResolvedValue(bericht);
 		pcBenutzer.mockReset();
-		verlauf.mockReset().mockResolvedValue(pcVerlauf);
 		verlaufVoll.mockReset().mockResolvedValue(pcVerlauf);
 	});
 	it('gibt dem Cockpit die Benutzer-Daten mit, dazu den Verlauf der letzten Tage', async () => {
@@ -57,11 +52,10 @@ describe('Laden der Startseite', () => {
 			projects: [],
 			pc: bericht,
 			ladung: { benutzer, grund: null },
-			verlauf: { verlauf: pcVerlauf, fehler: null, ohneAnmeldung: false }
+			verlauf: { verlauf: pcVerlauf, fehler: null }
 		});
 		// Hotfix 3a-1: der geschützte Weg, damit Edge die Anmeldung mitschickt.
 		expect(verlaufVoll.mock.calls[0]?.[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-		expect(verlauf).not.toHaveBeenCalled();
 	});
 	it('/api/projects nur einmal: die Liste aus dem Layout, sonst selbst geholt', async () => {
 		pcBenutzer.mockResolvedValue(benutzer);
@@ -72,20 +66,15 @@ describe('Laden der Startseite', () => {
 		expect(await lade(null)).toMatchObject({ projects: [] });
 		expect(projects).toHaveBeenCalledTimes(1);
 	});
-	it('Verlauf ohne Anmeldung (401 oder 403): der freie Weg, mit Hinweis', async () => {
+	it('Verlauf mit 401 oder 403 (etwa nach Ablauf): Satz statt Fehlerseite, kein zweiter Weg', async () => {
 		pcBenutzer.mockResolvedValue(benutzer);
 		for (const fehler of [
-			new AnmeldungNoetig(),
 			new ApiError(401, 'Bitte mit Passkey anmelden.', 'passkey'),
 			new ApiError(403, 'Dieses Windows-Konto darf hier nicht.', 'fremdes-konto')
 		]) {
-			rueckfall.vergessen();
 			verlaufVoll.mockReset().mockRejectedValue(fehler);
-			verlauf.mockClear();
-			expect(await lade()).toMatchObject({
-				verlauf: { verlauf: pcVerlauf, fehler: null, ohneAnmeldung: true }
-			});
-			expect(verlauf.mock.calls[0]?.[0]).toBe(verlaufVoll.mock.calls[0]?.[0]);
+			expect(await lade()).toMatchObject({ verlauf: { verlauf: null, fehler: fehler.message } });
+			expect(verlaufVoll).toHaveBeenCalledTimes(1);
 		}
 	});
 	it('ohne Windows-Anmeldung (401): Ladung ohne Daten, keine Fehlerseite', async () => {
@@ -96,13 +85,6 @@ describe('Laden der Startseite', () => {
 		pcBenutzer.mockResolvedValue(benutzer);
 		verlaufVoll.mockRejectedValue(new ApiError(500, 'Speicher zu.'));
 		expect(await lade()).toMatchObject({ verlauf: { verlauf: null, fehler: 'Speicher zu.' } });
-		expect(verlauf).not.toHaveBeenCalled();
-		// Auch der freie Weg scheitert: Satz statt Fehlerseite.
-		verlaufVoll.mockRejectedValue(new AnmeldungNoetig());
-		verlauf.mockRejectedValue(new ApiError(503, 'Zu.'));
-		expect(await lade()).toMatchObject({
-			verlauf: { verlauf: null, fehler: 'Zu.', ohneAnmeldung: true }
-		});
 	});
 	// Sonst fragt SvelteKit updated.check() und lädt bei neuer Fassung voll neu, auch über offene Eingaben.
 	it('Fehler beim Laden werden HttpError, mit Satz und art; Netzfehler 503', async () => {

@@ -319,7 +319,7 @@ impl IntoResponse for ArbeitsFehler {
             Self(e, Some((besitzer, seit))) => (e, besitzer, seit),
             Self(e, None) => return e.into_response(),
         };
-        let fehler = crate::datenschutz::verbergen(&e.fehler);
+        let fehler = e.fehler;
         let mut res = (e.status, Json(Besetzt { fehler: fehler.clone(), art: e.art.to_string(), besitzer, seit })).into_response();
         res.extensions_mut().insert(FehlerSatz(fehler));
         res
@@ -1315,5 +1315,19 @@ mod tests {
             let res = crate::app::router(state.clone()).oneshot(req).await.unwrap();
             assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{pfad}");
         }
+    }
+
+    /// Schritt E3: Der 409 mit Besitzer geht nur über den geschützten Weg und
+    /// nennt den Satz im Klartext, auch einen Profilpfad darin; ohne Besitzer
+    /// bleibt es ein `AppError` (verborgen, er kann über öffentliche Wege gehen).
+    #[tokio::test]
+    async fn besetzt_im_klartext() {
+        let satz = r"Daran ist schon chat:probe (C:\Users\beispiel\x).";
+        let res = ArbeitsFehler(AppError::konflikt(satz), Some(("chat:probe".into(), "2026".into()))).into_response();
+        assert_eq!(res.extensions().get::<FehlerSatz>().map(|f| f.0.as_str()), Some(satz));
+        let v: serde_json::Value = serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        assert_eq!((v["fehler"].as_str(), v["besitzer"].as_str()), (Some(satz), Some("chat:probe")), "{v}");
+        let res = ArbeitsFehler(AppError::konflikt(satz), None).into_response();
+        assert!(res.extensions().get::<FehlerSatz>().is_some_and(|f| !f.0.contains("beispiel")));
     }
 }

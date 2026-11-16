@@ -283,7 +283,6 @@ describe('Unter-Dashboard mit Anmeldung: unterDashboardAnsicht gegen die Vorlage
 				? unterDashboardAnsicht(stand, liste.eintraege, liste.aktualisierungen)
 				: unterDashboardAnsicht(stand);
 		expect(u.angemeldet).toBe(true);
-		expect(u.meldungsZahlen).toBeNull();
 		// Wartet auf dich: Zahl, Aufgaben (die ersten drei wie früher), die eine Frage, Arbeiten für dich.
 		expect(u.wartet.zahl).toBe(a.kurz.wartet_auf_dich);
 		expect(u.wartet.aufgabenZahl).toBe(a.aufgaben.anzahl);

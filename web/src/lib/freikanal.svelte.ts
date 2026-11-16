@@ -202,8 +202,9 @@ export class FreierKanal {
 		this.wort = null;
 		this.kontoWort = null;
 		this.#kontoGefragt = false;
-		// Bau-Tempo, Zweig C: Ohne Anmeldung kein Schrittzähler, auch nicht der letzte.
+		// Bau-Tempo, Zweig C: Ohne Anmeldung kein Schrittzähler und keine Bau-Sätze, auch nicht die letzten.
 		bauLage.fortschritt = null;
+		bauLage.saetze = {};
 		// Den Anmeldestand der Seite neu erfragen (geschützte Abfragen wieder vom Server).
 		zugang.vergessen();
 		void zugang.pruefen(this.#fetch).then((stand) => {

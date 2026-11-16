@@ -9,8 +9,7 @@ const VERLAUF_TAGE = 7;
 /**
  * Projekte, Rechner-Werte und Benutzer-Daten (für Schlüssel- und
  * Ordner-Kachel im Cockpit), dazu der Verlauf der letzten Tage. Ohne
- * Windows-Anmeldung ist `ladung.benutzer` `null`, das Cockpit zeigt dann den Hinweis;
- * der Verlauf kommt dann vom freien Weg (`ohneAnmeldung`, siehe `ladeVerlauf`).
+ * Windows-Anmeldung ist `ladung.benutzer` `null`, das Cockpit zeigt dann den Hinweis.
  *
  * Die Projektliste kommt aus dem Layout (`projektListe`, für die
  * Seitenleiste ohnehin geholt): `/api/projects` nur einmal je Laden. Ging

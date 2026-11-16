@@ -13,47 +13,29 @@
  */
 import { API } from './api/client';
 import { ladeAnstehend, unterDashboardAnsicht, type UnterDashboardAnsicht } from './anstehend.ts';
-import { rueckfall } from './rueckfall.ts';
 import { mitZugang } from './zugang.ts';
 import type { ProjektStand } from '$vertrag';
 
 /** Was das Unter-Dashboard zeigt, fertig ausgewertet in anstehend.ts (`unterDashboardAnsicht`). */
 export type UnterDaten = UnterDashboardAnsicht;
 
-/** Name des Rückfalls (`rueckfall.ts`) für `/stand/voll`, für alle Projekte. */
-export const RUECKFALL_STAND = 'projekt-stand';
-
 /**
- * Holt den Stand eines Projekts. Wirft nie. Zuerst über den geschützten Weg
+ * Holt den Stand eines Projekts. Wirft nie. Über den geschützten Weg
  * `/stand/voll` (Hotfix 3a-1): Edge schickt die Windows-Anmeldung nur auf
- * einer Verbindung, die vorher 401 bekam; auf dem freien `/stand` fehlten
- * die Titel darum oft zufällig. Bei 401 oder 403 (keine Anmeldung möglich)
- * der freie Weg; das merkt sich die Seite (Etappe 3a-4, seit 3a+ höchstens
- * 5 Minuten oder bis der Live-Kanal angemeldet öffnet, `rueckfall.ts`),
- * weitere Ladungen gehen solange gleich den freien Weg.
+ * einer Verbindung, die vorher 401 bekam. Einen freien Rückfall gibt es seit
+ * Schritt E3 nicht mehr; ohne Anmeldung (auch nach Ablauf) `null`.
  */
 export async function ladeStand(
 	slug: string,
 	fetchFn: typeof fetch = fetch
 ): Promise<ProjektStand | null> {
-	const weg = `${API}/projekte/${encodeURIComponent(slug)}/stand`;
-	const holen = (pfad: string): Promise<Response> =>
-		fetchFn(pfad, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+	const weg = `${API}/projekte/${encodeURIComponent(slug)}/stand/voll`;
 	try {
-		let res: Response;
-		if (rueckfall.gemerkt(RUECKFALL_STAND)) {
-			res = await holen(weg);
-		} else {
-			// Etappe 3b: ohne mögliche Anmeldung (zugang.ts) ohne Anfrage gleich 401.
-			res = await mitZugang(fetchFn)(`${weg}/voll`, {
-				credentials: 'same-origin',
-				headers: { accept: 'application/json' }
-			});
-			if (res.status === 401 || res.status === 403) {
-				rueckfall.merken(RUECKFALL_STAND);
-				res = await holen(weg);
-			}
-		}
+		// Etappe 3b: ohne mögliche Anmeldung (zugang.ts) ohne Anfrage gleich 401.
+		const res = await mitZugang(fetchFn)(weg, {
+			credentials: 'same-origin',
+			headers: { accept: 'application/json' }
+		});
 		if (!res.ok) return null;
 		const roh: unknown = await res.json();
 		return istProjektStand(roh) ? roh : null;
@@ -93,19 +75,9 @@ export async function ladeUnterDaten(
 		ladeStand(slug, fetchFn),
 		ladeAnstehend(mitZugang(fetchFn), slug)
 	]);
-	// Mit Anmeldung aus der Liste; sonst, was der Stand mit Anmeldung hat (`sichtbar`).
-	const roh =
-		liste.stand === 'da'
-			? liste.liste.eintraege.filter((e) => e.projekt === slug)
-			: stand?.sichtbar === true
-				? stand.eintraege
-				: null;
-	const akt =
-		liste.stand === 'da'
-			? liste.liste.aktualisierungen
-			: stand?.sichtbar === true
-				? stand.aktualisierungen
-				: null;
+	// Aus der Liste; sonst nimmt die Auswertung, was der Stand selbst hat.
+	const roh = liste.stand === 'da' ? liste.liste.eintraege.filter((e) => e.projekt === slug) : null;
+	const akt = liste.stand === 'da' ? liste.liste.aktualisierungen : null;
 	// Was die Auswertung trotz Prüfung nicht lesen kann, gilt als nicht geladen (wirft nie).
 	try {
 		return unterDashboardAnsicht(stand, roh, akt);

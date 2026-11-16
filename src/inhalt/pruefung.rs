@@ -57,12 +57,9 @@ impl Befund {
         Self::neu(Schwere::Hinweis, datei.into(), zeile, text.into())
     }
 
-    /// Jeder Befund verbirgt Profil und Benutzernamen (`datenschutz`): Er geht
-    /// über `/api/pruefung` (frei), die Meldung „Prüfung rot“ und die Bauliste
-    /// hinaus, und ein Satz zitiert oft, was in der Datei steht (etwa die
-    /// Adresse eines Links, `url = 'C:\Users\<name>\…'`).
+    /// Datei und Satz im Klartext: Befunde gehen nur über geschützte Wege, an
+    /// Meldungen und an die Kommandozeile (Schritt E3).
     fn neu(schwere: Schwere, datei: String, zeile: Option<usize>, text: String) -> Self {
-        let (datei, text) = (crate::datenschutz::verbergen(&datei), crate::datenschutz::verbergen(&text));
         Self { datei, zeile: zeile.and_then(|z| u32::try_from(z).ok()), schwere, text }
     }
 
@@ -1825,10 +1822,10 @@ mod tests {
         ein_fehler("kaputt-link", "projekt.toml", Some(8), "Der Link „Hersteller“ hat die Adresse „www.example.org“.");
     }
 
-    /// Auftrag der Architektur: Der Befund zitiert die Adresse des Links, aber
-    /// ohne Profil und Benutzernamen (er geht über das freie `/api/pruefung`).
+    /// Der Befund zitiert die Adresse des Links im Klartext, samt Profil
+    /// (`/api/pruefung` ist seit E2 geschützt; Schritt E3).
     #[test]
-    fn befund_zitiert_link_ohne_profil() {
+    fn befund_zitiert_link_im_klartext() {
         let (dir, ordner) = temp_projekt("link-profil");
         std::fs::write(
             ordner.join("projekt.toml"),
@@ -1839,8 +1836,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let f: Vec<&Befund> = b.iter().filter(|b| b.ist_fehler()).collect();
         assert_eq!(f.len(), 1, "{f:#?}");
-        assert!(f[0].text.contains(r"„siehe %USERPROFILE%\Ablage“"), "{}", f[0]);
-        assert!(!f[0].text.contains("beispiel"), "{}", f[0]);
+        assert!(f[0].text.contains(r"„siehe C:\Users\beispiel\Ablage“"), "{}", f[0]);
+        assert!(!f[0].text.contains("%USERPROFILE%"), "{}", f[0]);
     }
 
     #[test]

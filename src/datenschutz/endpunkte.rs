@@ -304,9 +304,8 @@ fn inhalt_mit_pfaden(name: &str) -> std::path::PathBuf {
 
 /// `/api/projects`, `/api/projects/<slug>`, `/api/projekte/<slug>` und
 /// `/api/pruefung/<slug>` (geschützt seit Schritt E2): Repo-Pfad und -Fehler
-/// (Projektkarte `r.error`), Links, Prozesse und Prüfungen im Klartext; der
-/// Befund der Prüfung verbirgt bis E3 weiter (`inhalt::pruefung`). Ohne
-/// Anmeldung 401 ohne Inhalt.
+/// (Projektkarte `r.error`), Links, Prozesse und Prüfungen im Klartext, seit
+/// E3 auch der Befund der Prüfung samt Pfad. Ohne Anmeldung 401 ohne Inhalt.
 #[tokio::test]
 async fn api_projekte_und_pruefung() {
     let wurzel = inhalt_mit_pfaden("projekte");
@@ -343,7 +342,7 @@ async fn api_projekte_und_pruefung() {
         let mut alle = Vec::new();
         texte(&v, &mut alle);
         if pfad == "/api/pruefung/probe" {
-            assert!(alle.iter().any(|t| t.contains("„siehe %USERPROFILE%/x“")), "{pfad}: {v}");
+            assert!(alle.iter().any(|t| t.contains(&format!("„siehe /c/Users/{NAME}/x“"))), "{pfad}: {v}");
         } else if pfad != "/api/projects" {
             assert!(alle.iter().any(|t| *t == format!(r"C:\Users\{NAME}\Ablage")), "{pfad}: {v}");
         }

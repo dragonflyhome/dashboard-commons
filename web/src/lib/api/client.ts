@@ -157,16 +157,6 @@ export const api = {
 	/** Geschützt: ohne Windows-Anmeldung 401 (`AnmeldungNoetig`). */
 	pcBenutzer: (f?: typeof fetch) => getJson<PcBenutzer>(`${API}/pc/benutzer`, f),
 	/**
-	 * Verlauf des PCs (Etappe 2e): Ereignisse ohne Reihenfolge, dazu Hinweise.
-	 * Ohne `seit` die letzten 90 Tage. Seit Schritt E2 geschützt und gleich
-	 * `verlaufVoll`; nur noch der tote Rückfall in `zeit/laden.ts` fragt ihn (bis E3).
-	 */
-	verlauf: (seit?: string, f?: typeof fetch) =>
-		getJson<Verlauf>(
-			`${API}/pc/verlauf${seit === undefined ? '' : `?seit=${encodeURIComponent(seit)}`}`,
-			f
-		),
-	/**
 	 * Hotfix 3a-1: derselbe Verlauf, immer mit Starts, Meldungen und Vorgängen.
 	 * Geschützt: ohne Anmeldung 401 mit `WWW-Authenticate: Negotiate`, erst
 	 * darauf schickt Edge die Windows-Anmeldung mit.

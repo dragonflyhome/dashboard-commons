@@ -139,7 +139,7 @@ export function beispielStand(teil: Partial<StandAnsicht> = {}): StandAnsicht {
 			frist_bald_tage: 7
 		},
 		frage: { aktuell: null, weitere: 0 },
-		aufgaben: { offen: [], anzahl: 0, weitere: 0, sichtbar: false },
+		aufgaben: { offen: [], anzahl: 0, weitere: 0, sichtbar: true },
 		aktualisierungen: [],
 		meldungen: { neu: 0, gesamt: 0 },
 		arbeiten: { laufen: leereGruppe, wartet: leereGruppe, als_naechstes: leereGruppe },

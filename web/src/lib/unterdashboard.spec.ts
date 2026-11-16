@@ -43,3 +43,11 @@ describe('Stand an der Grenze', () => {
 		expect((await ladeUnterDaten('p', netz(beispielProjektStand()))).stand).not.toBeNull();
 	});
 });
+
+describe('Stand nur über /stand/voll (Schritt E3: kein freier Rückfall mehr)', () => {
+	it.each([401, 403])('nach %i: null und kein zweiter Abruf', async (status) => {
+		const f = vi.fn(() => Promise.resolve(json({ fehler: 'Anmeldung' }, status)));
+		expect(await ladeStand('p', f)).toBeNull();
+		expect(f.mock.calls.map((c: unknown[]) => c[0])).toEqual(['/api/projekte/p/stand/voll']);
+	});
+});

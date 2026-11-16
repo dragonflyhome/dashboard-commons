@@ -14,6 +14,29 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Angemeldet zeigen die Fehlersätze der Arbeiten, der Hinweis zum
+  Datenspeicher, die Befunde der Prüfung und die Linklisten volle Pfade.
+  Geschwärzt wird nur noch auf öffentlichen Wegen und in Fehlerantworten.
+- /api/projekte/<slug>/daten/<name> verlangt die Anmeldung für jede Datei
+  auch im Handler selbst, nicht nur für Fragen und Fristen.
+
+Entfernt
+- Bruch: Modul::freie_wege gibt es nicht mehr; ein Modul, das die Methode
+  noch nennt, übersetzt nicht und lässt sie einfach weg.
+- Bruch: Die Hinweisart ohne-anmeldung im Verlauf (VerlaufHinweisArt).
+- Bruch: In /api/betrieb/voll sind sitzung und quellen nie mehr null, und
+  bote ist nie „vorgesehen“ (das steht nur im freien /api/betrieb).
+- Der Rückfall der Oberfläche auf die freien Wege von Verlauf und
+  Projektstand; beide sind seit 0.13.0 geschützt.
+
+Behoben
+- Nach dem Abmelden verschwinden auch die Sätze zum Bau.
+- Eine späte Antwort überschreibt im Abschnitt „Dashboard“ auf /pc keine
+  neuere mehr.
+- Endet die Sitzung beim Seitenwechsel, steht der Hinweis „Anmeldung
+  abgelaufen“ im Bild, auch wenn kein Feld den Fokus hat.
+
 0.16.1 - 2026-11-16
 -------------------
 

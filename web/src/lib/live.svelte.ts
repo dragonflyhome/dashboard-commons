@@ -33,10 +33,7 @@
  * selbst wieder, nach 2 s, 5 s, 15 s, dann alle 30 s. Steht `readyState` auf
  * CONNECTING, verbindet der Browser selbst neu; dann tut der Kanal nichts.
  *
- * Rückfall (3a+): Öffnet der Kanal, ist die Verbindung angemeldet. Hatte
- * sich die Seite den freien Weg gemerkt (`rueckfall.ts`, nach einem kurzen
- * 401 auf `…/voll`), gilt das ab jetzt nicht mehr; der Kanal meldet dann
- * „nachholen“ mit Grund `angemeldet`, und die Seite lädt über `/voll` neu.
+ * Öffnet der Kanal, ist die Verbindung angemeldet (`zugang.setzen('da')`).
  *
  * Zugang (3b): Weiß die Seite schon, dass keine Anmeldung möglich ist
  * (`zugang.ts`, eine Frage beim Start), öffnet der Kanal gar nicht erst; das
@@ -61,7 +58,6 @@
  */
 import { SvelteSet } from 'svelte/reactivity';
 import { API } from './api/client';
-import { rueckfall } from './rueckfall.ts';
 import { zugang } from './zugang.ts';
 import type {
 	AnmeldungEvent,
@@ -87,10 +83,10 @@ export type BauListener = (bau: BauEvent) => void;
 /** Zweig C: Schritt und Zähler des laufenden Baus (Ereignis `bau-fortschritt`). */
 export type BauFortschrittListener = (f: BauFortschrittEvent) => void;
 /**
- * Grund fürs Nachholen: Lücke in den Nummern, neu verbunden, Überlauf beim
- * Server oder angemeldet (ein gemerkter Rückfall auf den freien Weg ist weg).
+ * Grund fürs Nachholen: Lücke in den Nummern, neu verbunden oder Überlauf
+ * beim Server.
  */
-export type NachholGrund = 'luecke' | 'wiederverbunden' | 'angemeldet' | NachholEvent['grund'];
+export type NachholGrund = 'luecke' | 'wiederverbunden' | NachholEvent['grund'];
 export type NachholListener = (grund: NachholGrund) => void;
 
 /**
@@ -343,13 +339,9 @@ export class Live {
 			this.connected = true;
 			this.#versuch = 0;
 			zugang.setzen('da');
-			// Offen heißt angemeldet: ein gemerkter Rückfall gilt nicht mehr.
-			const warFrei = rueckfall.vergessen();
 			if (this.#getrennt) {
 				this.#getrennt = false;
 				this.#nachholen('wiederverbunden');
-			} else if (warFrei) {
-				this.#nachholen('angemeldet');
 			}
 			this.#melden({ art: 'offen' });
 		};

@@ -129,7 +129,7 @@ const verlauf: Verlauf = {
 	hinweise: []
 };
 
-/** fetch für alle Wege; `angemeldet: false` gibt auf den geschützten 401; `liste` ersetzt /backlog. */
+/** fetch für alle Wege; `angemeldet: false` gibt überall 401 (alle geschützt); `liste` ersetzt /backlog. */
 function netz(
 	angemeldet = true,
 	eintraege: AnstehendEintrag[] = [frage, meldung],
@@ -138,20 +138,9 @@ function netz(
 	return vi.fn((eingabe: RequestInfo | URL) => {
 		const url =
 			typeof eingabe === 'string' ? eingabe : eingabe instanceof URL ? eingabe.href : eingabe.url;
-		const geschuetzt = !url.endsWith('/stand');
-		if (!angemeldet && geschuetzt) return Promise.resolve(json({ fehler: 'Anmeldung' }, 401));
+		if (!angemeldet) return Promise.resolve(json({ fehler: 'Anmeldung' }, 401));
 		if (url.endsWith('/stand/voll'))
 			return Promise.resolve(json({ ...stand, sichtbar: true, eintraege }));
-		if (url.endsWith('/stand'))
-			return Promise.resolve(
-				json({
-					...stand,
-					sichtbar: false,
-					eintraege: [],
-					notizen: [],
-					notizen_zahl: 1
-				})
-			);
 		if (url.startsWith('/api/anstehend'))
 			return Promise.resolve(
 				json({
@@ -308,20 +297,6 @@ describe('Die vier Teile der Projektseite (Etappe B8)', () => {
 		});
 		expect(document.activeElement?.id).toBe('arbeit-ar-20261102-0001');
 	});
-
-	// Seit Schritt E2 schickt der Server keine Zahlen ohne Anmeldung mehr (und /stand verlangt sie);
-	// der Zweig zeigt dann Nullen. Er fällt mit den übrigen Zweigen ohne Anmeldung in E3.
-	it('ohne Anmeldung: Stand ohne Einträge als Text (ohne Ziel kein Link), sonst je Teil der Satz, keine Titel', async () => {
-		render(ProjektTeile, { slug: 'beispiel', fetchFn: netz(false) });
-		await waitFor(() => {
-			expect(screen.getAllByText(SATZ_OHNE_ANMELDUNG)).toHaveLength(3);
-		});
-		await screen.findByText(/In den letzten 7 Tagen/);
-		expect(document.querySelector('.vier')).toHaveTextContent('0 warten auf dich');
-		expect(document.querySelectorAll('.vier a, .ampel a')).toHaveLength(0);
-		expect(screen.queryByText('Soll die Ampel oben stehen?')).toBeNull();
-		expect(screen.getByText('Notizen (1)')).toBeInTheDocument();
-	});
 });
 
 describe('Bau im Stand-Kopf nur, wenn auffällig', () => {
@@ -418,8 +393,7 @@ describe('Ein älterer Dienst: fehlende Wege und Felder (je Teil ein Satz)', () 
 		render(ProjektTeile, {
 			slug: 'beispiel',
 			fetchFn: netzMit({
-				'/stand/voll': () => Promise.resolve(json({ slug: 'beispiel', sichtbar: false })),
-				'/stand': () => Promise.resolve(json({ slug: 'beispiel' }))
+				'/stand/voll': () => Promise.resolve(json({ slug: 'beispiel', sichtbar: false }))
 			})
 		});
 		expect(await screen.findByText('Der Stand lässt sich gerade nicht laden.')).toBeInTheDocument();
