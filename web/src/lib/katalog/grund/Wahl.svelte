@@ -153,7 +153,7 @@
 	}
 	@media (min-width: 1024px) {
 		.karten {
-			grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+			grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 		}
 	}
 	.karte {

@@ -60,7 +60,7 @@ const DUNKEL_NUR_BLOCK = token(
 );
 const DUNKEL: Token = { ...HELL, ...DUNKEL_NUR_BLOCK };
 /**
- * Etappe 3b, Schalter System/Hell/Dunkel: „Hell“ gewählt (bei jedem System)
+ * Etappe 3b, Wahl „Farben“ (Wie mein PC, Hell, Dunkel): „Hell“ gewählt (bei jedem System)
  * nimmt :root und den Block `[data-theme='hell']`, „Dunkel“ gewählt den Block
  * `[data-theme='dunkel']` über :root. Gleiche Werte, also gleiche Kontraste.
  */
@@ -206,7 +206,7 @@ const THEMEN: [string, Token, 'hell' | 'dunkel'][] = [
 	['dunkel gewählt', DUNKEL_GEWAEHLT, 'dunkel']
 ];
 
-describe('Schalter Hell/Dunkel (Etappe 3b): gewählte Themen haben dieselben Werte', () => {
+describe('Wahl Hell/Dunkel (Etappe 3b): gewählte Themen haben dieselben Werte', () => {
 	it('„Dunkel“ gewählt setzt genau die Token des dunklen Systems', () => {
 		expect(DUNKEL_GEWAEHLT_BLOCK).toEqual(DUNKEL_NUR_BLOCK);
 		expect(Object.keys(DUNKEL_NUR_BLOCK).length).toBeGreaterThan(15);

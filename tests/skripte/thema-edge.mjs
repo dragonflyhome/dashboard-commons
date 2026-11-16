@@ -532,7 +532,7 @@ async function themaPruefen(cdp, system, wahl) {
   await cdp.oeffnen("/");
   await pause(300);
   const m = await cdp.auswerten("window.__thema");
-  k.stopp();
+  // Die Mitschrift der Konsole läuft weiter bis nach dem Besuch von /einstellungen.
   for (const zeitpunkt of ["erstesBild", "geladen", "fertig"]) {
     const w = m?.[zeitpunkt];
     pruefe(
@@ -558,9 +558,10 @@ async function themaPruefen(cdp, system, wahl) {
     `${name}: die Seite Einstellungen zeigt die Wahl`,
     String(gewaehlt),
   );
+  k.stopp();
   pruefe(
     k.fehler.length === 0,
-    `${name}: keine Fehler in der Konsole`,
+    `${name}: keine Fehler in der Konsole (/ und /einstellungen)`,
     k.fehler.join(" | "),
   );
 }
@@ -620,15 +621,28 @@ async function main() {
   await cdp.system("light");
   await speicherSetzen(cdp, {});
   await cdp.oeffnen("/einstellungen");
-  const fokus = await cdp.auswerten(`(() => {
-    const e = document.querySelector('main [role="radio"][aria-checked="true"]');
-    e?.scrollIntoView({ block: 'center' });
-    e?.focus();
-    return (${KARTEN_NAME})(document.activeElement);
+  // Echtes Tab: Fokus auf das letzte bedienbare Element vor der Gruppe, dann
+  // die Tab-Taste. Wohin der Fokus geht, entscheidet der Browser.
+  const davor = await cdp.auswerten(`(() => {
+    const gruppe = document.querySelector('main [role="radiogroup"]');
+    const alle = [...document.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter((e) => e.tabIndex >= 0 && e.getClientRects().length > 0);
+    const vor = alle.filter((e) => gruppe !== null && !gruppe.contains(e) && (e.compareDocumentPosition(gruppe) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
+    const letztes = vor[vor.length - 1];
+    gruppe?.scrollIntoView({ block: 'center' });
+    letztes?.focus();
+    return letztes !== undefined && document.activeElement === letztes;
   })()`);
   pruefe(
+    davor === true,
+    "Fokus steht auf dem Element vor der Gruppe „Farben“",
+    String(davor),
+  );
+  await cdp.taste("Tab", 9);
+  const fokus = await cdp.auswerten(`(${KARTEN_NAME})(document.activeElement)`);
+  pruefe(
     fokus === "Wie mein PC",
-    "Tab-Ziel ist die gewählte Möglichkeit „Wie mein PC“",
+    "Tab vom Element davor geht auf die gewählte Möglichkeit „Wie mein PC“",
     String(fokus),
   );
   await cdp.taste("ArrowRight", 39);

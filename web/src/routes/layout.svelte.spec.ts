@@ -302,8 +302,9 @@ describe('Etappe S2: das Layout wendet die gemerkte Farbwahl an', () => {
 			);
 			expect(medien).toEqual(['not all', 'all']);
 			expect(document.documentElement.getAttribute('data-theme')).toBe('dunkel');
-			// Im Fuß steht nur noch die Fassung: kein Schalter und kein Satz zum Ort.
+			// Im Fuß steht nur noch die Fassung (FassungFuss, Link auf /fassungen): kein Schalter und kein Satz zum Ort.
 			const fuss = document.querySelector('footer');
+			expect(fuss?.querySelector('a[href="/fassungen"]')).not.toBeNull();
 			expect(fuss?.querySelector('[role="radiogroup"]')).toBeNull();
 			expect(fuss?.textContent).not.toContain('läuft nur hier');
 		} finally {

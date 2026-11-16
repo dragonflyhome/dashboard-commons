@@ -46,7 +46,7 @@ describe('Seite Einstellungen: Farben', () => {
 		const gruppe = await screen.findByRole('radiogroup', { name: 'Farben' });
 		expect(gruppe).toBeInTheDocument();
 		const felder = screen.getAllByRole('radio');
-		expect(felder.map((f) => f.getAttribute('aria-labelledby'))).toHaveLength(3);
+		expect(felder.map((f) => f.getAttribute('aria-labelledby'))).not.toContain(null);
 		expect(felder.map((f) => screen.getByRole('radio', { name: namen(f) }))).toEqual(felder);
 		expect(felder.map(namen)).toEqual(['Wie mein PC', 'Hell', 'Dunkel']);
 		expect(await screen.findByRole('radio', { name: 'Dunkel' })).toHaveAttribute(
@@ -86,6 +86,17 @@ describe('Seite Einstellungen: Farben', () => {
 		expect(document.documentElement.getAttribute('data-theme')).toBe('hell');
 		await fireEvent.keyDown(screen.getByRole('radio', { name: 'Hell' }), { key: 'ArrowLeft' });
 		expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+	});
+
+	it('Tab geht nur auf die gewählte Karte: allein sie hat tabIndex 0', async () => {
+		system(false);
+		localStorage.setItem(THEMA_SCHLUESSEL, 'hell');
+		render(Page);
+		await screen.findByRole('radio', { name: 'Hell', checked: true });
+		const reihenfolge = (): number[] => screen.getAllByRole('radio').map((f) => f.tabIndex);
+		expect(reihenfolge()).toEqual([-1, 0, -1]);
+		await fireEvent.click(screen.getByRole('radio', { name: 'Dunkel' }));
+		expect(reihenfolge()).toEqual([-1, -1, 0]);
 	});
 
 	it('S1: die Seite zeigt genau eine Karte je Eintrag der Liste, in ihrer Reihenfolge', () => {
@@ -152,12 +163,14 @@ describe('Seite Einstellungen: Farben', () => {
 		expect(localStorage.getItem(THEMA_SCHLUESSEL)).toBe('hell');
 		expect(zeile).toHaveTextContent('Farben: Hell.');
 		expect(screen.getByRole('radio', { name: 'Hell' })).toHaveAttribute('aria-checked', 'true');
-		// Der Knopf bleibt stehen und ist mit der Tastatur erreichbar: noch einmal, zurück zu Dunkel.
+		// Der Knopf bleibt stehen. Er ist ein echter Knopf: Enter und Leertaste sichert
+		// damit der Browser, jsdom kann das nicht zeigen. Noch einmal, zurück zu Dunkel.
 		const wieder = screen.getByRole('button', { name: 'Rückgängig' });
+		expect(wieder.tagName).toBe('BUTTON');
+		expect(wieder).toHaveAttribute('type', 'button');
 		expect(wieder.tabIndex).toBe(0);
 		wieder.focus();
 		expect(wieder).toHaveFocus();
-		await fireEvent.keyDown(wieder, { key: 'Enter' });
 		await fireEvent.click(wieder);
 		expect(document.documentElement.getAttribute('data-theme')).toBe('dunkel');
 		expect(zeile).toHaveTextContent('Farben: Dunkel.');

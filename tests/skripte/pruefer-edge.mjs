@@ -1838,7 +1838,7 @@ async function main() {
   await cdp.thema("light");
   const k = konsoleMitschreiben(cdp);
 
-  await breitenPruefen(cdp, ["/", "/pc", "/anstehend", "/schluessel", "/hallo", "/vorgaenge", "/daten", "/katalog", "/anleitung", "/zielbild", "/entscheidungen", ...new Set(["/projects/dashboard", ...neu.map((p) => `/projects/${p.slug}`)])]);
+  await breitenPruefen(cdp, ["/", "/pc", "/anstehend", "/schluessel", "/hallo", "/vorgaenge", "/daten", "/katalog", "/einstellungen", "/anleitung", "/zielbild", "/entscheidungen", ...new Set(["/projects/dashboard", ...neu.map((p) => `/projects/${p.slug}`)])]);
   await zeitachsePruefen(cdp, ["/pc", "/", neuSeite, "/projects/dashboard"]);
   await nichtsPruefen(cdp);
   await fehlerseitePruefen(cdp);
