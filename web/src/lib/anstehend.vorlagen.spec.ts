@@ -243,7 +243,12 @@ describe('Gleichwertig mit dem Server vor 3a+: Unter-Dashboard', () => {
 				aktuell: s.frage.aktuell === null ? null : alt(s.frage.aktuell as AnstehendEintrag),
 				weitere: s.frage.weitere
 			},
-			aufgaben: { ...s.aufgaben, offen: s.aufgaben.offen.map((e) => alt(e as AnstehendEintrag)) },
+			// Ohne `sichtbar`: Der alte Server gab es mit, die Ansicht nicht mehr (Aufgaben kommen nur angemeldet).
+			aufgaben: {
+				offen: s.aufgaben.offen.map((e) => alt(e as AnstehendEintrag)),
+				anzahl: s.aufgaben.anzahl,
+				weitere: s.aufgaben.weitere
+			},
 			aktualisierungen: s.aktualisierungen,
 			meldungen: s.meldungen,
 			arbeiten: {

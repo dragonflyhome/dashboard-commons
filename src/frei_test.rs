@@ -218,7 +218,7 @@ fn anfrage(methode: &Method, pfad: &str) -> Request<Body> {
 }
 
 /// Der Zustand mit den Spürhunden, einer Gruppe und dem Testmodul (Slug
-/// `neu-form`, mit erklärten, aber seit E2 wirkungslosen freien Wegen).
+/// `neu-form`, dessen Wege früher frei erklärt waren; seit E3 sind alle geschützt).
 fn zustand_mit_spuerhunden(zweck: &str) -> (AppState, PathBuf) {
     let ordner = inhalt_mit_spuerhunden(zweck);
     std::fs::write(

@@ -220,7 +220,8 @@ async fn schreibende_wege_nur_mit_anmeldung_herkunft_und_64_kib() {
     assert!(!crate::sicherheit::modul_weg("/api/projekte/a/daten/x") && !crate::sicherheit::modul_weg("/api/projekte//x"));
 }
 
-/// Ein Modul mit einem erklärten freien Weg (Etappe B2).
+/// Ein Modul mit Wegen, die früher als frei erklärt waren (Etappe B2); seit E3
+/// gibt es keine freien Wege mehr, alle Modul-Wege brauchen die Anmeldung.
 pub(crate) struct MitFreiemWeg;
 
 impl Modul for MitFreiemWeg {

@@ -939,7 +939,7 @@ export interface StandAnsicht {
 	gesamt: GesamtAnsicht;
 	kurz: KurzAnsicht;
 	frage: { aktuell: AnstehendEintrag | null; weitere: number };
-	aufgaben: { offen: AnstehendEintrag[]; anzahl: number; weitere: number; sichtbar: boolean };
+	aufgaben: { offen: AnstehendEintrag[]; anzahl: number; weitere: number };
 	/** Neueste zuerst, höchstens fünf; ohne Anmeldung leer. */
 	aktualisierungen: Aktualisierung[];
 	meldungen: MeldungsZahlen;
@@ -984,8 +984,7 @@ export function standAnsicht(
 	const aufgaben = {
 		offen: offen.slice(0, STAND_AUFGABEN),
 		anzahl: offen.length,
-		weitere: Math.max(0, offen.length - STAND_AUFGABEN),
-		sichtbar: true
+		weitere: Math.max(0, offen.length - STAND_AUFGABEN)
 	};
 	const arbeiten = {
 		laufen: gruppe(zustand('laeuft'), STAND_ARBEITEN),

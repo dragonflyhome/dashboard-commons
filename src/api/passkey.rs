@@ -1041,4 +1041,28 @@ pub(crate) mod tests {
         let (s, _, _) = schicke(&router_angemeldet(state.clone()), req).await;
         assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
     }
+
+    /// Ohne Datenspeicher antwortet der öffentliche Weg zur Anmeldung mit 503.
+    /// `speicher_satz` nennt Ordner und Grund im Klartext; hinaus geht der Satz
+    /// nur über `AppError` verborgen: kein Profil, kein Kontoname.
+    #[tokio::test]
+    async fn anmelden_beginn_ohne_speicher_ohne_profil() {
+        let b = crate::datenschutz::bekannt();
+        let eigene: String = b.profile.iter().map(|p| format!("{p}{}daten ", std::path::MAIN_SEPARATOR)).collect();
+        let konten: String = b.namen.iter().map(|n| format!("Konto {n}. ")).collect();
+        let satz = format!(r"Zugriff verweigert: C:\Users\beispiel\daten /Users/beispiel/daten /home/beispiel/daten {eigene}{konten}");
+        let app = ohne(&AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), &satz));
+        let (s, _, j) = schicke(&app, post("/api/passkey/anmelden/beginn", serde_json::json!({}), None)).await;
+        assert_eq!((s, j["art"].as_str()), (StatusCode::SERVICE_UNAVAILABLE, Some("speicher-fehlt")), "{j}");
+        let text = j["fehler"].as_str().unwrap();
+        assert!(text.contains(crate::datenschutz::PROFIL_PLATZHALTER), "{text}");
+        for p in &b.profile {
+            assert!(!text.to_lowercase().contains(&p.to_lowercase()), "{text}");
+        }
+        // Namen unter drei Zeichen ersetzt `verbergen` allein nicht (NAME_MINDESTENS).
+        let woerter: Vec<&str> = text.split(|c: char| !c.is_alphanumeric()).collect();
+        for n in b.namen.iter().map(String::as_str).filter(|n| n.chars().count() >= 3).chain(["beispiel"]) {
+            assert!(!woerter.iter().any(|w| w.eq_ignore_ascii_case(n)), "{text}");
+        }
+    }
 }
