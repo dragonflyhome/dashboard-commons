@@ -46,6 +46,8 @@ pub mod git_zwischenspeicher;
 mod gruppen_test;
 pub mod herzschlag;
 pub mod inhalt;
+#[cfg(any(unix, test))]
+pub mod kanal;
 pub mod meldungen;
 pub mod oberflaeche;
 pub mod oeffnen;
