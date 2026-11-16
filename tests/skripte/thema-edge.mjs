@@ -705,6 +705,35 @@ async function main() {
       JSON.stringify(r),
     );
   }
+  console.log("\n== Haken der Karten überdeckt keinen Text ==");
+  // Der Haken steht oben rechts in der Karte; die Karte hält ihm rechts Platz frei.
+  for (const [pfad, auswahl] of [["/einstellungen", "main .karten > .karte"], ["/katalog", "#wahl .karten > .karte"]]) {
+    for (const breite of [360, 1280]) {
+      await cdp.breite(breite);
+      await cdp.oeffnen(pfad);
+      const u = await cdp.auswerten(`(() => {
+        const k = [...document.querySelectorAll('${auswahl}')];
+        k[0]?.scrollIntoView({ block: 'center' });
+        return k.map((e) => {
+          const h = e.querySelector('.haken').getBoundingClientRect();
+          const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+          let s = 0;
+          for (let n = w.nextNode(); n; n = w.nextNode()) {
+            if (n.parentElement.closest('.haken') || !n.textContent.trim()) continue;
+            const rg = document.createRange();
+            rg.selectNodeContents(n);
+            for (const q of rg.getClientRects()) s += Math.max(0, Math.min(q.right, h.right) - Math.max(q.left, h.left)) * Math.max(0, Math.min(q.bottom, h.bottom) - Math.max(q.top, h.top));
+          }
+          return Math.round(s);
+        });
+      })()`);
+      pruefe(
+        Array.isArray(u) && u.length >= 2 && u.every((x) => x === 0),
+        `${pfad}, ${breite} px: der Haken überdeckt keinen Text der Karte`,
+        JSON.stringify(u),
+      );
+    }
+  }
   console.log("\n== Startseite als Spalten ==");
   await cdp.system("light");
   for (const breite of [375, 1280]) {

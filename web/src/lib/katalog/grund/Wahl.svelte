@@ -166,6 +166,8 @@
 		gap: 0.5rem;
 		min-height: 2.75rem;
 		padding: 0.75rem;
+		/* Rechts Platz für den Haken (right 0.6rem plus Zeichen), damit er nie Text der Karte überdeckt. */
+		padding-right: 2rem;
 		/* Der Rand ist immer 3 px breit, damit die Wahl nichts verschiebt;
 		   ungewählt in der Linienfarbe, gewählt kräftig (--text hat auf --card
 		   und --bg mehr als 3:1, kontrast.spec.ts hält das fest). */
