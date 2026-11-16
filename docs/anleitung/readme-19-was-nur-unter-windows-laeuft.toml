@@ -33,4 +33,6 @@ punkte = [
 
 [[block]]
 text = '''
-macOS kommt vollständig ins Basis-Repo; wie, steht im Zielbild (Etappenplan, Abschnitt macOS). Diese Liste wird mit jedem Schritt dorthin kürzer und hier nachgezogen. Für andere Systeme gilt: portieren im eigenen Fork; was unter Windows unverändert bleibt und dort mit Tests prüfbar ist, kann als Merge-Angebot zurückkommen; der Weg steht im Leitfaden für Mitwirkende in der Wurzel des Repos.'''
+macOS kommt vollständig ins Basis-Repo; wie, steht im Zielbild (Etappenplan, Abschnitt macOS). Diese Liste wird mit jedem Schritt dorthin kürzer und hier nachgezogen. Für andere Systeme gilt: portieren im eigenen Fork; was unter Windows unverändert bleibt und dort mit Tests prüfbar ist, kann als Merge-Angebot zurückkommen; der Weg steht im Leitfaden für Mitwirkende in der Wurzel des Repos.
+
+Linux ist zurückgestellt: Der Code unter cfg(unix) übersetzt dort, ist aber ungetestet; es gibt keinen Nachweis für Linux.'''

@@ -109,7 +109,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { antwortAbwarten } from "./cdp-frist.mjs";
 import { beiAbbruch, browserSperren, mitFrist, ohneProjektseiten, portePruefen as portePruefenGemeinsam, inhaltOrt, ohneAnmeldungPruefen, projektSlugs, projektTitel } from "./edge-gemeinsam.mjs";
@@ -1810,7 +1810,8 @@ async function main() {
   mkdirSync(join(ordner, "bin"), { recursive: true });
   mkdirSync(join(ordner, "profil"), { recursive: true });
   copyFileSync(EXE, join(ordner, "bin", "dashboard.exe"));
-  cpSync(INHALT.projects, join(ordner, "repo", "projects"), { recursive: true });
+  // Ohne den Archivbereich: Die Proben sehen nur laufende Projekte.
+  cpSync(INHALT.projects, join(ordner, "repo", "projects"), { recursive: true, filter: (q) => basename(q) !== "_archiv" });
   // Etappe 4d: die Entscheidungen (nur gelesen) für /entscheidungen. Statt
   // des echten docs\zielbild eigene Testdaten mit breiter Tabelle und
   // breitem Beispiel (Blöcke der System-Seiten, Breite bei 360 px).

@@ -166,6 +166,8 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
     befunde.extend(pruefung::pruefe_gruppen(&daten.join("gruppen.toml"), &q.wurzeln()));
     befunde.extend(pruefung::pruefe_pc(&daten.join("pc.toml")));
     befunde.extend(pruefe_entscheidungen(&crate::app::entscheidungen_dir(&erste), &q.wurzeln()));
+    // Entscheidung archivbereich: Archiv ohne Status, Rechenteil im Archiv (server/), archivierte Einzelquelle.
+    befunde.extend(crate::quellen::archiv_befunde(q, &[]).into_iter().map(|(_, b)| b));
     if args.iter().any(|a| a == "--svelte") {
         befunde.extend(scanner::svelte_check(repo, None));
     }
@@ -193,7 +195,8 @@ pub fn pruefe_entscheidungen(ordner: &Path, quellen: &[PathBuf]) -> Vec<Befund> 
     use crate::api::system_seiten as sys;
     let Ok((namen, _)) = sys::toml_namen(ordner) else { return Vec::new() };
     let q = crate::quellen::Quellen::aus_liste(quellen.to_vec());
-    let ist_da = |slug: &str| q.eltern(slug).is_some_and(|e| pruefung::ist_projekt(e, slug));
+    // Ein Projekt im Archivbereich gibt es weiter (Entscheidung archivbereich).
+    let ist_da = |slug: &str| q.eltern_mit_archiv(slug).is_some_and(|e| pruefung::ist_projekt(e, slug));
     let mut befunde = Vec::new();
     for (name, pfad) in namen {
         let datei = format!("docs/entscheidungen/{name}");
@@ -298,6 +301,7 @@ fn lauf_in_mit(dir: &Path, repo_anders: Option<&Path>, args: &[String], zusatz: 
             // data/pc.toml gegen den Vertrag (etwa `cloud_stand`).
             b.extend(pruefung::pruefe_pc(&daten.join("pc.toml")));
             b.extend(pruefe_entscheidungen(&crate::app::entscheidungen_dir(dir), &[dir.to_path_buf()]));
+            b.extend(crate::quellen::archiv_befunde(&crate::quellen::Quellen::ein_ordner(dir.to_path_buf()), &[]).into_iter().map(|(_, b)| b));
             if svelte {
                 b.extend(scanner::svelte_check(repo, None));
             }
@@ -617,7 +621,9 @@ mod tests {
     /// Entscheidung archiv-status: `status = "archiviert"` ist ein
     /// erlaubtes Wort; das Projekt wird weiter geprüft (ohne Fehler). Fehlt
     /// `archiviert_seit`, gibt es einen Hinweis; ein falsches Datum ist ein Fehler,
-    /// `archiviert_seit` ohne Archiv ein Hinweis.
+    /// `archiviert_seit` ohne Archiv ein Hinweis. Außerhalb des Archivbereichs
+    /// kommt der Hinweis mit dem Umzugsbefehl dazu (Entscheidung
+    /// archivbereich), im Archiv nicht.
     #[test]
     fn archiviert_ist_erlaubt() {
         let wurzel = std::env::temp_dir().join(format!("dashboard-pruefe-archiv-{}", std::process::id()));
@@ -631,18 +637,76 @@ mod tests {
         let ohne_datum = mit("status = \"archiviert\"\n");
         let falsches_datum = mit("status = \"archiviert\"\narchiviert_seit = \"1.11.2026\"\n");
         let ohne_archiv = mit("status = \"aktiv\"\narchiviert_seit = \"2026-11-01\"\n");
+        let im_archiv = {
+            let archiv = wurzel.join(crate::quellen::ARCHIV);
+            std::fs::create_dir_all(&archiv).unwrap();
+            std::fs::rename(wurzel.join("ruhig"), archiv.join("ruhig")).unwrap();
+            let kopf = "schema = 3\ntitle = \"Ruhig\"\nstatus = \"archiviert\"\narchiviert_seit = \"2026-11-01\"\nsummary = \"S\"\n";
+            std::fs::write(archiv.join("ruhig/projekt.toml"), kopf).unwrap();
+            pruefung::pruefe_projekt(&archiv, "ruhig")
+        };
         let _ = std::fs::remove_dir_all(&wurzel);
-        assert_eq!(gut, ("0 Fehler, 0 Hinweise\n".to_string(), 0));
+        let umzug = pruefung::satz_ins_archiv("ruhig");
+        // git mv legt den Zielordner nicht an: Beim ersten Archivprojekt fehlt er.
+        let mkdir = umzug.find("mkdir projects/_archiv").expect("zuerst mkdir");
+        assert!(umzug.find("git mv").is_some_and(|mv| mkdir < mv), "{umzug}");
+        assert_eq!(gut, (format!("HINWEIS projects/ruhig/projekt.toml, Zeile 3: {umzug}\n0 Fehler, 1 Hinweis\n"), 0));
+        assert!(im_archiv.is_empty(), "{im_archiv:?}");
         assert_eq!(ohne_datum.1, 0, "{}", ohne_datum.0);
         assert!(
             ohne_datum.0.starts_with("HINWEIS projects/ruhig/projekt.toml, Zeile 3: Das Projekt ist archiviert, aber `archiviert_seit` fehlt.")
-                && ohne_datum.0.ends_with("0 Fehler, 1 Hinweis\n"),
+                && ohne_datum.0.ends_with("0 Fehler, 2 Hinweise\n"),
             "{}",
             ohne_datum.0
         );
         assert_eq!(falsches_datum.1, 1, "{}", falsches_datum.0);
         assert!(falsches_datum.0.contains("Zeile 4: Bei `archiviert_seit` steht „1.11.2026“."), "{}", falsches_datum.0);
         assert!(ohne_archiv.0.contains("`archiviert_seit` gilt nur mit `status = \"archiviert\"`"), "{}", ohne_archiv.0);
+    }
+
+    /// Entscheidung archivbereich: Ein Projekt im Archiv bleibt in den
+    /// Entscheidungen, Gruppen und Schwerpunkten gültig und braucht keinen
+    /// Schwerpunkt. `pruefe --alle` meldet ein Projekt im Archiv ohne Status
+    /// und einen Rechenteil im Archiv als Fehler, mit einer Quelle wie mit mehreren.
+    #[test]
+    fn alle_kennt_das_archiv() {
+        use crate::inhalt::pruefung::{SATZ_ARCHIV_OHNE_STATUS, SATZ_ARCHIV_RECHENTEIL};
+        let inhalt = std::env::temp_dir().join(format!("dashboard-pruefe-archivbereich-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&inhalt);
+        let projekte = inhalt.join("projects");
+        let kopf = |p: &Path, status: &str| {
+            std::fs::create_dir_all(p).unwrap();
+            std::fs::write(p.join("projekt.toml"), format!("schema = 3\ntitle = \"T\"\nstatus = \"{status}\"\nsummary = \"S\"\n")).unwrap();
+        };
+        kopf(&projekte.join("laeuft"), "aktiv");
+        kopf(&projekte.join("_archiv/ruhig"), "archiviert");
+        std::fs::create_dir_all(inhalt.join("data")).unwrap();
+        std::fs::create_dir_all(inhalt.join("docs/entscheidungen")).unwrap();
+        std::fs::create_dir_all(inhalt.join("weitere")).unwrap();
+        std::fs::write(inhalt.join("data/schwerpunkte.toml"), "[[schwerpunkt]]\nname = \"A\"\nreihenfolge = 1\nprojekte = [\"laeuft\", \"ruhig\"]\n").unwrap();
+        std::fs::write(inhalt.join("data/gruppen.toml"), "[[gruppe]]\nslug = \"g\"\ntitel = \"G\"\nteile = [\"laeuft\", \"ruhig\"]\n").unwrap();
+        std::fs::write(inhalt.join("docs/entscheidungen/a.toml"), "thema = \"A\"\nprojekte = [\"ruhig\"]\n").unwrap();
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let a = args(&["--alle", "--ohne-stil"]);
+        let zwei = || crate::quellen::Quellen::aus_liste(vec![projekte.clone(), inhalt.join("weitere")]);
+        let gut = lauf_in(&projekte, Some(&repo), &a);
+        let gut_zwei = lauf_quellen(&zwei(), &repo, &a);
+        // Falsch im Archiv: ohne Status, und mit Rechenteil.
+        kopf(&projekte.join("_archiv/still"), "aktiv");
+        std::fs::create_dir_all(projekte.join("_archiv/ruhig/server")).unwrap();
+        let rot = lauf_in(&projekte, Some(&repo), &a);
+        let rot_zwei = lauf_quellen(&zwei(), &repo, &a);
+        let _ = std::fs::remove_dir_all(&inhalt);
+        for (text, code) in [&gut, &gut_zwei] {
+            assert_eq!(*code, 0, "{text}");
+            assert!(!text.contains("ruhig"), "{text}");
+        }
+        let still = SATZ_ARCHIV_OHNE_STATUS.replace("<slug>", "still");
+        for (text, code) in [&rot, &rot_zwei] {
+            assert_eq!(*code, 1, "{text}");
+            assert!(text.contains(&format!("FEHLER projects/_archiv/still/projekt.toml: {still}")), "{text}");
+            assert!(text.contains(&format!("FEHLER projects/_archiv/ruhig/server: {SATZ_ARCHIV_RECHENTEIL}")), "{text}");
+        }
     }
 
     /// Liegt der Inhalt außerhalb des Code-Repos, liest

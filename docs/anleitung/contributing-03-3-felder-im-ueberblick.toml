@@ -31,14 +31,14 @@ Farben der Status-Punkte (seit Etappe 2c Bedeutungen, siehe Abschnitt „Projekt
 
 [[block]]
 titel = 'Archivieren: status = "archiviert"'
-text = 'Ein Projekt kann ruhen (archiviert). Den Status setzt der Projekt-Chat in projekt.toml; zurück geht es mit status = "aktiv". Ein archiviertes Projekt'
+text = 'Ein Projekt kann ruhen (archiviert). Den Status setzt der Projekt-Chat in projekt.toml; zurück geht es mit status = "aktiv" (und dem Umzug zurück, siehe „Archivbereich“ unten). Ein archiviertes Projekt'
 
 [[block]]
 punkte = [
   'fehlt in Seitenleiste, Schublade, Startseite, Cockpit, „Anstehend“, Glocke, allen Zählern und Kennzahlen; es gibt keine Meldung und keine Benachrichtigung, und der Live-Kanal nennt es nicht;',
   'behält seine Fragen, Aufgaben, Arbeiten und Meldungen: Sie bleiben gespeichert, zählen nirgends mit und stehen nur auf der Projektseite;',
   'steht in der Archivansicht /projekte/archiviert (Titel, seit wann). Der einzige Weg dorthin ist der Link „Archiv“ am Ende der Projektübersicht auf der Startseite, ohne Zahl und ohne Namen;',
-  'bleibt unter seiner Adresse erreichbar und wird weiter gebaut und geprüft (Bauliste, pruefe); oben auf der Seite steht „Dieses Projekt ist archiviert.“ Der Projekt-Chat kann weiter schreiben; nichts davon meldet sich.',
+  'bleibt unter seiner Adresse erreichbar; oben auf der Seite steht „Dieses Projekt ist archiviert.“ Im Archivbereich wird es weder gebaut noch geprüft, mit dem Status allein noch beides (Bauliste, pruefe). Der Projekt-Chat kann weiter schreiben; nichts davon meldet sich.',
 ]
 
 [[block]]
@@ -47,10 +47,28 @@ Sicherheitsregel für Fristen: Eine Frage, Aufgabe oder Arbeit mit echter Frist 
 
 „Seit wann“ in der Archivansicht kommt aus archiviert_seit = "JJJJ-MM-TT" in projekt.toml (bitte zusammen mit dem Status setzen; fehlt es, gibt pruefe einen HINWEIS, und es gilt das Änderungsdatum von projekt.toml). Ein falsches Datum ist ein FEHLER; archiviert_seit bei einem anderen Status ein HINWEIS.
 
-Groß und klein ist beim Wort archiviert egal. Ein Tippfehler im Kopf eines archivierten Projekts hebt das Archiv nicht auf: Solange sich der Kopf nicht lesen lässt, gilt der zuletzt bekannte Status (startet der Dienst mit kaputtem Kopf, zählt die Zeile status = …). Das Projekt steht dann auch nicht unter „Seiten mit Fehlern“; den Fehler nennt nur seine eigene Seite (und pruefe).
+Groß und klein ist beim Wort archiviert egal. Ein Tippfehler im Kopf eines archivierten Projekts hebt das Archiv nicht auf: Solange sich der Kopf nicht lesen lässt, gilt der zuletzt bekannte Status (startet der Dienst mit kaputtem Kopf, zählt die Zeile status = …). Das Projekt steht dann auch nicht unter „Seiten mit Fehlern“; den Fehler nennt nur seine eigene Seite (und die Prüfung je Projekt im Dienst, /api/pruefung/<slug>).
 
 „Jetzt für dich“ auf der Startseite zeigt die nahen Fristen im Archiv als eigene Zeile mit demselben Satz, ohne Projekttitel; Tab-Titel und Glocke zählen sie nicht. Vorgänge eines archivierten Projekts (seines Chats und Merge-Anträge für sein Modul) fehlen auf /vorgaenge, in den Zählern, im Verlauf und auf dem Live-Kanal; mit ?fuer=<slug> sieht sein Chat alles.
 
 Zurück auf aktiv: Was in der Zeit des Archivs gespeichert wurde, ist sofort wieder da, auch Meldungen (etwa „Fertig: …“ oder eine Prüfung, die rot ist) in der Glocke, auf einmal.
 
 Für Werkzeuge: /api/projects nennt archivierte Projekte nicht, /api/archiv nur sie. /api/aufgaben, /api/arbeiten, /api/meldungen, /api/antworten, /api/anstehend und /api/vorgaenge/uebersicht lassen sie ohne ?projekt=<slug> (Vorgänge: ?fuer=<slug>) weg; mit ?projekt=<slug> steht alles da wie sonst.'''
+
+[[block]]
+titel = 'Archivbereich: projects/_archiv/<slug>'
+text = '''
+Die Richtlinie Archiv gilt für ein Projekt, wenn sein Ordner unter projects/_archiv/<slug>/ liegt und status = "archiviert" trägt. Die Lage entscheidet: Ein Projekt im Archivbereich ist archiviert, auch wenn sich sein Kopf gerade nicht lesen lässt. Es bleibt unter seinem Slug auffindbar (Archivansicht, /projects/<slug>, seine Dateien unter assets/) und erscheint sonst nirgends. Ordner, die mit _ beginnen, sind kein Slug; darum lassen Bauliste, Bau, pruefe und Bote den Bereich aus. Projekte im Archiv werden nicht gebaut und nicht von selbst geprüft, auch nicht auf gesperrte Dateien und nicht nach einer Änderung; auf Anfrage prüft der Dienst eines über /api/pruefung/<slug>. Eine eigene Seite.svelte bleibt liegen; die Projektseite zeigt den Standardaufbau.
+
+Umzug ins Archiv: status = "archiviert" und archiviert_seit setzen, dann im Inhalts-Repo die Befehle (git mv legt den Ordner _archiv nicht an; fehlt er, zuerst mkdir projects/_archiv):
+git mv projects/<slug> projects/_archiv/<slug>
+git commit -m "chore: <slug> ins Archiv" -- projects/<slug> projects/_archiv/<slug>
+Der Dienst erkennt den Umzug beim nächsten Blick (höchstens 2 s später), ohne Neustart. Steht status = "archiviert" außerhalb des Archivbereichs, nennt pruefe die Befehle als HINWEIS; bis zum Umzug wird das Projekt weiter gebaut und geprüft.
+
+Zurückholen: git mv projects/_archiv/<slug> projects/<slug>, status = "aktiv" setzen und archiviert_seit entfernen, nur diese Pfade committen, danach dashboard pruefe <slug> laufen lassen und das Ergebnis nennen.
+
+Die Prüfung (/api/pruefung im Dienst und dashboard pruefe --alle) meldet: ein Projekt im Archivbereich ohne status = "archiviert" als FEHLER, ebenso einen Rechenteil im Archiv (Ordner server/, im Dienst auch ein Modul aus kisten.toml), denn er wird nicht gebaut. Verweise auf ein Projekt im Archiv in docs/entscheidungen (projekte = […]), data/gruppen.toml und data/schwerpunkte.toml bleiben gültig. Ist ein archiviertes Projekt selbst eine Inhaltsquelle (ein einzelnes Projekt in [inhalt] projekte), lässt es sich nicht verschieben; dann steht dort ein HINWEIS, es aus [inhalt] projekte zu nehmen und seinen Ordner nach projects/_archiv/<slug> einer Inhaltsquelle zu verschieben (sonst fehlt es ganz).
+
+Verlauf: git log --follow folgt einer Datei über den Umzug (git log --follow projects/_archiv/<slug>/projekt.toml), nicht einem Ordner; für den ganzen Ordner beide Pfade nennen: git log -- projects/<slug> projects/_archiv/<slug>.
+
+Der Archivbereich ist eine Ordnung im Dashboard und für die Chats, kein Schutz auf Ebene des Betriebssystems: Die Dateisuche des Systems findet die Dateien weiter.'''

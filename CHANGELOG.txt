@@ -14,6 +14,31 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Archivbereich projects/_archiv/<slug>: Ein archiviertes Projekt zieht per
+  git mv dorthin. Der Dienst erkennt den Umzug ohne Neustart; das Projekt
+  steht unter seinem Slug in der Archivansicht, seine Seite und seine
+  Dateien bleiben erreichbar. Verweise in Entscheidungen, Gruppen und
+  Schwerpunkten bleiben gültig. Lässt sich projects/_archiv nicht lesen,
+  bleiben seine Projekte mit dem letzten Stand, und die PC-Seite meldet
+  den Ordner. Ohne archivierte Projekte bleibt alles wie in 0.18.0.
+- Prüfung (Dienst und dashboard pruefe --alle): Ein Projekt im
+  Archivbereich ohne status = "archiviert" und ein Rechenteil im Archiv
+  sind Fehler; ein archiviertes Projekt, das selbst eine Inhaltsquelle
+  ist, gibt einen Hinweis.
+
+Geändert
+- Ein vorhandener Ordner projects/_archiv gilt jetzt als Archivbereich;
+  Ordner darin brauchen status = "archiviert".
+- Projekte im Archivbereich werden nicht gebaut und nicht von selbst
+  geprüft, auch nicht auf gesperrte Dateien und nicht nach einer Änderung.
+- status = "archiviert" außerhalb des Archivbereichs gibt einen Hinweis mit
+  den Befehlen für den Umzug.
+- Vor-Push.ps1: Im Projekt-Repo zählt projects/_archiv/<slug>/** zum
+  eigenen Slug; _archiv ist dort nie selbst ein Slug. Im Code-Repo ist ein
+  allgemeiner Projektname auch als projects/_archiv/<slug> ein Fund.
+- Anleitung: Linux ist zurückgestellt und ungetestet.
+
 0.18.0 - 2026-11-16
 -------------------
 

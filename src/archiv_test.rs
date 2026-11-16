@@ -533,3 +533,95 @@ async fn vorgaenge_eines_archivierten_projekts_sind_still() {
     let text = sse_text(tokio_stream::StreamExt::take(strom, 1)).await;
     assert!(!text.contains("ruhig"), "{text}");
 }
+
+/// Archivbereich (Entscheidung archivbereich), Punkte 1 und 3: Der Ordner
+/// zieht bei laufendem Dienst nach `projects/_archiv/<slug>` (die Wirkung von
+/// `git mv` auf der Platte: ein Umbenennen; git selbst läuft in Tests nicht).
+/// Danach steht das Projekt im Archiv, seine Seite und seine Dateien gehen,
+/// in der Projektliste fehlt es; `_archiv` ist nie selbst ein Projekt. Zurück
+/// mit Status aktiv: wieder in der Liste.
+#[tokio::test]
+async fn umzug_ins_archiv_bei_laufendem_dienst() {
+    let p = Probe::neu("umzug");
+    std::fs::create_dir_all(p.ruhig().join("assets")).unwrap();
+    std::fs::write(p.ruhig().join("assets").join("plan.txt"), "Kistenplan").unwrap();
+    let state = p.zustand();
+    lies(&state, "/api/archiv").await;
+    let archiv = p.wurzel.join("projects").join("_archiv");
+    std::fs::create_dir_all(&archiv).unwrap();
+    std::fs::rename(p.ruhig(), archiv.join("ruhig")).unwrap();
+
+    let (v, _) = lies(&state, "/api/archiv").await;
+    let archiviert: Vec<&str> = v["projekte"].as_array().unwrap().iter().map(|x| x["slug"].as_str().unwrap()).collect();
+    assert_eq!(archiviert, ["ruhig"], "{v}");
+    let (v, _) = lies(&state, "/api/projects/ruhig").await;
+    assert_eq!((v["title"].as_str(), v["status"].as_str()), (Some(TITEL), Some("archiviert")));
+    let (status, _) = roh(&state, get("/projects/ruhig")).await;
+    assert_ne!(status, StatusCode::NOT_FOUND, "die Projektseite /projects/ruhig ist eine Seite (200, ohne gebaute Oberfläche 503)");
+    let (v, text) = lies(&state, "/api/projects").await;
+    assert_eq!(slugs(&v), ["laufend"]);
+    assert!(!text.contains("_archiv"), "{text}");
+    // Punkt 3: Dateien des Archivprojekts über seinen echten Elternordner.
+    let (status, text) = roh(&state, get("/projects/ruhig/assets/plan.txt")).await;
+    assert_eq!((status, text.as_str()), (StatusCode::OK, "Kistenplan"));
+    // Auch mit einer streunenden projects/projekt.toml (wie der Bestand: projects/ bleibt ein Ordner mit Projekten).
+    let streunend = p.wurzel.join("projects").join("projekt.toml");
+    std::fs::write(&streunend, "schema = 3\ntitle = \"Verirrt\"\nstatus = \"aktiv\"\n").unwrap();
+    let (status, _) = roh(&state, get("/projects/ruhig/assets/plan.txt")).await;
+    std::fs::remove_file(&streunend).unwrap();
+    assert_eq!(status, StatusCode::OK, "streunende projekt.toml");
+    let (status, _) = roh(&state, get("/projects/_archiv/assets/plan.txt")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "_archiv ist kein Slug");
+    let (status, _) = roh(&state, get("/projects/ruhig/assets/..%2F..%2Flaufend%2Fprojekt.toml")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "kein Ausbruch aus dem Archiv");
+    let (status, _) = roh(&state, get("/api/pruefung/ruhig")).await;
+    assert_eq!(status, StatusCode::OK, "die Prüfung je Projekt findet das Archivprojekt");
+
+    // Zurück mit Status aktiv.
+    std::fs::rename(archiv.join("ruhig"), p.ruhig()).unwrap();
+    p.status("aktiv");
+    let (v, _) = lies(&state, "/api/projects").await;
+    assert_eq!(slugs(&v), ["laufend", "ruhig"]);
+    let (v, _) = lies(&state, "/api/archiv").await;
+    assert!(v["projekte"].as_array().unwrap().is_empty(), "{v}");
+}
+
+/// Archivbereich, Punkte 4 und 6: Eine Änderung im Archiv löst keinen
+/// Prüflauf aus (keine Meldung, auch bei kaputtem Kopf); /api/pruefung nennt
+/// das Archivprojekt nur mit den Befunden des Archivs: ohne Status
+/// archiviert ein Fehler, mit Rechenteil ein Fehler. Ein archiviertes Projekt
+/// außerhalb bekommt den Hinweis mit dem Umzugsbefehl.
+#[tokio::test]
+async fn pruefung_laesst_das_archiv_aus_und_meldet_seine_befunde() {
+    let p = Probe::neu("pruefung");
+    let state = p.zustand();
+    // Außerhalb: der Hinweis mit beiden Befehlen.
+    let (v, _) = lies(&state, "/api/pruefung").await;
+    let ruhig = v["projekte"].as_array().unwrap().iter().find(|x| x["slug"] == "ruhig").unwrap_or_else(|| panic!("{v}")).clone();
+    let hinweis =
+        ruhig["befunde"].as_array().unwrap().iter().find(|b| b["text"].as_str().unwrap().contains("Archivbereich")).unwrap_or_else(|| panic!("{ruhig}"));
+    assert_eq!(hinweis["schwere"], "hinweis");
+    let text = hinweis["text"].as_str().unwrap();
+    assert!(text.contains("git mv projects/ruhig projects/_archiv/ruhig") && text.contains("-- projects/ruhig projects/_archiv/ruhig"), "{text}");
+
+    let archiv = p.wurzel.join("projects").join("_archiv");
+    std::fs::create_dir_all(&archiv).unwrap();
+    std::fs::rename(p.ruhig(), archiv.join("ruhig")).unwrap();
+    let (v, text) = lies(&state, "/api/pruefung").await;
+    assert!(!text.contains("ruhig"), "im Archiv mit Status: kein Befund, kein Slug: {v}");
+
+    // Kaputter Kopf im Archiv: kein Prüflauf, keine Meldung.
+    std::fs::write(archiv.join("ruhig").join("projekt.toml"), "schema = 3\ntitle = \"T\"\nstatus = \"aktiv\"\ntitel = \"x\"\n").unwrap();
+    crate::meldungen::pruefung_lauf(&state, "ruhig", jetzt()).await;
+    let (v, _) = lies(&state, "/api/meldungen?projekt=ruhig").await;
+    assert!(v["meldungen"].as_array().unwrap().is_empty(), "{v}");
+    // Status nicht archiviert, dazu ein Rechenteil: je ein Fehler.
+    std::fs::write(archiv.join("ruhig").join("projekt.toml"), "schema = 3\ntitle = \"T\"\nstatus = \"aktiv\"\n").unwrap();
+    std::fs::create_dir_all(archiv.join("ruhig").join("server")).unwrap();
+    let (v, _) = lies(&state, "/api/pruefung").await;
+    let ruhig = v["projekte"].as_array().unwrap().iter().find(|x| x["slug"] == "ruhig").unwrap_or_else(|| panic!("{v}")).clone();
+    let texte: Vec<(&str, &str)> = ruhig["befunde"].as_array().unwrap().iter().map(|b| (b["schwere"].as_str().unwrap(), b["text"].as_str().unwrap())).collect();
+    assert_eq!(texte.len(), 2, "{texte:?}");
+    assert!(texte.contains(&("fehler", &crate::inhalt::pruefung::SATZ_ARCHIV_OHNE_STATUS.replace("<slug>", "ruhig"))), "{texte:?}");
+    assert!(texte.contains(&("fehler", crate::inhalt::pruefung::SATZ_ARCHIV_RECHENTEIL)), "{texte:?}");
+}
