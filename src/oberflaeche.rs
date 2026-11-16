@@ -35,8 +35,22 @@ pub fn mime_for(path: &std::path::Path) -> &'static str {
 /// (ihre Unteradressen sind 404), seit der Freigabe in einem Schritt fassungen.
 /// Seit Etappe S2 einstellungen (die Farbwahl; verlangt die Anmeldung wie jede
 /// Seite, die nicht in der Liste der öffentlichen Wege steht).
-pub const SEITEN: &[&str] =
-    &["", "anstehend", "pc", "schluessel", "hallo", "vorgaenge", "daten", "anmelden", "katalog", "anleitung", "zielbild", "entscheidungen", "fassungen", "einstellungen"];
+pub const SEITEN: &[&str] = &[
+    "",
+    "anstehend",
+    "pc",
+    "schluessel",
+    "hallo",
+    "vorgaenge",
+    "daten",
+    "anmelden",
+    "katalog",
+    "anleitung",
+    "zielbild",
+    "entscheidungen",
+    "fassungen",
+    "einstellungen",
+];
 
 /// Die Unterseiten von `/katalog` (Adresse nach `katalog/`). Etappe 3b-2
 /// (Auflage aus der Abnahme 3b): Vorher galt unter `/katalog/…` jede Adresse
