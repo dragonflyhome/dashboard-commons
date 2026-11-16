@@ -218,7 +218,7 @@ fn anfrage(methode: &Method, pfad: &str) -> Request<Body> {
 }
 
 /// Der Zustand mit den Spürhunden, einer Gruppe und dem Testmodul (Slug
-/// `neu-form`, mit erklärten, aber seit E2 wirkungslosen freien Wegen).
+/// `neu-form`, dessen Wege früher frei erklärt waren; seit E3 sind alle geschützt).
 fn zustand_mit_spuerhunden(zweck: &str) -> (AppState, PathBuf) {
     let ordner = inhalt_mit_spuerhunden(zweck);
     std::fs::write(
@@ -566,8 +566,8 @@ async fn prozent_im_pfad_kein_umweg() {
     let state = AppState::fuer_tests(&ordner);
     let frei = router(state.clone());
     let an = router_angemeldet(state.clone());
-    let mut namen: Vec<String> = crate::sicherheit::GESCHUETZTE_DATEIEN.map(String::from).to_vec();
-    namen.extend(["orte", "kanban"].map(String::from));
+    const DATEIEN: [&str; 4] = ["fragen", "fristen", "orte", "kanban"];
+    let namen: Vec<String> = DATEIEN.map(String::from).to_vec();
     let werte = [
         ("{slug}", vec!["spuer".to_string()]),
         ("{name}", namen),
@@ -644,22 +644,24 @@ async fn prozent_im_pfad_kein_umweg() {
     use axum::Extension;
     use axum::extract::{Path as Pfad, State};
     let satz = AppError::anmeldung_noetig().fehler;
-    for name in ["fragen", "fristen", "FRAGEN", "Fristen"] {
-        let res = crate::api::neue_form::daten(State(state.clone()), Pfad(("spuer".to_string(), name.to_string())), None).await;
+    // Seit E3 jede Datei, auch eine ohne persönlichen Inhalt (`kanban` liegt in neu-form).
+    for (slug, name) in [("spuer", "fragen"), ("spuer", "fristen"), ("spuer", "FRAGEN"), ("spuer", "Fristen"), ("neu-form", "kanban")] {
+        let res = crate::api::neue_form::daten(State(state.clone()), Pfad((slug.to_string(), name.to_string())), None).await;
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{name}");
         assert!(res.headers().contains_key("www-authenticate"), "{name}");
         let t = text(res, Duration::from_secs(5)).await;
-        assert!(t.contains(&satz) && !t.contains("SPUERHUND"), "{name}: {t}");
+        assert!(t.contains(&satz) && !t.contains("SPUERHUND") && !t.contains("spalte"), "{name}: {t}");
     }
-    let mit = Some(Extension(crate::anmeldung::Angemeldet));
-    let res = crate::api::neue_form::daten(State(state.clone()), Pfad(("spuer".to_string(), "fristen".to_string())), mit).await;
-    assert_eq!(res.status(), StatusCode::OK);
-    assert!(text(res, Duration::from_secs(5)).await.contains("SPUERHUND-FRIST"));
-    // Die zweite Wand kennt die besonders geschützten Dateien; am Pfad ist seit E2 keine öffentlich.
-    for name in crate::sicherheit::GESCHUETZTE_DATEIEN.into_iter().chain(["kanban", "orte"]) {
+    for (slug, name, inhalt) in [("spuer", "fristen", "SPUERHUND-FRIST"), ("neu-form", "kanban", "zuerst")] {
+        let mit = Some(Extension(crate::anmeldung::Angemeldet));
+        let res = crate::api::neue_form::daten(State(state.clone()), Pfad((slug.to_string(), name.to_string())), mit).await;
+        assert_eq!(res.status(), StatusCode::OK, "{name}");
+        assert!(text(res, Duration::from_secs(5)).await.contains(inhalt), "{name}");
+    }
+    // Die erste Wand: am Pfad ist seit E2 keine Datei öffentlich.
+    for name in DATEIEN {
         assert!(!oeff(&format!("/api/projekte/spuer/daten/{name}")), "{name}");
     }
-    assert!(crate::sicherheit::GESCHUETZTE_DATEIEN.iter().all(|n| crate::sicherheit::datei_geschuetzt(n)) && !crate::sicherheit::datei_geschuetzt("kanban"));
     let _ = std::fs::remove_dir_all(&ordner);
 }
 

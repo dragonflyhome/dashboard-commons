@@ -243,7 +243,12 @@ describe('Gleichwertig mit dem Server vor 3a+: Unter-Dashboard', () => {
 				aktuell: s.frage.aktuell === null ? null : alt(s.frage.aktuell as AnstehendEintrag),
 				weitere: s.frage.weitere
 			},
-			aufgaben: { ...s.aufgaben, offen: s.aufgaben.offen.map((e) => alt(e as AnstehendEintrag)) },
+			// Ohne `sichtbar`: Der alte Server gab es mit, die Ansicht nicht mehr (Aufgaben kommen nur angemeldet).
+			aufgaben: {
+				offen: s.aufgaben.offen.map((e) => alt(e as AnstehendEintrag)),
+				anzahl: s.aufgaben.anzahl,
+				weitere: s.aufgaben.weitere
+			},
 			aktualisierungen: s.aktualisierungen,
 			meldungen: s.meldungen,
 			arbeiten: {
@@ -283,7 +288,6 @@ describe('Unter-Dashboard mit Anmeldung: unterDashboardAnsicht gegen die Vorlage
 				? unterDashboardAnsicht(stand, liste.eintraege, liste.aktualisierungen)
 				: unterDashboardAnsicht(stand);
 		expect(u.angemeldet).toBe(true);
-		expect(u.meldungsZahlen).toBeNull();
 		// Wartet auf dich: Zahl, Aufgaben (die ersten drei wie früher), die eine Frage, Arbeiten für dich.
 		expect(u.wartet.zahl).toBe(a.kurz.wartet_auf_dich);
 		expect(u.wartet.aufgabenZahl).toBe(a.aufgaben.anzahl);

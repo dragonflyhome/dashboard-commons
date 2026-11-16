@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FRIST_MS } from './rueckfall.ts';
 import {
+	FRIST_MS,
 	ZUGANG_ADRESSE,
 	Zugang,
 	antwortOhneZugang,
@@ -78,7 +78,7 @@ describe('Zugang (Etappe 3b: weniger 401 ohne Anmeldung)', () => {
 		}
 	});
 
-	it('fehlt verfällt wie der Rückfall nach FRIST_MS; danach wieder echt', () => {
+	it('fehlt verfällt nach FRIST_MS; danach wieder echt', () => {
 		vi.useFakeTimers();
 		const z = new Zugang();
 		z.setzen('fehlt');

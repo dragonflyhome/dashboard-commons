@@ -607,8 +607,7 @@ fn zustand_wort(z: crate::api::vertrag::Zustand) -> &'static str {
 /// Hotfix Prozent, zweite Wand der Modul-Wege (die erste ist
 /// `sicherheit::anmeldung_pflicht` mit der Positivliste `oeffentlich`, die
 /// keinen Modulweg nennt): ohne `Angemeldet` 401 mit demselben Satz wie die
-/// Schleuse (`bitte_anmelden`), für jede Methode. `Modul::freie_wege` wirkt
-/// seit Schritt E2 nicht mehr.
+/// Schleuse (`bitte_anmelden`), für jede Methode. Kein Modulweg ist öffentlich.
 async fn modul_wand(req: axum::extract::Request, next: axum::middleware::Next) -> axum::response::Response {
     if req.extensions().get::<crate::anmeldung::Angemeldet>().is_none() {
         return crate::api::anmeldung::bitte_anmelden(None);

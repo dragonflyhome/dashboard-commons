@@ -14,7 +14,6 @@ import {
 	type InhaltAenderung,
 	type NachholGrund
 } from './live.svelte.ts';
-import { rueckfall } from './rueckfall.ts';
 import { zugang } from './zugang.ts';
 import type { LiveBereich } from '$vertrag';
 
@@ -122,22 +121,21 @@ describe('Live: nachholen', () => {
 		live.stop();
 	});
 
-	it('offen heißt angemeldet: ein gemerkter Rückfall fällt weg, die Seite lädt neu (3a+)', () => {
+	it('offen heißt angemeldet: Zugang da, ohne Trennung kein Nachholen (Schritt E3: kein Rückfall mehr)', () => {
 		vi.stubGlobal('EventSource', FakeSource);
+		zugang.vergessen();
 		const live = new Live();
 		const gruende: NachholGrund[] = [];
 		live.onNachholen((g) => gruende.push(g));
-		rueckfall.merken('pc-verlauf');
 		live.start();
 		const s = FakeSource.letzte;
 		if (s === null) throw new Error('keine Quelle');
 		s.onopen?.();
-		expect(rueckfall.gemerkt('pc-verlauf')).toBe(false);
-		expect(gruende).toEqual(['angemeldet']);
-		// Ohne Rückfall öffnet der Kanal still.
 		s.onopen?.();
-		expect(gruende).toEqual(['angemeldet']);
+		expect(zugang.stand).toBe('da');
+		expect(gruende).toEqual([]);
 		live.stop();
+		zugang.vergessen();
 	});
 });
 

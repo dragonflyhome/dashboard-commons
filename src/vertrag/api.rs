@@ -1005,8 +1005,8 @@ pub struct Betrieb {
     /// Zustand des Boten: `verbunden` (letzte Anfrage beantwortet),
     /// `getrennt` (Bote vorgesehen, aber nicht erreichbar) oder
     /// `nicht vorgesehen` (ohne Einstellungsdatei, Altweg). `vorgesehen` steht
-    /// nur in [`BetriebFrei`]; der Typ bleibt bis zum Umbau der Oberfläche breit.
-    #[ts(type = "\"verbunden\" | \"getrennt\" | \"vorgesehen\" | \"nicht vorgesehen\"")]
+    /// nur in [`BetriebFrei`].
+    #[ts(type = "\"verbunden\" | \"getrennt\" | \"nicht vorgesehen\"")]
     pub bote: String,
     /// Bei `verbunden`: seit wann; bei `getrennt`: wann er zuletzt antwortete
     /// (RFC 3339, `null` wenn nie). Sonst `null`.
@@ -1015,9 +1015,8 @@ pub struct Betrieb {
     /// (auch im Altweg ohne Einstellungsdatei); `offen: false` heißt also
     /// immer, dass etwas nicht stimmt.
     pub speicher: SpeicherStand,
-    /// Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3); immer
-    /// gesetzt (der Typ bleibt bis zum Umbau der Oberfläche optional).
-    pub sitzung: Option<SitzungsStand>,
+    /// Die Sitzungsabfrage für die Meldung „Bote fehlt“ (Etappe A3).
+    pub sitzung: SitzungsStand,
     /// Der Inhalt im Arbeitsspeicher (Etappe 2d).
     pub inhalt: InhaltStand,
     /// Die Fassung der Oberfläche, aus der gerade ausgeliefert wird: der
@@ -1030,9 +1029,8 @@ pub struct Betrieb {
     /// Ob sich die Ordner lesen lassen, die der Server liest (dieselbe
     /// Prüfung wie beim Start, Hotfix 4d), nur mit kurzem Namen, nie mit Pfad.
     pub ordner: Vec<OrdnerStand>,
-    /// Woher der Server den Inhalt liest (Umzug des Inhalts); immer gesetzt
-    /// (der Typ bleibt bis zum Umbau der Oberfläche optional).
-    pub quellen: Option<QuellenStand>,
+    /// Woher der Server den Inhalt liest (Umzug des Inhalts).
+    pub quellen: QuellenStand,
     /// Kleinkram 2: Störungen im Betrieb, je ein Satz (leer: keine). Bisher:
     /// Der Bote (der Bau-Prüfer) prüft mit einer anderen Fassung des Prüfers
     /// als der Dienst, oder ein älterer Bote nennt keine. Erst nach dem ersten

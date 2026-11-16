@@ -19,13 +19,15 @@
  *
  * Die Schleusen im Server bleiben unverändert; das hier spart Anfragen und
  * entscheidet seit Schritt E2, ob die Seite zur Anmeldung leitet (`+layout.ts`).
- * Wie der Rückfall (`rueckfall.ts`) gilt `fehlt` oder `fremd` höchstens
- * `FRIST_MS`; danach fragt die nächste geschützte Abfrage wieder echt. Öffnet
- * der Live-Kanal (dann ist die Verbindung angemeldet), gilt `da`. Bewusst im
- * Speicher des Moduls: Die Anmeldung mit Passkey lädt die Seite neu.
+ * `fehlt` oder `fremd` gilt höchstens `FRIST_MS`; danach fragt die nächste
+ * geschützte Abfrage wieder echt. Öffnet der Live-Kanal (dann ist die
+ * Verbindung angemeldet), gilt `da`. Bewusst im Speicher des Moduls: Die
+ * Anmeldung mit Passkey lädt die Seite neu.
  */
 import { SATZ_FREMDES_KONTO } from './anmeldung.ts';
-import { FRIST_MS } from './rueckfall.ts';
+
+/** So lange gilt `fehlt` oder `fremd`, in Millisekunden. */
+export const FRIST_MS = 5 * 60_000;
 
 export type Zugangsstand = 'da' | 'fehlt' | 'fremd' | 'unbekannt';
 

@@ -96,12 +96,10 @@ fn projekt_da(b: &Bestand, slug: &str) -> Result<(), AppError> {
 
 /// `GET /api/projekte/<slug>/daten/<name>`, geprüft mit dem Vertrag.
 pub async fn daten(State(state): State<AppState>, Path((slug, name)): Path<(String, String)>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
-    let angemeldet = angemeldet.is_some();
-    // Hotfix Prozent, zweite Wand (bis Schritt E3): Die Schleuse prüft den Pfad, axum
-    // gibt hier den dekodierten Namen. Eine geschützte Datei (`sicherheit::GESCHUETZTE_DATEIEN`)
-    // geht nur mit Anmeldung hinaus; sonst 401 mit demselben Satz wie die Schleuse.
-    if !angemeldet && crate::sicherheit::datei_geschuetzt(&name) {
-        tracing::warn!("Geschützte Datei ohne Anmeldung am Handler abgewiesen");
+    // Zweite Wand hinter der Schleuse (Hotfix Prozent, seit E3 für jede Datei):
+    // ohne Anmeldung 401 mit demselben Satz wie die Schleuse.
+    if angemeldet.is_none() {
+        tracing::warn!("Datei ohne Anmeldung am Handler abgewiesen");
         return super::anmeldung::bitte_anmelden(None);
     }
     daten_lesen(state, slug, name).await.into_response()

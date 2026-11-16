@@ -10,7 +10,6 @@
 	import { live } from '#lib/live.svelte.ts';
 	import { freierKanal } from '#lib/freikanal.svelte.ts';
 	import { fmtBytes, fmtUptime } from '#lib/format.ts';
-	import { VOLUME_PLATZHALTER } from '#lib/pfade.ts';
 	import {
 		backupVerdict,
 		benutzerdaten,
@@ -75,7 +74,7 @@
 	const plattenLabel = $derived.by(() => {
 		if (!disk) return '';
 		const ort = disk.mount.replace('\\', '');
-		if (!disk.name || disk.name === VOLUME_PLATZHALTER) return `Platte ${ort}`;
+		if (!disk.name) return `Platte ${ort}`;
 		return ort === `/Volumes/${disk.name}` ? `Platte ${disk.name}` : `Platte ${disk.name} (${ort})`;
 	});
 	const uptime = $derived(tick?.uptime_secs ?? report.snapshot.uptime_secs);

@@ -156,8 +156,6 @@ impl VerlaufHinweis {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum VerlaufHinweisArt {
-    /// Ohne Anmeldung fehlen Starts, Meldungen und Vorgänge.
-    OhneAnmeldung,
     /// Starts und Update-Ereignisse gibt es erst ab einem Datum.
     BeginntAb,
     /// Der Datenspeicher ist nicht offen.

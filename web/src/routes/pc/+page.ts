@@ -8,8 +8,7 @@ import type { PageLoad } from './$types';
  * geschützt) und der Verlauf (`/api/pc/verlauf/voll`, geschützt, Hotfix 3a-1)
  * nebeneinander. Fehlt die Windows-Anmeldung, ist `benutzer` `null` mit
  * `grund: 'anmeldung'`; die Seite zeigt dann den Hinweis statt einer
- * Fehlerseite. Der Verlauf kommt dann vom freien Weg ohne Starts, Meldungen
- * und Vorgänge (`ohneAnmeldung`, mit ruhigem Hinweis).
+ * Fehlerseite; der Verlauf zeigt dann seinen Fehlersatz.
  */
 export const load: PageLoad = async ({ fetch, depends }) => {
 	// Live-Lücken: eigene Schlüssel für Benutzer-Daten und Verlauf (Ereignisse

@@ -530,9 +530,9 @@ impl AppState {
     }
 
     /// Satz für den Inhaber, wenn der Datenspeicher fehlt: nennt den Sicherungsordner
-    /// (als `%USERPROFILE%\…`) und den ursprünglichen Grund.
+    /// im Klartext und den ursprünglichen Grund. Als `AppError` geht er verborgen hinaus.
     pub fn speicher_satz(&self) -> String {
-        let ordner = speicher::anzeige_pfad(&self.sicherungs_ordner());
+        let ordner = self.sicherungs_ordner().display().to_string();
         let grund = self.speicher_fehler.as_deref().unwrap_or("Er wurde beim Start nicht geöffnet.");
         format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {ordner}. {grund}")
     }

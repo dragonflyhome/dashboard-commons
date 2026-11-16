@@ -184,7 +184,8 @@ mod tests {
 
     /// Auflage aus der Abnahme 2a: ohne Datenspeicher zeigt /api/daten rot mit
     /// einem Satz, der den Sicherungsordner nennt. Schritt E1: Ort und Ordner
-    /// im Klartext (geschützt); der Satz bleibt wie jede Fehlerantwort verborgen.
+    /// im Klartext (geschützt); E3: auch der Satz in `fehler` (die 503-Antwort
+    /// desselben Zustands bleibt als Fehlerantwort verborgen).
     #[tokio::test]
     async fn bericht_ohne_speicher_nennt_den_sicherungsordner() {
         // Ein erfundenes Profil, das `datenschutz::verbergen` immer ersetzen würde.
@@ -204,8 +205,10 @@ mod tests {
         let ordner = state.sicherungs_ordner().display().to_string();
         assert!(ordner.starts_with(&profil), "{ordner}");
         assert_eq!(v["sicherungs_ordner"], ordner.as_str());
-        let verborgen = crate::speicher::anzeige_pfad(&state.sicherungs_ordner());
-        assert_eq!(v["fehler"].as_str().unwrap(), format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {verborgen}. {SATZ}"));
+        assert_eq!(v["fehler"].as_str().unwrap(), format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {ordner}. {SATZ}"));
+        // Die 503-Antwort desselben Zustands ist eine Fehlerantwort und bleibt verborgen.
+        let (status, body) = lesen(router(state).oneshot(get("/api/daten/export")).await.unwrap()).await;
+        assert!(status == StatusCode::SERVICE_UNAVAILABLE && body.contains("%USERPROFILE%") && !body.contains(NAME), "{body}");
     }
 
     /// Ohne Datenspeicher: 503 als JSON auf allen anderen Daten-Wegen.

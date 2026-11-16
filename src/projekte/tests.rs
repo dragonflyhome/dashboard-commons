@@ -220,7 +220,8 @@ async fn schreibende_wege_nur_mit_anmeldung_herkunft_und_64_kib() {
     assert!(!crate::sicherheit::modul_weg("/api/projekte/a/daten/x") && !crate::sicherheit::modul_weg("/api/projekte//x"));
 }
 
-/// Ein Modul mit einem erklärten freien Weg (Etappe B2).
+/// Ein Modul mit Wegen, die früher als frei erklärt waren (Etappe B2); seit E3
+/// gibt es keine freien Wege mehr, alle Modul-Wege brauchen die Anmeldung.
 pub(crate) struct MitFreiemWeg;
 
 impl Modul for MitFreiemWeg {
@@ -236,19 +237,15 @@ impl Modul for MitFreiemWeg {
             .route("/stufe/{nr}", get(|| async { Json(json!({ "stufe": 1 })) }))
             .route("/geheim", get(|| async { Json(json!({ "titel": "nur mit Anmeldung" })) }))
     }
-    fn freie_wege(&self) -> &'static [&'static str] {
-        &["/zahlen", "/stufe/{nr}"]
-    }
 }
 
-/// Modul-Wege sind geschützt, auch GET; seit Schritt E2 auch die Wege, die
-/// ein Modul in `freie_wege` erklärt (die Methode wirkt nicht mehr).
+/// Modul-Wege sind geschützt, auch GET, ohne Ausnahme (früher erklärte ein
+/// Modul hier freie Wege; seit E2 ohne Wirkung, seit E3 gibt es die Methode nicht).
 #[tokio::test]
 async fn modul_wege_geschuetzt_auch_erklaerte() {
     let state = zustand_mit(vec![eintrag(Probe), eintrag(MitFreiemWeg)]);
     let frei = router(state.clone());
     let an = router_angemeldet(state.clone());
-    assert_eq!(MitFreiemWeg.freie_wege(), ["/zahlen", "/stufe/{nr}"], "erklärt, aber ohne Wirkung");
     for pfad in [
         "/api/projekte/neu-form/x/zahlen",
         "/api/projekte/neu-form/x/stufe/2",

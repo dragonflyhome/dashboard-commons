@@ -67,15 +67,18 @@ export function eingabeGeaendert(doc: Document): boolean {
 /**
  * Erscheint der haftende Hinweis oder das Fehlerbild: nach dem Zeichnen das
  * Element mit dem Fokus ins Bild holen (scroll-padding hält es über dem
- * Hinweis), ohne den Fokus zu bewegen. Ohne Fokus (body) rollt nichts: Mit
- * scroll-padding risse body.scrollIntoView die Seite nach oben. jsdom kennt
- * scrollIntoView nicht.
+ * Hinweis), ohne den Fokus zu bewegen. Ohne Fokus (body) holt es den
+ * haftenden Hinweis (`.haftend`) selbst ins Bild: Unten in der Seite greift
+ * sticky dort nicht. body rollt nie (mit scroll-padding risse
+ * body.scrollIntoView die Seite nach oben), der Fokus bleibt, wo er ist.
+ * jsdom kennt scrollIntoView nicht.
  */
 export async function fokusZeigen(): Promise<void> {
 	await tick();
-	const el = document.activeElement;
-	if (!el || el === document.body || el === document.documentElement) return;
-	if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
+	const fokus = document.activeElement;
+	const ohne = !fokus || fokus === document.body || fokus === document.documentElement;
+	const el = ohne ? document.querySelector('.haftend') : fokus;
+	if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' });
 }
 
 /** Offen für den Fall einer fehlenden Anmeldung: wie beim Neuladen oder ein geändertes Feld. */

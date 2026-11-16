@@ -939,7 +939,7 @@ export interface StandAnsicht {
 	gesamt: GesamtAnsicht;
 	kurz: KurzAnsicht;
 	frage: { aktuell: AnstehendEintrag | null; weitere: number };
-	aufgaben: { offen: AnstehendEintrag[]; anzahl: number; weitere: number; sichtbar: boolean };
+	aufgaben: { offen: AnstehendEintrag[]; anzahl: number; weitere: number };
 	/** Neueste zuerst, höchstens fünf; ohne Anmeldung leer. */
 	aktualisierungen: Aktualisierung[];
 	meldungen: MeldungsZahlen;
@@ -962,70 +962,37 @@ function gruppe(eintraege: AnstehendEintrag[], hoechstens: number): ArbeitsGrupp
 }
 
 /**
- * Das Unter-Dashboard aus dem Stand des Servers. Mit Anmeldung (`eintraege`
- * aus der Liste oder `stand.eintraege`) ordnet, wählt und zählt diese
- * Funktion; ohne Einträge (`stand.sichtbar` falsch, seit Schritt E2 nicht
- * mehr vom Server) zeigt sie keine Einträge und nur Nullen.
+ * Das Unter-Dashboard aus dem Stand des Servers: ordnet, wählt und zählt die
+ * Einträge (`eintraege` aus der Liste, sonst `stand.eintraege`). Der Stand
+ * kommt seit Schritt E2 nur mit Anmeldung, `stand.sichtbar` ist immer wahr.
  */
 export function standAnsicht(
 	stand: ProjektStand,
 	eintraege: readonly AnstehendEintrag[] | null = null,
 	aktualisierungen: readonly Aktualisierung[] | null = null
 ): StandAnsicht {
-	const roh = eintraege ?? (stand.sichtbar ? stand.eintraege : null);
-	const akt = aktualisierungen ?? (stand.sichtbar ? stand.aktualisierungen : null);
-	const leer: ArbeitsGruppe = { eintraege: [], weitere: 0 };
-	let kurz: KurzAnsicht;
-	let frage: StandAnsicht['frage'] = { aktuell: null, weitere: 0 };
-	let aufgaben: StandAnsicht['aufgaben'];
-	let arbeiten: StandAnsicht['arbeiten'];
-	let meldungen: MeldungsZahlen;
-	if (roh !== null) {
-		const z = standZahlen(roh, akt ?? [], stand.fristen ?? [], stand.fertig_7_tage ?? 0);
-		const auswahl = ordnen(auswaehlen(roh));
-		const art = (a: EintragsArt): AnstehendEintrag[] => auswahl.filter((e) => e.art === a);
-		const zustand = (w: string): AnstehendEintrag[] =>
-			auswahl.filter((e) => e.art === 'arbeit' && e.zustand === w);
-		const aktuell = art('frage')[0] ?? null;
-		frage = { aktuell, weitere: aktuell === null ? 0 : z.fragen - 1 };
-		const offen = art('aufgabe');
-		aufgaben = {
-			offen: offen.slice(0, STAND_AUFGABEN),
-			anzahl: offen.length,
-			weitere: Math.max(0, offen.length - STAND_AUFGABEN),
-			sichtbar: true
-		};
-		arbeiten = {
-			laufen: gruppe(zustand('laeuft'), STAND_ARBEITEN),
-			wartet: gruppe(zustand('wartet'), STAND_ARBEITEN),
-			als_naechstes: gruppe(zustand('als-naechstes'), STAND_ARBEITEN)
-		};
-		kurz = { ...kurzAus(z), frist_bald_tage: stand.frist_bald_tage };
-		meldungen = akt === null ? { neu: 0, gesamt: 0 } : z.meldungen;
-	} else {
-		const z: StandZahlen = {
-			wartet_auf_dich: 0,
-			aufgaben: 0,
-			fragen: 0,
-			laeuft: 0,
-			wartet: 0,
-			als_naechstes: 0,
-			fertig_7_tage: 0,
-			meldungen: { neu: 0, gesamt: 0 },
-			naechste_frist: null,
-			tage_bis: null,
-			frist_stufe: null
-		};
-		// Ohne Einträge (Grenze aus 7b): nur Nullen.
-		aufgaben = { offen: [], anzahl: z.aufgaben, weitere: 0, sichtbar: false };
-		arbeiten = {
-			laufen: { ...leer, weitere: z.laeuft },
-			wartet: { ...leer, weitere: z.wartet },
-			als_naechstes: { ...leer, weitere: z.als_naechstes }
-		};
-		kurz = { ...kurzAus(z), frist_bald_tage: stand.frist_bald_tage };
-		meldungen = z.meldungen;
-	}
+	const roh = eintraege ?? stand.eintraege;
+	const akt = aktualisierungen ?? stand.aktualisierungen;
+	const z = standZahlen(roh, akt, stand.fristen ?? [], stand.fertig_7_tage ?? 0);
+	const auswahl = ordnen(auswaehlen(roh));
+	const art = (a: EintragsArt): AnstehendEintrag[] => auswahl.filter((e) => e.art === a);
+	const zustand = (w: string): AnstehendEintrag[] =>
+		auswahl.filter((e) => e.art === 'arbeit' && e.zustand === w);
+	const aktuell = art('frage')[0] ?? null;
+	const frage = { aktuell, weitere: aktuell === null ? 0 : z.fragen - 1 };
+	const offen = art('aufgabe');
+	const aufgaben = {
+		offen: offen.slice(0, STAND_AUFGABEN),
+		anzahl: offen.length,
+		weitere: Math.max(0, offen.length - STAND_AUFGABEN)
+	};
+	const arbeiten = {
+		laufen: gruppe(zustand('laeuft'), STAND_ARBEITEN),
+		wartet: gruppe(zustand('wartet'), STAND_ARBEITEN),
+		als_naechstes: gruppe(zustand('als-naechstes'), STAND_ARBEITEN)
+	};
+	const kurz: KurzAnsicht = { ...kurzAus(z), frist_bald_tage: stand.frist_bald_tage };
+	const meldungen = z.meldungen;
 	const { grund, ...gesamt } = stand.gesamt;
 	return {
 		slug: stand.slug,
@@ -1036,7 +1003,7 @@ export function standAnsicht(
 		kurz,
 		frage,
 		aufgaben,
-		aktualisierungen: akt === null ? [] : aktualisierungenWaehlen(akt),
+		aktualisierungen: aktualisierungenWaehlen(akt),
 		meldungen,
 		arbeiten,
 		notizen: stand.notizen,
@@ -1112,32 +1079,30 @@ export interface ArbeitsGruppeZeile {
 export interface UnterDashboardAnsicht {
 	/** `null`: kein Stand (Projekt unbekannt, kein Netz). */
 	stand: StandAnsicht | null;
-	/** Mit Anmeldung (Einträge mit Titeln sind da). */
+	/** Einträge da (mit Titeln). */
 	angemeldet: boolean;
-	/** Ausgewählt (eine Frage je Projekt) und geordnet; ohne Anmeldung leer. */
+	/** Ausgewählt (eine Frage je Projekt) und geordnet; ohne Einträge leer. */
 	eintraege: AnstehendEintrag[];
-	/** Neueste zuerst, höchstens fünf; ohne Anmeldung leer. */
+	/** Neueste zuerst, höchstens fünf; ohne Einträge leer. */
 	aktualisierungen: Aktualisierung[];
 	/** Ungelesene Meldungen, die nicht unter den fünf stehen (damit jeder Anker ein Ziel hat). */
 	weitereMeldungen: AnstehendEintrag[];
-	/** Nur im Zweig ohne Anmeldung, seit Schritt E2 toter Code (fällt in E3). */
-	meldungsZahlen: MeldungsZahlen | null;
 	/** Alle ungelesenen Meldungen des Projekts, nicht nur die angezeigten fünf. */
 	ungelesen: number;
 	/** Karte „Wartet auf dich“. */
 	wartet: {
 		zahl: number;
-		/** Ohne Anmeldung nur die Zahl der Aufgaben. */
+		/** Die Zahl der Aufgaben, die auf dich warten. */
 		aufgabenZahl: number;
 		aufgaben: AnstehendEintrag[];
 		fragen: AnstehendEintrag[];
 		arbeiten: AnstehendEintrag[];
 	};
-	/** Karte „Arbeiten“: nur Gruppen mit Einträgen oder einer Zahl. */
+	/** Karte „Arbeiten“: nur Gruppen mit Einträgen. */
 	arbeitsGruppen: ArbeitsGruppeZeile[];
 	/** Karte „Fristen“: die Einträge, unter denen die Frist steht. */
 	fristKandidaten: AnstehendEintrag[];
-	/** Karte „Aktualisierungen“: Titel mit Anmeldung, sonst nur die Zahlen. */
+	/** Karte „Aktualisierungen“: es gibt Aktualisierungen oder weitere Meldungen. */
 	hatAktualisierungen: boolean;
 	/** Ob die Reihe überhaupt etwas zu zeigen hat (Notizen kommen nur mit dem Stand). */
 	zeigen: boolean;
@@ -1150,88 +1115,61 @@ const ARBEITS_GRUPPEN: readonly (readonly [string, string, keyof StandAnsicht['a
 ];
 
 /**
- * Das Unter-Dashboard aus den Antworten des Servers: `/stand` (oder
- * `/stand/voll`), mit Anmeldung dazu die Einträge des Projekts und seine
- * Aktualisierungen aus `/api/anstehend?projekt=` (jeweils alle, roh). Ohne
- * Einträge (`roh` null) zählt es nichts: Seit Schritt E2 schickt der Server
- * keine Zahlen mehr, der Zweig ist tot und fällt in E3. Hier wird ausgewählt, gezählt und gruppiert; die Komponente
- * zeigt nur an.
+ * Das Unter-Dashboard aus den Antworten des Servers: `/stand/voll`, dazu die
+ * Einträge des Projekts und seine Aktualisierungen aus
+ * `/api/anstehend?projekt=` (jeweils alle, roh). Ohne Stand und ohne
+ * Einträge (`null`) bleibt alles leer. Hier wird ausgewählt, gezählt und
+ * gruppiert; die Komponente zeigt nur an.
  */
 export function unterDashboardAnsicht(
 	stand: ProjektStand | null,
 	roh: readonly AnstehendEintrag[] | null = null,
 	akt: readonly Aktualisierung[] | null = null
 ): UnterDashboardAnsicht {
-	const eintraegeRoh = roh ?? (stand?.sichtbar === true ? stand.eintraege : null);
-	const aktRoh = akt ?? (stand?.sichtbar === true ? stand.aktualisierungen : null);
+	const eintraegeRoh = roh ?? stand?.eintraege ?? null;
+	const aktRoh = akt ?? stand?.aktualisierungen ?? null;
 	const ansicht = stand === null ? null : standAnsicht(stand, eintraegeRoh, aktRoh);
 	const angemeldet = eintraegeRoh !== null;
 	const eintraege = eintraegeRoh === null ? [] : ordnen(auswaehlen(eintraegeRoh));
 	const aktualisierungen = aktRoh === null ? [] : aktualisierungenWaehlen(aktRoh);
 	// Archiviert: ruhig, ohne Zähler „neu“ (Entscheidung archiv-status).
 	const ruhig = ansicht?.gesamt.ruhig === true;
-	const zahlenRoh = angemeldet ? null : (ansicht?.meldungen ?? null);
-	const zahlenFrei = zahlenRoh !== null && ruhig ? { ...zahlenRoh, neu: 0 } : zahlenRoh;
 	// Alle ungelesenen des Projekts (aus allen Aktualisierungen), nicht nur die fünf angezeigten.
-	const ungelesen = ruhig
-		? 0
-		: (zahlenFrei?.neu ?? (aktRoh === null ? 0 : meldungsZahlen(aktRoh).neu));
+	const ungelesen = ruhig || aktRoh === null ? 0 : meldungsZahlen(aktRoh).neu;
 	const gezeigt = new Set(aktualisierungen.filter((a) => a.quelle === 'meldung').map((a) => a.id));
 	const weitereMeldungen = eintraege.filter((e) => e.art === 'meldung' && !gezeigt.has(e.id));
 
 	const art = (a: EintragsArt): AnstehendEintrag[] => eintraege.filter((e) => e.art === a);
 	// Aufgaben beim Chat (eigene Worte geschickt) warten nicht auf dich.
-	const aufgaben = angemeldet
-		? art('aufgabe').filter((e) => e.wartet_auf_dich)
-		: ansicht?.aufgaben.sichtbar === true
-			? ansicht.aufgaben.offen
-			: [];
+	const aufgaben = art('aufgabe').filter((e) => e.wartet_auf_dich);
 	const fragen = art('frage');
 	const arbeitenFuerDich = eintraege.filter((e) => e.art === 'arbeit' && e.wartet_auf_dich);
 	const wartetZahl =
 		ansicht?.kurz.wartet_auf_dich ?? aufgaben.length + fragen.length + arbeitenFuerDich.length;
-	const aufgabenZahl = angemeldet ? aufgaben.length : (ansicht?.aufgaben.anzahl ?? 0);
 
-	const arbeitsGruppen = ARBEITS_GRUPPEN.map(([zustand, wort, feld]): ArbeitsGruppeZeile => {
-		if (angemeldet)
-			return {
-				wort,
-				eintraege: eintraege.filter((e) => e.art === 'arbeit' && e.zustand === zustand),
-				weitere: 0
-			};
-		const g = ansicht?.arbeiten[feld];
-		return { wort, eintraege: g?.eintraege ?? [], weitere: g?.weitere ?? 0 };
-	}).filter((g) => g.eintraege.length > 0 || g.weitere > 0);
+	const arbeitsGruppen = ARBEITS_GRUPPEN.map(([zustand, wort]): ArbeitsGruppeZeile => ({
+		wort,
+		eintraege: eintraege.filter((e) => e.art === 'arbeit' && e.zustand === zustand),
+		weitere: 0
+	})).filter((g) => g.eintraege.length > 0);
 
-	const fristKandidaten = angemeldet
-		? eintraege
-		: ansicht === null
-			? []
-			: [
-					...ansicht.aufgaben.offen,
-					...ansicht.arbeiten.laufen.eintraege,
-					...ansicht.arbeiten.wartet.eintraege,
-					...ansicht.arbeiten.als_naechstes.eintraege
-				];
-	const hatAktualisierungen =
-		aktualisierungen.length > 0 || weitereMeldungen.length > 0 || (zahlenFrei?.gesamt ?? 0) > 0;
+	const hatAktualisierungen = aktualisierungen.length > 0 || weitereMeldungen.length > 0;
 	return {
 		stand: ansicht,
 		angemeldet,
 		eintraege,
 		aktualisierungen,
 		weitereMeldungen,
-		meldungsZahlen: zahlenFrei,
 		ungelesen,
 		wartet: {
 			zahl: wartetZahl,
-			aufgabenZahl,
+			aufgabenZahl: aufgaben.length,
 			aufgaben,
 			fragen,
 			arbeiten: arbeitenFuerDich
 		},
 		arbeitsGruppen,
-		fristKandidaten,
+		fristKandidaten: eintraege,
 		hatAktualisierungen,
 		zeigen: ansicht !== null || wartetZahl > 0 || arbeitsGruppen.length > 0 || hatAktualisierungen
 	};

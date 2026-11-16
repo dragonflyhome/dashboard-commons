@@ -2,19 +2,16 @@ import { isHttpError } from '@sveltejs/kit';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AnmeldungNoetig, ApiError } from '#lib/api/client.ts';
 import type * as Client from '#lib/api/client.ts';
-import { rueckfall } from '#lib/rueckfall.ts';
 import type { PcBenutzer, PcReport, Verlauf } from '$vertrag';
 
 const pc = vi.fn<() => Promise<PcReport>>();
 const pcBenutzer = vi.fn<() => Promise<PcBenutzer>>();
-const verlauf = vi.fn<() => Promise<Verlauf>>();
 const verlaufVoll = vi.fn<() => Promise<Verlauf>>();
 vi.mock('#lib/api/client.ts', async (original) => ({
 	...(await original<typeof Client>()),
 	api: {
 		pc: () => pc(),
 		pcBenutzer: () => pcBenutzer(),
-		verlauf: () => verlauf(),
 		verlaufVoll: () => verlaufVoll()
 	}
 }));
@@ -26,17 +23,8 @@ const benutzer = {
 	schluessel: { vollstaendig: 'ja', gespeichert: 1, fehlen: 0, grund: null },
 	bote: 'da'
 } as unknown as PcBenutzer;
-const pcVerlauf: Verlauf = {
-	ereignisse: [],
-	seit: '',
-	bis: '',
-	hinweise: [
-		{ art: 'ohne-anmeldung', text: 'Ohne Anmeldung fehlen die Starts, Meldungen und Vorgänge.' }
-	]
-};
 const vollerVerlauf: Verlauf = { ereignisse: [], seit: '', bis: '', hinweise: [] };
-const v = { verlauf: vollerVerlauf, fehler: null, ohneAnmeldung: false };
-const ohne = { verlauf: pcVerlauf, fehler: null, ohneAnmeldung: true };
+const v = { verlauf: vollerVerlauf, fehler: null };
 
 async function lade(): Promise<unknown> {
 	const event = { fetch, depends: () => undefined } as unknown as Parameters<typeof load>[0];
@@ -45,32 +33,27 @@ async function lade(): Promise<unknown> {
 
 describe('Laden der Seite PC', () => {
 	beforeEach(() => {
-		rueckfall.vergessen();
 		pc.mockReset();
 		pcBenutzer.mockReset();
 		pc.mockResolvedValue(bericht);
-		verlauf.mockReset().mockResolvedValue(pcVerlauf);
 		verlaufVoll.mockReset().mockResolvedValue(vollerVerlauf);
 	});
 	it('lädt Rechner-Werte, Benutzer-Daten und Verlauf', async () => {
 		pcBenutzer.mockResolvedValue(benutzer);
 		expect(await lade()).toEqual({ pc: bericht, benutzer, grund: null, verlauf: v });
+		// Hotfix 3a-1: der geschützte Weg, damit Edge die Anmeldung mitschickt.
+		expect(verlaufVoll).toHaveBeenCalledTimes(1);
 	});
-	it('ohne Windows-Anmeldung (401): Benutzer-Daten null mit Grund, Verlauf vom freien Weg', async () => {
-		pcBenutzer.mockRejectedValue(new AnmeldungNoetig());
-		verlaufVoll.mockRejectedValue(new AnmeldungNoetig());
+	it('ohne Windows-Anmeldung (401): Benutzer-Daten null mit Grund, Verlauf mit Satz', async () => {
+		const ohne = new AnmeldungNoetig();
+		pcBenutzer.mockRejectedValue(ohne);
+		verlaufVoll.mockRejectedValue(ohne);
 		expect(await lade()).toEqual({
 			pc: bericht,
 			benutzer: null,
 			grund: 'anmeldung',
-			verlauf: ohne
+			verlauf: { verlauf: null, fehler: ohne.message }
 		});
-	});
-	it('Hotfix 3a-1: der Verlauf kommt vom geschützten Weg, der freie nur ohne Anmeldung', async () => {
-		pcBenutzer.mockResolvedValue(benutzer);
-		await lade();
-		expect(verlaufVoll).toHaveBeenCalledTimes(1);
-		expect(verlauf).not.toHaveBeenCalled();
 	});
 	it('fremdes Konto (403): Benutzer-Daten null mit Grund', async () => {
 		const fremd = new ApiError(403, 'Dieses Windows-Konto darf hier nicht.', 'fremdes-konto');
@@ -80,7 +63,7 @@ describe('Laden der Seite PC', () => {
 			pc: bericht,
 			benutzer: null,
 			grund: 'fremdes-konto',
-			verlauf: ohne
+			verlauf: { verlauf: null, fehler: fremd.message }
 		});
 	});
 	it('Verlauf mit Fehler: die Seite lädt trotzdem, mit Satz', async () => {
