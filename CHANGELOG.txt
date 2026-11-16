@@ -19,6 +19,10 @@ Hinzugefügt
   Schlüsselordner, den nur das eigene Konto erreicht. Er nennt Fassung
   und hauptkonto.
 
+Behoben
+- Der lokale Kanal außerhalb von Windows endet mit dem Abschaltsignal
+  des Dienstes und nimmt danach keine Verbindung mehr an.
+
 0.17.0 - 2026-11-16
 -------------------
 
