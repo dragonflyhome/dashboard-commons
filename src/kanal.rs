@@ -71,6 +71,13 @@ impl KanalKonto {
     }
 }
 
+/// Nur für Tests: die Befähigung, wie der Lauscher sie nach der Prüfung
+/// gibt. Außerhalb des Testbaus entsteht sie nur dort.
+#[cfg(test)]
+pub(crate) fn konto_fuer_tests() -> KanalKonto {
+    KanalKonto::nach_pruefung(0)
+}
+
 /// Darf die Gegenseite bedient werden? Nur wenn das Betriebssystem ihre
 /// Benutzernummer nennt und sie die erwartete ist. Gibt dann die Befähigung.
 /// Nicht öffentlich: Außerhalb dieses Moduls entsteht kein [`KanalKonto`].
@@ -84,7 +91,20 @@ fn gegenseite_urteil(bezeugt: Option<u32>, erwartet: u32) -> Option<KanalKonto> 
 pub enum Befehl {
     /// Nennt Fassung und Konto; ändert nichts.
     Wer,
+    /// Gibt einen Einmal-Code für das Anlegen eines Passkeys aus (Schritt 7b).
+    Code,
 }
+
+/// Wer einen Einmal-Code ausgibt. Der Kanal selbst kennt den Zustand des
+/// Servers nicht; die Quelle bekommt er beim Start. Sie verlangt die
+/// Befähigung der geprüften Gegenseite und gibt die fertige Antwortzeile
+/// zurück (ohne Zeilenende).
+pub trait CodeQuelle: Send + Sync {
+    fn code<'a>(&'a self, konto: &'a KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
+}
+
+/// Satz für den Befehl `code`, wenn der Kanal keine Quelle hat.
+pub const SATZ_KEIN_CODE: &str = "Einen Einmal-Code gibt es in diesem Lauf nicht.";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -112,12 +132,10 @@ pub fn anfrage_lesen(roh: &[u8]) -> Result<Befehl, &'static str> {
     serde_json::from_value::<Anfrage>(wert).map(|a| a.befehl).map_err(|_| SATZ_BEFEHL)
 }
 
-/// Die Antwort auf einen Befehl, eine Zeile JSON ohne Zeilenende.
-pub fn ausfuehren(befehl: Befehl, _konto: &KanalKonto) -> String {
-    match befehl {
-        // Wer hier ankommt, ist das Konto, in dem der Server läuft.
-        Befehl::Wer => serde_json::json!({ "fassung": crate::fassungen::LAUFEND, "hauptkonto": true }).to_string(),
-    }
+/// Die Antwort auf `wer`, eine Zeile JSON ohne Zeilenende. Wer hier
+/// ankommt, ist das Konto, in dem der Server läuft.
+pub fn antwort_wer(_konto: &KanalKonto) -> String {
+    serde_json::json!({ "fassung": crate::fassungen::LAUFEND, "hauptkonto": true }).to_string()
 }
 
 /// Die Antwort auf eine Anfrage, die nicht ausgeführt wird.
@@ -191,7 +209,7 @@ mod lauscher {
     use tokio::sync::Semaphore;
     use tracing::{info, warn};
 
-    use super::{AltUrteil, HOECHSTENS_BYTES, KanalKonto, Probe, Vorhanden};
+    use super::{AltUrteil, Befehl, CodeQuelle, HOECHSTENS_BYTES, KanalKonto, Probe, Vorhanden};
     use crate::passkey::geheim::{self, Rahmen, Stand};
 
     /// Frist für die ganze Verbindung.
@@ -258,7 +276,12 @@ mod lauscher {
     /// Die Schranken sind der Ordner (0700, eigener Besitz) und `peer_cred`;
     /// die Rechte 0600 am Socket sind eine dritte. Kein `umask`: Er gälte für
     /// den ganzen Prozess, auch für die anderen Threads.
-    pub fn starten(ort: &Path, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) -> Result<Kanal, String> {
+    pub fn starten(
+        ort: &Path,
+        erwartete_uid: u32,
+        ende: impl Future<Output = ()> + Send + 'static,
+        quelle: Option<Arc<dyn CodeQuelle>>,
+    ) -> Result<Kanal, String> {
         let eigene_uid = crate::unix::eigene_uid();
         let ordner =
             ort.parent().filter(|p| !p.as_os_str().is_empty()).ok_or_else(|| format!("{} nennt keinen Ordner; {}", zeigen(ort), RAHMEN_KANAL.folge_im_satz))?;
@@ -328,7 +351,7 @@ mod lauscher {
         lauscher.set_nonblocking(true).map_err(|e| aufraeumen(format!("Der lokale Kanal ließ sich nicht einrichten: {e}. {}.", RAHMEN_KANAL.folge)))?;
         let lauscher =
             UnixListener::from_std(lauscher).map_err(|e| aufraeumen(format!("Der lokale Kanal ließ sich nicht einrichten: {e}. {}.", RAHMEN_KANAL.folge)))?;
-        let aufgabe = tokio::spawn(annehmen(lauscher, erwartete_uid, ende));
+        let aufgabe = tokio::spawn(annehmen(lauscher, erwartete_uid, ende, quelle));
         info!("Lokaler Kanal: {}", zeigen(ort));
         Ok(Kanal { ort: ort.to_path_buf(), kennung, aufgabe })
     }
@@ -338,7 +361,7 @@ mod lauscher {
     /// wird nicht mehr angenommen, schon angenommene bekommen ihre Antwort.
     /// Je Verbindung: erst die Benutzernummer der Gegenseite, dann ein Platz,
     /// dann erst wird gelesen.
-    async fn annehmen(lauscher: UnixListener, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) {
+    async fn annehmen(lauscher: UnixListener, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static, quelle: Option<Arc<dyn CodeQuelle>>) {
         let plaetze = Arc::new(Semaphore::new(HOECHSTENS_ZUGLEICH));
         tokio::pin!(ende);
         loop {
@@ -367,15 +390,16 @@ mod lauscher {
             let Ok(platz) = plaetze.clone().try_acquire_owned() else {
                 continue;
             };
+            let quelle = quelle.clone();
             tokio::spawn(async move {
                 let _platz = platz;
-                bedienen(verbindung, konto).await;
+                bedienen(verbindung, konto, quelle).await;
             });
         }
     }
 
     /// Eine Anfrage, eine Antwort, dann Schluss; alles innerhalb von [`FRIST`].
-    async fn bedienen(mut verbindung: UnixStream, konto: KanalKonto) {
+    async fn bedienen(mut verbindung: UnixStream, konto: KanalKonto, quelle: Option<Arc<dyn CodeQuelle>>) {
         let bis = tokio::time::Instant::now() + FRIST;
         let gelesen = tokio::time::timeout_at(bis, async {
             let mut roh = Vec::new();
@@ -385,7 +409,15 @@ mod lauscher {
         .await;
         let antwort = match gelesen {
             Ok(Ok(roh)) => match super::anfrage_lesen(&roh) {
-                Ok(befehl) => super::ausfuehren(befehl, &konto),
+                Ok(Befehl::Wer) => super::antwort_wer(&konto),
+                // Die Ausgabe schreibt erst ins Journal; sie läuft innerhalb derselben Frist.
+                Ok(Befehl::Code) => match &quelle {
+                    Some(q) => match tokio::time::timeout_at(bis, q.code(&konto)).await {
+                        Ok(antwort) => antwort,
+                        Err(_) => super::fehler_antwort(SATZ_FRIST),
+                    },
+                    None => super::fehler_antwort(super::SATZ_KEIN_CODE),
+                },
                 Err(satz) => super::fehler_antwort(satz),
             },
             // Die Verbindung ist gestört: nichts mehr zu sagen.
@@ -437,6 +469,7 @@ mod tests {
     fn anfrage_wer_wird_gelesen() {
         assert_eq!(anfrage_lesen(b"{\"befehl\":\"wer\"}\n"), Ok(Befehl::Wer));
         assert_eq!(anfrage_lesen(b" { \"befehl\" : \"wer\" } \n"), Ok(Befehl::Wer));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"code\"}\n"), Ok(Befehl::Code));
     }
 
     #[test]
@@ -485,7 +518,8 @@ mod tests {
 
     #[test]
     fn anfrage_mit_unbekanntem_befehl() {
-        assert_eq!(anfrage_lesen(b"{\"befehl\":\"code\"}\n"), Err(SATZ_BEFEHL));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"anders\"}\n"), Err(SATZ_BEFEHL));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"CODE\"}\n"), Err(SATZ_BEFEHL));
         assert_eq!(anfrage_lesen(b"{\"befehl\":\"Wer\"}\n"), Err(SATZ_BEFEHL));
         assert_eq!(anfrage_lesen(b"{\"befehl\":7}\n"), Err(SATZ_BEFEHL));
     }
@@ -493,7 +527,7 @@ mod tests {
     #[test]
     fn antwort_auf_wer_nennt_fassung_und_hauptkonto() {
         let konto = gegenseite_urteil(Some(501), 501).unwrap();
-        let antwort: serde_json::Value = serde_json::from_str(&ausfuehren(Befehl::Wer, &konto)).unwrap();
+        let antwort: serde_json::Value = serde_json::from_str(&antwort_wer(&konto)).unwrap();
         assert_eq!(antwort, serde_json::json!({ "fassung": env!("CARGO_PKG_VERSION"), "hauptkonto": true }));
     }
 
@@ -580,7 +614,7 @@ mod unix_tests {
 
     /// Der Kanal ohne Abschaltsignal: Er läuft, bis der Wert freigegeben wird.
     fn starte(ort: &Path, erwartete_uid: u32) -> Result<Kanal, String> {
-        starten(ort, erwartete_uid, std::future::pending())
+        starten(ort, erwartete_uid, std::future::pending(), None)
     }
 
     fn eigene() -> u32 {
@@ -753,7 +787,9 @@ mod unix_tests {
         assert_eq!(fragen(&ort, b"{\"befehl\":\n").await, fehler_zeile(SATZ_KEIN_JSON));
         assert_eq!(fragen(&ort, b"[\"wer\"]\n").await, fehler_zeile(SATZ_KEIN_OBJEKT));
         assert_eq!(fragen(&ort, b"{\"befehl\":\"wer\",\"mehr\":1}\n").await, fehler_zeile(SATZ_FELD));
-        assert_eq!(fragen(&ort, b"{\"befehl\":\"code\"}\n").await, fehler_zeile(SATZ_BEFEHL));
+        assert_eq!(fragen(&ort, b"{\"befehl\":\"anders\"}\n").await, fehler_zeile(SATZ_BEFEHL));
+        // Ohne Quelle gibt der Kanal keinen Code aus.
+        assert_eq!(fragen(&ort, b"{\"befehl\":\"code\"}\n").await, fehler_zeile(SATZ_KEIN_CODE));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -834,10 +870,10 @@ mod unix_tests {
         let o = ordner("signal");
         let ort = o.join(KANAL_DATEI);
         let (signal, ende) = tokio::sync::oneshot::channel::<()>();
-        let kanal = starten(&ort, eigene(), async move {
+        let ende = async move {
             let _ = ende.await;
-        })
-        .unwrap();
+        };
+        let kanal = starten(&ort, eigene(), ende, None).unwrap();
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
         // Eine Verbindung ist schon angenommen, hat aber noch nichts geschickt.
         let mut offen = UnixStream::connect(&ort).await.unwrap();
@@ -881,29 +917,39 @@ mod unix_tests {
         }
     }
 
-    /// Ein Thread, damit die Mitschrift auch die Aufgaben des Lauschers erfasst.
-    #[tokio::test]
-    async fn nichts_aus_der_anfrage_steht_im_protokoll() {
-        let mitschrift = Mitschrift::default();
-        let schreiber = mitschrift.clone();
-        let abonnent = tracing_subscriber::fmt().with_ansi(false).with_writer(move || schreiber.clone()).finish();
-        let _wache = tracing::subscriber::set_default(abonnent);
-        let o = ordner("protokoll");
-        let marke = "GEHEIME-MARKE-4711";
+    /// Bediente Verbindungen mit kaputter und mit gültiger Anfrage, dann
+    /// eine abgewiesene Gegenseite; alle tragen die Marke.
+    async fn anfragen_mit_marke(name: &str, marke: &str) {
+        let o = ordner(name);
+        let ort = o.join(KANAL_DATEI);
         {
-            // Bediente Verbindungen mit kaputter und mit gültiger Anfrage.
-            let ort = o.join(KANAL_DATEI);
             let _kanal = starte(&ort, eigene()).unwrap();
             assert_eq!(fragen(&ort, format!("{{\"befehl\":\"{marke}\"}}\n").as_bytes()).await, fehler_zeile(SATZ_BEFEHL));
             assert_eq!(fragen(&ort, format!("{marke}\n").as_bytes()).await, fehler_zeile(SATZ_KEIN_JSON));
             assert_eq!(fragen(&ort, WER).await, wer_zeile());
         }
         {
-            // Eine abgewiesene Gegenseite.
-            let ort = o.join(KANAL_DATEI);
             let _kanal = starte(&ort, eigene().wrapping_add(1)).unwrap();
             assert_eq!(fragen(&ort, format!("{marke}\n").as_bytes()).await, "");
         }
+    }
+
+    /// Die Mitschrift gilt für diesen Thread; die Laufzeit des Tests hat nur
+    /// ihn, so erfasst sie auch die Aufgaben des Lauschers.
+    ///
+    /// Läuft allein in einem eigenen Prozess (`crate::test_allein`): Neben
+    /// anderen Tests verlöre die Mitschrift Zeilen und bewiese nichts.
+    #[tokio::test]
+    async fn nichts_aus_der_anfrage_steht_im_protokoll() {
+        if !crate::test_allein::im_eigenen_prozess("kanal::unix_tests::nichts_aus_der_anfrage_steht_im_protokoll") {
+            return;
+        }
+        let mitschrift = Mitschrift::default();
+        let schreiber = mitschrift.clone();
+        let abonnent = tracing_subscriber::fmt().with_ansi(false).with_writer(move || schreiber.clone()).finish();
+        let _wache = tracing::subscriber::set_default(abonnent);
+        let marke = "GEHEIME-MARKE-4711";
+        anfragen_mit_marke("protokoll", marke).await;
         let text = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
         assert!(text.contains("Lokaler Kanal:"), "die Mitschrift erfasst den Kanal nicht: {text}");
         assert!(text.contains("Verbindung abgewiesen"), "{text}");

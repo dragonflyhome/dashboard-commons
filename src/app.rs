@@ -124,6 +124,11 @@ pub struct AppState {
     /// nie beim Bau des Zustands; in Tests ist der Ort `None`.
     #[cfg(unix)]
     pub kanal_ort: Option<Arc<PathBuf>>,
+    /// Schritt 7b der macOS-Folge: der offene Einmal-Code (nur sein Hash),
+    /// nur im Arbeitsspeicher; ein Neustart verwirft ihn. Die Sperre gilt nie
+    /// über ein `await` hinweg.
+    #[cfg(unix)]
+    pub einmal_code: Arc<std::sync::Mutex<crate::passkey::einmalcode::CodeStand>>,
     /// Kopfleiste, Fassung 3: die Ereignisnummern für `/api/stand` (frei und
     /// geschützt); im Dienst zählt eine Aufgabe mit (`api::stand::zaehlen_starten`).
     pub zaehler: Arc<api::stand::Ereigniszaehler>,
@@ -394,6 +399,8 @@ impl AppState {
             git,
             #[cfg(unix)]
             kanal_ort,
+            #[cfg(unix)]
+            einmal_code: Default::default(),
             inhalt,
             lauf: Arc::new(Lauf::jetzt(modus)),
             sitzung: Default::default(),
@@ -631,6 +638,8 @@ impl AppState {
             jwt: Some(Arc::new(crate::passkey::jwt::JwtSchluessel::zufaellig())),
             #[cfg(unix)]
             kanal_ort: None,
+            #[cfg(unix)]
+            einmal_code: Default::default(),
             zaehler: api::stand::neu(),
             oeffnen: Default::default(),
             projekte: Arc::new(crate::projekte::Register::leer()),

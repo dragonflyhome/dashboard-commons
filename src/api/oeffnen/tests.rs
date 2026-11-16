@@ -396,6 +396,23 @@ fn regeln_des_servers() {
     assert!(r.verboten.contains(&exe), "Programm des Dienstes");
 }
 
+/// Schritt 7b der macOS-Folge: Außerhalb von Windows gibt es noch keinen Weg
+/// zum Öffnen. Nach der Anmeldung kommt 501 mit neutralem Satz, ohne Boten
+/// und ohne Eintrag im Journal; ohne Anmeldung bleibt es bei 401.
+#[cfg(not(windows))]
+#[tokio::test]
+async fn ausserhalb_von_windows_501_mit_neutralem_satz_und_ohne_journal() {
+    let a = aufbau("nichthier");
+    let (s, v) = schicke(router_angemeldet(a.state.clone()), oeffne("bauplan")).await;
+    assert_eq!(s, StatusCode::NOT_IMPLEMENTED, "{v}");
+    assert_eq!(v, serde_json::json!({ "fehler": "Öffnen gibt es auf diesem System noch nicht.", "art": "nicht-hier" }));
+    assert!(a.aufnahme.alle().is_empty());
+    let vorgaenge = a.state.speicher.as_ref().unwrap().vorgaenge_alle().unwrap();
+    assert!(vorgaenge.iter().all(|x| x.art != VorgangsArt::Oeffnen), "{vorgaenge:?}");
+    let ohne = router(a.state.clone()).layer(Extension(ConnectInfo(Verbindung::neu())));
+    assert_eq!(schicke(ohne, oeffne("bauplan")).await.0, StatusCode::UNAUTHORIZED);
+}
+
 /// Der Weg ist geschützt (Anmeldung als Inhaber), auch in anderer Schreibweise.
 #[test]
 fn weg_ist_geschuetzt() {

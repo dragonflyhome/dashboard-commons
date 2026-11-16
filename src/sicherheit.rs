@@ -35,6 +35,33 @@ pub fn eigene_herkuenfte(port: u16) -> Vec<String> {
     eigene_hosts(port).iter().map(|h| format!("http://{h}")).collect()
 }
 
+/// Schritt 7b der macOS-Folge: Kam die Anfrage unmittelbar von diesem
+/// Rechner? Nur wenn die Gegenstelle bekannt und eine Loopback-Adresse ist
+/// (auch als IPv4 in IPv6) und keine Kopfzeile eine Zwischenstation nennt:
+/// kein `Forwarded`, kein `Via`, nichts, das mit `x-forwarded-` beginnt.
+/// Ohne bekannte Gegenstelle nein; die Prüfung schließt im Zweifel.
+#[cfg(any(unix, test))]
+pub fn nur_lokal(gegenstelle: Option<std::net::IpAddr>, kopf: &axum::http::HeaderMap) -> bool {
+    let lokal = gegenstelle.is_some_and(|ip| ip.to_canonical().is_loopback());
+    let zwischenstation = kopf.contains_key("forwarded") || kopf.contains_key("via") || kopf.keys().any(|k| k.as_str().starts_with("x-forwarded-"));
+    lokal && !zwischenstation
+}
+
+/// Schritt 7b der macOS-Folge: strenger als die Schleuse, die auch
+/// 127.0.0.1 und [::1] zulässt. Der Host muss genau `localhost:<port>` sein
+/// (gelesen wie in der Schleuse: zuerst die Authority, dann der Host-Kopf)
+/// und `Origin` genau die Herkunft der Passkey-Wege. Fehlt `Origin`, nein.
+#[cfg(any(unix, test))]
+pub fn genau_localhost(authority: Option<&str>, kopf: &axum::http::HeaderMap, port: u16) -> bool {
+    let host = authority.or_else(|| kopf.get(header::HOST).and_then(|h| h.to_str().ok()));
+    let host_passt = host.is_some_and(|h| h.eq_ignore_ascii_case(&format!("localhost:{port}")));
+    let herkunft = crate::passkey::herkunft(port);
+    let mut herkuenfte = kopf.get_all(header::ORIGIN).iter();
+    // Genau ein `Origin`, und der genau gleich.
+    let herkunft_passt = matches!((herkuenfte.next(), herkuenfte.next()), (Some(o), None) if o.as_bytes() == herkunft.as_bytes());
+    host_passt && herkunft_passt
+}
+
 /// Pfade, die absichtlich lange offen bleiben: kein Zeitlimit.
 pub fn ohne_zeitlimit(pfad: &str) -> bool {
     pfad == "/api/events" || pfad == FREIER_KANAL || pfad == "/api/vorgaenge/warten"
@@ -291,6 +318,10 @@ fn oeffentlich_roh(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::
         "/healthz" | "/" | "/anmelden" | "/fassungen" | "/neu" | "/neu/" => lesen,
         "/api/betrieb" | "/api/stand" | FREIER_KANAL | "/api/fassungen" | "/api/anmeldung/probe" | "/api/anmeldung/wer" | "/api/passkey/stand" => get,
         "/api/passkey/anmelden/beginn" | "/api/passkey/anmelden/ende" | "/api/passkey/abmelden" => post,
+        // Schritt 7b der macOS-Folge: über einen Einmal-Code, nur außerhalb von Windows.
+        // Unter Windows gibt es die Wege nicht; dort bleiben sie geschützt.
+        #[cfg(unix)]
+        "/api/passkey/code/beginn" | "/api/passkey/code/ende" => post,
         // Die Anträge brauchen daneben die Windows-Anmeldung mit irgendeinem Konto (`konto_noetig`).
         "/api/passkey/antrag" | "/api/passkey/antrag/beginn" | "/api/passkey/antrag/ende" => get || post,
         _ if pfad.ends_with('/') || api_weg(pfad) => false,
@@ -1084,5 +1115,87 @@ mod tests {
         assert_eq!(satz_fuer(StatusCode::UNSUPPORTED_MEDIA_TYPE).0, "unlesbar");
         assert_eq!(satz_fuer(StatusCode::FORBIDDEN).0, "abgelehnt");
         assert_eq!(satz_fuer(StatusCode::BAD_GATEWAY).0, "intern");
+    }
+
+    // ----- Schritt 7b der macOS-Folge: die Prüfungen der Wege über einen Einmal-Code -----
+
+    fn kopf(zeilen: &[(&str, &str)]) -> axum::http::HeaderMap {
+        let mut k = axum::http::HeaderMap::new();
+        for (name, wert) in zeilen {
+            k.append(axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(), HeaderValue::from_str(wert).unwrap());
+        }
+        k
+    }
+
+    #[test]
+    fn nur_lokal_verlangt_eine_loopback_gegenstelle() {
+        let leer = kopf(&[]);
+        for ip in ["127.0.0.1", "127.8.9.10", "::1", "::ffff:127.0.0.1"] {
+            assert!(nur_lokal(Some(ip.parse().unwrap()), &leer), "{ip}");
+        }
+        for ip in ["192.0.2.7", "10.0.0.1", "0.0.0.0", "::", "2001:db8::1", "::ffff:192.0.2.7", "169.254.1.1"] {
+            assert!(!nur_lokal(Some(ip.parse().unwrap()), &leer), "{ip}");
+        }
+        // Ohne bekannte Gegenstelle nein: Die Prüfung schließt im Zweifel.
+        assert!(!nur_lokal(None, &leer));
+    }
+
+    #[test]
+    fn nur_lokal_ohne_kopfzeile_einer_zwischenstation() {
+        let lokal = Some("127.0.0.1".parse().unwrap());
+        for name in
+            ["forwarded", "Forwarded", "via", "Via", "x-forwarded-for", "X-Forwarded-For", "x-forwarded-host", "x-forwarded-proto", "x-forwarded-irgendwas"]
+        {
+            assert!(!nur_lokal(lokal, &kopf(&[(name, "x")])), "{name}");
+            // Auch mit leerem Wert.
+            assert!(!nur_lokal(lokal, &kopf(&[(name, "")])), "{name} leer");
+        }
+        // Andere Kopfzeilen stören nicht, auch nicht mit ähnlichem Namen.
+        assert!(nur_lokal(lokal, &kopf(&[("x-forwarded", "x"), ("host", "localhost:8787"), ("origin", "http://localhost:8787"), ("viadukt", "x")])));
+    }
+
+    #[test]
+    fn genau_localhost_host_und_herkunft() {
+        let gut = kopf(&[("host", "localhost:8787"), ("origin", "http://localhost:8787")]);
+        assert!(genau_localhost(None, &gut, 8787));
+        assert!(genau_localhost(None, &kopf(&[("host", "LOCALHOST:8787"), ("origin", "http://localhost:8787")]), 8787));
+        // Die Authority geht dem Host-Kopf vor, wie in der Schleuse.
+        assert!(genau_localhost(Some("localhost:8787"), &kopf(&[("host", "evil.example"), ("origin", "http://localhost:8787")]), 8787));
+        assert!(!genau_localhost(Some("127.0.0.1:8787"), &gut, 8787));
+        // Die anderen eigenen Adressen der Schleuse genügen hier nicht.
+        for host in ["127.0.0.1:8787", "[::1]:8787", "localhost", "localhost:8788", "localhost:8787.evil.example", "evil.example"] {
+            assert!(!genau_localhost(None, &kopf(&[("host", host), ("origin", "http://localhost:8787")]), 8787), "{host}");
+        }
+        assert!(!genau_localhost(None, &kopf(&[("origin", "http://localhost:8787")]), 8787), "ohne Host");
+    }
+
+    #[test]
+    fn genau_localhost_verlangt_genau_einen_passenden_origin() {
+        let mit = |herkunft: &[&str]| {
+            let mut zeilen = vec![("host", "localhost:8787")];
+            zeilen.extend(herkunft.iter().map(|h| ("origin", *h)));
+            kopf(&zeilen)
+        };
+        assert!(genau_localhost(None, &mit(&["http://localhost:8787"]), 8787));
+        // Fehlt `Origin`, wird abgewiesen.
+        assert!(!genau_localhost(None, &mit(&[]), 8787));
+        for herkunft in [
+            "http://127.0.0.1:8787",
+            "http://[::1]:8787",
+            "https://localhost:8787",
+            "http://localhost:8788",
+            "http://localhost",
+            "http://LOCALHOST:8787",
+            "null",
+            "http://evil.example",
+            "http://localhost:8787/",
+        ] {
+            assert!(!genau_localhost(None, &mit(&[herkunft]), 8787), "{herkunft}");
+        }
+        // Zwei `Origin`, auch wenn einer passt.
+        assert!(!genau_localhost(None, &mit(&["http://localhost:8787", "http://evil.example"]), 8787));
+        assert!(!genau_localhost(None, &mit(&["http://localhost:8787", "http://localhost:8787"]), 8787));
+        // Ein anderer Port des Servers.
+        assert!(genau_localhost(None, &kopf(&[("host", "localhost:9000"), ("origin", "http://localhost:9000")]), 9000));
     }
 }

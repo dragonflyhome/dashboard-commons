@@ -49,6 +49,8 @@ use crate::vertrag::daten::{DatenInhalt, Ort, ist_kennung};
 
 /// 403 mit Passkey aus einem anderen Windows-Konto (Wortlaut der Entscheidung).
 pub const SATZ_EIGENES_KONTO: &str = "Öffnen geht nur in deinem eigenen Windows-Konto, dort erscheint das Fenster.";
+/// Außerhalb von Windows: Öffnen ist dort noch nicht gebaut (macOS-Folge, eigener späterer Schritt).
+pub const SATZ_NICHT_HIER: &str = "Öffnen gibt es auf diesem System noch nicht.";
 pub const SATZ_NUR_BROWSER: &str = "Öffnen geht nur über den Knopf im Dashboard.";
 pub const SATZ_KOERPER: &str =
     "Öffnen nimmt nur `projekt` und `kennung` aus daten/orte.toml, nie einen Pfad. Etwa {\"projekt\": \"beispiel\", \"kennung\": \"bauplan\"}.";
@@ -113,6 +115,27 @@ async fn an_bote(state: &AppState, a: Anfrage) -> Result<Antwort, AppError> {
     })
 }
 
+/// Darf diese Anmeldung öffnen? Unter Windows nur das Hauptkonto: Dort
+/// erscheint das Fenster. Außerhalb von Windows gibt es noch keinen Weg zum
+/// Öffnen (Schritt 7b der macOS-Folge): Ein Passkey, auch im Hauptkonto,
+/// belegt nicht, in welcher Sitzung des Rechners der Browser läuft. Nach der
+/// Anmeldung darum ein neutraler Satz, ohne Journal.
+fn zugang(inhaber: &Inhaber) -> Result<(), AppError> {
+    #[cfg(not(windows))]
+    {
+        let _ = inhaber;
+        Err(fehler(StatusCode::NOT_IMPLEMENTED, "nicht-hier", SATZ_NICHT_HIER))
+    }
+    #[cfg(windows)]
+    match inhaber {
+        Inhaber::Hauptkonto => Ok(()),
+        Inhaber::Passkey(_) => {
+            tracing::info!("Öffnen abgelehnt: Passkey aus einem anderen Windows-Konto.");
+            Err(fehler(StatusCode::FORBIDDEN, "fremdes-konto", SATZ_EIGENES_KONTO))
+        }
+    }
+}
+
 /// `POST /api/oeffnen`.
 pub async fn oeffnen(
     State(state): State<AppState>,
@@ -121,11 +144,7 @@ pub async fn oeffnen(
     koerper: Bytes,
 ) -> Result<Json<OeffnenAntwort>, AppError> {
     match inhaber {
-        Some(Extension(Inhaber::Hauptkonto)) => {}
-        Some(Extension(Inhaber::Passkey(_))) => {
-            tracing::info!("Öffnen abgelehnt: Passkey aus einem anderen Windows-Konto.");
-            return Err(fehler(StatusCode::FORBIDDEN, "fremdes-konto", SATZ_EIGENES_KONTO));
-        }
+        Some(Extension(inhaber)) => zugang(&inhaber)?,
         None => return Err(AppError::anmeldung_noetig()),
     }
     if !aus_browser(&kopf) {

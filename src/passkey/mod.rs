@@ -19,6 +19,8 @@
 //! `sicherheit::anmeldung_pflicht`.
 
 pub mod cookie;
+#[cfg(any(unix, test))]
+pub mod einmalcode;
 pub mod geheim;
 pub mod jwt;
 pub mod webauthn;

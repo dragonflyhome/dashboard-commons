@@ -334,7 +334,10 @@ pub async fn betreiben(
     let lauscher = binden(port).await?;
     let (state, abschalter) = zustand().map_err(|e| StartFehler::Sonst(format!("Der Server lässt sich nicht aufbauen: {e:#}")))?;
     #[cfg(unix)]
-    let kanal_ort = state.kanal_ort.clone();
+    let (kanal_ort, code_quelle) = {
+        let quelle: std::sync::Arc<dyn crate::kanal::CodeQuelle> = std::sync::Arc::new(crate::api::passkey::CodeAusgabe(state.clone()));
+        (state.kanal_ort.clone(), quelle)
+    };
     let adressen = lauscher.adressen().join(" und ");
     let port = lauscher.v4.local_addr().map_err(|e| StartFehler::Sonst(e.to_string()))?.port();
     let router = app::router(state);
@@ -351,7 +354,7 @@ pub async fn betreiben(
         let ende = async move {
             stopp_abwarten(rx).await;
         };
-        kanal_starten(kanal_ort.as_deref().map(|p| p.as_path()), crate::unix::eigene_uid(), ende)
+        kanal_starten(kanal_ort.as_deref().map(|p| p.as_path()), crate::unix::eigene_uid(), ende, code_quelle)
     };
     // Jede angenommene Verbindung bekommt eine fortlaufende Nummer
     // (`ConnectInfo<Verbindung>`), für die Windows-Anmeldung je Verbindung (7b).
@@ -401,8 +404,13 @@ pub async fn betreiben(
 /// Startet den lokalen Kanal, wenn es einen Ort gibt. Ein Fehler ist eine
 /// Zeile im Protokoll, kein Grund, den Server nicht zu starten.
 #[cfg(unix)]
-fn kanal_starten(ort: Option<&Path>, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) -> Option<crate::kanal::Kanal> {
-    match crate::kanal::starten(ort?, erwartete_uid, ende) {
+fn kanal_starten(
+    ort: Option<&Path>,
+    erwartete_uid: u32,
+    ende: impl Future<Output = ()> + Send + 'static,
+    quelle: std::sync::Arc<dyn crate::kanal::CodeQuelle>,
+) -> Option<crate::kanal::Kanal> {
+    match crate::kanal::starten(ort?, erwartete_uid, ende, Some(quelle)) {
         Ok(kanal) => Some(kanal),
         Err(satz) => {
             error!("{satz}");

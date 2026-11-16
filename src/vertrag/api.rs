@@ -453,11 +453,18 @@ pub enum VorgangsArt {
     /// legt ihn an (`bezug` = `schritt:<arbeit>/<nr>`) und erledigt ihn, sobald sich
     /// der Schritt ändert.
     Schritt,
+    /// Außerhalb von Windows: Ein Einmal-Code wurde über den lokalen Kanal
+    /// ausgegeben, mit ihm wurde ein Passkey angelegt, oder er ist nach
+    /// Fehlversuchen verfallen (Schritt 7b der macOS-Folge). Nur der Server
+    /// legt ihn an (Slug `passkey`), gleich als `erledigt`; im Titel steht nie
+    /// der Code. Weckt keinen Chat.
+    #[serde(rename = "einmal-code")]
+    EinmalCode,
 }
 
 impl VorgangsArt {
-    pub const ALLE: [VorgangsArt; 9] =
-        [Self::Antwort, Self::Frage, Self::Wunsch, Self::Bau, Self::Abnahme, Self::Merge, Self::PasskeyAntrag, Self::Oeffnen, Self::Schritt];
+    pub const ALLE: [VorgangsArt; 10] =
+        [Self::Antwort, Self::Frage, Self::Wunsch, Self::Bau, Self::Abnahme, Self::Merge, Self::PasskeyAntrag, Self::Oeffnen, Self::Schritt, Self::EinmalCode];
 
     pub fn wort(self) -> &'static str {
         match self {
@@ -470,6 +477,7 @@ impl VorgangsArt {
             Self::PasskeyAntrag => "passkey-antrag",
             Self::Oeffnen => "oeffnen",
             Self::Schritt => "schritt",
+            Self::EinmalCode => "einmal-code",
         }
     }
 

@@ -226,6 +226,30 @@ fn ereignisse_seit_in(txn: &ReadTransaction, slug: Option<&str>, nr: u64) -> Res
     Ok(out)
 }
 
+/// Legt in `txn` einen Vorgang an, der gleich `erledigt` ist: ein Eintrag im
+/// Journal, auf den niemand wartet (nach dem Muster von `oeffnung_vermerken`).
+pub(super) fn erledigt_anlegen_in(txn: &WriteTransaction, art: VorgangsArt, slug: &str, titel: &str, von: &str) -> Result<(Vorgang, Ereignis), SpeicherFehler> {
+    let zeit = jetzt();
+    let mut v = Vorgang {
+        id: neue_kennung(txn)?,
+        art,
+        slug: slug.to_string(),
+        titel: titel.to_string(),
+        bezug: None,
+        zustand: Zustand::Erledigt,
+        erstellt: zeit.clone(),
+        geaendert: zeit.clone(),
+        letzte_nr: 0,
+        von: von.to_string(),
+        notiz: None,
+        bau: None,
+        merge: None,
+    };
+    let e = schritt(txn, &mut v, Zustand::Erledigt, von, None, &zeit)?;
+    txn.open_table(VORGAENGE_JE_SLUG)?.insert((v.slug.as_str(), v.id.as_str()), ())?;
+    Ok((v, e))
+}
+
 /// Legt in einer offenen Schreibtransaktion einen Vorgang im Zustand `offen`
 /// an, mit seinem ersten Ereignis und dem Eintrag im Verzeichnis. Auch für
 /// andere Teile des Speichers, die im selben Schritt einen Vorgang brauchen
@@ -345,6 +369,16 @@ impl Speicher {
         };
         let e = schritt(&txn, &mut v, Zustand::Erledigt, "browser", None, &zeit)?;
         txn.open_table(VORGAENGE_JE_SLUG)?.insert((v.slug.as_str(), v.id.as_str()), ())?;
+        self.festschreiben(txn, &[super::Bereich::Vorgaenge])?;
+        Ok((v, e))
+    }
+
+    /// Schritt 7b der macOS-Folge: vermerkt im Journal, was mit einem
+    /// Einmal-Code geschah (ausgegeben oder verfallen), als erledigten Vorgang
+    /// der Art `einmal-code` unter dem Slug der Passkeys. Im Titel steht nie der Code.
+    pub fn einmal_code_vermerken(&self, titel: &str) -> Result<(Vorgang, Ereignis), SpeicherFehler> {
+        let txn = self.db.begin_write()?;
+        let (v, e) = erledigt_anlegen_in(&txn, VorgangsArt::EinmalCode, super::passkeys::SLUG, titel, "server")?;
         self.festschreiben(txn, &[super::Bereich::Vorgaenge])?;
         Ok((v, e))
     }

@@ -39,6 +39,10 @@ use tokio::net::TcpListener;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Verbindung {
     pub nr: u64,
+    /// Schritt 7b der macOS-Folge: die Adresse der Gegenstelle, wie der
+    /// Lauscher sie beim Annehmen sah. `None`, wo keine bekannt ist (Tests
+    /// ohne Lauscher); wer danach fragt, behandelt `None` als „nicht lokal“.
+    pub gegenstelle: Option<std::net::IpAddr>,
 }
 
 static ZAEHLER: AtomicU64 = AtomicU64::new(0);
@@ -46,13 +50,19 @@ static ZAEHLER: AtomicU64 = AtomicU64::new(0);
 impl Verbindung {
     /// Die nächste Nummer (ab 1).
     pub fn neu() -> Verbindung {
-        Verbindung { nr: ZAEHLER.fetch_add(1, Ordering::Relaxed) + 1 }
+        Verbindung { nr: ZAEHLER.fetch_add(1, Ordering::Relaxed) + 1, gegenstelle: None }
+    }
+
+    /// Dieselbe Verbindung mit bekannter Gegenstelle.
+    pub fn mit_gegenstelle(mut self, gegenstelle: std::net::IpAddr) -> Verbindung {
+        self.gegenstelle = Some(gegenstelle);
+        self
     }
 }
 
 impl Connected<IncomingStream<'_, TcpListener>> for Verbindung {
-    fn connect_info(_stream: IncomingStream<'_, TcpListener>) -> Self {
-        Verbindung::neu()
+    fn connect_info(stream: IncomingStream<'_, TcpListener>) -> Self {
+        Verbindung::neu().mit_gegenstelle(stream.remote_addr().ip())
     }
 }
 

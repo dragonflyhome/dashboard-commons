@@ -33,7 +33,7 @@ export function zustandWort(z: VorgangsZustand): string {
 	}
 }
 
-/** Art als kurzes Etikett (`oeffnen` und `schritt` legt nur der Server an: beim Knopf „Öffnen“, beim Anbieten und Zurückwecken eines Teilschritts). */
+/** Art als kurzes Etikett (`oeffnen`, `schritt` und `einmal-code` legt nur der Server an: beim Knopf „Öffnen“, beim Anbieten und Zurückwecken eines Teilschritts, bei Ausgabe, Einlösen und Verfall eines Einmal-Codes außerhalb von Windows). */
 export function artWort(a: VorgangsArt): string {
 	switch (a) {
 		case 'antwort':
@@ -54,6 +54,8 @@ export function artWort(a: VorgangsArt): string {
 			return 'Geöffnet';
 		case 'schritt':
 			return 'Teilschritt';
+		case 'einmal-code':
+			return 'Einmal-Code';
 	}
 }
 
