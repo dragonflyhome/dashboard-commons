@@ -143,6 +143,8 @@
 	}
 	.karten {
 		display: grid;
+		/* Mit fester Breite misst das Raster (auto-fit, Kind einer Flex-Spalte) seine Höhe nach den echten Spalten, sonst nach gestapelten Karten. */
+		width: 100%;
 		grid-template-columns: 1fr;
 		gap: 0.75rem;
 	}

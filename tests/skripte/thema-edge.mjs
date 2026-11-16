@@ -674,6 +674,37 @@ async function main() {
     JSON.stringify(m?.erstesBild),
   );
 
+  console.log("\n== Karten auf /einstellungen ohne leere Reihe ==");
+  // Ein Raster mit auto-fit als Kind einer Flex-Spalte maß seine Höhe vor der
+  // Breite: ab 1024 px war die eine Reihe so hoch wie gestapelte Karten.
+  for (const breite of [800, 1024, 1280]) {
+    await cdp.breite(breite);
+    await cdp.oeffnen("/einstellungen");
+    const r = await cdp.auswerten(`(() => {
+      const k = [...document.querySelectorAll('main .karten > .karte')];
+      const raster = k[0]?.parentElement;
+      if (!raster) return null;
+      const karten = k.map((e) => {
+        const b = e.getBoundingClientRect();
+        const s = getComputedStyle(e);
+        const innen = [...e.children].filter((c) => getComputedStyle(c).position !== 'absolute').map((c) => c.getBoundingClientRect());
+        const inhalt = Math.max(...innen.map((q) => q.bottom)) - Math.min(...innen.map((q) => q.top));
+        const rahmen = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((a, p) => a + parseFloat(s[p]), 0);
+        return { t: Math.round(b.top), h: b.height, noetig: inhalt + rahmen };
+      });
+      const reihen = [...new Set(karten.map((x) => x.t))];
+      const noetig = reihen.map((t) => Math.max(...karten.filter((x) => x.t === t).map((x) => x.noetig)));
+      const hoch = reihen.map((t) => Math.max(...karten.filter((x) => x.t === t).map((x) => x.h)));
+      const soll = noetig.reduce((a, b) => a + b, 0) + (parseFloat(getComputedStyle(raster).rowGap) || 0) * (reihen.length - 1);
+      return { reihen: reihen.length, hoch: hoch.map(Math.round), noetig: noetig.map(Math.round), raster: Math.round(raster.getBoundingClientRect().height), soll: Math.round(soll) };
+    })()`);
+    const reihenSoll = breite >= 1024 ? 1 : 2;
+    pruefe(
+      r !== null && r.reihen === reihenSoll && r.hoch.every((h, i) => h <= r.noetig[i] + 2) && r.raster <= r.soll + 2,
+      `${breite} px: Karten in ${reihenSoll === 1 ? "einer Reihe" : "zwei Reihen"}, nicht höher als ihr Inhalt`,
+      JSON.stringify(r),
+    );
+  }
   console.log("\n== Startseite als Spalten ==");
   await cdp.system("light");
   for (const breite of [375, 1280]) {
