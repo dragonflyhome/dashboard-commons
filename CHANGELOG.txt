@@ -43,6 +43,7 @@ Behoben
 - Auf der Seite Einstellungen und im Katalog waren die Karten der
   Farbwahl ab 1024 px fast doppelt so hoch wie ihr Inhalt, und der Haken
   der gewählten Karte konnte ihren Text überdecken.
+
 0.15.0 - 2026-11-16
 -------------------
 
@@ -66,6 +67,7 @@ Behoben
   Programms verloren, weil der Eintrag im Schlüsselbund an das alte
   Programm gebunden war; gespeicherte Links waren danach nicht mehr
   lesbar. Die Datei im Schlüsselordner übersteht jeden Neubau.
+
 Entfernt
 - Die Kiste security-framework und die Anbindung an den Schlüsselbund
   von macOS.
