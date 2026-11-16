@@ -5,9 +5,10 @@
  * gegen den anderen Checkout auf und meldeten falsche no-unsafe-* Fehler.
  */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 
 const basis = mkdtempSync(join(tmpdir(), 'eigene-module-'));
@@ -48,5 +49,18 @@ describe('projekte-vorbereiten --eigene-module', () => {
 	it('läuft mit eigenem node_modules', () => {
 		mkdirSync(join(basis, 'web', 'node_modules'));
 		expect(lauf()).toEqual({ code: 0, fehler: '' });
+	});
+});
+
+describe('Verdrahtung in package.json', () => {
+	it('lint, check und test beginnen mit der Sperre gegen fremde Module', () => {
+		const paket = JSON.parse(
+			readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')
+		) as { scripts: Record<string, string> };
+		for (const name of ['lint', 'check', 'test']) {
+			expect(paket.scripts[name], name).toMatch(
+				/^node scripts\/projekte-vorbereiten\.mjs --eigene-module &&/
+			);
+		}
 	});
 });
