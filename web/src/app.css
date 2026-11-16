@@ -154,7 +154,8 @@
 	--radius: 14px;
 }
 
-/* Etappe 3b, Schalter System/Hell/Dunkel (#lib/thema.ts): Ohne Wahl folgt das
+/* Etappe 3b, Wahl „Farben“ (Wie mein PC, Hell, Dunkel; #lib/thema.ts, seit S2
+   auf der Seite Einstellungen): Ohne Wahl folgt das
    Thema dem System. data-theme="hell" hält das helle Thema auch bei dunklem
    System, data-theme="dunkel" setzt das dunkle bei hellem System. Der Block
    „dunkel“ unten hat genau dieselben Werte wie dieser; kontrast.spec.ts

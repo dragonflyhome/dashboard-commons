@@ -66,6 +66,7 @@
 	import Fristen from '$katalog/widgets/Fristen.svelte';
 	import Zuletzt from '$katalog/widgets/Zuletzt.svelte';
 	import type { ArbeitsGruppeAnsicht } from '$katalog/widgets/typen.ts';
+	import type { KartenIds, Option } from '$katalog/grund/typen.ts';
 	import { BEDEUTUNGEN, wort } from '#lib/bedeutung.ts';
 	import { meldungsZahlen } from '#lib/anstehend.ts';
 	import { tagzahlAus } from '#lib/zeit/achse.ts';
@@ -151,6 +152,7 @@
 
 	// Etappe 3b: Wahl (Optionsfelder) und die Textfassungen.
 	let ansicht = $state('kacheln');
+	let groesse = $state('klein');
 	const heuteTag = tagText(new Date());
 	const dichteBeispiel = TB.dichteEreignisse(new Date());
 	const eingebaut = Object.values(BILD_BAUSTEINE).filter((b) => b.ort === 'eingebaut');
@@ -176,7 +178,7 @@
 			Alle Bausteine der Oberfläche an einem Ort: wie sie aussehen, was sie tun und wie man sie
 			benutzt. Projektseiten nehmen sie aus <code>$katalog</code>; das Toolkit darunter (Bits UI)
 			bindet nur der Katalog selbst ein. Farben kommen nur aus den Token, hell und dunkel folgen dem
-			System oder dem Schalter „Farben“ unten auf jeder Seite.
+			System oder der Wahl „Farben“ auf der Seite Einstellungen.
 		</p>
 		<p>
 			Entwürfe zur Wahl: <a href={resolve('/katalog/entwuerfe/logo')}>Logo (drei Entwürfe)</a>.
@@ -249,7 +251,7 @@
 				id="wahl"
 				name="Wahl"
 				herkunft="Bits UI RadioGroup"
-				beschreibung="Eine aus wenigen Möglichkeiten, nebeneinander, sofort wirksam. Tab geht auf die gewählte, die Pfeile wechseln. So sind „Farben“ unten auf jeder Seite und „Kacheln/Spalten“ auf der Startseite gebaut."
+				beschreibung="Eine aus wenigen Möglichkeiten, nebeneinander, sofort wirksam. Tab geht auf die gewählte, die Pfeile wechseln. So ist „Kacheln/Spalten“ auf der Startseite gebaut. Mit dem Snippet karte wird jede Möglichkeit eine Karte mit eigenem Inhalt, so wie „Farben“ auf der Seite Einstellungen: Name und Beschreibung bekommen die übergebenen Kennungen, alles andere in der Karte ist Schmuck."
 				code={SCHNIPSEL.wahl}
 			>
 				<Wahl
@@ -261,6 +263,24 @@
 					]}
 				/>
 				<p class="small">Gewählt: {ansicht}</p>
+				<Wahl
+					bind:wert={groesse}
+					beschriftung="Größe"
+					optionen={[
+						{ wert: 'klein', text: 'Klein' },
+						{ wert: 'gross', text: 'Groß' }
+					]}
+				>
+					{#snippet karte(o: Option, ids: KartenIds)}
+						<span class="k-karte">
+							<span id={ids.name}>{o.text}</span>
+							<span id={ids.beschreibung} class="small muted"
+								>{o.wert === 'klein' ? 'Mehr auf einen Blick.' : 'Leichter zu lesen.'}</span
+							>
+						</span>
+					{/snippet}
+				</Wahl>
+				<p class="small">Gewählt: {groesse}</p>
 			</Beispiel>
 
 			<Beispiel

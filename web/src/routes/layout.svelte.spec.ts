@@ -289,6 +289,32 @@ function geladen(aufruf: unknown): string[] {
 	].filter((k) => fn(new URL(k)));
 }
 
+describe('Etappe S2: das Layout wendet die gemerkte Farbwahl an', () => {
+	it('bei gemerktem „dunkel“ stehen die beiden theme-color nach dem Zeichnen auf „not all“ und „all“', () => {
+		document.head.innerHTML =
+			'<meta name="theme-color" content="#f4f6fb" media="(prefers-color-scheme: light)">' +
+			'<meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)">';
+		localStorage.setItem('dashboard-thema', 'dunkel');
+		try {
+			zeige('/pc');
+			const medien = [...document.head.querySelectorAll('meta[name="theme-color"]')].map((m) =>
+				m.getAttribute('media')
+			);
+			expect(medien).toEqual(['not all', 'all']);
+			expect(document.documentElement.getAttribute('data-theme')).toBe('dunkel');
+			// Im Fuß steht nur noch die Fassung (FassungFuss, Link auf /fassungen): kein Schalter und kein Satz zum Ort.
+			const fuss = document.querySelector('footer');
+			expect(fuss?.querySelector('a[href="/fassungen"]')).not.toBeNull();
+			expect(fuss?.querySelector('[role="radiogroup"]')).toBeNull();
+			expect(fuss?.textContent).not.toContain('läuft nur hier');
+		} finally {
+			localStorage.clear();
+			document.documentElement.removeAttribute('data-theme');
+			document.head.innerHTML = '';
+		}
+	});
+});
+
 describe('Live-Lücken im Layout: gezielt statt refreshAll', () => {
 	beforeEach(() => {
 		// Nur die Hörer des Layouts aus diesem Test.

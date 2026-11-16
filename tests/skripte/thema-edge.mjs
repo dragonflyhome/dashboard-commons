@@ -18,7 +18,8 @@
  *     und data-theme im ersten Bild (requestAnimationFrame), bei
  *     DOMContentLoaded und nach load; alle drei müssen das gewählte Thema
  *     zeigen
- *   - Schalter mit der Tastatur: Fokus auf „System“, Pfeil rechts wählt
+ *   - Wahl „Farben“ auf /einstellungen (seit S2) mit der Tastatur: Fokus
+ *     auf „Wie mein PC“, Pfeil rechts wählt
  *     „Hell“, noch einmal „Dunkel“; gemerkt nach Neuladen
  *   - Startseite „Spalten“ (gemerkt je Browser): bei 375 px untereinander,
  *     kein seitliches Scrollen; bei 1280 px nebeneinander; Zahl in den
@@ -517,6 +518,9 @@ async function speicherSetzen(cdp, eintraege) {
   })()`);
 }
 
+/** Der Name einer Karte der Wahl „Farben“: das Element, auf das aria-labelledby zeigt. */
+const KARTEN_NAME = `(e) => document.getElementById(e?.getAttribute('aria-labelledby') ?? '')?.textContent.trim()`;
+
 async function themaPruefen(cdp, system, wahl) {
   const soll =
     wahl === "dunkel" || (wahl === null && system === "dark") ? DUNKEL : HELL;
@@ -528,7 +532,7 @@ async function themaPruefen(cdp, system, wahl) {
   await cdp.oeffnen("/");
   await pause(300);
   const m = await cdp.auswerten("window.__thema");
-  k.stopp();
+  // Die Mitschrift der Konsole läuft weiter bis nach dem Besuch von /einstellungen.
   for (const zeitpunkt of ["erstesBild", "geladen", "fertig"]) {
     const w = m?.[zeitpunkt];
     pruefe(
@@ -542,18 +546,22 @@ async function themaPruefen(cdp, system, wahl) {
     `${name}: keine CSP-Verletzung`,
     JSON.stringify(m?.csp),
   );
+  // Etappe S2: Die Wahl steht auf der Seite Einstellungen, nicht mehr im Fuß.
+  await cdp.oeffnen("/einstellungen");
+  await pause(300);
   const gewaehlt = await cdp.auswerten(
-    `document.querySelector('footer [role="radio"][aria-checked="true"]')?.textContent.trim()`,
+    `(${KARTEN_NAME})(document.querySelector('main [role="radio"][aria-checked="true"]'))`,
   );
   pruefe(
     gewaehlt ===
-      (wahl === "hell" ? "Hell" : wahl === "dunkel" ? "Dunkel" : "System"),
-    `${name}: der Schalter zeigt die Wahl`,
+      (wahl === "hell" ? "Hell" : wahl === "dunkel" ? "Dunkel" : "Wie mein PC"),
+    `${name}: die Seite Einstellungen zeigt die Wahl`,
     String(gewaehlt),
   );
+  k.stopp();
   pruefe(
     k.fehler.length === 0,
-    `${name}: keine Fehler in der Konsole`,
+    `${name}: keine Fehler in der Konsole (/ und /einstellungen)`,
     k.fehler.join(" | "),
   );
 }
@@ -609,24 +617,37 @@ async function main() {
   await themaPruefen(cdp, "light", null);
   await themaPruefen(cdp, "dark", null);
 
-  console.log("\n== Schalter mit der Tastatur ==");
+  console.log("\n== Farben auf /einstellungen mit der Tastatur ==");
   await cdp.system("light");
   await speicherSetzen(cdp, {});
-  await cdp.oeffnen("/");
-  const fokus = await cdp.auswerten(`(() => {
-    const e = document.querySelector('footer [role="radio"][aria-checked="true"]');
-    e?.scrollIntoView({ block: 'center' });
-    e?.focus();
-    return document.activeElement?.textContent.trim();
+  await cdp.oeffnen("/einstellungen");
+  // Echtes Tab: Fokus auf das letzte bedienbare Element vor der Gruppe, dann
+  // die Tab-Taste. Wohin der Fokus geht, entscheidet der Browser.
+  const davor = await cdp.auswerten(`(() => {
+    const gruppe = document.querySelector('main [role="radiogroup"]');
+    const alle = [...document.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter((e) => e.tabIndex >= 0 && e.getClientRects().length > 0);
+    const vor = alle.filter((e) => gruppe !== null && !gruppe.contains(e) && (e.compareDocumentPosition(gruppe) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0);
+    const letztes = vor[vor.length - 1];
+    gruppe?.scrollIntoView({ block: 'center' });
+    letztes?.focus();
+    return letztes !== undefined && document.activeElement === letztes;
   })()`);
   pruefe(
-    fokus === "System",
-    "Tab-Ziel ist die gewählte Möglichkeit „System“",
+    davor === true,
+    "Fokus steht auf dem Element vor der Gruppe „Farben“",
+    String(davor),
+  );
+  await cdp.taste("Tab", 9);
+  const fokus = await cdp.auswerten(`(${KARTEN_NAME})(document.activeElement)`);
+  pruefe(
+    fokus === "Wie mein PC",
+    "Tab vom Element davor geht auf die gewählte Möglichkeit „Wie mein PC“",
     String(fokus),
   );
   await cdp.taste("ArrowRight", 39);
   let z = await cdp.auswerten(
-    `({ thema: document.documentElement.getAttribute('data-theme'), gemerkt: localStorage.getItem('${SCHLUESSEL}'), hintergrund: getComputedStyle(document.body).backgroundColor, fokus: document.activeElement?.textContent.trim() })`,
+    `({ thema: document.documentElement.getAttribute('data-theme'), gemerkt: localStorage.getItem('${SCHLUESSEL}'), hintergrund: getComputedStyle(document.body).backgroundColor, fokus: (${KARTEN_NAME})(document.activeElement) })`,
   );
   pruefe(
     z.thema === "hell" &&
@@ -653,6 +674,66 @@ async function main() {
     JSON.stringify(m?.erstesBild),
   );
 
+  console.log("\n== Karten auf /einstellungen ohne leere Reihe ==");
+  // Ein Raster mit auto-fit als Kind einer Flex-Spalte maß seine Höhe vor der
+  // Breite: ab 1024 px war die eine Reihe so hoch wie gestapelte Karten.
+  for (const breite of [800, 1024, 1280]) {
+    await cdp.breite(breite);
+    await cdp.oeffnen("/einstellungen");
+    const r = await cdp.auswerten(`(() => {
+      const k = [...document.querySelectorAll('main .karten > .karte')];
+      const raster = k[0]?.parentElement;
+      if (!raster) return null;
+      const karten = k.map((e) => {
+        const b = e.getBoundingClientRect();
+        const s = getComputedStyle(e);
+        const innen = [...e.children].filter((c) => getComputedStyle(c).position !== 'absolute').map((c) => c.getBoundingClientRect());
+        const inhalt = Math.max(...innen.map((q) => q.bottom)) - Math.min(...innen.map((q) => q.top));
+        const rahmen = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((a, p) => a + parseFloat(s[p]), 0);
+        return { t: Math.round(b.top), h: b.height, noetig: inhalt + rahmen };
+      });
+      const reihen = [...new Set(karten.map((x) => x.t))];
+      const noetig = reihen.map((t) => Math.max(...karten.filter((x) => x.t === t).map((x) => x.noetig)));
+      const hoch = reihen.map((t) => Math.max(...karten.filter((x) => x.t === t).map((x) => x.h)));
+      const soll = noetig.reduce((a, b) => a + b, 0) + (parseFloat(getComputedStyle(raster).rowGap) || 0) * (reihen.length - 1);
+      return { reihen: reihen.length, hoch: hoch.map(Math.round), noetig: noetig.map(Math.round), raster: Math.round(raster.getBoundingClientRect().height), soll: Math.round(soll) };
+    })()`);
+    const reihenSoll = breite >= 1024 ? 1 : 2;
+    pruefe(
+      r !== null && r.reihen === reihenSoll && r.hoch.every((h, i) => h <= r.noetig[i] + 2) && r.raster <= r.soll + 2,
+      `${breite} px: Karten in ${reihenSoll === 1 ? "einer Reihe" : "zwei Reihen"}, nicht höher als ihr Inhalt`,
+      JSON.stringify(r),
+    );
+  }
+  console.log("\n== Haken der Karten überdeckt keinen Text ==");
+  // Der Haken steht oben rechts in der Karte; die Karte hält ihm rechts Platz frei.
+  for (const [pfad, auswahl] of [["/einstellungen", "main .karten > .karte"], ["/katalog", "#wahl .karten > .karte"]]) {
+    for (const breite of [360, 1280]) {
+      await cdp.breite(breite);
+      await cdp.oeffnen(pfad);
+      const u = await cdp.auswerten(`(() => {
+        const k = [...document.querySelectorAll('${auswahl}')];
+        k[0]?.scrollIntoView({ block: 'center' });
+        return k.map((e) => {
+          const h = e.querySelector('.haken').getBoundingClientRect();
+          const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+          let s = 0;
+          for (let n = w.nextNode(); n; n = w.nextNode()) {
+            if (n.parentElement.closest('.haken') || !n.textContent.trim()) continue;
+            const rg = document.createRange();
+            rg.selectNodeContents(n);
+            for (const q of rg.getClientRects()) s += Math.max(0, Math.min(q.right, h.right) - Math.max(q.left, h.left)) * Math.max(0, Math.min(q.bottom, h.bottom) - Math.max(q.top, h.top));
+          }
+          return Math.round(s);
+        });
+      })()`);
+      pruefe(
+        Array.isArray(u) && u.length >= 2 && u.every((x) => x === 0),
+        `${pfad}, ${breite} px: der Haken überdeckt keinen Text der Karte`,
+        JSON.stringify(u),
+      );
+    }
+  }
   console.log("\n== Startseite als Spalten ==");
   await cdp.system("light");
   for (const breite of [375, 1280]) {

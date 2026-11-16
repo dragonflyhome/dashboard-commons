@@ -1,7 +1,8 @@
 /**
- * Etappe 3b: Thema hell oder dunkel, gewählt mit dem Schalter unten auf jeder
- * Seite (System, Hell, Dunkel). Die Wahl gilt je Browser (localStorage,
- * Entscheidung plan-3b.toml, Antwort 2); ohne Wahl folgt das Thema dem System.
+ * Etappe 3b: Thema hell oder dunkel, seit Etappe S2 gewählt auf der Seite
+ * Einstellungen (Wie mein PC, Hell, Dunkel). Die Wahl gilt je Browser
+ * (localStorage, Entscheidung plan-3b.toml, Antwort 2); ohne Wahl folgt das
+ * Thema dem System.
  *
  * `data-theme` am <html> trägt die Wahl: `hell` oder `dunkel`, bei System
  * fehlt es. app.css hat dafür eigene Blöcke mit denselben Werten wie das
@@ -24,7 +25,7 @@ export const THEMA_SCHLUESSEL = 'dashboard-thema';
  * Skript in app.html bekannt sein (thema.svelte.spec.ts führt es je Wert aus).
  */
 export const THEMEN = [
-	{ wert: 'system', text: 'System' },
+	{ wert: 'system', text: 'Wie mein PC' },
 	{ wert: 'hell', text: 'Hell' },
 	{ wert: 'dunkel', text: 'Dunkel' }
 ] as const;

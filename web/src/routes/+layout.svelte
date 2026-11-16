@@ -20,7 +20,7 @@
 	import Glocke from '#lib/components/kopf/Glocke.svelte';
 	import LiveBadge from '#lib/components/LiveBadge.svelte';
 	import Schloss from '#lib/components/Schloss.svelte';
-	import ThemaSchalter from '#lib/components/ThemaSchalter.svelte';
+	import { themaAnwenden, themaLesen } from '#lib/thema.ts';
 	import FassungWache from '#lib/components/FassungWache.svelte';
 	import FassungFuss from '#lib/components/FassungFuss.svelte';
 	import NeuIn from '#lib/components/NeuIn.svelte';
@@ -76,6 +76,10 @@
 	}
 
 	onMount(() => {
+		// Etappe S2: Die gemerkte Farbwahl gilt auf jeder Seite auch für die Farbe der
+		// Titelleiste (theme-color, angeheftete App). Das tat bis S2 der Schalter im Fuß;
+		// gewählt wird jetzt auf der Seite Einstellungen.
+		themaAnwenden(themaLesen());
 		// Kopfleiste, Fassung 2: genau ein Kanal je Seite. Angemeldet der geschützte
 		// (live.svelte.ts), sonst der freie; freikanal.svelte.ts wählt und wechselt.
 		freierKanal.start();
@@ -204,9 +208,7 @@
 </div>
 
 <footer class="muted small">
-	<!-- Etappe 3b: Thema je Browser (System, Hell, Dunkel), hier unten statt in der Kopfleiste. -->
-	<ThemaSchalter />
-	<p>Dein Dashboard läuft nur hier auf diesem PC.</p>
+	<!-- Etappe S2: Farbwahl und der Satz zum Ort stehen auf der Seite Einstellungen. -->
 	<!-- Die laufende Fassung, Link auf den Änderungsverlauf. -->
 	<FassungFuss />
 </footer>
@@ -303,8 +305,5 @@
 		gap: 0.5rem;
 		text-align: center;
 		padding: 20px;
-	}
-	footer p {
-		margin: 0;
 	}
 </style>

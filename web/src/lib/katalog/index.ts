@@ -60,7 +60,7 @@ export { default as Menue } from './grund/Menue.svelte';
 export { default as Schublade } from './grund/Schublade.svelte';
 export { default as Klappfeld } from './grund/Klappfeld.svelte';
 export { default as Minilinie } from './Minilinie.svelte';
-export type { MenuePunkt, Option, Spalte, Zeile } from './grund/typen.ts';
+export type { KartenIds, MenuePunkt, Option, Spalte, Zeile } from './grund/typen.ts';
 
 // Bilder aus assets/ des eigenen Projekts
 export { default as Bild } from './Bild.svelte';
