@@ -72,7 +72,8 @@ impl KanalKonto {
 
 /// Darf die Gegenseite bedient werden? Nur wenn das Betriebssystem ihre
 /// Benutzernummer nennt und sie die erwartete ist. Gibt dann die Befähigung.
-pub fn gegenseite_urteil(bezeugt: Option<u32>, erwartet: u32) -> Option<KanalKonto> {
+/// Nicht öffentlich: Außerhalb dieses Moduls entsteht kein [`KanalKonto`].
+fn gegenseite_urteil(bezeugt: Option<u32>, erwartet: u32) -> Option<KanalKonto> {
     bezeugt.filter(|&uid| uid == erwartet).map(KanalKonto::nach_pruefung)
 }
 
