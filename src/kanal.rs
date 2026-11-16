@@ -34,6 +34,7 @@ pub const SATZ_ZU_LANG: &str = "Die Anfrage ist zu lang.";
 pub const SATZ_OHNE_ENDE: &str = "Die Anfrage endet ohne Zeilenende.";
 pub const SATZ_KEIN_UTF8: &str = "Die Anfrage ist kein UTF-8.";
 pub const SATZ_KEIN_JSON: &str = "Die Anfrage ist kein gültiges JSON.";
+pub const SATZ_KEIN_OBJEKT: &str = "Die Anfrage muss ein Objekt mit dem Feld befehl sein.";
 pub const SATZ_FELD: &str = "Die Anfrage hat nicht genau das Feld „befehl“.";
 pub const SATZ_BEFEHL: &str = "Diesen Befehl gibt es nicht.";
 
@@ -103,7 +104,7 @@ pub fn anfrage_lesen(roh: &[u8]) -> Result<Befehl, &'static str> {
     // Schritt läse serde auch eine Liste wie `["wer"]` als Anfrage.
     let wert: serde_json::Value = serde_json::from_str(text).map_err(|_| SATZ_KEIN_JSON)?;
     let serde_json::Value::Object(felder) = &wert else {
-        return Err(SATZ_KEIN_JSON);
+        return Err(SATZ_KEIN_OBJEKT);
     };
     if felder.len() != 1 || !felder.contains_key("befehl") {
         return Err(SATZ_FELD);
@@ -179,6 +180,7 @@ pub use lauscher::{FRIST, HOECHSTENS_ZUGLEICH, Kanal, SATZ_FRIST, starten};
 /// Ein- und Ausgabe des Kanals.
 #[cfg(unix)]
 mod lauscher {
+    use std::future::Future;
     use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -247,14 +249,16 @@ mod lauscher {
     }
 
     /// Startet den Kanal am Ort `ort` und bedient nur Verbindungen der
-    /// Benutzernummer `erwartete_uid` (im Betrieb die eigene). Muss in einer
-    /// Tokio-Laufzeit aufgerufen werden. Jeder Fehler ist ein Satz fürs
+    /// Benutzernummer `erwartete_uid` (im Betrieb die eigene). Ist `ende`
+    /// fertig (im Betrieb das Abschaltsignal), nimmt der Kanal keine neue
+    /// Verbindung mehr an; der Socket verschwindet, wenn der Wert freigegeben
+    /// wird. Muss in einer Tokio-Laufzeit aufgerufen werden. Jeder Fehler ist ein Satz fürs
     /// Protokoll; der Server läuft dann ohne Kanal weiter.
     ///
     /// Die Schranken sind der Ordner (0700, eigener Besitz) und `peer_cred`;
     /// die Rechte 0600 am Socket sind eine dritte. Kein `umask`: Er gälte für
     /// den ganzen Prozess, auch für die anderen Threads.
-    pub fn starten(ort: &Path, erwartete_uid: u32) -> Result<Kanal, String> {
+    pub fn starten(ort: &Path, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) -> Result<Kanal, String> {
         let eigene_uid = crate::unix::eigene_uid();
         let ordner =
             ort.parent().filter(|p| !p.as_os_str().is_empty()).ok_or_else(|| format!("{} nennt keinen Ordner; {}", zeigen(ort), RAHMEN_KANAL.folge_im_satz))?;
@@ -324,18 +328,27 @@ mod lauscher {
         lauscher.set_nonblocking(true).map_err(|e| aufraeumen(format!("Der lokale Kanal ließ sich nicht einrichten: {e}. {}.", RAHMEN_KANAL.folge)))?;
         let lauscher =
             UnixListener::from_std(lauscher).map_err(|e| aufraeumen(format!("Der lokale Kanal ließ sich nicht einrichten: {e}. {}.", RAHMEN_KANAL.folge)))?;
-        let aufgabe = tokio::spawn(annehmen(lauscher, erwartete_uid));
+        let aufgabe = tokio::spawn(annehmen(lauscher, erwartete_uid, ende));
         info!("Lokaler Kanal: {}", zeigen(ort));
         Ok(Kanal { ort: ort.to_path_buf(), kennung, aufgabe })
     }
 
-    /// Nimmt Verbindungen an, bis die Aufgabe abgebrochen wird. Je
-    /// Verbindung: erst die Benutzernummer der Gegenseite, dann ein Platz,
+    /// Nimmt Verbindungen an, bis `ende` fertig ist (oder die Aufgabe
+    /// abgebrochen wird). Danach ist der Lauscher zu: Eine neue Verbindung
+    /// wird nicht mehr angenommen, schon angenommene bekommen ihre Antwort.
+    /// Je Verbindung: erst die Benutzernummer der Gegenseite, dann ein Platz,
     /// dann erst wird gelesen.
-    async fn annehmen(lauscher: UnixListener, erwartete_uid: u32) {
+    async fn annehmen(lauscher: UnixListener, erwartete_uid: u32, ende: impl Future<Output = ()> + Send + 'static) {
         let plaetze = Arc::new(Semaphore::new(HOECHSTENS_ZUGLEICH));
+        tokio::pin!(ende);
         loop {
-            let verbindung = match lauscher.accept().await {
+            let angenommen = tokio::select! {
+                // Erst das Ende: Liegt beides an, wird nichts mehr angenommen.
+                biased;
+                () = &mut ende => break,
+                a = lauscher.accept() => a,
+            };
+            let verbindung = match angenommen {
                 Ok((v, _)) => v,
                 Err(e) => {
                     warn!("Lokaler Kanal: Annehmen gescheitert ({e}).");
@@ -449,8 +462,17 @@ mod tests {
 
     #[test]
     fn anfrage_kein_json() {
-        for roh in [&b"\n"[..], b"wer\n", b"{\"befehl\":\n", b"[\"wer\"]\n", b"\"wer\"\n", b"null\n"] {
+        for roh in [&b"\n"[..], b"wer\n", b"{\"befehl\":\n", b"{\"befehl\":\"wer\"\n"] {
             assert_eq!(anfrage_lesen(roh), Err(SATZ_KEIN_JSON), "{roh:?}");
+        }
+    }
+
+    /// Gültiges JSON, das kein Objekt ist, auch wenn „wer“ darin steht. Ohne
+    /// die Prüfung der Form läse serde die Liste als Anfrage.
+    #[test]
+    fn anfrage_gueltiges_json_aber_kein_objekt() {
+        for roh in [&b"[\"wer\"]\n"[..], b"\"wer\"\n", b"null\n", b"7\n", b"true\n", b"[]\n"] {
+            assert_eq!(anfrage_lesen(roh), Err(SATZ_KEIN_OBJEKT), "{roh:?}");
         }
     }
 
@@ -459,8 +481,6 @@ mod tests {
         assert_eq!(anfrage_lesen(b"{\"befehl\":\"wer\",\"mehr\":1}\n"), Err(SATZ_FELD));
         assert_eq!(anfrage_lesen(b"{\"anders\":\"wer\"}\n"), Err(SATZ_FELD));
         assert_eq!(anfrage_lesen(b"{}\n"), Err(SATZ_FELD));
-        // Eine Liste oder ein bloßer Text sind keine Anfrage, auch wenn „wer“ darin steht.
-        assert_eq!(anfrage_lesen(b"[\"wer\"]\n"), Err(SATZ_KEIN_JSON));
     }
 
     #[test]
@@ -479,7 +499,7 @@ mod tests {
 
     #[test]
     fn fehler_antwort_ist_eine_zeile_mit_dem_festen_satz() {
-        for satz in [SATZ_ZU_LANG, SATZ_OHNE_ENDE, SATZ_KEIN_UTF8, SATZ_KEIN_JSON, SATZ_FELD, SATZ_BEFEHL] {
+        for satz in [SATZ_ZU_LANG, SATZ_OHNE_ENDE, SATZ_KEIN_UTF8, SATZ_KEIN_JSON, SATZ_KEIN_OBJEKT, SATZ_FELD, SATZ_BEFEHL] {
             let antwort = fehler_antwort(satz);
             assert!(!antwort.contains('\n'));
             assert_eq!(serde_json::from_str::<serde_json::Value>(&antwort).unwrap(), serde_json::json!({ "fehler": satz }));
@@ -533,13 +553,34 @@ mod unix_tests {
 
     const WER: &[u8] = b"{\"befehl\":\"wer\"}\n";
 
+    /// Ein Testordner, der am Ende des Tests wieder verschwindet.
+    struct Ordner(PathBuf);
+
+    impl std::ops::Deref for Ordner {
+        type Target = Path;
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Ordner {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// Ein frischer Ordner mit 0700. Kurzer Name: Der Pfad eines Sockets hat
     /// auf dem Mac höchstens 104 Zeichen.
-    fn ordner(name: &str) -> PathBuf {
+    fn ordner(name: &str) -> Ordner {
         let o = std::env::temp_dir().join(format!("dk-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&o);
         std::fs::DirBuilder::new().mode(0o700).create(&o).unwrap();
-        o
+        Ordner(o)
+    }
+
+    /// Der Kanal ohne Abschaltsignal: Er läuft, bis der Wert freigegeben wird.
+    fn starte(ort: &Path, erwartete_uid: u32) -> Result<Kanal, String> {
+        starten(ort, erwartete_uid, std::future::pending())
     }
 
     fn eigene() -> u32 {
@@ -575,16 +616,18 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn eigene_nummer_wird_bedient() {
-        let ort = ordner("eigen").join(KANAL_DATEI);
-        let kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("eigen");
+        let ort = o.join(KANAL_DATEI);
+        let kanal = starte(&ort, eigene()).unwrap();
         assert_eq!(kanal.ort(), ort);
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn socket_hat_art_und_rechte_600_bevor_eine_verbindung_kommt() {
-        let ort = ordner("rechte").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("rechte");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         // Gleich nach dem Start, ohne dass je eine Verbindung angenommen wurde.
         let m = std::fs::symlink_metadata(&ort).unwrap();
         assert!(m.file_type().is_socket());
@@ -594,19 +637,20 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn fremde_nummer_wird_ohne_antwort_geschlossen() {
-        let ort = ordner("fremd").join(KANAL_DATEI);
+        let o = ordner("fremd");
+        let ort = o.join(KANAL_DATEI);
         // Der Lauscher erwartet eine andere Nummer als die des Tests: Die echte
         // Verbindung ist für ihn die eines fremden Kontos.
-        let _kanal = starten(&ort, eigene().wrapping_add(1)).unwrap();
+        let _kanal = starte(&ort, eigene().wrapping_add(1)).unwrap();
         assert_eq!(fragen(&ort, WER).await, "");
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ordner_zu_offen_kein_kanal_und_kein_socket() {
         let o = ordner("offen");
-        std::fs::set_permissions(&o, std::fs::Permissions::from_mode(0o750)).unwrap();
+        std::fs::set_permissions(&*o, std::fs::Permissions::from_mode(0o750)).unwrap();
         let ort = o.join(KANAL_DATEI);
-        let satz = starten(&ort, eigene()).unwrap_err();
+        let satz = starte(&ort, eigene()).unwrap_err();
         assert!(satz.contains("für andere Konten offen") && satz.contains("Den lokalen Kanal gibt es in diesem Lauf nicht"), "{satz}");
         assert!(std::fs::symlink_metadata(&ort).is_err());
     }
@@ -618,15 +662,16 @@ mod unix_tests {
         std::fs::DirBuilder::new().mode(0o700).create(&ziel).unwrap();
         let verknuepft = o.join("v");
         std::os::unix::fs::symlink(&ziel, &verknuepft).unwrap();
-        let satz = starten(&verknuepft.join(KANAL_DATEI), eigene()).unwrap_err();
+        let satz = starte(&verknuepft.join(KANAL_DATEI), eigene()).unwrap_err();
         assert!(satz.contains("kein Ordner oder eine Verknüpfung"), "{satz}");
         assert!(std::fs::symlink_metadata(ziel.join(KANAL_DATEI)).is_err());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn ordner_fehlt_kein_kanal_und_nichts_wird_angelegt() {
-        let o = ordner("fehlt").join("gibt-es-nicht");
-        let satz = starten(&o.join(KANAL_DATEI), eigene()).unwrap_err();
+        let oben = ordner("fehlt");
+        let o = oben.join("gibt-es-nicht");
+        let satz = starte(&o.join(KANAL_DATEI), eigene()).unwrap_err();
         assert!(satz.contains("Der Schlüsselordner fehlt"), "{satz}");
         assert!(std::fs::symlink_metadata(&o).is_err());
     }
@@ -651,34 +696,38 @@ mod unix_tests {
             ("fifo", |p| assert!(crate::dienst::programme::eigener_befehl("mkfifo").arg(p).status().unwrap().success()), |m| m.file_type().is_fifo()),
         ];
         for (name, legen, noch_da) in faelle {
-            let ort = ordner(name).join(KANAL_DATEI);
+            let o = ordner(name);
+            let ort = o.join(KANAL_DATEI);
             legen(&ort);
-            let satz = starten(&ort, eigene()).unwrap_err();
+            let satz = starte(&ort, eigene()).unwrap_err();
             assert!(satz.contains("es bleibt unverändert") && satz.contains("Den lokalen Kanal gibt es in diesem Lauf nicht"), "{name}: {satz}");
             assert!(noch_da(&std::fs::symlink_metadata(&ort).unwrap()), "{name}: verändert");
+            // Das Ziel der Verknüpfung ist auch noch da.
+            if name == "verkn-mit-ziel" {
+                assert_eq!(std::fs::read(o.join("ziel")).unwrap(), b"x");
+            }
         }
-        // Das Ziel der Verknüpfung ist auch noch da.
-        let ziel = std::env::temp_dir().join(format!("dk-{}-verkn-mit-ziel", std::process::id())).join("ziel");
-        assert_eq!(std::fs::read(ziel).unwrap(), b"x");
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn toter_socket_nach_einem_abbruch_wird_ersetzt() {
-        let ort = ordner("tot").join(KANAL_DATEI);
+        let o = ordner("tot");
+        let ort = o.join(KANAL_DATEI);
         // Gebunden und ohne Aufräumen fallen gelassen: Die Datei bleibt, niemand lauscht.
         drop(std::os::unix::net::UnixListener::bind(&ort).unwrap());
         assert!(std::fs::symlink_metadata(&ort).unwrap().file_type().is_socket());
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let _kanal = starte(&ort, eigene()).unwrap();
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
         assert_eq!(std::fs::symlink_metadata(&ort).unwrap().mode() & 0o777, 0o600);
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn lebender_socket_bleibt_und_bleibt_erreichbar() {
-        let ort = ordner("lebt").join(KANAL_DATEI);
-        let erster = starten(&ort, eigene()).unwrap();
+        let o = ordner("lebt");
+        let ort = o.join(KANAL_DATEI);
+        let erster = starte(&ort, eigene()).unwrap();
         let vorher = std::fs::symlink_metadata(&ort).unwrap().ino();
-        let satz = starten(&ort, eigene()).unwrap_err();
+        let satz = starte(&ort, eigene()).unwrap_err();
         assert!(satz.contains("antwortet schon ein anderer Lauf"), "{satz}");
         assert_eq!(std::fs::symlink_metadata(&ort).unwrap().ino(), vorher);
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
@@ -687,27 +736,31 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn zu_langer_pfad_fester_satz() {
-        let o = ordner("lang").join("a".repeat(120));
+        let oben = ordner("lang");
+        let o = oben.join("a".repeat(120));
         std::fs::DirBuilder::new().mode(0o700).create(&o).unwrap();
-        let satz = starten(&o.join(KANAL_DATEI), eigene()).unwrap_err();
+        let satz = starte(&o.join(KANAL_DATEI), eigene()).unwrap_err();
         assert_eq!(satz, "Der Pfad des lokalen Kanals ist zu lang für einen Socket. Den lokalen Kanal gibt es in diesem Lauf nicht.");
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn kaputte_anfragen_bekommen_je_ihren_festen_satz() {
-        let ort = ordner("kaputt").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("kaputt");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         assert_eq!(fragen(&ort, &vec![b'a'; 2000]).await, fehler_zeile(SATZ_ZU_LANG));
         assert_eq!(fragen(&ort, b"\xff\xfe\n").await, fehler_zeile(SATZ_KEIN_UTF8));
         assert_eq!(fragen(&ort, b"{\"befehl\":\n").await, fehler_zeile(SATZ_KEIN_JSON));
+        assert_eq!(fragen(&ort, b"[\"wer\"]\n").await, fehler_zeile(SATZ_KEIN_OBJEKT));
         assert_eq!(fragen(&ort, b"{\"befehl\":\"wer\",\"mehr\":1}\n").await, fehler_zeile(SATZ_FELD));
         assert_eq!(fragen(&ort, b"{\"befehl\":\"code\"}\n").await, fehler_zeile(SATZ_BEFEHL));
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn zeile_ohne_zeilenende_vor_dem_ende_fester_satz() {
-        let ort = ordner("ohneende").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("ohneende");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         let mut v = UnixStream::connect(&ort).await.unwrap();
         v.write_all(b"{\"befehl\":\"wer\"}").await.unwrap();
         // Die Schreibseite schließen: Für den Server ist das das Ende der Anfrage.
@@ -717,16 +770,18 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn eine_zweite_zeile_wird_nicht_beantwortet() {
-        let ort = ordner("zwei").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("zwei");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         let antwort = fragen(&ort, b"{\"befehl\":\"wer\"}\n{\"befehl\":\"wer\"}\n").await;
         assert_eq!(antwort, wer_zeile());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn stille_verbindung_endet_nach_der_frist_und_haelt_andere_nicht_auf() {
-        let ort = ordner("still").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("still");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         let start = std::time::Instant::now();
         let mut still = UnixStream::connect(&ort).await.unwrap();
         // Währenddessen bekommt eine andere Verbindung sofort ihre Antwort.
@@ -739,8 +794,9 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn fuenfte_gleichzeitige_verbindung_wird_sofort_geschlossen() {
-        let ort = ordner("fuenf").join(KANAL_DATEI);
-        let _kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("fuenf");
+        let ort = o.join(KANAL_DATEI);
+        let _kanal = starte(&ort, eigene()).unwrap();
         let mut vier = Vec::new();
         for _ in 0..HOECHSTENS_ZUGLEICH {
             vier.push(UnixStream::connect(&ort).await.unwrap());
@@ -761,20 +817,50 @@ mod unix_tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn nach_dem_ende_ist_der_socket_weg_und_ein_neuer_start_bekommt_ihn_wieder() {
-        let ort = ordner("ende").join(KANAL_DATEI);
-        let kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("ende");
+        let ort = o.join(KANAL_DATEI);
+        let kanal = starte(&ort, eigene()).unwrap();
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
         drop(kanal);
         assert!(std::fs::symlink_metadata(&ort).is_err(), "der Socket liegt noch da");
-        let _neu = starten(&ort, eigene()).unwrap();
+        let _neu = starte(&ort, eigene()).unwrap();
         assert_eq!(fragen(&ort, WER).await, wer_zeile());
+    }
+
+    /// Nach dem Abschaltsignal nimmt der Kanal keine neue Verbindung mehr an,
+    /// auch solange der Wert noch lebt; eine schon angenommene bekommt ihre Antwort.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn nach_dem_abschaltsignal_wird_keine_neue_verbindung_bedient() {
+        let o = ordner("signal");
+        let ort = o.join(KANAL_DATEI);
+        let (signal, ende) = tokio::sync::oneshot::channel::<()>();
+        let kanal = starten(&ort, eigene(), async move {
+            let _ = ende.await;
+        })
+        .unwrap();
+        assert_eq!(fragen(&ort, WER).await, wer_zeile());
+        // Eine Verbindung ist schon angenommen, hat aber noch nichts geschickt.
+        let mut offen = UnixStream::connect(&ort).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        signal.send(()).unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Der Wert lebt noch, die Datei liegt noch da, aber niemand nimmt mehr an.
+        assert!(std::fs::symlink_metadata(&ort).unwrap().file_type().is_socket());
+        let fehler = UnixStream::connect(&ort).await.expect_err("nach dem Signal kam noch eine Verbindung zustande");
+        assert_eq!(fehler.kind(), std::io::ErrorKind::ConnectionRefused);
+        // Die schon angenommene wird noch bedient.
+        offen.write_all(WER).await.unwrap();
+        assert_eq!(alles_lesen(&mut offen).await, wer_zeile());
+        drop(kanal);
+        assert!(std::fs::symlink_metadata(&ort).is_err());
     }
 
     /// Liegt am Ende nicht mehr der eigene Socket am Ort, wird nichts entfernt.
     #[tokio::test(flavor = "multi_thread")]
     async fn am_ende_wird_nur_der_eigene_socket_entfernt() {
-        let ort = ordner("nureigen").join(KANAL_DATEI);
-        let kanal = starten(&ort, eigene()).unwrap();
+        let o = ordner("nureigen");
+        let ort = o.join(KANAL_DATEI);
+        let kanal = starte(&ort, eigene()).unwrap();
         std::fs::remove_file(&ort).unwrap();
         std::fs::write(&ort, b"anderes").unwrap();
         drop(kanal);
@@ -807,7 +893,7 @@ mod unix_tests {
         {
             // Bediente Verbindungen mit kaputter und mit gültiger Anfrage.
             let ort = o.join(KANAL_DATEI);
-            let _kanal = starten(&ort, eigene()).unwrap();
+            let _kanal = starte(&ort, eigene()).unwrap();
             assert_eq!(fragen(&ort, format!("{{\"befehl\":\"{marke}\"}}\n").as_bytes()).await, fehler_zeile(SATZ_BEFEHL));
             assert_eq!(fragen(&ort, format!("{marke}\n").as_bytes()).await, fehler_zeile(SATZ_KEIN_JSON));
             assert_eq!(fragen(&ort, WER).await, wer_zeile());
@@ -815,7 +901,7 @@ mod unix_tests {
         {
             // Eine abgewiesene Gegenseite.
             let ort = o.join(KANAL_DATEI);
-            let _kanal = starten(&ort, eigene().wrapping_add(1)).unwrap();
+            let _kanal = starte(&ort, eigene().wrapping_add(1)).unwrap();
             assert_eq!(fragen(&ort, format!("{marke}\n").as_bytes()).await, "");
         }
         let text = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
