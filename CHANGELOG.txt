@@ -14,6 +14,22 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Seite Einstellungen in der Seitenleiste: Die Farben wählt man dort
+  mit drei Karten, jede zeigt ihr Thema als kleine Vorschau. Nach der
+  Wahl steht da, was gilt, und „Rückgängig“ stellt die vorige Wahl
+  wieder her.
+- Baustein Wahl: mit dem Snippet karte wird jede Möglichkeit eine
+  Karte mit eigenem Inhalt.
+
+Geändert
+- Der Schalter „Farben“ unten auf jeder Seite entfällt; die Wahl steht
+  auf der Seite Einstellungen. „System“ heißt dort „Wie mein PC“.
+
+Behoben
+- Auf der Seite Einstellungen und im Katalog waren die Karten der
+  Farbwahl ab 1024 px fast doppelt so hoch wie ihr Inhalt, und der Haken
+  der gewählten Karte konnte ihren Text überdecken.
 0.15.0 - 2026-11-16
 -------------------
 
