@@ -119,6 +119,18 @@ pub async fn ausweis_aus(state: &AppState, kopf: &HeaderMap) -> AusweisStand {
             return AusweisStand::Ungueltig;
         }
     };
+    // Die Sperre mit dem Rechner (`helfer`). Eingeschaltet
+    // gilt keine Anmeldung, solange der Rechner gesperrt ist oder der Helfer
+    // fehlt, und keine, die vor der letzten Sperre entstand.
+    #[cfg(unix)]
+    {
+        let gilt =
+            state.sperre.lock().unwrap_or_else(std::sync::PoisonError::into_inner).gilt(anmeldung, std::time::Instant::now(), crate::helfer::wand_jetzt());
+        if !gilt {
+            tracing::info!("Ausweis abgewiesen: Der Rechner ist gesperrt, war seit der Anmeldung gesperrt, oder der Helfer meldet sich nicht.");
+            return AusweisStand::Ungueltig;
+        }
+    }
     let jetzt = jetzt.timestamp();
     let erneuert = (jetzt - ausweis.iat >= ERNEUERN_NACH_SEKUNDEN && ausweis.exp < ausweis.sitzung_ende())
         .then(|| ausweis.erneuert(jetzt))

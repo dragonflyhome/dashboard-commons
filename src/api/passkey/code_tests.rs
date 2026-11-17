@@ -602,3 +602,54 @@ async fn der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung() {
         }
     }
 }
+
+// ----- die Sperre mit dem Rechner -----
+
+/// Meldet sich mit dem Passkey an und gibt das Cookie zurück.
+async fn anmelden_mit(app: &Router, a: &mut PruefAuthenticator) -> String {
+    let (_, _, o) = schicke(app, post("/api/passkey/anmelden/beginn", serde_json::json!({}))).await;
+    let (c, auth, sig) = a.anmelden(o["challenge"].as_str().unwrap(), HERKUNFT);
+    let k = serde_json::json!({ "id": a.id_b64(), "client_daten": passkey::b64(&c), "auth_daten": passkey::b64(&auth), "signatur": passkey::b64(&sig) });
+    let (s, set, j) = schicke(app, post("/api/passkey/anmelden/ende", k)).await;
+    assert_eq!(s, StatusCode::OK, "{j}");
+    set.unwrap().split(';').next().unwrap().to_string()
+}
+
+async fn geschuetzt_mit(app: &Router, cookie: &str) -> StatusCode {
+    let req = Request::get("/api/vorgaenge/uebersicht").header(header::HOST, "localhost:8787").header(header::COOKIE, cookie).body(Body::empty()).unwrap();
+    schicke(app, req).await.0
+}
+
+/// Eingeschaltet entwertet die Sperre jede Anmeldung bis dahin; nach dem
+/// Entsperren ist eine neue nötig. Ohne die Einstellung ändert sich nichts.
+#[tokio::test(flavor = "multi_thread")]
+async fn sperre_mit_dem_rechner_entwertet_die_anmeldung() {
+    let state = zustand();
+    let app = lokal(&state);
+    let code = code_holen(&state).await;
+    let mut a = PruefAuthenticator::es256();
+    assert_eq!(anlegen(&app, &code, &a).await.0, StatusCode::CREATED);
+    let sperre = || state.sperre.lock().unwrap();
+    let jetzt = std::time::Instant::now;
+    // Ausgeschaltet: Die Anmeldung gilt, auch wenn ein Helfer „gesperrt“ meldet.
+    let erste = anmelden_mit(&app, &mut a).await;
+    sperre().sperre(jetzt(), crate::helfer::wand_jetzt());
+    assert_eq!(geschuetzt_mit(&app, &erste).await, StatusCode::OK);
+    // Eingeschaltet, Helfer da und entsperrt: Die Anmeldung von vorher gilt nicht mehr.
+    sperre().einschalten(crate::helfer::wand_jetzt());
+    sperre().entsperrt(jetzt(), crate::helfer::wand_jetzt());
+    assert_eq!(geschuetzt_mit(&app, &erste).await, StatusCode::UNAUTHORIZED);
+    // Eine neue Anmeldung, eine Sekunde später, gilt.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let zweite = anmelden_mit(&app, &mut a).await;
+    assert_eq!(geschuetzt_mit(&app, &zweite).await, StatusCode::OK);
+    // Der Rechner wird gesperrt: sofort zu.
+    sperre().sperre(jetzt(), crate::helfer::wand_jetzt());
+    assert_eq!(geschuetzt_mit(&app, &zweite).await, StatusCode::UNAUTHORIZED);
+    // Entsperrt: Die alte Anmeldung lebt nicht wieder auf.
+    sperre().entsperrt(jetzt(), crate::helfer::wand_jetzt());
+    assert_eq!(geschuetzt_mit(&app, &zweite).await, StatusCode::UNAUTHORIZED);
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let dritte = anmelden_mit(&app, &mut a).await;
+    assert_eq!(geschuetzt_mit(&app, &dritte).await, StatusCode::OK);
+}
