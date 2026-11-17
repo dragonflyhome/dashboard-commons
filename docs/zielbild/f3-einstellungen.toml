@@ -3,12 +3,12 @@ reihenfolge = 8
 text = """
 Die Farbwahl und der Satz „Dein Dashboard läuft nur hier auf diesem PC.“ ziehen aus dem Fuß jeder Seite auf eine eigene Seite Einstellungen (Etappen S1 bis S4). Die Seite kommt nach dem Umzug der Projektseiten (Etappe 5). Dort gibt es mehr als Hell und Dunkel.
 
-Die Wahl gilt sofort, nur in diesem Browser, und geht nirgendwohin."""
+Die Wahl gilt sofort, nur in diesem Browser, und geht nirgendwohin. Ändern lässt sie sich nur angemeldet; das gewählte Farbschema darf auch ohne Anmeldung wirken. Spätere persönliche Einstellungen wirken erst nach der Anmeldung."""
 
 [[block]]
 titel = "Schemata"
 punkte = [
-  "Wie mein PC: folgt Windows hell oder dunkel (Standard).",
+  "Wie mein PC: folgt der Einstellung des Rechners, hell oder dunkel (Standard).",
   "Hell und Dunkel: die bisherigen Schemata.",
   "Warm: hell wie Papier, für langes Lesen am Tag.",
   "Dämmerung: weich dunkel, für den Abend.",
@@ -26,6 +26,6 @@ spalten = ["Etappe", "Was"]
 zeilen = [
   ["S1", "Umbau ohne sichtbare Änderung, Tests"],
   ["S2", "Seite Einstellungen mit Vorschau-Karten, Fuß entfällt"],
-  ["S3", "Kontrast hell und dunkel, Windows-Kontrastdesign, Farbfehlsicht-Prüfung"],
+  ["S3", "Kontrast hell und dunkel, Kontrastmodus des Betriebssystems, Farbfehlsicht-Prüfung"],
   ["S4", "Warm und Dämmerung mit gemessenen Farben"],
 ]
