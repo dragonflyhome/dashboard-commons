@@ -4535,6 +4535,8 @@ fn beitraege_aus_forks_alle_wege() {
 
 /// Positivliste: genau die Issue-Formulare .github/ISSUE_TEMPLATE/*.yml; der Rest
 /// von .github (Workflows) bleibt ein Fund, ebenso ein Leitfaden als .txt.
+/// Dazu mac/helfer und die Ausnahme für eine Markdown-Datei aus genau einem
+/// übernommenen Commit.
 #[test]
 fn mitwirken_dateien_in_der_positivliste() {
     if !bereit() {
@@ -4558,6 +4560,44 @@ fn mitwirken_dateien_in_der_positivliste() {
         let text = abgewiesen(pfad, "Positivliste", |o| o.ueber_merge(|o| o.datei(pfad, b"x\n")));
         assert!(fundzeilen(&text).iter().all(|z| z.contains("Positivliste")), "{pfad}: nur Funde an der Positivliste:\n{text}");
     }
+    // Die Ausnahme für den übernommenen Beitrag gilt nur für sein Paar aus Commit und Pfad:
+    // dieselbe Datei aus einem anderen Commit bleibt ein Fund, im Verlauf wie im Baum.
+    let md = "Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr";
+    let text = abgewiesen("LIESMICH.md im Verlauf", md, |o| {
+        o.ueber_merge(|o| {
+            o.datei("mac/helfer/LIESMICH.md", b"x\n");
+            o.commit("feat: Lies mich", &[]);
+            o.git(&["mv", "mac/helfer/LIESMICH.md", "mac/helfer/LIESMICH.txt"]);
+        })
+    });
+    assert_eq!(fundzeilen(&text).len(), 1, "LIESMICH.md im Verlauf: genau ein Fund:\n{text}");
+    let text = abgewiesen("LIESMICH.md im Baum", md, |o| o.ueber_merge(|o| o.datei("mac/helfer/LIESMICH.md", b"x\n")));
+    assert_eq!(fundzeilen(&text).len(), 1, "LIESMICH.md im Baum: genau ein Fund:\n{text}");
+    // Die kleine Funktion selbst; die echte SHA lässt sich in einem Test-Repo nicht erzeugen.
+    let sha = "aa3a04482d0c66fdb663c3a66a4b3bcb9cbb70de";
+    let faelle = [
+        (sha, "mac/helfer/LIESMICH.md", true),
+        ("aa3a04482d0c66fdb663c3a66a4b3bcb9cbb70df", "mac/helfer/LIESMICH.md", false),
+        (&sha[..10], "mac/helfer/LIESMICH.md", false),
+        ("AA3A04482D0C66FDB663C3A66A4B3BCB9CBB70DE", "mac/helfer/LIESMICH.md", false),
+        ("", "mac/helfer/LIESMICH.md", false),
+        (sha, "mac/helfer/liesmich.md", false),
+        (sha, "mac/helfer/x.md", false),
+        (sha, "LIESMICH.md", false),
+    ];
+    let aufrufe: String = faelle.iter().map(|(s, p, _)| format!("\"$(MdAusnahme '{s}' '{p}')\"\n")).collect();
+    let code = format!(
+        "$ast = [System.Management.Automation.Language.Parser]::ParseFile('{}', [ref]$null, [ref]$null)\n\
+         $teile = @($ast.FindAll({{ param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'MdAusnahme') -or ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$mdAusnahmen') }}, $true))\n\
+         if ($teile.Count -ne 2) {{ throw 'MdAusnahme oder $mdAusnahmen fehlt' }}\n\
+         . ([scriptblock]::Create(($teile | ForEach-Object {{ $_.Extent.Text }}) -join \"`n\"))\n{aufrufe}",
+        skript().display().to_string().replace('\'', "''")
+    );
+    let o = pwsh().unwrap().args(["-NoProfile", "-NonInteractive", "-Command", &code]).output().unwrap();
+    let aus = String::from_utf8_lossy(&o.stdout);
+    let ist: Vec<&str> = aus.lines().map(str::trim).filter(|z| !z.is_empty()).collect();
+    let soll: Vec<&str> = faelle.iter().map(|(_, _, b)| if *b { "True" } else { "False" }).collect();
+    assert_eq!(ist, soll, "MdAusnahme je Fall:\n{aus}\n{}", String::from_utf8_lossy(&o.stderr));
 }
 
 /// M1 auf der Linie: Ein fremder Merge im Fork nimmt einen alten, schon
