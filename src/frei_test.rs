@@ -391,7 +391,7 @@ async fn waechter_jeder_weg_oeffentlich_oder_401() {
         "POST /api/passkey/antrag/ende",
     ]
     .into_iter()
-    .chain(if cfg!(unix) { vec!["POST /api/passkey/code/beginn", "POST /api/passkey/code/ende"] } else { Vec::new() })
+    .chain(if cfg!(unix) { vec!["POST /api/passkey/code/beginn", "POST /api/passkey/code/beleg", "POST /api/passkey/code/ende"] } else { Vec::new() })
     .collect();
     assert_eq!(oeffentliche, erwartet, "die öffentlichen Wege des Routers");
     let _ = std::fs::remove_dir_all(&ordner);

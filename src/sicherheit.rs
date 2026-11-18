@@ -53,14 +53,28 @@ pub fn nur_lokal(gegenstelle: Option<std::net::IpAddr>, kopf: &axum::http::Heade
 /// und `Origin` genau die Herkunft der Passkey-Wege. Fehlt `Origin`, nein.
 #[cfg(any(unix, test))]
 pub fn genau_localhost(authority: Option<&str>, kopf: &axum::http::HeaderMap, port: u16) -> bool {
-    let host = authority.or_else(|| kopf.get(header::HOST).and_then(|h| h.to_str().ok()));
-    let host_passt = host.is_some_and(|h| h.eq_ignore_ascii_case(&format!("localhost:{port}")));
+    let host_passt = host_genau_localhost(authority, kopf, port);
     let herkunft = crate::passkey::herkunft(port);
     let mut herkuenfte = kopf.get_all(header::ORIGIN).iter();
     // Genau ein `Origin`, und der genau gleich.
     let herkunft_passt = matches!((herkuenfte.next(), herkuenfte.next()), (Some(o), None) if o.as_bytes() == herkunft.as_bytes());
     host_passt && herkunft_passt
 }
+
+/// Nur der Host aus [`genau_localhost`]: genau `localhost:<port>`, zuerst
+/// die Authority, dann der Host-Kopf. Für den Beleg der Adressen (Schritt 7c
+/// der macOS-Folge), der ohne `Origin` kommt.
+#[cfg(any(unix, test))]
+pub fn host_genau_localhost(authority: Option<&str>, kopf: &axum::http::HeaderMap, port: u16) -> bool {
+    let host = authority.or_else(|| kopf.get(header::HOST).and_then(|h| h.to_str().ok()));
+    host.is_some_and(|h| h.eq_ignore_ascii_case(&format!("localhost:{port}")))
+}
+
+/// Schritt 7c der macOS-Folge: der Weg, über den der Befehl
+/// `dashboard einmal-code` die zwei Adressen belegt. Er kommt ohne
+/// Herkunftsangabe; jede Anfrage mit `Origin` weist er selbst ab.
+#[cfg(any(unix, test))]
+pub const BELEG_WEG: &str = "/api/passkey/code/beleg";
 
 /// Pfade, die absichtlich lange offen bleiben: kein Zeitlimit.
 pub fn ohne_zeitlimit(pfad: &str) -> bool {
@@ -197,7 +211,13 @@ pub async fn herkunft_pflicht(State(state): State<AppState>, req: Request, next:
         .get(header::REFERER)
         .and_then(|r| r.to_str().ok())
         .is_some_and(|r| eigene_herkuenfte(state.port).iter().any(|a| r == a || r.starts_with(&format!("{a}/"))));
-    if !chat_weg && !(hat_sec_fetch || hat_origin || referer_ok) {
+    // Schritt 7c der macOS-Folge: Der Beleg der Adressen kommt vom Befehl im
+    // Terminal, ohne Herkunftsangabe; der Weg weist selbst jede Anfrage mit `Origin` ab.
+    #[cfg(unix)]
+    let beleg = pfad == BELEG_WEG;
+    #[cfg(not(unix))]
+    let beleg = false;
+    if !chat_weg && !beleg && !(hat_sec_fetch || hat_origin || referer_ok) {
         tracing::warn!("{} {} ohne Herkunft abgelehnt", req.method(), req.uri().path());
         return abgelehnt();
     }
@@ -322,6 +342,9 @@ fn oeffentlich_roh(methode: &Method, pfad: &str, bau_datei: &dyn Fn(&std::path::
         // Unter Windows gibt es die Wege nicht; dort bleiben sie geschützt.
         #[cfg(unix)]
         "/api/passkey/code/beginn" | "/api/passkey/code/ende" => post,
+        // Schritt 7c: der Beleg der zwei Adressen, nur außerhalb von Windows.
+        #[cfg(unix)]
+        BELEG_WEG => post,
         // Die Anträge brauchen daneben die Windows-Anmeldung mit irgendeinem Konto (`konto_noetig`).
         "/api/passkey/antrag" | "/api/passkey/antrag/beginn" | "/api/passkey/antrag/ende" => get || post,
         _ if pfad.ends_with('/') || api_weg(pfad) => false,

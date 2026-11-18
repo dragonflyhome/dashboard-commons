@@ -178,6 +178,23 @@ pub struct AntragBeginn {
     pub name: String,
 }
 
+/// `POST /api/passkey/code/beginn` (Schritt 7b der macOS-Folge, nur
+/// außerhalb von Windows): Einmal-Code und Name des Geräts. Der Code kommt
+/// nur im Körper, nie in der Adresse.
+#[derive(Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct CodeBeginn {
+    pub code: String,
+    pub name: String,
+}
+
+/// Nie den Code zeigen.
+impl std::fmt::Debug for CodeBeginn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodeBeginn").finish_non_exhaustive()
+    }
+}
+
 /// Antwort auf `POST /api/passkey/antrag/beginn`: Angaben für `navigator.credentials.create`.
 #[derive(Debug, Clone, Serialize, TS)]
 pub struct AntragOptionen {

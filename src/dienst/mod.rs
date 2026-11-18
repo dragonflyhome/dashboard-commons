@@ -333,6 +333,9 @@ pub async fn betreiben(
     // noch ein Sammler gestartet.
     let lauscher = binden(port).await?;
     let (state, abschalter) = zustand().map_err(|e| StartFehler::Sonst(format!("Der Server lässt sich nicht aufbauen: {e:#}")))?;
+    // Schritt 7c der macOS-Folge: Ohne [::1] gibt es keinen Beleg der Adressen.
+    #[cfg(unix)]
+    let state = state.mit_v6(lauscher.v6.is_some());
     #[cfg(unix)]
     let (kanal_ort, code_quelle) = {
         let quelle: std::sync::Arc<dyn crate::kanal::CodeQuelle> = std::sync::Arc::new(crate::api::passkey::CodeAusgabe(state.clone()));

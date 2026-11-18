@@ -10,7 +10,10 @@
 //! Auf dem Kanal läuft kein HTTP und nicht der Router, sondern ein eigenes
 //! Zeilenprotokoll: eine Zeile JSON hin, eine Zeile JSON zurück, dann Schluss.
 //! Keine Antwort auf dem Kanal meldet einen Browser an. In 7a gibt es genau
-//! einen Befehl, `wer`. Den Einmal-Code bringt 7b, die Unterbefehle 7c.
+//! einen Befehl, `wer`. Den Einmal-Code (`code`) bringt 7b. Schritt 7c bringt
+//! den Beleg der zwei Adressen (`beleg`; `code` verlangt seitdem die `frage`
+//! eines bestandenen Belegs) und den Befehl `dashboard einmal-code` im
+//! Terminal, der den Kanal anspricht (Untermodul `befehl`).
 //!
 //! Die reinen Teile (Ort, Anfrage lesen, Antwort bauen, Urteil über eine
 //! vorhandene Datei, über den Socket und über die Gegenseite) stehen unter
@@ -37,6 +40,7 @@ pub const SATZ_KEIN_JSON: &str = "Die Anfrage ist kein gültiges JSON.";
 pub const SATZ_KEIN_OBJEKT: &str = "Die Anfrage muss ein Objekt mit dem Feld befehl sein.";
 pub const SATZ_FELD: &str = "Die Anfrage hat nicht genau das Feld „befehl“.";
 pub const SATZ_BEFEHL: &str = "Diesen Befehl gibt es nicht.";
+pub const SATZ_FRAGE: &str = "Nur der Befehl „code“ nimmt das Feld „frage“, als Zeichenkette.";
 
 /// Der Ort des Sockets: immer neben dem Schlüssel der Ausweise. Ohne diesen
 /// Ort, oder wenn der Name mit dem einer Schlüsseldatei zusammenfiele, gibt
@@ -93,31 +97,39 @@ fn gegenseite_urteil(bezeugt: Option<u32>, erwartet: u32) -> Option<KanalKonto> 
 pub enum Befehl {
     /// Nennt Fassung und Konto; ändert nichts.
     Wer,
-    /// Gibt einen Einmal-Code für das Anlegen eines Passkeys aus (Schritt 7b).
+    /// Gibt eine Frage für den Beleg der zwei Adressen aus (Schritt 7c).
+    Beleg,
+    /// Gibt einen Einmal-Code für das Anlegen eines Passkeys aus (Schritt
+    /// 7b), seit 7c nur mit der `frage` eines bestandenen Belegs.
     Code,
 }
 
-/// Wer einen Einmal-Code ausgibt. Der Kanal selbst kennt den Zustand des
+/// Eine gelesene Anfrage: der Befehl, bei `code` die Frage des Belegs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Anfrage {
+    pub befehl: Befehl,
+    /// Nur bei `code`; fehlt sie, gibt es keinen Code.
+    pub frage: Option<String>,
+}
+
+/// Wer Frage und Einmal-Code ausgibt. Der Kanal selbst kennt den Zustand des
 /// Servers nicht; die Quelle bekommt er beim Start. Sie verlangt die
 /// Befähigung der geprüften Gegenseite und gibt die fertige Antwortzeile
 /// zurück (ohne Zeilenende).
 pub trait CodeQuelle: Send + Sync {
-    fn code<'a>(&'a self, konto: &'a KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
+    /// Der Befehl `beleg`: eine neue Frage und der Port.
+    fn beleg<'a>(&'a self, konto: &'a KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
+    /// Der Befehl `code`: ein Einmal-Code, nur nach bestandenem Beleg mit `frage`.
+    fn code<'a>(&'a self, konto: &'a KanalKonto, frage: Option<&'a str>) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
 }
 
-/// Satz für den Befehl `code`, wenn der Kanal keine Quelle hat.
+/// Satz für die Befehle `beleg` und `code`, wenn der Kanal keine Quelle hat.
 pub const SATZ_KEIN_CODE: &str = "Einen Einmal-Code gibt es in diesem Lauf nicht.";
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Anfrage {
-    befehl: Befehl,
-}
 
 /// Liest die Anfrage aus dem, was von der Verbindung kam (höchstens
 /// [`HOECHSTENS_BYTES`], bis zum ersten Zeilenende). Jeder Fehler ist ein
 /// fester Satz; nichts aus der Anfrage geht in ihn ein.
-pub fn anfrage_lesen(roh: &[u8]) -> Result<Befehl, &'static str> {
+pub fn anfrage_lesen(roh: &[u8]) -> Result<Anfrage, &'static str> {
     let Some(zeile) = roh.strip_suffix(b"\n") else {
         return Err(if roh.len() >= HOECHSTENS_BYTES { SATZ_ZU_LANG } else { SATZ_OHNE_ENDE });
     };
@@ -125,13 +137,19 @@ pub fn anfrage_lesen(roh: &[u8]) -> Result<Befehl, &'static str> {
     // Erst die Form: ein Objekt mit genau dem Feld „befehl“. Ohne diesen
     // Schritt läse serde auch eine Liste wie `["wer"]` als Anfrage.
     let wert: serde_json::Value = serde_json::from_str(text).map_err(|_| SATZ_KEIN_JSON)?;
-    let serde_json::Value::Object(felder) = &wert else {
+    let serde_json::Value::Object(felder) = wert else {
         return Err(SATZ_KEIN_OBJEKT);
     };
-    if felder.len() != 1 || !felder.contains_key("befehl") {
+    if !felder.contains_key("befehl") || felder.keys().any(|k| k != "befehl" && k != "frage") {
         return Err(SATZ_FELD);
     }
-    serde_json::from_value::<Anfrage>(wert).map(|a| a.befehl).map_err(|_| SATZ_BEFEHL)
+    let befehl = serde_json::from_value::<Befehl>(felder["befehl"].clone()).map_err(|_| SATZ_BEFEHL)?;
+    let frage = match felder.get("frage") {
+        None => None,
+        Some(serde_json::Value::String(f)) if befehl == Befehl::Code => Some(f.clone()),
+        Some(_) => return Err(SATZ_FRAGE),
+    };
+    Ok(Anfrage { befehl, frage })
 }
 
 /// Die Antwort auf `wer`, eine Zeile JSON ohne Zeilenende. Wer hier
@@ -211,7 +229,7 @@ mod lauscher {
     use tokio::sync::Semaphore;
     use tracing::{info, warn};
 
-    use super::{AltUrteil, Befehl, CodeQuelle, HOECHSTENS_BYTES, KanalKonto, Probe, Vorhanden};
+    use super::{AltUrteil, Anfrage, Befehl, CodeQuelle, HOECHSTENS_BYTES, KanalKonto, Probe, Vorhanden};
     use crate::passkey::geheim::{self, Rahmen, Stand};
 
     /// Frist für die ganze Verbindung.
@@ -411,13 +429,19 @@ mod lauscher {
         .await;
         let antwort = match gelesen {
             Ok(Ok(roh)) => match super::anfrage_lesen(&roh) {
-                Ok(Befehl::Wer) => super::antwort_wer(&konto),
-                // Die Ausgabe schreibt erst ins Journal; sie läuft innerhalb derselben Frist.
-                Ok(Befehl::Code) => match &quelle {
-                    Some(q) => match tokio::time::timeout_at(bis, q.code(&konto)).await {
-                        Ok(antwort) => antwort,
-                        Err(_) => super::fehler_antwort(SATZ_FRIST),
-                    },
+                Ok(Anfrage { befehl: Befehl::Wer, .. }) => super::antwort_wer(&konto),
+                // Beide laufen innerhalb derselben Frist; die Ausgabe des Codes schreibt erst ins Journal.
+                Ok(Anfrage { befehl, frage }) => match &quelle {
+                    Some(q) => {
+                        let antwort = match befehl {
+                            Befehl::Beleg => q.beleg(&konto),
+                            _ => q.code(&konto, frage.as_deref()),
+                        };
+                        match tokio::time::timeout_at(bis, antwort).await {
+                            Ok(antwort) => antwort,
+                            Err(_) => super::fehler_antwort(SATZ_FRIST),
+                        }
+                    }
                     None => super::fehler_antwort(super::SATZ_KEIN_CODE),
                 },
                 Err(satz) => super::fehler_antwort(satz),
@@ -467,11 +491,41 @@ mod tests {
         assert!(gegenseite_urteil(None, 501).is_none());
     }
 
+    fn nur(befehl: Befehl) -> Result<Anfrage, &'static str> {
+        Ok(Anfrage { befehl, frage: None })
+    }
+
     #[test]
     fn anfrage_wer_wird_gelesen() {
-        assert_eq!(anfrage_lesen(b"{\"befehl\":\"wer\"}\n"), Ok(Befehl::Wer));
-        assert_eq!(anfrage_lesen(b" { \"befehl\" : \"wer\" } \n"), Ok(Befehl::Wer));
-        assert_eq!(anfrage_lesen(b"{\"befehl\":\"code\"}\n"), Ok(Befehl::Code));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"wer\"}\n"), nur(Befehl::Wer));
+        assert_eq!(anfrage_lesen(b" { \"befehl\" : \"wer\" } \n"), nur(Befehl::Wer));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"beleg\"}\n"), nur(Befehl::Beleg));
+        // `code` ohne Frage wird gelesen; einen Code gibt es dann nicht (das sagt die Quelle).
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"code\"}\n"), nur(Befehl::Code));
+    }
+
+    #[test]
+    fn anfrage_code_mit_frage_wird_gelesen() {
+        let frage = "0123456789abcdef0123456789abcdef";
+        let roh = format!("{{\"befehl\":\"code\",\"frage\":\"{frage}\"}}\n");
+        assert_eq!(anfrage_lesen(roh.as_bytes()), Ok(Anfrage { befehl: Befehl::Code, frage: Some(frage.into()) }));
+        // Auch eine Frage in falscher Form wird gelesen; sie passt dann nur nicht.
+        assert_eq!(anfrage_lesen(b"{\"frage\":\"x\",\"befehl\":\"code\"}\n"), Ok(Anfrage { befehl: Befehl::Code, frage: Some("x".into()) }));
+    }
+
+    #[test]
+    fn frage_nur_bei_code_und_nur_als_zeichenkette() {
+        for roh in [
+            &b"{\"befehl\":\"wer\",\"frage\":\"x\"}\n"[..],
+            b"{\"befehl\":\"beleg\",\"frage\":\"x\"}\n",
+            b"{\"befehl\":\"code\",\"frage\":7}\n",
+            b"{\"befehl\":\"code\",\"frage\":null}\n",
+        ] {
+            assert_eq!(anfrage_lesen(roh), Err(SATZ_FRAGE), "{roh:?}");
+        }
+        // Ohne Befehl hilft auch die Frage nicht.
+        assert_eq!(anfrage_lesen(b"{\"frage\":\"x\"}\n"), Err(SATZ_FELD));
+        assert_eq!(anfrage_lesen(b"{\"befehl\":\"code\",\"frage\":\"x\",\"mehr\":1}\n"), Err(SATZ_FELD));
     }
 
     #[test]
@@ -535,7 +589,7 @@ mod tests {
 
     #[test]
     fn fehler_antwort_ist_eine_zeile_mit_dem_festen_satz() {
-        for satz in [SATZ_ZU_LANG, SATZ_OHNE_ENDE, SATZ_KEIN_UTF8, SATZ_KEIN_JSON, SATZ_KEIN_OBJEKT, SATZ_FELD, SATZ_BEFEHL] {
+        for satz in [SATZ_ZU_LANG, SATZ_OHNE_ENDE, SATZ_KEIN_UTF8, SATZ_KEIN_JSON, SATZ_KEIN_OBJEKT, SATZ_FELD, SATZ_BEFEHL, SATZ_FRAGE] {
             let antwort = fehler_antwort(satz);
             assert!(!antwort.contains('\n'));
             assert_eq!(serde_json::from_str::<serde_json::Value>(&antwort).unwrap(), serde_json::json!({ "fehler": satz }));
@@ -790,8 +844,10 @@ mod unix_tests {
         assert_eq!(fragen(&ort, b"[\"wer\"]\n").await, fehler_zeile(SATZ_KEIN_OBJEKT));
         assert_eq!(fragen(&ort, b"{\"befehl\":\"wer\",\"mehr\":1}\n").await, fehler_zeile(SATZ_FELD));
         assert_eq!(fragen(&ort, b"{\"befehl\":\"anders\"}\n").await, fehler_zeile(SATZ_BEFEHL));
-        // Ohne Quelle gibt der Kanal keinen Code aus.
+        assert_eq!(fragen(&ort, b"{\"befehl\":\"wer\",\"frage\":\"x\"}\n").await, fehler_zeile(SATZ_FRAGE));
+        // Ohne Quelle gibt der Kanal weder Frage noch Code aus.
         assert_eq!(fragen(&ort, b"{\"befehl\":\"code\"}\n").await, fehler_zeile(SATZ_KEIN_CODE));
+        assert_eq!(fragen(&ort, b"{\"befehl\":\"beleg\"}\n").await, fehler_zeile(SATZ_KEIN_CODE));
     }
 
     #[tokio::test(flavor = "multi_thread")]
