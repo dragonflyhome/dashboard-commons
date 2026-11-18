@@ -3,7 +3,7 @@
 #
 # Regel: Bauordner einmal täglich löschen; ein Bau gehört in den Anwendungs-Cache. Drei Teile:
 #   Cache    die Bauordner je Rolle (jeder direkte Unterordner von %LOCALAPPDATA%\Dashboard\cache mit
-#            CACHEDIR.TAG, etwa arbeit-1, arbeit-2, abnahme, dienst) werden jeden Tag ganz geleert, ohne Altersgrenze, aber nur, wenn gerade kein cargo.exe und kein
+#            CACHEDIR.TAG, etwa arbeit-1, arbeit-2, abnahme, dienst) werden jeden Tag geleert (CACHEDIR.TAG bleibt, auch wenn eine gesperrte Datei stehen bleibt), ohne Altersgrenze, aber nur, wenn gerade kein cargo.exe und kein
 #            rustc.exe läuft und keine EINSPIELEN.lock von Dienst.ps1 -Neustart darin liegt (älter als ein
 #            Tag gilt sie als verwaist); sonst ein Satz, und der nächste Tag versucht es wieder.
 #   Scratch  Bauordner im Arbeitsbereich einer Sitzung (erkannt an CACHEDIR.TAG, das cargo in jede
@@ -35,6 +35,8 @@ param(
 	[switch]$Selbsttest
 )
 $ErrorActionPreference = 'Stop'
+$uhr = [Diagnostics.Stopwatch]::StartNew(); $cpuVor = [Diagnostics.Process]::GetCurrentProcess().TotalProcessorTime
+function Laufzeit { 'Laufzeit {0:N1} s; Rechenkerne zu {1:N0} % ausgelastet ({2} Kerne)' -f $uhr.Elapsed.TotalSeconds, (100 * ([Diagnostics.Process]::GetCurrentProcess().TotalProcessorTime - $cpuVor).TotalSeconds / [Math]::Max(0.001, $uhr.Elapsed.TotalSeconds * [Environment]::ProcessorCount)), [Environment]::ProcessorCount }
 $kennungMuster = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 function Voll([string]$p) { [IO.Path]::GetFullPath($p).TrimEnd('\') }
@@ -160,7 +162,8 @@ function Invoke-Cache([string]$cache, [bool]$bautGerade, [switch]$loeschen, [str
 	Schreib ('{0,8:N2} GB  Cache {1}' -f ($b.Bytes / 1GB), $cache) -loeschen:$loeschen
 	# Get-Bestand dauert; ein Einspielen, das inzwischen begann, nicht wegräumen.
 	if ($loeschen -and -not $sperre -and (Test-Path -LiteralPath (Join-Path $cache 'EINSPIELEN.lock'))) { Schreib "Cache nicht geleert, weil inzwischen eingespielt wird (EINSPIELEN.lock): $cache" -loeschen; return }
-	if ($loeschen) { Loesch $cache }
+	# Der Inhalt geht, die Markierung bleibt: Ein Teil-Löschen (gesperrte Datei) darf den Platz nicht für immer aus der Bereinigung nehmen.
+	if ($loeschen) { foreach ($e in Get-ChildItem -LiteralPath $cache -Force | Where-Object Name -ne 'CACHEDIR.TAG') { Loesch $e.FullName } }
 }
 
 # Löscht; blieb etwas stehen (gesperrte Datei), steht „teilweise“ im Protokoll.
@@ -243,24 +246,35 @@ if ($Selbsttest) {
 		Invoke-Cache $c $true -loeschen -basis $basis | Out-Null
 		if (-not (Test-Path $c)) { throw 'Selbsttest rot: Cache trotz laufendem Bau geleert' }
 		Invoke-Cache $c $false -loeschen -basis $basis | Out-Null
-		if (Test-Path $c) { throw 'Selbsttest rot: Cache nicht geleert' }
+		if ((@(Get-ChildItem -LiteralPath $c -Force).Name -join '|') -ne 'CACHEDIR.TAG') { throw 'Selbsttest rot: Cache nicht geleert oder Markierung weg' }
+		# Gesperrte Datei: Sie bleibt, der Rest geht, die Markierung bleibt (sonst nähme das Skript den Platz für immer heraus).
+		Neu 'Dashboard\cache\target\debug\gesperrt.bin' 0; Neu 'Dashboard\cache\target\frei.bin' 0
+		$griff = [IO.File]::Open((Join-Path $c 'debug\gesperrt.bin'), 'Open', 'Read', 'None')
+		try { Invoke-Cache $c $false -loeschen -basis $basis 2>$null | Out-Null } finally { $griff.Dispose() }
+		if (-not (Test-Path (Join-Path $c 'CACHEDIR.TAG'))) { throw 'Selbsttest rot: gesperrte Datei, Markierung weg' }
+		if (Test-Path (Join-Path $c 'frei.bin')) { throw 'Selbsttest rot: gesperrte Datei, Rest nicht geleert' }
+		if (-not (Select-String -LiteralPath $Protokoll -Pattern 'teilweise gelöscht' -Quiet)) { throw 'Selbsttest rot: Teil-Löschen nicht im Protokoll' }
+		Invoke-Cache $c $false -loeschen -basis $basis | Out-Null
+		if ((@(Get-ChildItem -LiteralPath $c -Force).Name -join '|') -ne 'CACHEDIR.TAG') { throw 'Selbsttest rot: nächster Lauf leert nach dem Teil-Löschen nicht' }
 		# Sperrdatei des Einspielens: frisch bleibt der Platz, älter als ein Tag (verwaist) wird er geleert.
 		Neu 'Dashboard\cache\dienst\CACHEDIR.TAG' 0; Neu 'Dashboard\cache\dienst\EINSPIELEN.lock' 0
 		Invoke-Cache (Join-Path $basis 'dienst') $false -loeschen -basis $basis | Out-Null
 		if (-not (Test-Path (Join-Path $basis 'dienst\CACHEDIR.TAG'))) { throw 'Selbsttest rot: Cache trotz Sperrdatei geleert' }
 		Neu 'Dashboard\cache\dienst\EINSPIELEN.lock' 2
 		Invoke-Cache (Join-Path $basis 'dienst') $false -loeschen -basis $basis | Out-Null
-		if (Test-Path (Join-Path $basis 'dienst')) { throw 'Selbsttest rot: Cache mit verwaister Sperrdatei nicht geleert' }
+		if ((@(Get-ChildItem -LiteralPath (Join-Path $basis 'dienst') -Force).Name -join '|') -ne 'CACHEDIR.TAG') { throw 'Selbsttest rot: Cache mit verwaister Sperrdatei nicht geleert' }
 		if (-not (Select-String -LiteralPath $Protokoll -Pattern 'verwaist' -Quiet)) { throw 'Selbsttest rot: verwaiste Sperrdatei nicht im Protokoll' }
 		if (-not (Test-Path (Join-Path $t 'Dashboard\anderes\y.bin'))) { throw 'Selbsttest rot: Dashboard außerhalb des Caches angefasst' }
 		# Alle Plätze: zwei getaggte geleert, ohne Tag und Link bleiben (auch das Ziel des Links).
 		Neu 'Dashboard\cache\arbeit-1\CACHEDIR.TAG' 0; Neu 'Dashboard\cache\arbeit-2\CACHEDIR.TAG' 0; Neu 'link-ziel\CACHEDIR.TAG' 0
+		Neu 'Dashboard\cache\arbeit-1\debug\a.bin' 0; Neu 'Dashboard\cache\arbeit-2\debug\b.bin' 0
 		New-Item -ItemType Junction -Path (Join-Path $basis 'verlinkt') -Target (Join-Path $t 'link-ziel') | Out-Null
 		Invoke-Caches $basis $false -loeschen | Out-Null
-		foreach ($weg in 'arbeit-1', 'arbeit-2') { if (Test-Path (Join-Path $basis $weg)) { throw "Selbsttest rot: Cache $weg nicht geleert" } }
+		foreach ($weg in 'arbeit-1', 'arbeit-2') { if ((@(Get-ChildItem -LiteralPath (Join-Path $basis $weg) -Force).Name -join '|') -ne 'CACHEDIR.TAG') { throw "Selbsttest rot: Cache $weg nicht geleert" } }
 		foreach ($bleibt in 'Dashboard\cache\ohne-tag\x.bin', 'Dashboard\cache\verlinkt', 'link-ziel\CACHEDIR.TAG') { if (-not (Test-Path (Join-Path $t $bleibt))) { throw "Selbsttest rot: $bleibt gelöscht" } }
 		if (-not (Select-String -LiteralPath $Protokoll -Pattern 'belegt, übersprungen' -Quiet)) { throw 'Selbsttest rot: Protokoll ohne Zeile' }
 		'Selbsttest grün'
+		Laufzeit
 	} finally { Remove-Item -LiteralPath $t -Recurse -Force -ErrorAction SilentlyContinue }
 	return
 }
@@ -274,3 +288,4 @@ $cacheBasis = Join-Path $env:LOCALAPPDATA 'Dashboard\cache'
 $bautGerade = [bool](Get-Process -Name cargo, rustc -ErrorAction SilentlyContinue)
 Invoke-Caches $cacheBasis $bautGerade -loeschen:$Scharf
 Invoke-Bereinigen $Wurzel @(Get-Belegt) -loeschen:$Scharf -laufend @(Get-LaufendeSitzungen)
+Laufzeit
