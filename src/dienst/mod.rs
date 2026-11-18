@@ -338,6 +338,16 @@ pub async fn betreiben(
         let quelle: std::sync::Arc<dyn crate::kanal::CodeQuelle> = std::sync::Arc::new(crate::api::passkey::CodeAusgabe(state.clone()));
         (state.kanal_ort.clone(), quelle)
     };
+    #[cfg(unix)]
+    {
+        // Die Einstellung, vorläufig aus der Umgebung: DASHBOARD_SPERRE_MIT_RECHNER=1.
+        if std::env::var_os("DASHBOARD_SPERRE_MIT_RECHNER").is_some_and(|w| w == "1") {
+            state.sperre.lock().unwrap_or_else(std::sync::PoisonError::into_inner).einschalten(crate::helfer::wand_jetzt());
+            info!("Sperre mit dem Rechner: eingeschaltet. Ohne Lebenszeichen des Helfers ist das Dashboard gesperrt.");
+        }
+    }
+    #[cfg(unix)]
+    let helfer_teile = (state.sperre.clone(), state.helfer_schluessel.clone());
     let adressen = lauscher.adressen().join(" und ");
     let port = lauscher.v4.local_addr().map_err(|e| StartFehler::Sonst(e.to_string()))?.port();
     let router = app::router(state);
@@ -356,6 +366,24 @@ pub async fn betreiben(
         };
         kanal_starten(kanal_ort.as_deref().map(|p| p.as_path()), crate::unix::eigene_uid(), ende, code_quelle)
     };
+    // Die Leitung für das Mac-Hilfsprogramm: TLS 1.3 an einer eigenen Adresse
+    // auf dem eigenen Rechner. Vorläufig aus der Umgebung:
+    // DASHBOARD_HELFER_LEITUNG=127.0.0.1:8788. Ohne die Angabe gibt es sie nicht.
+    #[cfg(unix)]
+    let _helfer = std::env::var("DASHBOARD_HELFER_LEITUNG").ok().and_then(|angabe| {
+        let rx = gesendet_rx.clone();
+        let ende = async move {
+            stopp_abwarten(rx).await;
+        };
+        let start = match (angabe.parse::<std::net::SocketAddr>(), kanal_ort.as_deref().and_then(|k| k.parent())) {
+            (Ok(adresse), Some(ordner)) => {
+                crate::helfer::leitung::starten(adresse, ende, crate::helfer::leitung::HelferZustand::neu(helfer_teile.0, helfer_teile.1, ordner))
+            }
+            (Err(_), _) => Err(format!("DASHBOARD_HELFER_LEITUNG nennt keine Adresse mit Port: {angabe}. {}.", crate::helfer::leitung::RAHMEN_LEITUNG.folge)),
+            (_, None) => Err(format!("Ohne Schlüsselordner gibt es keine Helfer-Leitung. {}.", crate::helfer::leitung::RAHMEN_LEITUNG.folge)),
+        };
+        start.map_err(|satz| error!("{satz}")).ok()
+    });
     // Jede angenommene Verbindung bekommt eine fortlaufende Nummer
     // (`ConnectInfo<Verbindung>`), für die Windows-Anmeldung je Verbindung (7b).
     let dienst = || router.clone().into_make_service_with_connect_info::<Verbindung>();

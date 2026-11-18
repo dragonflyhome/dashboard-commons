@@ -427,6 +427,14 @@ fn schluessel_datei_versuch(
 /// ist. Die Zwischendatei wird in jedem Fall entfernt.
 #[cfg(unix)]
 fn ohne_halbstand_anlegen(ordner: &Path, pfad: &Path, bytes: &[u8; 32]) -> std::io::Result<()> {
+    ohne_halbstand_schreiben(ordner, pfad, bytes)
+}
+
+/// Der Kern von [`ohne_halbstand_anlegen`] für Inhalt beliebiger Länge: Auch
+/// andere Dateien im Schlüsselordner (etwa die Ablagen des Mac-Helfers)
+/// entstehen so, nie leer, nie halb, und nie über eine vorhandene hinweg.
+#[cfg(unix)]
+pub(crate) fn ohne_halbstand_schreiben(ordner: &Path, pfad: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     let zusatz: String = super::zufall(8).iter().map(|b| format!("{b:02x}")).collect();
     // Die Zwischendatei heißt nach der Datei selbst; so stören sich zwei Schlüssel im selben Ordner nicht.

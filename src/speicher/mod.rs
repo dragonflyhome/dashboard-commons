@@ -228,6 +228,15 @@ impl Speicher {
         self
     }
 
+    /// Der Schlüssel der Links liegt nicht in einer eigenen Datei: Der
+    /// Server führt ihn im Schlüsselbund des Mac-Helfers (`helfer`),
+    /// verschlossen an dessen Chip, und öffnet ihn mit dessen Hilfe.
+    #[cfg(unix)]
+    pub fn mit_links_schluessel_vom_helfer(mut self, bund: crate::helfer::Bund) -> Speicher {
+        self.links = verschluesselung::LinksSchluessel::vom_helfer(bund);
+        self
+    }
+
     /// Verschlüsselt einen Link: unter Windows DPAPI, sonst die Mischform mit
     /// dem Schlüssel dieses Speichers.
     pub(crate) fn link_verschliessen(&self, klartext: &[u8]) -> Result<Vec<u8>, String> {
@@ -447,6 +456,9 @@ mod tests {
     fn absturz_mitten_im_schreiben_laesst_die_datei_heil() {
         let pfad = test_pfad();
         let zaehler = zaehler_pfad(&pfad);
+        // Ein Rest eines früheren Laufs mit derselben Prozessnummer gälte sonst als gemeldeter Stand.
+        let _ = std::fs::remove_file(&pfad);
+        let _ = std::fs::remove_file(&zaehler);
         let mut kind = kind_starten("speicher::tests::schreiber_kind", "DASHBOARD_TEST_SCHREIBER", &pfad);
         // Der Zähler wird ohne Umbenennen geschrieben; ein halb geschriebener
         // Stand ist unlesbar und zählt nicht. Er steigt nur, darum gilt der größte.

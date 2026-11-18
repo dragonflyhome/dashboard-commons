@@ -32,6 +32,11 @@ punkte = [
 ]
 
 [[block]]
+titel = 'Hilfsprogramm unter macOS'
+text = '''
+Unter macOS gibt es ein Hilfsprogramm (mac/helfer), das auf Wunsch beim Sperren des Rechners abmeldet und den Schlüssel der Aufgaben-Links an den Sicherheitschip des Macs bindet. Es wirkt nur, wenn man es einschaltet (DASHBOARD_HELFER_LEITUNG, DASHBOARD_SPERRE_MIT_RECHNER, DASHBOARD_SCHLUESSEL_VOM_HELFER); ohne diese Einstellungen ändert sich nichts. Am echten Gerät noch nicht gemessen sind der Sicherheitschip selbst und echtes Sperren und Entsperren. Unter Windows gibt es den Helfer nicht. Die Einzelheiten stehen in mac/helfer/LIESMICH.txt.'''
+
+[[block]]
 text = '''
 macOS kommt vollständig ins Basis-Repo; wie, steht im Zielbild (Etappenplan, Abschnitt macOS). Diese Liste wird mit jedem Schritt dorthin kürzer und hier nachgezogen. Für andere Systeme gilt: portieren im eigenen Fork; was unter Windows unverändert bleibt und dort mit Tests prüfbar ist, kann als Merge-Angebot zurückkommen; der Weg steht im Leitfaden für Mitwirkende in der Wurzel des Repos.
 

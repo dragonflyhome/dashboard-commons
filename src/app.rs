@@ -129,6 +129,14 @@ pub struct AppState {
     /// über ein `await` hinweg.
     #[cfg(unix)]
     pub einmal_code: Arc<std::sync::Mutex<crate::passkey::einmalcode::CodeStand>>,
+    /// Stand der Sperre mit dem Rechner (`helfer`). Ohne
+    /// die Einstellung ausgeschaltet; dann gilt jede Anmeldung wie bisher.
+    #[cfg(unix)]
+    pub sperre: Arc<std::sync::Mutex<crate::helfer::SperrStand>>,
+    /// Der Schlüsselbund, wenn Schlüssel über den
+    /// Mac-Helfer kommen; `None` ohne die Einstellung.
+    #[cfg(unix)]
+    pub helfer_schluessel: Option<crate::helfer::Bund>,
     /// Kopfleiste, Fassung 3: die Ereignisnummern für `/api/stand` (frei und
     /// geschützt); im Dienst zählt eine Aufgabe mit (`api::stand::zaehlen_starten`).
     pub zaehler: Arc<api::stand::Ereigniszaehler>,
@@ -238,6 +246,22 @@ impl AppState {
                 error!("{}", speicher::verschluesselung::KEIN_ORT_SATZ);
             }
             geoeffnet.map(|s| s.mit_links_schluessel(ort))
+        };
+        // Mit der Einstellung führt der Server den Schlüssel der Links über den
+        // Mac-Helfer (verschlossen an dessen Chip) statt in einer eigenen Datei. Vorläufig aus der
+        // Umgebung: DASHBOARD_SCHLUESSEL_VOM_HELFER=1.
+        #[cfg(unix)]
+        let helfer_schluessel: Option<crate::helfer::Bund> = std::env::var_os("DASHBOARD_SCHLUESSEL_VOM_HELFER").is_some_and(|w| w == "1").then(|| {
+            // Was der Server vom Helfer erwartet: je Nutzlast ein Pfad. Heute eine; weitere kommen hier dazu.
+            crate::helfer::bund_fuer(&[speicher::verschluesselung::LINKS_PFAD])
+        });
+        #[cfg(unix)]
+        let geoeffnet = match &helfer_schluessel {
+            Some(u) => {
+                info!("Schlüssel der Aufgaben-Links: wird über den Mac-Helfer geöffnet, nicht aus der Schlüsseldatei gelesen.");
+                geoeffnet.map(|s| s.mit_links_schluessel_vom_helfer(u.clone()))
+            }
+            None => geoeffnet,
         };
         let aenderungen = crate::aenderungen::Melder::neu();
         let (speicher, speicher_fehler, speicher_zu_neu) = match geoeffnet {
@@ -401,6 +425,10 @@ impl AppState {
             kanal_ort,
             #[cfg(unix)]
             einmal_code: Default::default(),
+            #[cfg(unix)]
+            sperre: Default::default(),
+            #[cfg(unix)]
+            helfer_schluessel,
             inhalt,
             lauf: Arc::new(Lauf::jetzt(modus)),
             sitzung: Default::default(),
@@ -640,6 +668,10 @@ impl AppState {
             kanal_ort: None,
             #[cfg(unix)]
             einmal_code: Default::default(),
+            #[cfg(unix)]
+            sperre: Default::default(),
+            #[cfg(unix)]
+            helfer_schluessel: None,
             zaehler: api::stand::neu(),
             oeffnen: Default::default(),
             projekte: Arc::new(crate::projekte::Register::leer()),

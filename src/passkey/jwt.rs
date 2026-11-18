@@ -117,15 +117,22 @@ impl JwtSchluessel {
 
     /// Stellt den Ausweis aus: `<kopf>.<inhalt>.<signatur>`, je Base64url.
     pub fn ausstellen(&self, a: &Ausweis) -> String {
-        let inhalt = serde_json::to_vec(a).unwrap_or_default();
+        self.signieren(a)
+    }
+
+    /// Signiert einen Inhalt in der Form der Ausweise. Für andere Scheine
+    /// als den Ausweis einer Person (etwa den des Mac-Helfers); wer sie
+    /// prüft, liest sie mit [`Self::lesen`] in ihren eigenen Typ.
+    pub fn signieren<T: Serialize>(&self, inhalt: &T) -> String {
+        let inhalt = serde_json::to_vec(inhalt).unwrap_or_default();
         let teil = format!("{}.{}", b64(KOPF.as_bytes()), b64(&inhalt));
         let sig = self.signieren.sign(teil.as_bytes());
         format!("{teil}.{}", b64(&sig.to_bytes()))
     }
 
-    /// Prüft Form, Kopf (nur EdDSA), Signatur und Inhalt zur Zeit `jetzt`
-    /// (Sekunden seit 1970).
-    pub fn pruefen(&self, token: &str, jetzt: i64) -> Result<Ausweis, JwtFehler> {
+    /// Prüft Form, Kopf (nur EdDSA) und Signatur und liest den Inhalt als
+    /// `T`. Ob der Inhalt gilt (Zweck, Zeiten), prüft der Aufrufer.
+    pub fn lesen<T: serde::de::DeserializeOwned>(&self, token: &str) -> Result<T, JwtFehler> {
         if token.len() > LAENGE_HOECHSTENS {
             return Err(JwtFehler::Form);
         }
@@ -146,7 +153,13 @@ impl JwtSchluessel {
         let sig: [u8; 64] = sig.try_into().map_err(|_| JwtFehler::Signatur)?;
         let teil = &token[..kopf.len() + 1 + inhalt.len()];
         self.pruefen.verify_strict(teil.as_bytes(), &Signature::from_bytes(&sig)).map_err(|_| JwtFehler::Signatur)?;
-        let a: Ausweis = serde_json::from_slice(&b64_lesen(inhalt).ok_or(JwtFehler::Form)?).map_err(|_| JwtFehler::Inhalt)?;
+        serde_json::from_slice(&b64_lesen(inhalt).ok_or(JwtFehler::Form)?).map_err(|_| JwtFehler::Inhalt)
+    }
+
+    /// Prüft Form, Kopf (nur EdDSA), Signatur und Inhalt zur Zeit `jetzt`
+    /// (Sekunden seit 1970).
+    pub fn pruefen(&self, token: &str, jetzt: i64) -> Result<Ausweis, JwtFehler> {
+        let a: Ausweis = self.lesen(token)?;
         let inhalt_ok = a.sub == SUB
             && a.aud == AUD
             && a.amr.iter().any(|m| m == AMR)
