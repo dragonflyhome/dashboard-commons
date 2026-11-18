@@ -482,6 +482,19 @@ async fn kanal_ohne_datenspeicher_fester_satz_und_kein_code() {
     assert!(!state.einmal_code.lock().unwrap().offen());
 }
 
+/// Scheitert der Vermerk im Journal, gibt es keinen Code: fester Satz,
+/// nichts offen, keine Meldung.
+#[tokio::test(flavor = "multi_thread")]
+async fn kanal_scheitert_das_journal_fester_satz_und_kein_code() {
+    let state = zustand();
+    let fehler = crate::speicher::SpeicherFehler::Datei(std::io::Error::other("Im Test gescheitert."));
+    let zeile = code_nach_vermerk(&state, Err(fehler));
+    assert_eq!(zeile, crate::kanal::fehler_antwort(SATZ_CODE_OHNE_JOURNAL));
+    assert!(!state.einmal_code.lock().unwrap().offen());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(code_meldungen(&state).is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn ein_neuer_code_ersetzt_den_alten() {
     let state = zustand();

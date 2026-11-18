@@ -631,11 +631,19 @@ pub async fn einmal_code_ausgeben(state: &AppState, _konto: &crate::kanal::Kanal
     let Some(speicher) = state.speicher.clone() else {
         return fehler_antwort(SATZ_CODE_OHNE_SPEICHER);
     };
-    let ereignis = match Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN)).await {
+    let vermerk = Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN)).await;
+    code_nach_vermerk(state, vermerk)
+}
+
+/// Der Schritt nach dem Vermerk im Journal, eigens, damit ein Test ihn mit
+/// einem gescheiterten Vermerk aufrufen kann: Dann gibt es keinen Code.
+#[cfg(unix)]
+fn code_nach_vermerk(state: &AppState, vermerk: Result<(crate::vertrag::api::Vorgang, Ereignis), crate::speicher::SpeicherFehler>) -> String {
+    let ereignis = match vermerk {
         Ok((_, e)) => e,
         Err(e) => {
             tracing::error!("Einmal-Code: Der Eintrag im Journal ließ sich nicht schreiben: {e}");
-            return fehler_antwort(SATZ_CODE_OHNE_JOURNAL);
+            return crate::kanal::fehler_antwort(SATZ_CODE_OHNE_JOURNAL);
         }
     };
     let code = state
