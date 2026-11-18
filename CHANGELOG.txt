@@ -23,8 +23,8 @@ Geändert
   „Öffnen gibt es auf diesem System noch nicht.“
 
 Behoben
-- Auf den Wegen des Einmal-Codes steht auch auf der Protokollstufe debug
-  kein Inhalt der Anfrage mehr im Protokoll.
+- Auf den Wegen der Passkeys steht auch auf der Protokollstufe debug kein
+  Inhalt der Anfrage mehr im Protokoll, nur Art und Stelle eines Lesefehlers.
 
 0.19.1 - 2026-11-18
 -------------------
