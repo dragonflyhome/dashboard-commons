@@ -31,6 +31,15 @@
 	 * Abmelden; `ziel` ist nur der Weg zurück („Weiter“). Und sie fragt
 	 * `/api/anmeldung/wer`: unter Windows der Satz zu Edge unter localhost,
 	 * sonst der Satz zum Passkey.
+	 *
+	 * Schritt 7c der macOS-Folge: Außerhalb von Windows (501 dieser Probe)
+	 * legt man den Passkey mit einem Einmal-Code an, den der Befehl
+	 * `dashboard einmal-code` im Terminal zeigt. Das Feld für den Code steht
+	 * dann vor dem Namen, auch angemeldet; es wird nach jedem Absenden
+	 * geleert, und der Code geht nur im Körper eines POST an den Server. Die
+	 * eigenen Anträge (`/api/passkey/antrag`) fragt die Seite dann nicht, sie
+	 * gibt es dort nicht. Nach dem Erfolg bleibt die Seite stehen. Unter
+	 * Windows bleibt alles wie vorher.
 	 */
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -54,6 +63,7 @@
 		abmelden,
 		anmeldeArt,
 		anlegen,
+		anlegenMitCode,
 		anmelden,
 		aufLocalhost,
 		browserFehlerSatz,
@@ -68,12 +78,17 @@
 	/** Kam die Seite über die Umleitung ohne Anmeldung (`anmeldenAdresse`)? Dann geht es angemeldet sofort weiter. */
 	const umgeleitet = $derived(page.url.searchParams.get('umgeleitet') === '1');
 	let weg = $state<AnmeldeWeg | null>(null);
+	/** Schritt 7c: außerhalb von Windows (501 der Probe) mit Einmal-Code. */
+	const mitCode = $derived(weg === 'passkey');
+	/** Der Befehl, der den Einmal-Code zeigt. */
+	const BEFEHL = 'dashboard einmal-code';
 	const lokal = $derived(aufLocalhost(page.url.href));
 
 	let stand = $state<PasskeyStand | null>(null);
 	let eigene = $state<EigeneAntraege | null>(null);
 	let antrag = $state<AntragErgebnis | null>(null);
 	let geraet = $state('');
+	let einmalCode = $state('');
 	/** Hotfix: Knopf ohne Namen gedrückt; der Satz unter dem Feld sagt es. */
 	let nameFehlt = $state(false);
 	let geraetFeld = $state<HTMLInputElement | null>(null);
@@ -127,6 +142,15 @@
 		}
 	}
 
+	/** Kopiert den Befehl; geht das nicht, bleibt der Text markierbar, ohne Fehlermeldung. */
+	async function befehlKopieren(): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(BEFEHL);
+		} catch {
+			// Still: Der Befehl steht daneben und lässt sich markieren.
+		}
+	}
+
 	async function passkeyAnlegen(ev: SubmitEvent): Promise<void> {
 		ev.preventDefault();
 		if (geraet.trim() === '') {
@@ -137,6 +161,21 @@
 		beschaeftigt = 'anlegen';
 		fehler = null;
 		meldung = null;
+		if (mitCode) {
+			// Geleert bei jedem Absenden, auch wenn danach ein Fehler kommt.
+			const code = einmalCode;
+			einmalCode = '';
+			try {
+				await anlegenMitCode(code, geraet.trim());
+				meldung = 'Der Passkey ist angelegt. Jetzt oben „Mit Passkey anmelden“.';
+				geraet = '';
+			} catch (e) {
+				fehler = satz(e);
+			} finally {
+				beschaeftigt = null;
+			}
+			return;
+		}
 		try {
 			antrag = await anlegen(geraet.trim());
 			meldung =
@@ -172,13 +211,14 @@
 		// Erst die geschützte Abfrage: Sie bringt Edge dazu, die Verbindung bei Windows
 		// anzumelden (nach einer 401). Danach erst der freie Stand, der die Anmeldung nur
 		// auf einer schon angemeldeten Verbindung sieht (Auflage aus Hotfix 3a-1).
+		// Schritt 7c: Erst die Probe; außerhalb von Windows (501) gibt es keine eigenen Anträge.
 		void (async () => {
-			await eigeneLaden();
+			weg = await anmeldeWeg();
+			if (weg !== 'passkey') await eigeneLaden();
 			await standLaden();
 			// Schritt E2: schon angemeldet (Passkey oder Windows), dann gleich zum Ziel.
 			if (umgeleitet && stand !== null && stand.wie !== 'keine') weiter(ziel);
 		})();
-		void anmeldeWeg().then((w) => (weg = w));
 		// Solange ein Antrag wartet: alle 5 Sekunden nachsehen, ob er entschieden ist.
 		const takt = setInterval(() => {
 			if (offen !== null) void eigeneLaden();
@@ -264,10 +304,14 @@
 				>
 			</p>
 		{:else}
-			<p>
-				Für dich in einem anderen Windows-Konto auf diesem PC: mit Windows Hello, dem Handy oder
-				einem Sicherheitsschlüssel. Der Passkey muss vorher freigegeben sein.
-			</p>
+			{#if mitCode}
+				<p>Mit einem Passkey auf diesem Rechner, dem Handy oder einem Sicherheitsschlüssel.</p>
+			{:else}
+				<p>
+					Für dich in einem anderen Windows-Konto auf diesem PC: mit Windows Hello, dem Handy oder
+					einem Sicherheitsschlüssel. Der Passkey muss vorher freigegeben sein.
+				</p>
+			{/if}
 			{#if stand !== null && !stand.verfuegbar}
 				<!-- Kein „siehe Protokoll“; der Inhaber liest kein Protokoll. -->
 				<p class="block-error">
@@ -292,7 +336,14 @@
 
 	<section class="card" id={PASSKEY_ANKER.anlegen} aria-labelledby="h-anlegen">
 		<h2 id="h-anlegen">Passkey anlegen</h2>
-		{#if eigene?.hauptkonto}
+		{#if mitCode}
+			<p class="mit-code">
+				Einen Passkey legst du hier mit einem Einmal-Code an. Den Code zeigt dir der Befehl
+				<code class="befehl">{BEFEHL}</code>
+				<button type="button" class="button klein" onclick={befehlKopieren}>Kopieren</button>
+				im Terminal. Er gilt 10 Minuten und nur einmal.
+			</p>
+		{:else if eigene?.hauptkonto}
 			<p>
 				Du bist im Hauptkonto. Ein Passkey auf dem Handy oder einem Sicherheitsschlüssel ist sofort
 				registriert und geht dann auch in anderen Windows-Konten.
@@ -321,6 +372,18 @@
 			</div>
 		{:else}
 			<form class="anlegen" onsubmit={passkeyAnlegen}>
+				{#if mitCode}
+					<label for="einmal-code">Einmal-Code</label>
+					<input
+						id="einmal-code"
+						class="einmal-code"
+						type="text"
+						bind:value={einmalCode}
+						autocomplete="off"
+						spellcheck="false"
+						autocapitalize="characters"
+					/>
+				{/if}
 				<label for="geraet">Name des Geräts</label>
 				<div class="zeile">
 					<input
@@ -417,6 +480,21 @@
 	.anlegen label {
 		display: block;
 		margin-bottom: 4px;
+	}
+	.einmal-code {
+		display: block;
+		width: 100%;
+		max-width: 24rem;
+		margin-bottom: 10px;
+		font-family: var(--mono);
+	}
+	.befehl {
+		user-select: all;
+	}
+	.klein {
+		padding: 0.15rem 0.65rem;
+		font-size: var(--text-sm);
+		min-height: 2.25rem;
 	}
 	.zeile input {
 		flex: 1 1 12rem;
