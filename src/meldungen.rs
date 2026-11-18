@@ -72,6 +72,14 @@ fn neu(projekt: &str, art: MeldungsArt, was: &str, titel: String) -> NeueMeldung
     }
 }
 
+/// Schritt 7b der macOS-Folge: eine Meldung zum Einmal-Code (ausgegeben,
+/// Passkey damit angelegt, verfallen). Zur Kenntnis, vom System, im Projekt
+/// `dashboard`; im Titel steht nie der Code. Nicht als Fehler: Es gibt
+/// nichts, das sie wieder aufhöbe.
+pub fn einmal_code_meldung(was: &str, titel: &str) -> NeueMeldung {
+    NeueMeldung { system: true, ..neu("dashboard", MeldungsArt::Info, was, titel.to_string()) }
+}
+
 /// Schneidet auf höchstens `max` Zeichen.
 pub fn kuerzen(text: &str, max: usize) -> String {
     if text.chars().count() <= max {

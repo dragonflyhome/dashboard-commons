@@ -31,7 +31,7 @@ use tracing::warn;
 
 use super::aufgaben::Zeit;
 use super::tabellen::{self, JWT_SPERRLISTE, PASSKEY_ANTRAEGE, PASSKEY_AUFGABEN, PASSKEYS};
-use super::vorgaenge::{json_lesen, vorgang_anlegen_in, vorgang_weiter_in};
+use super::vorgaenge::{erledigt_anlegen_in, json_lesen, vorgang_anlegen_in, vorgang_weiter_in};
 use super::{Speicher, SpeicherFehler};
 use crate::api::vertrag::{Ereignis, VorgangsArt, Zustand};
 use crate::passkey::webauthn::{self, Erwartung, NeuerPasskey};
@@ -46,6 +46,15 @@ pub const AUFGABEN_HOECHSTENS: usize = 200;
 pub const SLUG: &str = "passkey";
 /// Schlüssel in `jwt_sperrliste` für „alle Sitzungen beenden“.
 pub const ALLE: &str = "alle";
+
+/// Titel der Vorgänge `einmal-code` (Schritt 7b der macOS-Folge); nie mit dem Code.
+pub const TITEL_CODE_AUSGEGEBEN: &str = "Einmal-Code ausgegeben";
+pub const TITEL_CODE_VERFALLEN: &str = "Einmal-Code nach 5 Fehlversuchen verfallen";
+
+/// Titel des Vorgangs, wenn mit einem Einmal-Code ein Passkey angelegt wurde.
+pub fn titel_code_passkey(geraet: &str) -> String {
+    format!("Passkey „{geraet}“ mit Einmal-Code angelegt")
+}
 
 fn zeit_text(z: &Zeit) -> String {
     z.to_rfc3339_opts(SecondsFormat::Secs, false)
@@ -78,6 +87,12 @@ pub struct PasskeyAufgabe {
     pub benutzer: Option<String>,
     /// Beim Anlegen: Name des Geräts.
     pub name: Option<String>,
+    /// Beim Anlegen: Die Challenge entstand nach einem geprüften Einmal-Code
+    /// (Schritt 7b der macOS-Folge). Nur `code/beginn` setzt das; `ende`
+    /// verlangt, dass es zum Weg passt. Fehlt das Feld in einem älteren
+    /// Eintrag, gilt `false`.
+    #[serde(default)]
+    pub einmal_code: bool,
 }
 
 impl PasskeyAufgabe {
@@ -92,6 +107,7 @@ impl PasskeyAufgabe {
             hauptkonto: false,
             benutzer: None,
             name: None,
+            einmal_code: false,
         }
     }
 
@@ -106,7 +122,14 @@ impl PasskeyAufgabe {
             hauptkonto: konto.inhaber,
             benutzer: Some(passkey::b64(&passkey::zufall(16))),
             name: Some(name.to_string()),
+            einmal_code: false,
         }
+    }
+
+    /// Dieselbe Aufgabe, entstanden nach einem geprüften Einmal-Code.
+    pub fn mit_einmal_code(mut self, einmal_code: bool) -> Self {
+        self.einmal_code = einmal_code;
+        self
     }
 }
 
@@ -409,6 +432,13 @@ impl Speicher {
             p.entschieden = None;
             p.entschieden_von = None;
             p.vorgang = Some(v.id);
+        }
+        // Schritt 7b der macOS-Folge: Entstand die Challenge nach einem
+        // Einmal-Code, steht das Anlegen im Journal, in derselben Transaktion
+        // wie der Passkey: Es gibt keinen solchen Passkey ohne Eintrag.
+        if aufgabe.einmal_code {
+            let (_, e) = erledigt_anlegen_in(&txn, VorgangsArt::EinmalCode, SLUG, &titel_code_passkey(&name), "server")?;
+            ereignisse.push(e);
         }
         passkey_schreiben(&txn, &p)?;
         self.festschreiben(txn, &[super::Bereich::Passkeys, super::Bereich::Vorgaenge])?;
@@ -882,5 +912,78 @@ mod tests {
         // Aufräumen nach Ablauf.
         s.passkey_aufraeumen(&(jetzt() + Duration::hours(9))).unwrap();
         assert!(s.sitzung_gilt("jti-weg", &p.id, t).unwrap().is_some(), "Eintrag nach Ablauf weg");
+    }
+
+    // ----- Schritt 7b der macOS-Folge: der Einmal-Code im Journal -----
+
+    /// Ohne Einmal-Code bleibt alles wie bisher: Im Hauptkonto entsteht beim
+    /// Anlegen kein Vorgang. Läuft auf jeder Plattform.
+    #[test]
+    fn hauptkonto_ohne_einmal_code_schreibt_keinen_vorgang() {
+        let s = Speicher::temporaer();
+        let a = PruefAuthenticator::es256();
+        let (p, e) = anlegen(&s, &a, &WindowsKonto::test(true), &jetzt()).unwrap();
+        assert_eq!((p.status, p.hauptkonto, e.len()), (PasskeyStatus::Registriert, true, 0));
+        assert!(s.vorgaenge_alle().unwrap().is_empty());
+    }
+
+    /// Entstand die Challenge nach einem Einmal-Code, steht das Anlegen im
+    /// Journal: ein erledigter Vorgang, in derselben Transaktion wie der Passkey.
+    #[test]
+    fn mit_einmal_code_steht_das_anlegen_im_journal() {
+        let s = Speicher::temporaer();
+        let z = jetzt();
+        let k = WindowsKonto { sid: "uid:501".into(), name: "Hauptkonto".into(), inhaber: true };
+        let a = PruefAuthenticator::es256();
+        let mit_code = |s: &Speicher| {
+            let aufgabe = PasskeyAufgabe::anlegen(&k, "Laptop", &z).mit_einmal_code(true);
+            let ch = s.passkey_aufgabe_anlegen(&aufgabe, &z)?;
+            let (c, att) = a.anlegen(&ch, HERKUNFT);
+            let neu = webauthn::anlegen_pruefen(&c, &att, &a.id, E)?;
+            let aufgabe = s.passkey_aufgabe_nehmen(&neu.challenge, AufgabenArt::Anlegen, &z)?;
+            assert!(aufgabe.einmal_code, "das Merkmal übersteht das Speichern");
+            s.passkey_anlegen(&neu, &aufgabe, &z)
+        };
+        let (p, e) = mit_code(&s).unwrap();
+        assert_eq!((p.status, p.hauptkonto, p.konto.as_str(), p.konto_sid.as_str()), (PasskeyStatus::Registriert, true, "Hauptkonto", "uid:501"));
+        assert_eq!(e.len(), 1);
+        let v = s.vorgaenge_alle().unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(
+            (v[0].art, v[0].zustand, v[0].slug.as_str(), v[0].von.as_str(), v[0].titel.as_str(), v[0].bezug.as_deref()),
+            (VorgangsArt::EinmalCode, Zustand::Erledigt, SLUG, "server", "Passkey „Laptop“ mit Einmal-Code angelegt", None)
+        );
+        // Scheitert das Anlegen (diesen Passkey gibt es schon), entsteht auch kein Eintrag.
+        assert!(mit_code(&s).is_err());
+        assert_eq!(s.vorgaenge_alle().unwrap().len(), 1);
+        assert_eq!(s.passkeys().unwrap().len(), 1);
+    }
+
+    /// Eine Aufgabe, die vor diesem Schritt gespeichert wurde, hat das Feld nicht: Sie gilt als ohne Einmal-Code.
+    #[test]
+    fn aeltere_aufgabe_ohne_das_feld_gilt_als_ohne_einmal_code() {
+        let mut alt = serde_json::to_value(PasskeyAufgabe::anlegen(&WindowsKonto::test(true), "Handy", &jetzt())).unwrap();
+        assert_eq!(alt.as_object_mut().unwrap().remove("einmal_code"), Some(serde_json::Value::Bool(false)));
+        let gelesen: PasskeyAufgabe = serde_json::from_value(alt).unwrap();
+        assert!(!gelesen.einmal_code);
+        assert!(!PasskeyAufgabe::anmelden(&jetzt()).einmal_code);
+    }
+
+    /// Die Vorgangsart `einmal-code` und die Titel; den Vorgang legt nur der Server an.
+    #[test]
+    fn vorgangsart_einmal_code_und_titel() {
+        assert_eq!(VorgangsArt::aus_wort("einmal-code"), Some(VorgangsArt::EinmalCode));
+        assert_eq!(serde_json::to_string(&VorgangsArt::EinmalCode).unwrap(), "\"einmal-code\"");
+        assert!(VorgangsArt::ALLE.contains(&VorgangsArt::EinmalCode));
+        let s = Speicher::temporaer();
+        for titel in [TITEL_CODE_AUSGEGEBEN, TITEL_CODE_VERFALLEN] {
+            let (v, e) = s.einmal_code_vermerken(titel).unwrap();
+            assert_eq!(
+                (v.art, v.zustand, v.slug.as_str(), v.von.as_str(), v.titel.as_str()),
+                (VorgangsArt::EinmalCode, Zustand::Erledigt, SLUG, "server", titel)
+            );
+            assert_eq!(e.slug, SLUG);
+        }
+        assert_eq!(s.vorgaenge_alle().unwrap().len(), 2);
     }
 }

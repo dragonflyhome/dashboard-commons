@@ -358,39 +358,42 @@ async fn waechter_jeder_weg_oeffentlich_oder_401() {
     // Kodiert öffentlich ist nur die Umleitung unter /neu/ (ohne Blick in den Bestand).
     let (kodiert_oeffentlich, oeffentliche): (Vec<String>, Vec<String>) = oeffentliche.into_iter().partition(|w| w.contains('%'));
     assert!(kodiert_oeffentlich.iter().all(|w| w.starts_with("GET /neu/")), "{kodiert_oeffentlich:?}");
-    assert_eq!(
-        oeffentliche,
-        [
-            "GET /",
-            "GET /anmelden",
-            "GET /api/anmeldung/probe",
-            "GET /api/anmeldung/wer",
-            "GET /api/betrieb",
-            "GET /api/events/frei",
-            "GET /api/fassungen",
-            "GET /api/passkey/antrag",
-            "GET /api/passkey/stand",
-            "GET /api/stand",
-            "GET /fassungen",
-            "GET /healthz",
-            "GET /neu",
-            "GET /neu/",
-            "GET /neu/x",
-            "HEAD /",
-            "HEAD /anmelden",
-            "HEAD /fassungen",
-            "HEAD /healthz",
-            "HEAD /neu",
-            "HEAD /neu/",
-            "HEAD /neu/x",
-            "POST /api/passkey/abmelden",
-            "POST /api/passkey/anmelden/beginn",
-            "POST /api/passkey/anmelden/ende",
-            "POST /api/passkey/antrag/beginn",
-            "POST /api/passkey/antrag/ende",
-        ],
-        "die öffentlichen Wege des Routers"
-    );
+    // Schritt 7b der macOS-Folge: Außerhalb von Windows kommen die zwei Wege
+    // über einen Einmal-Code dazu. Unter Windows liest der Wächter sie auch
+    // aus dem Quelltext; dort sind sie nicht öffentlich und geben 401.
+    let erwartet: Vec<&str> = [
+        "GET /",
+        "GET /anmelden",
+        "GET /api/anmeldung/probe",
+        "GET /api/anmeldung/wer",
+        "GET /api/betrieb",
+        "GET /api/events/frei",
+        "GET /api/fassungen",
+        "GET /api/passkey/antrag",
+        "GET /api/passkey/stand",
+        "GET /api/stand",
+        "GET /fassungen",
+        "GET /healthz",
+        "GET /neu",
+        "GET /neu/",
+        "GET /neu/x",
+        "HEAD /",
+        "HEAD /anmelden",
+        "HEAD /fassungen",
+        "HEAD /healthz",
+        "HEAD /neu",
+        "HEAD /neu/",
+        "HEAD /neu/x",
+        "POST /api/passkey/abmelden",
+        "POST /api/passkey/anmelden/beginn",
+        "POST /api/passkey/anmelden/ende",
+        "POST /api/passkey/antrag/beginn",
+        "POST /api/passkey/antrag/ende",
+    ]
+    .into_iter()
+    .chain(if cfg!(unix) { vec!["POST /api/passkey/code/beginn", "POST /api/passkey/code/ende"] } else { Vec::new() })
+    .collect();
+    assert_eq!(oeffentliche, erwartet, "die öffentlichen Wege des Routers");
     let _ = std::fs::remove_dir_all(&ordner);
 }
 

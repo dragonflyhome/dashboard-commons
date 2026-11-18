@@ -26,6 +26,8 @@
 use std::sync::Arc;
 
 use axum::body::Bytes;
+#[cfg(unix)]
+use axum::extract::ConnectInfo;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -33,6 +35,8 @@ use axum::{Extension, Json};
 use serde::de::DeserializeOwned;
 
 use super::vorgaenge::json_kopf_pruefen;
+#[cfg(unix)]
+use crate::anmeldung::verbindung::Verbindung;
 use crate::anmeldung::{Inhaber, PasskeySitzung, WindowsKonto};
 use crate::app::AppState;
 use crate::fehler::AppError;
@@ -41,6 +45,7 @@ use crate::passkey::webauthn::{self, Erwartung};
 use crate::passkey::{self, Abweisung, ERNEUERN_NACH_SEKUNDEN, FRISCH_SEKUNDEN, RP_ID, RP_NAME, cookie};
 use crate::speicher::Speicher;
 use crate::speicher::aufgaben::{self, Zeit};
+use crate::speicher::meldungen::Wiederholung;
 use crate::speicher::passkeys::{AufgabenArt, Entscheidung, Freigeber, PasskeyAufgabe, PasskeyFehler};
 use crate::vertrag::api::Ereignis;
 use crate::vertrag::passkey::{
@@ -375,12 +380,19 @@ pub async fn antrag_beginn(
     schluessel(&state)?;
     let konto = konto_aus(konto)?;
     let k: AntragBeginn = json_lesen(&kopf, &koerper)?;
+    anlegen_beginn(&state, konto, k, false).await
+}
+
+/// Der gemeinsame Kern von `antrag/beginn` und `code/beginn`: Name prüfen,
+/// Grenzen prüfen und eine Challenge zum Anlegen für `konto`. `ueber_code`
+/// merkt an der Challenge, dass sie nach einem geprüften Einmal-Code entstand.
+async fn anlegen_beginn(state: &AppState, konto: WindowsKonto, k: AntragBeginn, ueber_code: bool) -> Result<Json<AntragOptionen>, AppError> {
     let name = name_pruefen(&k.name)?;
     let jetzt = jetzt();
-    let aufgabe = PasskeyAufgabe::anlegen(&konto, &name, &jetzt);
+    let aufgabe = PasskeyAufgabe::anlegen(&konto, &name, &jetzt).mit_einmal_code(ueber_code);
     let benutzer_id = aufgabe.benutzer.clone().unwrap_or_default();
     let (sid, inhaber) = (konto.sid.clone(), konto.inhaber);
-    let (challenge, ausschliessen, ereignisse) = hintergrund(&state, move |s| {
+    let (challenge, ausschliessen, ereignisse) = hintergrund(state, move |s| {
         let ereignisse = if inhaber { Vec::new() } else { s.passkey_antrag_pruefen(&sid, &jetzt)? };
         let challenge = s.passkey_aufgabe_anlegen(&aufgabe, &jetzt)?;
         let ausschliessen = s
@@ -393,7 +405,7 @@ pub async fn antrag_beginn(
         Ok((challenge, ausschliessen, ereignisse))
     })
     .await?;
-    melden(&state, &ereignisse);
+    melden(state, &ereignisse);
     Ok(Json(AntragOptionen {
         challenge,
         rp_id: RP_ID.into(),
@@ -418,29 +430,222 @@ pub async fn antrag_ende(
 ) -> Result<(StatusCode, Json<AntragErgebnis>), AppError> {
     let konto = konto_aus(konto)?;
     let k: AntragEnde = json_lesen(&kopf, &koerper)?;
+    anlegen_ende(&state, konto, k, false).await
+}
+
+/// Der gemeinsame Kern von `antrag/ende` und `code/ende`: Antwort prüfen und
+/// speichern. Die Challenge muss zu `konto` gehören und auf demselben Weg
+/// entstanden sein (`ueber_code`): Eine Challenge aus `antrag/beginn` taugt
+/// nie für `code/ende`, und umgekehrt.
+async fn anlegen_ende(state: &AppState, konto: WindowsKonto, k: AntragEnde, ueber_code: bool) -> Result<(StatusCode, Json<AntragErgebnis>), AppError> {
     let id_roh = b64_feld(&k.id, "id")?;
     let client = b64_feld(&k.client_daten, "client_daten")?;
     let att = b64_feld(&k.attestation, "attestation")?;
-    let herkunft = herkunft(&state);
+    let herkunft = herkunft(state);
     let e = Erwartung { herkunft: &herkunft, rp_id: RP_ID };
     let neu = webauthn::anlegen_pruefen(&client, &att, &id_roh, e);
     let challenge = webauthn::challenge_aus(&client).unwrap_or_default();
     let jetzt = jetzt();
-    let (p, ereignisse) = hintergrund(&state, move |s| {
+    let (p, ereignisse) = hintergrund(state, move |s| {
         // Die Challenge wird auch verbraucht, wenn die Prüfung scheitert.
         let aufgabe = s.passkey_aufgabe_nehmen(&challenge, AufgabenArt::Anlegen, &jetzt);
         let neu = neu?;
         let aufgabe = aufgabe?;
         let gleich = aufgabe.konto_sid.as_deref().is_some_and(|sid| sid.eq_ignore_ascii_case(&konto.sid));
-        if !gleich || aufgabe.hauptkonto != konto.inhaber {
+        if !gleich || aufgabe.hauptkonto != konto.inhaber || aufgabe.einmal_code != ueber_code {
             return Err(Abweisung::ChallengeFremd.into());
         }
         s.passkey_anlegen(&neu, &aufgabe, &jetzt)
     })
     .await?;
-    melden(&state, &ereignisse);
+    melden(state, &ereignisse);
     tracing::info!("Passkey angelegt: {}", if p.hauptkonto { "im Hauptkonto, registriert" } else { "Antrag, ausstehend" });
+    if ueber_code {
+        let titel = crate::speicher::passkeys::titel_code_passkey(&p.name);
+        crate::meldungen::melden(state, crate::meldungen::einmal_code_meldung("einmal-code-passkey", &titel), Wiederholung::Zaehlen, jetzt).await;
+    }
     Ok((StatusCode::CREATED, Json(AntragErgebnis { status: p.status, vergleichszahl: p.vergleichszahl.clone(), ablauf: p.ablauf.clone() })))
+}
+
+// ----- über einen Einmal-Code (Schritt 7b der macOS-Folge), nur außerhalb von Windows -----
+
+/// Abweisung, wenn die Anfrage nicht unmittelbar von diesem Rechner über
+/// `http://localhost` kam. Nichts aus der Anfrage steht darin.
+#[cfg(unix)]
+pub const SATZ_NUR_LOKAL: &str = "Dieser Weg geht nur im Browser auf diesem Rechner, unter http://localhost.";
+
+/// Feste Sätze des Kanalbefehls `code`, wenn es keinen Code geben kann.
+#[cfg(unix)]
+pub const SATZ_CODE_OHNE_SCHLUESSEL: &str = "Einen Einmal-Code gibt es gerade nicht: Der Schlüssel der Ausweise fehlt.";
+#[cfg(unix)]
+pub const SATZ_CODE_OHNE_SPEICHER: &str = "Einen Einmal-Code gibt es gerade nicht: Der Datenspeicher fehlt.";
+#[cfg(unix)]
+pub const SATZ_CODE_OHNE_JOURNAL: &str = "Einen Einmal-Code gibt es gerade nicht: Der Eintrag im Journal ließ sich nicht schreiben.";
+
+/// `POST /api/passkey/code/beginn`: Einmal-Code und Name des Geräts.
+#[cfg(unix)]
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeBeginn {
+    code: String,
+    name: String,
+}
+
+/// Nie den Code zeigen.
+#[cfg(unix)]
+impl std::fmt::Debug for CodeBeginn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodeBeginn").finish_non_exhaustive()
+    }
+}
+
+/// Die Prüfungen, die den Code nicht berühren: Die Anfrage kam unmittelbar
+/// von diesem Rechner (Loopback, keine Zwischenstation), ihr Host ist genau
+/// `localhost:<port>` und ihr `Origin` genau die Herkunft der Passkey-Wege.
+/// Das hält Browser ab (fremde Seiten, DNS-Rebinding). Ein Programm eines
+/// anderen Kontos setzt Host und Origin selbst; gegen dieses schützt der Code.
+#[cfg(unix)]
+fn code_anfrage_pruefen(state: &AppState, verbindung: Option<&ConnectInfo<Verbindung>>, uri: &axum::http::Uri, kopf: &HeaderMap) -> Result<(), AppError> {
+    let gegenstelle = verbindung.and_then(|v| v.0.gegenstelle);
+    if crate::sicherheit::nur_lokal(gegenstelle, kopf) && crate::sicherheit::genau_localhost(uri.authority().map(|a| a.as_str()), kopf, state.port) {
+        return Ok(());
+    }
+    tracing::warn!("Einmal-Code: Anfrage abgewiesen, sie kam nicht unmittelbar von diesem Rechner über http://localhost.");
+    Err(AppError { status: StatusCode::FORBIDDEN, art: "nur-lokal", fehler: SATZ_NUR_LOKAL.into() })
+}
+
+/// Die eine Antwort für falsch, abgelaufen, verbraucht, verfallen und „kein Code offen“.
+#[cfg(unix)]
+fn code_gilt_nicht() -> AppError {
+    AppError { status: StatusCode::FORBIDDEN, art: "einmal-code", fehler: passkey::einmalcode::SATZ_GILT_NICHT.into() }
+}
+
+/// Das Konto hinter einem geprüften Einmal-Code: das Konto, in dem der
+/// Server läuft. Es entsteht nur hier, aus `eigene_uid()`; kein Name aus der
+/// Umgebung, keine Erweiterung der Anfrage.
+#[cfg(unix)]
+fn code_konto() -> WindowsKonto {
+    WindowsKonto { sid: format!("uid:{}", crate::unix::eigene_uid()), name: "Hauptkonto".into(), inhaber: true }
+}
+
+/// Vermerkt den Verfall nach Fehlversuchen im Journal und meldet ihn, in
+/// einer eigenen Aufgabe nach der Antwort: Die fünfte Abweisung dauert so
+/// nicht länger als jede andere und verrät nicht, dass ein Code offen war.
+#[cfg(unix)]
+fn code_verfall_vermerken(state: AppState) {
+    tokio::spawn(async move {
+        tracing::info!("Einmal-Code nach Fehlversuchen verfallen");
+        if let Some(speicher) = state.speicher.clone() {
+            match Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_VERFALLEN)).await {
+                Ok((_, e)) => melden(&state, &[e]),
+                Err(e) => tracing::error!("Einmal-Code: Der Verfall ließ sich nicht ins Journal schreiben: {e}"),
+            }
+        }
+        let neu = crate::meldungen::einmal_code_meldung("einmal-code-verfallen", crate::speicher::passkeys::TITEL_CODE_VERFALLEN);
+        crate::meldungen::melden(&state, neu, Wiederholung::Zaehlen, jetzt()).await;
+    });
+}
+
+/// `POST /api/passkey/code/beginn` (nur außerhalb von Windows): löst einen
+/// Einmal-Code ein und gibt eine Challenge zum Anlegen eines Passkeys im
+/// Hauptkonto. Erst alles, was den Code nicht berührt (Anfrage, JSON, Name,
+/// Schlüssel der Ausweise, Datenspeicher); dann wird der Code unter der
+/// Sperre in einem Schritt verglichen und entfernt; erst danach entsteht die
+/// Challenge. Scheitert danach etwas, ist der Code trotzdem verbraucht.
+///
+/// Der Handler liest kein Konto und keinen Ausweis aus der Anfrage: Das
+/// Konto entsteht allein aus dem geprüften Code. Er setzt kein Cookie und
+/// meldet niemanden an.
+#[cfg(unix)]
+pub async fn code_beginn(
+    State(state): State<AppState>,
+    verbindung: Option<Extension<ConnectInfo<Verbindung>>>,
+    uri: axum::http::Uri,
+    kopf: HeaderMap,
+    koerper: Bytes,
+) -> Result<Json<AntragOptionen>, AppError> {
+    code_anfrage_pruefen(&state, verbindung.as_ref().map(|Extension(v)| v), &uri, &kopf)?;
+    let k: CodeBeginn = json_lesen(&kopf, &koerper)?;
+    let name = name_pruefen(&k.name)?;
+    schluessel(&state)?;
+    state.speicher()?;
+    // Vergleichen und entfernen in einem Schritt; die Sperre endet vor jedem `await`.
+    let urteil = state.einmal_code.lock().unwrap_or_else(std::sync::PoisonError::into_inner).einloesen(&k.code, passkey::einmalcode::Uhren::jetzt());
+    match urteil {
+        passkey::einmalcode::Urteil::Gilt => {}
+        passkey::einmalcode::Urteil::GiltNicht => return Err(code_gilt_nicht()),
+        passkey::einmalcode::Urteil::Verfallen => {
+            code_verfall_vermerken(state.clone());
+            return Err(code_gilt_nicht());
+        }
+    }
+    anlegen_beginn(&state, code_konto(), AntragBeginn { name }, true).await
+}
+
+/// `POST /api/passkey/code/ende` (nur außerhalb von Windows): prüft die
+/// Antwort des Authenticators und legt den Passkey im Hauptkonto an, sofort
+/// registriert. Die Challenge muss aus `code/beginn` stammen. Kein Cookie.
+#[cfg(unix)]
+pub async fn code_ende(
+    State(state): State<AppState>,
+    verbindung: Option<Extension<ConnectInfo<Verbindung>>>,
+    uri: axum::http::Uri,
+    kopf: HeaderMap,
+    koerper: Bytes,
+) -> Result<(StatusCode, Json<AntragErgebnis>), AppError> {
+    code_anfrage_pruefen(&state, verbindung.as_ref().map(|Extension(v)| v), &uri, &kopf)?;
+    let k: AntragEnde = json_lesen(&kopf, &koerper)?;
+    anlegen_ende(&state, code_konto(), k, true).await
+}
+
+/// Die Quelle des Kanalbefehls `code`: gibt einen Einmal-Code aus.
+#[cfg(unix)]
+pub struct CodeAusgabe(pub AppState);
+
+#[cfg(unix)]
+impl crate::kanal::CodeQuelle for CodeAusgabe {
+    fn code<'a>(&'a self, konto: &'a crate::kanal::KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+        Box::pin(einmal_code_ausgeben(&self.0, konto))
+    }
+}
+
+/// Gibt einen Einmal-Code aus, als Antwortzeile für den Kanal. Verlangt die
+/// Befähigung der geprüften Gegenseite. Reihenfolge: Ohne Schlüssel der
+/// Ausweise und ohne Datenspeicher je ein fester Satz. Sonst zuerst der
+/// Vorgang im Journal; erst nach dem Festschreiben wird der Code gesetzt und
+/// beantwortet, danach geht die Meldung hinaus. Scheitert das Journal, gibt
+/// es keinen Code. Der Code steht nur in dieser Antwort: nie im Protokoll,
+/// im Journal oder in der Meldung.
+#[cfg(unix)]
+pub async fn einmal_code_ausgeben(state: &AppState, _konto: &crate::kanal::KanalKonto) -> String {
+    use crate::kanal::fehler_antwort;
+    if state.jwt.is_none() {
+        return fehler_antwort(SATZ_CODE_OHNE_SCHLUESSEL);
+    }
+    let Some(speicher) = state.speicher.clone() else {
+        return fehler_antwort(SATZ_CODE_OHNE_SPEICHER);
+    };
+    let ereignis = match Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN)).await {
+        Ok((_, e)) => e,
+        Err(e) => {
+            tracing::error!("Einmal-Code: Der Eintrag im Journal ließ sich nicht schreiben: {e}");
+            return fehler_antwort(SATZ_CODE_OHNE_JOURNAL);
+        }
+    };
+    let code = state
+        .einmal_code
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .ausgeben(&passkey::zufall(passkey::einmalcode::ZEICHEN), passkey::einmalcode::Uhren::jetzt());
+    tracing::info!("Einmal-Code ausgegeben");
+    let antwort = serde_json::json!({ "code": code, "gueltig_sekunden": passkey::einmalcode::GUELTIG.as_secs(), "port": state.port }).to_string();
+    let state = state.clone();
+    tokio::spawn(async move {
+        melden(&state, &[ereignis]);
+        let neu = crate::meldungen::einmal_code_meldung("einmal-code", crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN);
+        crate::meldungen::melden(&state, neu, Wiederholung::Zaehlen, jetzt()).await;
+    });
+    antwort
 }
 
 // ----- nur als Inhaber (unter /api/schluessel) -----
@@ -531,6 +736,9 @@ pub async fn ablauf_lauf(state: &AppState, jetzt: Zeit) -> Result<(), AppError> 
     Ok(())
 }
 
+#[cfg(all(test, unix))]
+mod code_tests;
+
 #[cfg(all(test, windows))]
 pub(crate) mod tests {
     use axum::body::Body;
@@ -618,6 +826,24 @@ pub(crate) mod tests {
         let k = anmelde_koerper(a, o["challenge"].as_str().unwrap(), herkunft);
         let (s, set, _) = schicke(app, post("/api/passkey/anmelden/ende", k, None)).await;
         (s, set.map(|s| ausweis_aus_cookie(&s)))
+    }
+
+    /// Schritt 7b der macOS-Folge: Unter Windows gibt es die Wege über einen
+    /// Einmal-Code nicht, auch nicht mit Hauptkonto. Und der herausgezogene
+    /// Kern schreibt beim Anlegen im Hauptkonto weiter keinen Vorgang.
+    #[tokio::test]
+    async fn wege_ueber_einmal_code_gibt_es_unter_windows_nicht() {
+        let state = zustand();
+        let haupt = router_angemeldet(state.clone());
+        for pfad in ["/api/passkey/code/beginn", "/api/passkey/code/ende"] {
+            let (s, _, _) = schicke(&haupt, post(pfad, serde_json::json!({"code": "x", "name": "Handy"}), None)).await;
+            assert_eq!(s, StatusCode::NOT_FOUND, "{pfad}");
+        }
+        let a = PruefAuthenticator::es256();
+        let (s, j) = anlegen(&haupt, &a).await;
+        assert_eq!((s, j["status"].as_str()), (StatusCode::CREATED, Some("registriert")), "{j}");
+        let vorgaenge = state.speicher.as_ref().unwrap().vorgaenge_alle().unwrap();
+        assert!(vorgaenge.is_empty(), "{vorgaenge:?}");
     }
 
     #[tokio::test]

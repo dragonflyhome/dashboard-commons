@@ -93,6 +93,7 @@ describe('artWort', () => {
 		expect(artWort('merge')).toBe('Merge-Request');
 		expect(artWort('passkey-antrag')).toBe('Passkey-Antrag');
 		expect(artWort('oeffnen')).toBe('Geöffnet');
+		expect(artWort('einmal-code')).toBe('Einmal-Code');
 		expect(artWort('abnahme')).toBe('Abnahme');
 		expect(artWort('schritt')).toBe('Teilschritt');
 	});

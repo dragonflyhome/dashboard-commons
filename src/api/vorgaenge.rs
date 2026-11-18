@@ -421,9 +421,10 @@ pub async fn anlegen(State(state): State<AppState>, kopf: HeaderMap, koerper: By
     let mut neu: NeuerVorgang = koerper_lesen(&koerper, MUSTER_NEU)?;
     // Etappe 7c: passkey-antrag legt nur der Server selbst an (beim Antrag auf /anmelden),
     // oeffnen ebenso (beim Öffnen eines Orts, Entscheidung lokal-oeffnen),
-    // schritt auch (beim Anbieten und Zurückwecken eines Teilschritts, T3).
+    // schritt auch (beim Anbieten und Zurückwecken eines Teilschritts, T3),
+    // einmal-code auch (Ausgabe, Anlegen und Verfall eines Einmal-Codes, macOS-Folge 7b).
     let art = VorgangsArt::aus_wort(&neu.art)
-        .filter(|a| !matches!(a, VorgangsArt::PasskeyAntrag | VorgangsArt::Oeffnen | VorgangsArt::Schritt))
+        .filter(|a| !matches!(a, VorgangsArt::PasskeyAntrag | VorgangsArt::Oeffnen | VorgangsArt::Schritt | VorgangsArt::EinmalCode))
         .ok_or_else(|| AppError::unlesbar("Diese Art gibt es nicht. Möglich sind antwort, frage, wunsch, bau, abnahme und merge."))?;
     slug_pruefen(&neu.slug)?;
     let merge = if art == VorgangsArt::Merge {

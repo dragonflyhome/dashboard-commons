@@ -3,4 +3,4 @@
 /**
  * Welche Art von Vorgang; im JSON klein geschrieben (`"antwort"`, …).
  */
-export type VorgangsArt = "antwort" | "frage" | "wunsch" | "bau" | "abnahme" | "merge" | "passkey-antrag" | "oeffnen" | "schritt";
+export type VorgangsArt = "antwort" | "frage" | "wunsch" | "bau" | "abnahme" | "merge" | "passkey-antrag" | "oeffnen" | "schritt" | "einmal-code";

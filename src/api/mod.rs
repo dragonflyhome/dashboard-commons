@@ -137,6 +137,12 @@ pub fn routes() -> Router<AppState> {
         .route("/api/schluessel/passkeys/{id}/widerrufen", post(passkey::widerrufen))
         .route("/api/schluessel/sitzungen-beenden", post(passkey::sitzungen_beenden))
         .route("/healthz", get(|| async { "ok" }));
+    // Schritt 7b der macOS-Folge: Passkey im Hauptkonto über einen Einmal-Code
+    // aus dem lokalen Kanal. Nur außerhalb von Windows; ohne Kanal gibt es keinen Code.
+    #[cfg(unix)]
+    {
+        r = r.route("/api/passkey/code/beginn", post(passkey::code_beginn)).route("/api/passkey/code/ende", post(passkey::code_ende));
+    }
     #[cfg(test)]
     {
         r = r.merge(test_routes());

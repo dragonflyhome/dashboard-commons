@@ -63,6 +63,8 @@ pub mod schluessel;
 pub mod sicherheit;
 pub mod speicher;
 pub mod start;
+#[cfg(all(test, unix))]
+mod test_allein;
 #[cfg(unix)]
 pub mod unix;
 pub mod vertrag;
