@@ -456,6 +456,9 @@ mod tests {
     fn absturz_mitten_im_schreiben_laesst_die_datei_heil() {
         let pfad = test_pfad();
         let zaehler = zaehler_pfad(&pfad);
+        // Ein Rest eines früheren Laufs mit derselben Prozessnummer gälte sonst als gemeldeter Stand.
+        let _ = std::fs::remove_file(&pfad);
+        let _ = std::fs::remove_file(&zaehler);
         let mut kind = kind_starten("speicher::tests::schreiber_kind", "DASHBOARD_TEST_SCHREIBER", &pfad);
         // Der Zähler wird ohne Umbenennen geschrieben; ein halb geschriebener
         // Stand ist unlesbar und zählt nicht. Er steigt nur, darum gilt der größte.

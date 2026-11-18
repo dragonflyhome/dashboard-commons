@@ -897,6 +897,9 @@ mod tests {
     fn absturz_mitten_im_schreiben_verliert_keinen_vorgang() {
         let pfad = crate::speicher::test_pfad();
         let zaehler = zaehler_pfad(&pfad);
+        // Ein Rest eines früheren Laufs mit derselben Prozessnummer gälte sonst als gemeldeter Stand.
+        let _ = std::fs::remove_file(&pfad);
+        let _ = std::fs::remove_file(&zaehler);
         let test = "speicher::vorgaenge::tests::vorgaenge_schreiber_kind";
         let mut kind = crate::speicher::kind_starten(test, "DASHBOARD_TEST_VORGAENGE", &pfad);
         let lesen = || std::fs::read_to_string(&zaehler).ok().and_then(|t| t.trim().parse::<u64>().ok());
