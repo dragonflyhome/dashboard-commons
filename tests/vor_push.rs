@@ -4541,6 +4541,7 @@ fn mitwirken_dateien_in_der_positivliste() {
         return;
     }
     frei("Formular", |o| o.ueber_merge(|o| o.datei(".github/ISSUE_TEMPLATE/x.yml", b"name: x\n")));
+    frei("Mac-Helfer", |o| o.ueber_merge(|o| o.datei("mac/helfer/Sources/dashboard-helfer/main.swift", b"print(1)\n")));
     // Über einen Merge: So ist die Positivliste der einzige Grund für den Fund.
     for pfad in [
         ".github/workflows/x.yml",
@@ -4551,6 +4552,8 @@ fn mitwirken_dateien_in_der_positivliste() {
         ".github/ISSUE_TEMPLATE/Config.YML",
         ".github/x.yml",
         "CONTRIBUTING.txt",
+        "mac/x.swift",
+        "mac/helfer2/x.swift",
     ] {
         let text = abgewiesen(pfad, "Positivliste", |o| o.ueber_merge(|o| o.datei(pfad, b"x\n")));
         assert!(fundzeilen(&text).iter().all(|z| z.contains("Positivliste")), "{pfad}: nur Funde an der Positivliste:\n{text}");

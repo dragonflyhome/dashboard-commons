@@ -827,6 +827,8 @@ $positiv = @(
     # Etappe 6b: die Anleitung als TOML-Abschnitte (/anleitung).
     '^docs/anleitung/',
     '^projects/_vorlage/',
+    # Das Hilfsprogramm für macOS (Swift), Beitrag aus Issue 16.
+    '^mac/helfer/',
     '^\.cargo/config\.toml$',
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Nur die Issue-Formulare (Merge-Angebote), nicht ganz .github (keine Workflows, die auf GitHub Code ausführen).
