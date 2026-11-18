@@ -754,6 +754,8 @@ mod tests {
         let lang = "x".repeat(201);
         let faelle = [
             (r#"{"art": "brief", "slug": "a", "titel": "t"}"#.to_string(), "Art"),
+            // Legt nur der Server selbst an (Einmal-Code, macOS-Folge 7b).
+            (r#"{"art": "einmal-code", "slug": "a", "titel": "t"}"#.to_string(), "Art"),
             (r#"{"art": "bau", "slug": "Gross", "titel": "t"}"#.to_string(), "Slug"),
             (r#"{"art": "bau", "slug": "a", "titel": "  "}"#.to_string(), "Titel"),
             (format!(r#"{{"art": "bau", "slug": "a", "titel": "{lang}"}}"#), "zu lang"),
