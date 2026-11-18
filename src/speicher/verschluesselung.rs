@@ -68,6 +68,17 @@ pub fn links_schluessel_neben(jwt_datei: Option<&std::path::Path>) -> Option<std
     if gleich(&links, jwt) { None } else { Some(links) }
 }
 
+/// Der Pfad, unter dem der Schlüssel der Aufgaben-Links im Schlüsselbund
+/// des Mac-Helfers geführt wird (`helfer`). Jeder Schlüssel steht unter dem
+/// Pfad der Nutzlast, die er öffnet.
+#[cfg(unix)]
+pub const LINKS_PFAD: &str = "speicher/aufgaben/links";
+
+/// Satz, solange der Schlüssel noch nicht mit dem Helfer geöffnet ist.
+#[cfg(unix)]
+pub const VOM_HELFER_FEHLT_SATZ: &str =
+    "Der Schlüssel der Aufgaben-Links wird mit dem Mac-Helfer geöffnet und liegt noch nicht vor; Aufgaben mit Link werden so lange abgelehnt.";
+
 /// Woher ein Speicher den Schlüssel der Links nimmt.
 #[cfg(not(windows))]
 enum Quelle {
@@ -75,6 +86,10 @@ enum Quelle {
     KeinOrt,
     /// Die Schlüsseldatei an diesem Ort.
     Datei(std::path::PathBuf),
+    /// Der Schlüssel liegt im Schlüsselbund des Mac-Helfers unter dem Pfad
+    /// dieser Nutzlast, nur im Arbeitsspeicher; bis er geöffnet ist, fehlt er.
+    #[cfg(unix)]
+    Helfer(crate::helfer::Bund),
     /// Nur im Testbau der Bibliothek: ein fester, erfundener Schlüssel. Das
     /// Programm und die Integrationstests kennen diese Variante nicht.
     #[cfg(test)]
@@ -111,6 +126,12 @@ impl LinksSchluessel {
         }
     }
 
+    /// Der Schlüssel kommt aus dem Schlüsselbund des Mac-Helfers.
+    #[cfg(unix)]
+    pub fn vom_helfer(bund: crate::helfer::Bund) -> LinksSchluessel {
+        LinksSchluessel { quelle: Quelle::Helfer(bund), ablage: std::sync::Mutex::new(None) }
+    }
+
     /// Nur im Testbau: der feste Testschlüssel.
     #[cfg(test)]
     pub fn fuer_tests() -> LinksSchluessel {
@@ -131,6 +152,11 @@ impl LinksSchluessel {
             #[cfg(test)]
             Quelle::Test => Ok(zeroize::Zeroizing::new(*TEST_SCHLUESSEL)),
             Quelle::Datei(pfad) => super::mischform::zwischengespeichert(&self.ablage, &|| aus_der_datei(pfad, anlegen)),
+            // Nie zwischenspeichern und nie anlegen: Es gilt, was im Schlüsselbund gerade geöffnet ist.
+            #[cfg(unix)]
+            Quelle::Helfer(bund) => {
+                bund.lock().unwrap_or_else(std::sync::PoisonError::into_inner).holen(LINKS_PFAD).ok_or_else(|| VOM_HELFER_FEHLT_SATZ.to_string())
+            }
         }
     }
 

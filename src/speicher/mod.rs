@@ -228,6 +228,15 @@ impl Speicher {
         self
     }
 
+    /// Der Schlüssel der Links liegt nicht in einer eigenen Datei: Der
+    /// Server führt ihn im Schlüsselbund des Mac-Helfers (`helfer`),
+    /// verschlossen an dessen Chip, und öffnet ihn mit dessen Hilfe.
+    #[cfg(unix)]
+    pub fn mit_links_schluessel_vom_helfer(mut self, bund: crate::helfer::Bund) -> Speicher {
+        self.links = verschluesselung::LinksSchluessel::vom_helfer(bund);
+        self
+    }
+
     /// Verschlüsselt einen Link: unter Windows DPAPI, sonst die Mischform mit
     /// dem Schlüssel dieses Speichers.
     pub(crate) fn link_verschliessen(&self, klartext: &[u8]) -> Result<Vec<u8>, String> {
