@@ -850,6 +850,8 @@ $verboten = [ordered]@{
 }
 # Bekannte Ausnahmen aus übernommenen Beiträgen, nur für die Markdown-Regel und nur im Verlauf:
 # genau dieser Commit (volle SHA) mit genau diesem Pfad. Im Baum der Spitze gilt keine.
+# shortcut: Der Verlauf ordnet ein Paar (Pfad, Blob) seinem ältesten Commit zu; ein späterer byte-gleicher
+# Zwischenstand im selben Bereich fiele mit darunter. Aufrüsten, sobald eine Ausnahme einen änderbaren Inhalt deckt.
 $mdRegel = 'Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr'
 $mdAusnahmen = [Collections.Generic.HashSet[string]]::new([string[]]@(
         # Übernommener Beitrag (Mac-Helfer) vor der Umbenennung in LIESMICH.txt.
