@@ -15,6 +15,9 @@
 //! | Bote fehlt > 10 min, der Inhaber angemeldet | fehler, System | `dashboard/bote-fehlt` | Zustand; behoben, sobald er da ist |
 //! | Ordner nicht lesbar (kein Recht, Hotfix 4d) | fehler, System | `dashboard/lesen:<ordner>` | Zustand; Prüfung beim Start und jede Minute, behoben, sobald lesbar |
 //! | Profil des Inhabers unbekannt (Dienst, `konten.inhaber_sid` leer oder ohne Profil) | fehler, System | `dashboard/inhaber-fehlt` | Zustand; Prüfung beim Start, behoben beim nächsten Start mit Profil |
+//! | Einmal-Code ausgegeben (Kanal, außerhalb von Windows) | info, System | `dashboard/einmal-code` | zählt hoch |
+//! | Passkey mit einem Einmal-Code angelegt | info, System | `dashboard/einmal-code-passkey` | zählt hoch |
+//! | Einmal-Code nach Fehlversuchen verfallen | info, System | `dashboard/einmal-code-verfallen` | zählt hoch |
 //! | Arbeit auf fertig | fertig | `<projekt>/fertig:<arbeit-id>` | einmal |
 //! | Chat meldet fertig mit Verweis | fertig | `<projekt>/fertig:<verweis>` | einmal (dieselbe wie oben) |
 //! | Chat meldet ohne Verweis | fertig/info | `<projekt>/<art>:<titel>` | zählt hoch |
@@ -77,7 +80,7 @@ fn neu(projekt: &str, art: MeldungsArt, was: &str, titel: String) -> NeueMeldung
 /// `dashboard`; im Titel steht nie der Code. Nicht als Fehler: Es gibt
 /// nichts, das sie wieder aufhöbe.
 pub fn einmal_code_meldung(was: &str, titel: &str) -> NeueMeldung {
-    NeueMeldung { system: true, ..neu("dashboard", MeldungsArt::Info, was, titel.to_string()) }
+    NeueMeldung { system: true, ..neu(SYSTEM_PROJEKT, MeldungsArt::Info, was, titel.to_string()) }
 }
 
 /// Schneidet auf höchstens `max` Zeichen.

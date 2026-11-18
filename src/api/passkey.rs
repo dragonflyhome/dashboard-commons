@@ -176,9 +176,15 @@ where
 fn json_lesen<T: DeserializeOwned>(kopf: &HeaderMap, koerper: &[u8]) -> Result<T, AppError> {
     json_kopf_pruefen(kopf)?;
     serde_json::from_slice(koerper).map_err(|e| {
-        tracing::debug!("Passkey: Körper unlesbar: {e}");
+        tracing::debug!("Passkey: Körper unlesbar: {}", unlesbar_grund(&e));
         AppError::unlesbar("Der Inhalt ist kein passendes JSON.")
     })
+}
+
+/// Nur Art und Stelle des Fehlers: Der Text von serde_json enthält Werte aus
+/// der Anfrage, etwa einen Einmal-Code, der als bloße Zeichenkette kam.
+fn unlesbar_grund(e: &serde_json::Error) -> String {
+    format!("{:?} in Zeile {}, Spalte {}", e.classify(), e.line(), e.column())
 }
 
 fn b64_feld(wert: &str, feld: &str) -> Result<Vec<u8>, AppError> {
@@ -625,11 +631,19 @@ pub async fn einmal_code_ausgeben(state: &AppState, _konto: &crate::kanal::Kanal
     let Some(speicher) = state.speicher.clone() else {
         return fehler_antwort(SATZ_CODE_OHNE_SPEICHER);
     };
-    let ereignis = match Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN)).await {
+    let vermerk = Speicher::im_hintergrund(speicher, |s| s.einmal_code_vermerken(crate::speicher::passkeys::TITEL_CODE_AUSGEGEBEN)).await;
+    code_nach_vermerk(state, vermerk)
+}
+
+/// Der Schritt nach dem Vermerk im Journal, eigens, damit ein Test ihn mit
+/// einem gescheiterten Vermerk aufrufen kann: Dann gibt es keinen Code.
+#[cfg(unix)]
+fn code_nach_vermerk(state: &AppState, vermerk: Result<(crate::vertrag::api::Vorgang, Ereignis), crate::speicher::SpeicherFehler>) -> String {
+    let ereignis = match vermerk {
         Ok((_, e)) => e,
         Err(e) => {
             tracing::error!("Einmal-Code: Der Eintrag im Journal ließ sich nicht schreiben: {e}");
-            return fehler_antwort(SATZ_CODE_OHNE_JOURNAL);
+            return crate::kanal::fehler_antwort(SATZ_CODE_OHNE_JOURNAL);
         }
     };
     let code = state
@@ -826,6 +840,15 @@ pub(crate) mod tests {
         let k = anmelde_koerper(a, o["challenge"].as_str().unwrap(), herkunft);
         let (s, set, _) = schicke(app, post("/api/passkey/anmelden/ende", k, None)).await;
         (s, set.map(|s| ausweis_aus_cookie(&s)))
+    }
+
+    /// Ein unlesbarer Körper kommt nur mit Art und Stelle ins Protokoll, nie
+    /// mit seinem Inhalt (unter Unix mit Mitschrift in den Code-Tests).
+    #[test]
+    fn unlesbarer_koerper_nennt_nur_art_und_stelle() {
+        let e = serde_json::from_slice::<Freigabe>(br#""ABCD-EFGH""#).unwrap_err();
+        assert!(e.to_string().contains("ABCD-EFGH"), "Gegenprobe: serde_json nennt den Wert");
+        assert_eq!(unlesbar_grund(&e), "Data in Zeile 1, Spalte 11");
     }
 
     /// Schritt 7b der macOS-Folge: Unter Windows gibt es die Wege über einen

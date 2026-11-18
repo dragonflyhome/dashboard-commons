@@ -482,6 +482,19 @@ async fn kanal_ohne_datenspeicher_fester_satz_und_kein_code() {
     assert!(!state.einmal_code.lock().unwrap().offen());
 }
 
+/// Scheitert der Vermerk im Journal, gibt es keinen Code: fester Satz,
+/// nichts offen, keine Meldung.
+#[tokio::test(flavor = "multi_thread")]
+async fn kanal_scheitert_das_journal_fester_satz_und_kein_code() {
+    let state = zustand();
+    let fehler = crate::speicher::SpeicherFehler::Datei(std::io::Error::other("Im Test gescheitert."));
+    let zeile = code_nach_vermerk(&state, Err(fehler));
+    assert_eq!(zeile, crate::kanal::fehler_antwort(SATZ_CODE_OHNE_JOURNAL));
+    assert!(!state.einmal_code.lock().unwrap().offen());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(code_meldungen(&state).is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn ein_neuer_code_ersetzt_den_alten() {
     let state = zustand();
@@ -499,9 +512,16 @@ async fn ein_neuer_code_ersetzt_den_alten() {
 /// Dienstes gibt den Code aus, und der Code gilt am Weg.
 #[tokio::test(flavor = "multi_thread")]
 async fn ueber_den_socket_geholt_gilt_der_code_am_weg() {
+    let state = zustand();
+    let code = code_ueber_kanal(&state).await;
+    assert_eq!(schicke(&lokal(&state), beginn(&code)).await.0, StatusCode::OK);
+}
+
+/// Holt einen Code über einen echten Kanal mit der Quelle des Dienstes:
+/// Lauscher, Befehl `code`, Antwortzeile.
+async fn code_ueber_kanal(state: &AppState) -> String {
     use std::os::unix::fs::DirBuilderExt;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let state = zustand();
     let ordner = std::env::temp_dir().join(format!("dk-{}-code", std::process::id()));
     let _ = std::fs::remove_dir_all(&ordner);
     std::fs::DirBuilder::new().mode(0o700).create(&ordner).unwrap();
@@ -515,9 +535,9 @@ async fn ueber_den_socket_geholt_gilt_der_code_am_weg() {
     let antwort: serde_json::Value = serde_json::from_str(zeile.trim_end()).unwrap();
     let code = antwort["code"].as_str().unwrap().to_string();
     assert_eq!(antwort["gueltig_sekunden"], 600);
-    assert_eq!(schicke(&lokal(&state), beginn(&code)).await.0, StatusCode::OK);
     drop(kanal);
     let _ = std::fs::remove_dir_all(&ordner);
+    code
 }
 
 // ----- nichts nach außen -----
@@ -559,9 +579,14 @@ async fn alle_wege_eines_codes() -> (AppState, Vec<String>) {
     assert_eq!(s, StatusCode::CREATED, "{j}");
     assert!(!j.to_string().contains(&gut));
     codes.push(gut);
-    // Ein Code, der ersetzt wird, und einer, der offen bleibt.
-    codes.push(code_holen(&state).await);
-    codes.push(code_holen(&state).await);
+    // Ein Code über den echten Kanal, der ersetzt wird, und einer, der offen bleibt.
+    codes.push(code_ueber_kanal(&state).await);
+    let offen = code_holen(&state).await;
+    // Der offene Code als bloße Zeichenkette: unlesbar, er bleibt offen.
+    let (s, _, j) = schicke(&app, post(BEGINN, serde_json::json!(offen))).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{j}");
+    assert!(!j.to_string().contains(&offen));
+    codes.push(offen);
     warte_bis("alle Meldungen", || code_meldungen(&state).len() == 3).await;
     warte_bis("Vorgang verfallen", || code_vorgaenge(&state).iter().any(|t| t == TITEL_CODE_VERFALLEN)).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -576,7 +601,8 @@ async fn alle_wege_eines_codes() -> (AppState, Vec<String>) {
 ///
 /// Läuft allein in einem eigenen Prozess (`crate::test_allein`): Neben
 /// anderen Tests verlöre die Mitschrift Zeilen und bewiese nichts. Dass sie
-/// mitliest, sichern die drei Zeilen zu, die der Weg schreiben muss.
+/// mitliest, sichern die fünf Zeilen zu, die der Weg schreiben muss, eine
+/// davon auf der Stufe debug und eine aus dem Kanal.
 #[tokio::test]
 async fn der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung() {
     if !crate::test_allein::im_eigenen_prozess("api::passkey::code_tests::der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung") {
@@ -584,11 +610,17 @@ async fn der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung() {
     }
     let mitschrift = Mitschrift::default();
     let schreiber = mitschrift.clone();
-    let abonnent = tracing_subscriber::fmt().with_ansi(false).with_writer(move || schreiber.clone()).finish();
+    let abonnent = tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).with_ansi(false).with_writer(move || schreiber.clone()).finish();
     let _wache = tracing::subscriber::set_default(abonnent);
     let (state, codes) = alle_wege_eines_codes().await;
     let protokoll = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
-    for zeile in ["Einmal-Code ausgegeben", "Einmal-Code nach Fehlversuchen verfallen", "Passkey angelegt: im Hauptkonto, registriert"] {
+    for zeile in [
+        "Einmal-Code ausgegeben",
+        "Einmal-Code nach Fehlversuchen verfallen",
+        "Passkey angelegt: im Hauptkonto, registriert",
+        "Passkey: Körper unlesbar: Data",
+        "Lokaler Kanal: ",
+    ] {
         assert!(protokoll.contains(zeile), "die Mitschrift erfasst „{zeile}“ nicht: {protokoll}");
     }
     let speicher = state.speicher.as_ref().unwrap();

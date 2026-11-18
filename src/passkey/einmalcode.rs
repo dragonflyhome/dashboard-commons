@@ -268,13 +268,15 @@ mod tests {
         let mut stand = CodeStand::default();
         let code = stand.ausgeben(&zufall(4), t);
         assert_eq!(stand.einloesen(&code, nach(t, GUELTIG - Duration::from_secs(1))), Urteil::Gilt);
+        // Nur die stetige Uhr läuft ab; die Wanduhr zeigt 1 Sekunde.
+        let stetig = |d: Duration| Uhren { stetig: t.stetig + d, wand: t.wand + Duration::from_secs(1) };
         // 10 Minuten und 1 Sekunde: abgelaufen, und damit weg.
         let code = stand.ausgeben(&zufall(4), t);
-        assert_eq!(stand.einloesen(&code, nach(t, GUELTIG + Duration::from_secs(1))), Urteil::GiltNicht);
+        assert_eq!(stand.einloesen(&code, stetig(GUELTIG + Duration::from_secs(1))), Urteil::GiltNicht);
         assert!(!stand.offen());
         // Genau 10 Minuten: abgelaufen.
         let code = stand.ausgeben(&zufall(4), t);
-        assert_eq!(stand.einloesen(&code, nach(t, GUELTIG)), Urteil::GiltNicht);
+        assert_eq!(stand.einloesen(&code, stetig(GUELTIG)), Urteil::GiltNicht);
     }
 
     /// Ruhezustand: Die stetige Uhr stand, die Wanduhr lief weiter.
