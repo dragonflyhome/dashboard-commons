@@ -399,13 +399,21 @@ async fn bote_kommt_spaeter_git_stand_sofort() {
 }
 
 /// Bau-Skript des Test-Repos (statt SvelteKit): wartet laut `modus.txt`
-/// (`warte` 2,5 s, `gruen` gar nicht) und legt dann `index.html` mit dem
-/// Ordnernamen in `DASHBOARD_BUILD_ZIEL` an.
-const BAU_SKRIPT: &str = r#"import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+/// (`warte` auf die Freigabedatei `weiter`, höchstens 60 s, sonst Exit 1;
+/// `gruen` gar nicht) und legt dann `index.html` mit dem Ordnernamen in
+/// `DASHBOARD_BUILD_ZIEL` an.
+const BAU_SKRIPT: &str = r#"import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 const ziel = process.env.DASHBOARD_BUILD_ZIEL;
 if (readFileSync('modus.txt', 'utf8').trim() === 'warte') {
-  await new Promise((r) => setTimeout(r, 2500));
+  const bis = Date.now() + 60000;
+  while (!existsSync('weiter')) {
+    if (Date.now() > bis) {
+      console.error('keine Freigabe');
+      process.exit(1);
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }
 mkdirSync(ziel, { recursive: true });
 writeFileSync(join(ziel, 'index.html'), '<!doctype html><title>gebaut ' + basename(ziel) + '</title>');
@@ -422,8 +430,8 @@ fn bau_repo(repo: &Path, modus: &str) {
 }
 
 /// Etappe 4v, Bau über den Boten mit einem Test-Repo:
-/// 1. Direkt über den Client: Ein langer Bau (2,5 s) blockiert keine anderen
-///    Anfragen; Hallo kommt währenddessen sofort. Danach zeigt der Zeiger auf
+/// 1. Direkt über den Client: Ein Bau, der bis zur Freigabe durch den Test
+///    wartet, blockiert keine anderen Anfragen; Hallo kommt währenddessen sofort. Danach zeigt der Zeiger auf
 ///    den neuen Ordner, die Bauliste ist geschrieben.
 /// 2. Ganzer Weg im Dienst: Vorgang `bau` im Datenspeicher, Anstoß, der
 ///    Baumeister fragt den Boten, der Vorgang wird grün, und `/` kommt ohne
@@ -449,21 +457,22 @@ async fn bau_ueber_den_boten() {
 
     // 1. Langer Bau und daneben Hallo.
     let b2 = bote.clone();
-    let start = Instant::now();
     let bau = tokio::spawn(async move { b2.anfragen(&Anfrage::Bau).await });
     tokio::time::sleep(Duration::from_millis(300)).await;
+    // Im vollen Lauf warten Pipe-Verbindung und Kontoprüfung auf freie Kerne.
+    let grenze = dashboard::zeitgrenze(Duration::from_secs(1), Duration::from_secs(5));
     for _ in 0..3 {
         let t = Instant::now();
         assert!(matches!(bote.anfragen(&Anfrage::Hallo).await, Ok(Antwort::Hallo { .. })));
-        assert!(t.elapsed() < Duration::from_secs(1), "Hallo wartete {:?}", t.elapsed());
+        assert!(t.elapsed() < grenze, "Hallo wartete {:?}", t.elapsed());
     }
-    assert!(!bau.is_finished(), "der Bau läuft noch, Hallo kam trotzdem");
+    assert!(!bau.is_finished(), "der Bau wartet auf die Freigabe, Hallo kam trotzdem");
+    std::fs::write(ort.repo.join("web/weiter"), "").unwrap();
     let erg = match bau.await.unwrap().unwrap() {
         Antwort::Bau(erg) => erg,
         a => panic!("{a:?}"),
     };
     assert!(erg.gruen, "{erg:?}");
-    assert!(start.elapsed() >= Duration::from_millis(2500));
     let erster = erg.ordner.clone().unwrap();
     let zeiger = || std::fs::read_to_string(ort.repo.join("web/builds/aktuell")).unwrap().trim().to_string();
     assert_eq!(zeiger(), erster);
