@@ -827,6 +827,8 @@ $positiv = @(
     # Etappe 6b: die Anleitung als TOML-Abschnitte (/anleitung).
     '^docs/anleitung/',
     '^projects/_vorlage/',
+    # Das Hilfsprogramm für macOS (Swift), Beitrag aus Issue 16.
+    '^mac/helfer/',
     '^\.cargo/config\.toml$',
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Nur die Issue-Formulare (Merge-Angebote), nicht ganz .github (keine Workflows, die auf GitHub Code ausführen).
@@ -846,6 +848,16 @@ $verboten = [ordered]@{
     # Ausnahme: CONTRIBUTING.md in der Wurzel, der Leitfaden für Mitwirkende, den GitHub dort erwartet.
     'Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr'    = Rx '(?<!^CONTRIBUTING)\.md$'
 }
+# Bekannte Ausnahmen aus übernommenen Beiträgen, nur für die Markdown-Regel und nur im Verlauf:
+# genau dieser Commit (volle SHA) mit genau diesem Pfad. Im Baum der Spitze gilt keine.
+# shortcut: Der Verlauf ordnet ein Paar (Pfad, Blob) seinem ältesten Commit zu; ein späterer byte-gleicher
+# Zwischenstand im selben Bereich fiele mit darunter. Aufrüsten, sobald eine Ausnahme einen änderbaren Inhalt deckt.
+$mdRegel = 'Markdown-Datei (*.md) gibt es im Code-Repo nicht mehr'
+$mdAusnahmen = [Collections.Generic.HashSet[string]]::new([string[]]@(
+        # Übernommener Beitrag (Mac-Helfer) vor der Umbenennung in LIESMICH.txt.
+        "aa3a04482d0c66fdb663c3a66a4b3bcb9cbb70de`0mac/helfer/LIESMICH.md"
+    ), [StringComparer]::Ordinal)
+function MdAusnahme([string]$sha, [string]$pfad) { return [bool]$sha -and $mdAusnahmen.Contains("$sha`0$pfad") }
 $binaerErlaubt = @('^web/static/', '^tests/beispiel[^/]*/(?:.*/)?assets/') | ForEach-Object { Rx $_ }
 $testBeispiel = Rx '^tests/beispiel[^/]*/'
 $vendor = Rx '^web/vendor/'
@@ -944,14 +956,14 @@ function TextPruefen([string]$wo, [string]$text, [bool]$istPfad, [string]$pfad) 
     }
 }
 
-function PfadPruefen([string]$pfad) {
+function PfadPruefen([string]$pfad, [string]$sha) {
     $p = $pfad
     # Die Git-Ausgabe hat „kein UTF-8“ schon gemeldet; hier dazu der Pfad (Maskiert verschluckt das Wort mit U+FFFD).
     if ($p.Contains([char]0xFFFD)) { Fund $pfad 0 'kein UTF-8 (Pfad)' }
     $ok = $false
     foreach ($r in $positiv) { if ($r.IsMatch($p)) { $ok = $true; break } }
     $grund = $null
-    foreach ($k in $verboten.Keys) { if ($verboten[$k].IsMatch($p)) { $grund = $k; break } }
+    foreach ($k in $verboten.Keys) { if ($verboten[$k].IsMatch($p) -and -not ($k -ceq $mdRegel -and (MdAusnahme $sha $p))) { $grund = $k; break } }
     # Positivliste und Orte des Inhalts: nur im Basis-Repo.
     if ($script:istBasis) {
         if ($grund) { Fund $pfad 0 $grund }
@@ -1140,7 +1152,7 @@ function BaumPruefen([string]$stand) {
 function EintraegePruefen($eintraege) {
     foreach ($e in $eintraege) {
         $n = $script:funde.Count
-        PfadPruefen $e.Pfad
+        PfadPruefen $e.Pfad $e.Commit
         if ($e.Art -ne 'blob') { Fund $e.Pfad 0 'kein normaler Dateieintrag (Submodul?)' }
         if ($e.Modus -eq '120000') { Fund $e.Pfad 0 'Verknüpfung (Symlink)' }
         Kennung $e $n
@@ -1178,7 +1190,7 @@ function EintraegePruefen($eintraege) {
 # Funde ab Index $ab gehören zu Eintrag $e: Aus dem Verlauf (VerlaufPruefen setzt Commit) enden sie mit dessen Kennung.
 function Kennung($e, [int]$ab) {
     if (-not $e.Commit) { return }
-    for ($i = $ab; $i -lt $script:funde.Count; $i++) { $script:funde[$i] += " (Commit $($e.Commit))" }
+    for ($i = $ab; $i -lt $script:funde.Count; $i++) { $script:funde[$i] += " (Commit $($e.Commit.Substring(0, 10)))" }
 }
 
 # Alle Einträge ALLER neuen Commits eines Bereichs alt..neu: Was in einem Zwischenstand stand und an der Spitze
@@ -1208,7 +1220,7 @@ function VerlaufPruefen([string]$bereich) {
     for ($k = 0; $k -lt $stuecke.Count - 1; $k++) {
         # Je Eintrag „:altmodus neumodus altsha neusha status“, dann der Pfad.
         $kopf = $stuecke[$k].Trim()
-        if ($kopf.StartsWith([char]1)) { $verlaufCommit = $kopf.Substring(1, 10); continue }
+        if ($kopf.StartsWith([char]1)) { $verlaufCommit = $kopf.Substring(1); continue }
         if (-not $kopf.StartsWith(':')) { continue }
         $pfad = $stuecke[$k + 1]
         $k++

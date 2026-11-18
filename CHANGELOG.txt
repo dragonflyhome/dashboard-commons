@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Geändert
+- Vor-Push: mac/helfer gehört zu den erlaubten Orten.
+
 0.20.0 - 2026-11-18
 -------------------
 
