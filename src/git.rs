@@ -65,6 +65,13 @@ fn kommando(dir: &Path, args: &[&str]) -> Result<Command, String> {
     Ok(c)
 }
 
+/// Budget für dieses Repo. Im vollen Testlauf starten alle Tests zugleich Prozesse, und die drei
+/// git-Starts reihen sich ein; dort bekommt ein echtes Repo mehr Zeit (contributing-05). Das Beispiel
+/// `haengt` prüft das Budget selbst und behält es immer.
+fn budget(dir: &Path) -> Duration {
+    if cfg!(test) && !dir.file_name().is_some_and(|n| n == "haengt") { crate::zeitgrenze(BUDGET, 10 * BUDGET) } else { BUDGET }
+}
+
 async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     let out = kommando(dir, args)?.output().await.map_err(|e| format!("git lässt sich nicht starten: {e}"))?;
     if out.status.success() {
@@ -75,7 +82,7 @@ async fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 }
 
 /// Fragt Branch, letzten Commit und ungesicherte Änderungen ab, zusammen
-/// höchstens `BUDGET` lang.
+/// höchstens `budget(dir)` lang.
 pub async fn inspect(path: &str, label: Option<&str>, private: bool) -> RepoStatus {
     let mut status = leer(path, label, private);
     let dir = Path::new(path);
@@ -83,10 +90,11 @@ pub async fn inspect(path: &str, label: Option<&str>, private: bool) -> RepoStat
         status.error = Some("Ordner nicht gefunden".to_string());
         return status;
     }
-    match tokio::time::timeout(BUDGET, abfragen(dir, private, &mut status)).await {
+    let budget = budget(dir);
+    match tokio::time::timeout(budget, abfragen(dir, private, &mut status)).await {
         Ok(()) => {}
         Err(_) => {
-            tracing::warn!("git in {path} antwortet nicht innerhalb von {BUDGET:?}");
+            tracing::warn!("git in {path} antwortet nicht innerhalb von {budget:?}");
             status.error = Some("git antwortet nicht (Zeitlimit)".to_string());
         }
     }
