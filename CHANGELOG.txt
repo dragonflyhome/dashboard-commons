@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.19.1 - 2026-11-18
+-------------------
+
 Behoben
 - Die tägliche Bereinigung leert die Bauordner im Cache wieder. Blieb
   beim Leeren eine gesperrte Datei stehen, fiel bisher die Markierung des
