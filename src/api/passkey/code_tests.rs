@@ -561,7 +561,12 @@ async fn alle_wege_eines_codes() -> (AppState, Vec<String>) {
     codes.push(gut);
     // Ein Code, der ersetzt wird, und einer, der offen bleibt.
     codes.push(code_holen(&state).await);
-    codes.push(code_holen(&state).await);
+    let offen = code_holen(&state).await;
+    // Der offene Code als bloße Zeichenkette: unlesbar, er bleibt offen.
+    let (s, _, j) = schicke(&app, post(BEGINN, serde_json::json!(offen))).await;
+    assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{j}");
+    assert!(!j.to_string().contains(&offen));
+    codes.push(offen);
     warte_bis("alle Meldungen", || code_meldungen(&state).len() == 3).await;
     warte_bis("Vorgang verfallen", || code_vorgaenge(&state).iter().any(|t| t == TITEL_CODE_VERFALLEN)).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -576,7 +581,8 @@ async fn alle_wege_eines_codes() -> (AppState, Vec<String>) {
 ///
 /// Läuft allein in einem eigenen Prozess (`crate::test_allein`): Neben
 /// anderen Tests verlöre die Mitschrift Zeilen und bewiese nichts. Dass sie
-/// mitliest, sichern die drei Zeilen zu, die der Weg schreiben muss.
+/// mitliest, sichern die vier Zeilen zu, die der Weg schreiben muss, eine
+/// davon auf der Stufe debug.
 #[tokio::test]
 async fn der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung() {
     if !crate::test_allein::im_eigenen_prozess("api::passkey::code_tests::der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung") {
@@ -584,11 +590,13 @@ async fn der_code_steht_nie_im_protokoll_im_journal_oder_in_einer_meldung() {
     }
     let mitschrift = Mitschrift::default();
     let schreiber = mitschrift.clone();
-    let abonnent = tracing_subscriber::fmt().with_ansi(false).with_writer(move || schreiber.clone()).finish();
+    let abonnent = tracing_subscriber::fmt().with_max_level(tracing::Level::TRACE).with_ansi(false).with_writer(move || schreiber.clone()).finish();
     let _wache = tracing::subscriber::set_default(abonnent);
     let (state, codes) = alle_wege_eines_codes().await;
     let protokoll = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
-    for zeile in ["Einmal-Code ausgegeben", "Einmal-Code nach Fehlversuchen verfallen", "Passkey angelegt: im Hauptkonto, registriert"] {
+    for zeile in
+        ["Einmal-Code ausgegeben", "Einmal-Code nach Fehlversuchen verfallen", "Passkey angelegt: im Hauptkonto, registriert", "Passkey: Körper unlesbar: Data"]
+    {
         assert!(protokoll.contains(zeile), "die Mitschrift erfasst „{zeile}“ nicht: {protokoll}");
     }
     let speicher = state.speicher.as_ref().unwrap();
