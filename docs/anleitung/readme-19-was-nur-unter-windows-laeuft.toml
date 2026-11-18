@@ -10,7 +10,7 @@ Das Dashboard wird unter Windows gebaut, geprüft und betrieben. Alle Prüfwege 
 titel = 'Nur unter Windows'
 punkte = [
   'Dienst: Der Betrieb als Windows-Dienst (Dienststeuerung, Neustart, Wächter) gibt es nur unter Windows.',
-  'Anmeldung: Die erste Anmeldung läuft über das Windows-Konto (Negotiate). Ohne Windows kommt nur ein schon registrierter Passkey durch; den ersten Passkey kann nur das Hauptkonto über die Windows-Anmeldung anlegen.',
+  'Anmeldung: Unter Windows meldet das Windows-Konto an (Negotiate). Auf anderen Systemen legt man den Passkey mit einem Einmal-Code an, den der Befehl dashboard einmal-code im Terminal zeigt; danach meldet der Passkey an.',
   'Verschlüsselung: Die Anmeldelinks im Datenspeicher sind mit DPAPI verschlüsselt. Außerhalb von Windows bricht der Bau der Bibliothek deshalb ab; nur cargo test --lib übersetzt dort. Die Schlüssel liegen im Windows-Tresor (Anmeldeinformationsverwaltung).',
   'Sicherheit: Außerhalb von Windows legt der Dienst den Schlüssel der Ausweise ohne enge Dateirechte an (es gilt die umask, meist lesbar für alle) und neben dem Datenspeicher unter .var, also im Bereich der Sicherung. Wer portiert, muss das zuerst lösen.',
   'Bote: Der Bote (Bauen, Git, Öffnen) läuft als eigener Windows-Prozess mit Job-Objekt. Ohne ihn baut der Dienst nur im eigenen Prozess und ohne Zeitgrenze für Kindprozesse; Öffnen antwortet dann mit 503.',
