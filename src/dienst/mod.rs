@@ -117,6 +117,10 @@ Aufrufe von dashboard.exe:
       Stop-Hook eines Chats: Eingabe des Hooks auf stdin; 2 mit Grund auf stderr,
       solange die Sitzung im Dashboard offene Arbeit hat, sonst und bei jedem Fehler 0.
       Als Hook eingetragen wird dashboard-herzschlag.exe (dasselbe, ohne Fenster).
+  dashboard.exe einmal-code [--einstellungen <datei>]
+      Nur außerhalb von Windows: zeigt einen Einmal-Code zum Anlegen eines
+      Passkeys (10 Minuten, nur einmal). Ohne --einstellungen wie der Server
+      ohne Argumente, mit --einstellungen wie --konsole mit derselben Datei.
   dashboard.exe --konsole --einstellungen <datei>
       Server in der Konsole mit einer Einstellungsdatei (dienst.toml); Protokoll
       zusätzlich in den Protokollordner. Beenden mit Strg+C.
@@ -139,6 +143,9 @@ pub enum Aufruf {
     PruefeZusammenbau(Vec<String>),
     /// `dashboard herzschlag [--server …]`: Stop-Hook der Chats.
     Herzschlag(Vec<String>),
+    /// `dashboard einmal-code [--einstellungen <datei>]` (Schritt 7c der
+    /// macOS-Folge): zeigt einen Einmal-Code; die Datei wie bei `--konsole`.
+    EinmalCode(Option<PathBuf>),
     Hilfe,
     Konsole {
         einstellungen: PathBuf,
@@ -158,6 +165,7 @@ pub fn aufruf_lesen(args: &[String]) -> Aufruf {
         Some("pruefe") => return Aufruf::Pruefe(args[1..].to_vec()),
         Some("pruefe-zusammenbau") => return Aufruf::PruefeZusammenbau(args[1..].to_vec()),
         Some("herzschlag") => return Aufruf::Herzschlag(args[1..].to_vec()),
+        Some("einmal-code") => return einmal_code_lesen(&args[1..]),
         Some("--hilfe" | "-h" | "--help" | "/?") => return Aufruf::Hilfe,
         _ => {}
     }
@@ -199,6 +207,21 @@ pub fn aufruf_lesen(args: &[String]) -> Aufruf {
     }
     Aufruf::Dienst { einstellungen, dienstname: dienstname.unwrap_or_else(|| "Dashboard".to_string()) }
 }
+
+/// Die Argumente nach `einmal-code`: nichts, oder genau `--einstellungen <datei>`.
+fn einmal_code_lesen(args: &[String]) -> Aufruf {
+    match args {
+        [] => Aufruf::EinmalCode(None),
+        [schalter] if schalter == "--einstellungen" => Aufruf::Falsch("Nach --einstellungen fehlt die Datei.".into()),
+        [schalter, datei] if schalter == "--einstellungen" && !datei.starts_with("--") => Aufruf::EinmalCode(Some(PathBuf::from(datei))),
+        [schalter, _] if schalter == "--einstellungen" => Aufruf::Falsch("Nach --einstellungen fehlt die Datei.".into()),
+        [anders, ..] if anders != "--einstellungen" => Aufruf::Falsch(format!("Das Argument „{anders}“ kennt dashboard.exe einmal-code nicht.")),
+        _ => Aufruf::Falsch("dashboard.exe einmal-code nimmt nur einmal --einstellungen <datei>.".into()),
+    }
+}
+
+/// Schritt 7c der macOS-Folge: `dashboard einmal-code` unter Windows (Ende 2).
+pub const SATZ_EINMAL_CODE_WINDOWS: &str = "Unter Windows braucht es keinen Einmal-Code: Dort meldet Windows von selbst an.";
 
 // ----- Start und Ende -----
 
@@ -708,6 +731,19 @@ mod tests {
             aufruf_lesen(&args(&["--dienst", "--einstellungen", "d.toml", "--dienstname", "Dashboard-Test"])),
             Aufruf::Dienst { einstellungen: PathBuf::from("d.toml"), dienstname: "Dashboard-Test".into() }
         );
+        // Schritt 7c der macOS-Folge: `einmal-code`, mit und ohne Einstellungsdatei.
+        assert_eq!(aufruf_lesen(&args(&["einmal-code"])), Aufruf::EinmalCode(None));
+        assert_eq!(aufruf_lesen(&args(&["einmal-code", "--einstellungen", "/x/dienst.toml"])), Aufruf::EinmalCode(Some(PathBuf::from("/x/dienst.toml"))));
+        for falsch in [
+            &["einmal-code", "--einstellungen"][..],
+            &["einmal-code", "--einstellungen", "--konsole"],
+            &["einmal-code", "--einstellungen", "a.toml", "--einstellungen", "b.toml"],
+            &["einmal-code", "--einstellungen", "a.toml", "mehr"],
+            &["einmal-code", "--konsole"],
+            &["einmal-code", "jetzt"],
+        ] {
+            assert!(matches!(aufruf_lesen(&args(falsch)), Aufruf::Falsch(_)), "{falsch:?}");
+        }
         for falsch in [
             &["--konsole"][..],
             &["--konsole", "--dienst", "--einstellungen", "d.toml"],
@@ -717,6 +753,13 @@ mod tests {
         ] {
             assert!(matches!(aufruf_lesen(&args(falsch)), Aufruf::Falsch(_)), "{falsch:?}");
         }
+    }
+
+    /// Schritt 7c der macOS-Folge: Die Hilfe nennt den Aufruf, ohne eigene Liste der Enden.
+    #[test]
+    fn hilfe_nennt_einmal_code() {
+        assert!(HILFE.contains("  dashboard.exe einmal-code [--einstellungen <datei>]\n      Nur außerhalb von Windows: zeigt einen Einmal-Code"), "{HILFE}");
+        assert_eq!(HILFE.matches("Ende mit:").count(), 1);
     }
 
     #[test]

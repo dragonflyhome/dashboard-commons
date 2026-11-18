@@ -42,6 +42,8 @@ pub const SATZ_FELD: &str = "Die Anfrage hat nicht genau das Feld „befehl“."
 pub const SATZ_BEFEHL: &str = "Diesen Befehl gibt es nicht.";
 pub const SATZ_FRAGE: &str = "Nur der Befehl „code“ nimmt das Feld „frage“, als Zeichenkette.";
 
+pub mod befehl;
+
 /// Der Ort des Sockets: immer neben dem Schlüssel der Ausweise. Ohne diesen
 /// Ort, oder wenn der Name mit dem einer Schlüsseldatei zusammenfiele, gibt
 /// es keinen Kanal. Groß- und Kleinschreibung zählen nicht, wie bei den
