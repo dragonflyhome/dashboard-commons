@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.22.0 - 2026-11-19
+-------------------
+
 Hinzugefügt
 - Außerhalb von Windows: der Befehl dashboard einmal-code zeigt im Terminal
   einen Einmal-Code zum Anlegen eines Passkeys, und /anmelden hat ein Feld
