@@ -69,6 +69,7 @@ export type { Broken } from './Broken';
 export type { ChangeEvent } from './ChangeEvent';
 export type { ChatZeile } from './ChatZeile';
 export type { CheckResult } from './CheckResult';
+export type { CodeBeginn } from './CodeBeginn';
 export type { Datei } from './Datei';
 export type { DatenAntwort } from './DatenAntwort';
 export type { DatenBericht } from './DatenBericht';

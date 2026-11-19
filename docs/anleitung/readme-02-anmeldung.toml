@@ -19,6 +19,11 @@ punkte = [
 ]
 
 [[block]]
+titel = 'Erste Anmeldung unter macOS'
+text = '''
+Unter macOS legen Sie einen Passkey mit einem Einmal-Code an. 1. Öffnen Sie das Programm Terminal und geben Sie dashboard einmal-code ein. Starten Sie das Dashboard mit einer Einstellungsdatei, hängen Sie dieselbe Angabe an: dashboard einmal-code --einstellungen <datei>. Der Befehl zeigt einen Einmal-Code; er gilt 10 Minuten und nur einmal. 2. Öffnen Sie im Browser auf diesem Rechner die Adresse, die der Befehl nennt, und geben Sie den Code unter „Passkey anlegen“ ein, dazu einen Namen für das Gerät. 3. Bestätigen Sie den Passkey so, wie Ihr Mac es verlangt. Danach oben „Mit Passkey anmelden“. Haben Sie Ihre Passkeys verloren, gehen Sie denselben Weg noch einmal; ein neuer Code ersetzt den alten.'''
+
+[[block]]
 [block.tabelle]
 spalten = ['Weg', 'Wer darf']
 zeilen = [
@@ -30,6 +35,8 @@ zeilen = [
   ['Schlüssel (/schluessel, /api/schluessel, auch Passkeys freigeben, ablehnen, widerrufen)', 'nur Sie'],
   ['Anmeldeseite und Anmelden mit Passkey (/anmelden, /api/passkey/stand, …/anmelden/…, …/abmelden, /api/anmeldung/probe, /api/anmeldung/wer)', 'alle Konten an diesem PC'],
   ['Passkey beantragen (/api/passkey/antrag…)', 'jedes Konto an diesem PC mit Windows-Anmeldung; berechtigt erst nach Ihrer Freigabe'],
+  ['Passkey mit Einmal-Code anlegen (/api/passkey/code/beginn, …/ende; nur außerhalb von Windows)', 'alle Konten an diesem Rechner; berechtigt erst mit dem Einmal-Code'],
+  ['Beleg der Adressen (/api/passkey/code/beleg; nur außerhalb von Windows)', 'nur der Befehl dashboard einmal-code auf diesem Rechner; kein Browser'],
   ['Vorgänge (/vorgaenge, /api/vorgaenge, auch Warten)', 'nur Sie'],
   ['Daten (/daten, /api/daten, Export, Sichern)', 'nur Sie'],
   ['Live-Kanal (/api/events)', 'nur Sie'],

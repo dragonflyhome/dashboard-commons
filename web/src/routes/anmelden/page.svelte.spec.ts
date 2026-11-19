@@ -1,6 +1,7 @@
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as PasskeyModul from '#lib/passkey.ts';
+import { ApiError } from '#lib/api/client.ts';
 import { schlossZiel } from '#lib/verbindung.ts';
 import type { PasskeyStand } from '$vertrag';
 
@@ -9,7 +10,13 @@ import type { PasskeyStand } from '$vertrag';
 // /api/anmeldung/wer (Windows: der Satz zu Edge; sonst der Satz zum Passkey).
 const { ort, passkey } = vi.hoisted(() => ({
 	ort: { url: new URL('http://localhost:8787/anmelden') },
-	passkey: { stand: vi.fn(), eigeneAntraege: vi.fn(), weiter: vi.fn() }
+	passkey: {
+		stand: vi.fn(),
+		eigeneAntraege: vi.fn(),
+		weiter: vi.fn(),
+		anlegen: vi.fn(),
+		anlegenMitCode: vi.fn()
+	}
 }));
 vi.mock('$app/state', () => ({ page: ort }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
@@ -20,7 +27,9 @@ vi.mock('#lib/passkey.ts', async (original) => ({
 	...(await original<typeof PasskeyModul>()),
 	stand: passkey.stand,
 	eigeneAntraege: passkey.eigeneAntraege,
-	weiter: passkey.weiter
+	weiter: passkey.weiter,
+	anlegen: passkey.anlegen,
+	anlegenMitCode: passkey.anlegenMitCode
 }));
 const { default: Page } = await import('./+page.svelte');
 
@@ -52,6 +61,9 @@ beforeEach(() => {
 	passkey.eigeneAntraege.mockRejectedValue(new Error('kein Konto'));
 	passkey.stand.mockResolvedValue(KEINE);
 	passkey.weiter.mockReset();
+	passkey.eigeneAntraege.mockClear();
+	passkey.anlegen.mockReset();
+	passkey.anlegenMitCode.mockReset();
 	ort.url = new URL('http://localhost:8787/anmelden');
 });
 afterEach(() => {
@@ -173,5 +185,188 @@ describe('/anmelden (Schritt E2)', () => {
 		});
 		expect(screen.queryByText('Anmelden geht hier mit einem Passkey.')).toBeNull();
 		expect(document.body.textContent).not.toContain('Windows-Anmeldung öffnet');
+	});
+});
+
+// Schritt 7c der macOS-Folge: außerhalb von Windows (Probe 501) ein Passkey mit Einmal-Code.
+describe('/anmelden mit Einmal-Code (Schritt 7c)', () => {
+	const SATZ_KARTE =
+		'Einen Passkey legst du hier mit einem Einmal-Code an. Den Code zeigt dir der Befehl dashboard einmal-code im Terminal. Er gilt 10 Minuten und nur einmal.';
+	const SATZ_GILT_NICHT = 'Dieser Einmal-Code gilt nicht (mehr). Bitte einen neuen holen.';
+	const CODE = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-23';
+
+	/** Der Text eines Elements ohne den Knopf und mit einfachen Leerzeichen. */
+	function satzOhneKnopf(el: Element): string {
+		const kopie = el.cloneNode(true) as Element;
+		kopie.querySelectorAll('button').forEach((b) => {
+			b.remove();
+		});
+		return kopie.textContent.replace(/\s+/g, ' ').trim();
+	}
+
+	/** Eine Zwischenablage, die `writeText` nimmt. */
+	function zwischenablage(writeText: (text: string) => Promise<void>): void {
+		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+	}
+
+	async function codeFeld(): Promise<HTMLInputElement> {
+		return screen.findByLabelText<HTMLInputElement>('Einmal-Code');
+	}
+
+	async function absenden(code: string, name: string): Promise<void> {
+		await fireEvent.input(await codeFeld(), { target: { value: code } });
+		await fireEvent.input(screen.getByLabelText('Name des Geräts'), { target: { value: name } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Passkey anlegen' }));
+	}
+
+	it('außerhalb von Windows: die neuen Sätze, ohne Hauptkonto und Antrag', async () => {
+		wer(501);
+		render(Page);
+		const karte = (await screen.findByText(/Einen Passkey legst du hier/)).closest('p');
+		expect(karte).not.toBeNull();
+		expect(satzOhneKnopf(karte as Element)).toBe(SATZ_KARTE);
+		expect(karte?.querySelector('code')?.textContent).toBe('dashboard einmal-code');
+		expect(
+			screen.getByText(
+				'Mit einem Passkey auf diesem Rechner, dem Handy oder einem Sicherheitsschlüssel.'
+			)
+		).toBeInTheDocument();
+		const text = document.body.textContent;
+		for (const weg of [
+			'Der Passkey muss vorher freigegeben sein.',
+			'Für dich in einem anderen Windows-Konto',
+			'Du bist im Hauptkonto.',
+			'Aus einem anderen Windows-Konto wird das ein'
+		]) {
+			expect(text).not.toContain(weg);
+		}
+	});
+
+	it('außerhalb von Windows: die eigenen Anträge werden nicht gefragt', async () => {
+		wer(501);
+		render(Page);
+		await vi.waitFor(() => {
+			expect(passkey.stand).toHaveBeenCalled();
+		});
+		expect(passkey.eigeneAntraege).not.toHaveBeenCalled();
+	});
+
+	it('das Feld „Einmal-Code“ steht vor dem Namen, mit den drei Attributen', async () => {
+		wer(501);
+		render(Page);
+		const feld = await codeFeld();
+		expect(feld.type).toBe('text');
+		expect(feld).toHaveAttribute('autocomplete', 'off');
+		expect(feld).toHaveAttribute('spellcheck', 'false');
+		expect(feld).toHaveAttribute('autocapitalize', 'characters');
+		const name = screen.getByLabelText('Name des Geräts');
+		expect(feld.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Passkey anlegen' })).toBeInTheDocument();
+	});
+
+	it('Erfolg: der Satz, das Feld ist leer, die Seite bleibt stehen', async () => {
+		wer(501);
+		passkey.anlegenMitCode.mockResolvedValue({
+			status: 'registriert',
+			vergleichszahl: null,
+			ablauf: null
+		});
+		render(Page);
+		await absenden(CODE, 'Laptop');
+		expect(
+			await screen.findByText('Der Passkey ist angelegt. Jetzt oben „Mit Passkey anmelden“.')
+		).toBeInTheDocument();
+		expect(passkey.anlegenMitCode).toHaveBeenCalledWith(CODE, 'Laptop');
+		expect(passkey.anlegen).not.toHaveBeenCalled();
+		expect((await codeFeld()).value).toBe('');
+		expect(passkey.weiter).not.toHaveBeenCalled();
+	});
+
+	it('bei 403 der Satz des Servers, und das Feld ist auch nach dem Fehler leer', async () => {
+		wer(501);
+		passkey.anlegenMitCode.mockRejectedValue(new ApiError(403, SATZ_GILT_NICHT, 'einmal-code'));
+		render(Page);
+		await absenden(CODE, 'Laptop');
+		expect((await screen.findByRole('alert')).textContent).toBe(SATZ_GILT_NICHT);
+		expect((await codeFeld()).value).toBe('');
+		// Der Name bleibt für den nächsten Versuch.
+		expect(screen.getByLabelText<HTMLInputElement>('Name des Geräts').value).toBe('Laptop');
+	});
+
+	it('der Code kommt nie aus der Adresse', async () => {
+		wer(501);
+		passkey.anlegenMitCode.mockResolvedValue({
+			status: 'registriert',
+			vergleichszahl: null,
+			ablauf: null
+		});
+		ort.url = new URL(`http://localhost:8787/anmelden?code=${CODE}#code=${CODE}`);
+		render(Page);
+		expect((await codeFeld()).value).toBe('');
+		await fireEvent.input(screen.getByLabelText('Name des Geräts'), {
+			target: { value: 'Laptop' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Passkey anlegen' }));
+		await vi.waitFor(() => {
+			expect(passkey.anlegenMitCode).toHaveBeenCalledWith('', 'Laptop');
+		});
+	});
+
+	it('angemeldet mit Passkey: das Feld für den Code steht auch dann da', async () => {
+		wer(501);
+		passkey.stand.mockResolvedValue(MIT_PASSKEY);
+		render(Page);
+		expect(await screen.findByRole('button', { name: 'Abmelden' })).toBeInTheDocument();
+		expect(await codeFeld()).toBeInTheDocument();
+	});
+
+	it('„Kopieren“ kopiert genau den Befehl', async () => {
+		wer(501);
+		const writeText = vi.fn(() => Promise.resolve());
+		zwischenablage(writeText);
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Kopieren' }));
+		expect(writeText).toHaveBeenCalledWith('dashboard einmal-code');
+	});
+
+	it('scheitert das Kopieren, erscheint kein Fehler und der Befehl bleibt markierbar', async () => {
+		wer(501);
+		const writeText = vi.fn(() => Promise.reject(new DOMException('nein', 'NotAllowedError')));
+		zwischenablage(writeText);
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Kopieren' }));
+		await vi.waitFor(() => {
+			expect(writeText).toHaveBeenCalled();
+		});
+		await new Promise((fertig) => setTimeout(fertig, 0));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(document.querySelector('code')?.textContent).toBe('dashboard einmal-code');
+	});
+
+	it('unter Windows (wer 200): alles wie vorher, ohne Feld für den Code', async () => {
+		wer(200);
+		passkey.anlegen.mockResolvedValue({
+			status: 'ausstehend',
+			vergleichszahl: '0427',
+			ablauf: null
+		});
+		render(Page);
+		expect(
+			await screen.findByText(/Aus einem anderen Windows-Konto wird das ein/)
+		).toBeInTheDocument();
+		expect(document.body.textContent).toContain('Der Passkey muss vorher freigegeben sein.');
+		expect(document.body.textContent).not.toContain('Einmal-Code');
+		expect(screen.queryByLabelText('Einmal-Code')).toBeNull();
+		await vi.waitFor(() => {
+			expect(passkey.eigeneAntraege).toHaveBeenCalled();
+		});
+		await fireEvent.input(screen.getByLabelText('Name des Geräts'), {
+			target: { value: 'Handy' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Passkey anlegen' }));
+		await vi.waitFor(() => {
+			expect(passkey.anlegen).toHaveBeenCalledWith('Handy');
+		});
+		expect(passkey.anlegenMitCode).not.toHaveBeenCalled();
 	});
 });

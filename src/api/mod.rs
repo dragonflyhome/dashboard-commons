@@ -142,6 +142,9 @@ pub fn routes() -> Router<AppState> {
     #[cfg(unix)]
     {
         r = r.route("/api/passkey/code/beginn", post(passkey::code_beginn)).route("/api/passkey/code/ende", post(passkey::code_ende));
+        // Schritt 7c: der Beleg der zwei Adressen durch den Befehl `dashboard einmal-code`.
+        // Wörtlich, nicht als Konstante: `frei_test` liest die Wege aus diesem Quelltext.
+        r = r.route("/api/passkey/code/beleg", post(passkey::code_beleg));
     }
     #[cfg(test)]
     {

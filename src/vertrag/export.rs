@@ -178,6 +178,7 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         AnmeldeOptionen,
         AnmeldenEnde,
         AntragBeginn,
+        CodeBeginn,
         AntragOptionen,
         AntragEnde,
         AntragErgebnis,

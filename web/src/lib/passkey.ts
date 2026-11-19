@@ -13,6 +13,7 @@ import type {
 	AnmeldeOptionen,
 	AntragErgebnis,
 	AntragOptionen,
+	CodeBeginn,
 	EigeneAntraege,
 	PasskeyAnzahl,
 	PasskeyListe,
@@ -173,6 +174,28 @@ export async function anmelden(u: Umgebung = standard()): Promise<PasskeyStand> 
  */
 export async function anlegen(name: string, u: Umgebung = standard()): Promise<AntragErgebnis> {
 	const o = await senden<AntragOptionen>(u.fetch, '/passkey/antrag/beginn', { name });
+	return senden<AntragErgebnis>(u.fetch, '/passkey/antrag/ende', await erzeugen(o, u));
+}
+
+/**
+ * Schritt 7c der macOS-Folge, nur außerhalb von Windows: einen Passkey im
+ * Hauptkonto mit einem Einmal-Code anlegen (den Code zeigt der Befehl
+ * `dashboard einmal-code`). Der Code geht nur im Körper des POST an den
+ * Server, nie in einer Adresse; der Passkey ist danach sofort registriert.
+ * Angemeldet ist damit noch niemand.
+ */
+export async function anlegenMitCode(
+	code: string,
+	name: string,
+	u: Umgebung = standard()
+): Promise<AntragErgebnis> {
+	const koerper: CodeBeginn = { code, name };
+	const o = await senden<AntragOptionen>(u.fetch, '/passkey/code/beginn', koerper);
+	return senden<AntragErgebnis>(u.fetch, '/passkey/code/ende', await erzeugen(o, u));
+}
+
+/** Der Passkey aus den Angaben des Servers (`navigator.credentials.create`), als Körper für `…/ende`. */
+async function erzeugen(o: AntragOptionen, u: Umgebung): Promise<Record<string, string>> {
 	const cred = (await u.credentials.create({
 		publicKey: {
 			challenge: b64Lesen(o.challenge),
@@ -194,11 +217,11 @@ export async function anlegen(name: string, u: Umgebung = standard()): Promise<A
 	})) as PublicKeyCredential | null;
 	if (cred === null) throw new DOMException('Kein Passkey angelegt', 'NotAllowedError');
 	const r = cred.response as AuthenticatorAttestationResponse;
-	return senden<AntragErgebnis>(u.fetch, '/passkey/antrag/ende', {
+	return {
 		id: b64(cred.rawId),
 		client_daten: b64(r.clientDataJSON),
 		attestation: b64(r.attestationObject)
-	});
+	};
 }
 
 /** Abmelden: Ausweis sperren, Cookie löschen. */
