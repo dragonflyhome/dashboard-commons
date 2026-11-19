@@ -43,8 +43,10 @@ pub const SATZ_BELEG_GESCHEITERT: &str =
 pub const SATZ_FRIST: &str = "Das Dashboard hat nicht rechtzeitig geantwortet. Bitte den Befehl noch einmal eingeben.";
 
 /// Höchstens so viele Bytes liest der Befehl als Antwortzeile des Kanals.
+#[cfg(unix)]
 const ZEILE_HOECHSTENS: usize = 4096;
 /// Höchstens so viele Bytes liest er von einer HTTP-Antwort (nur die Statuszeile zählt).
+#[cfg(unix)]
 const STATUS_HOECHSTENS: usize = 1024;
 /// Ein weitergegebener Satz des Kanals hat höchstens so viele Bytes.
 const SATZ_HOECHSTENS: usize = 400;
