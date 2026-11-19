@@ -25,8 +25,7 @@ Geändert
   IPv6) beim Dashboard angekommen ist.
 
 Behoben
-- Der Bau unter Windows meldet keine unbenutzten Grenzen des Befehls
-  einmal-code mehr.
+- Der Befehl einmal-code übersetzt unter Windows ohne unbenutzte Teile.
 
 0.21.0 - 2026-11-18
 -------------------
