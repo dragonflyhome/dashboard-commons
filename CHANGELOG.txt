@@ -14,6 +14,19 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Außerhalb von Windows: der Befehl dashboard einmal-code zeigt im Terminal
+  einen Einmal-Code zum Anlegen eines Passkeys, und /anmelden hat ein Feld
+  dafür.
+
+Geändert
+- Außerhalb von Windows gibt der lokale Kanal einen Einmal-Code nur noch
+  heraus, wenn eine Frage vorher auf beiden Adressen von localhost (IPv4 und
+  IPv6) beim Dashboard angekommen ist.
+
+Behoben
+- Der Befehl einmal-code übersetzt unter Windows ohne unbenutzte Teile.
+
 0.21.0 - 2026-11-18
 -------------------
 

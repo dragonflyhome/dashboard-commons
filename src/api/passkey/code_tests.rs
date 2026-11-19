@@ -1,8 +1,10 @@
 //! Schritt 7b der macOS-Folge: die Wege `code/beginn` und `code/ende` und
 //! der Kanalbefehl `code`, über den Router und mit dem Prüf-Authenticator.
+//! Seit Schritt 7c dazu der Beleg der zwei Adressen: der Kanalbefehl `beleg`
+//! und der Weg `code/beleg`; `code` verlangt seitdem einen bestandenen Beleg.
 //! Nur wo es den lokalen Kanal gibt.
 
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,6 +25,8 @@ use crate::vertrag::passkey::PasskeyStatus;
 
 const HERKUNFT: &str = "http://localhost:8787";
 const LOKAL: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+const LOKAL_V6: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
+const BELEG: &str = "/api/passkey/code/beleg";
 const BEGINN: &str = "/api/passkey/code/beginn";
 const ENDE: &str = "/api/passkey/code/ende";
 
@@ -60,9 +64,43 @@ async fn schicke(app: &Router, req: Request<Body>) -> (StatusCode, Option<String
     (status, set, serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null))
 }
 
+/// Die Anfrage des Belegs, wie der Befehl `dashboard einmal-code` sie schickt: ohne `Origin`.
+fn beleg_anfrage(frage: &str) -> Request<Body> {
+    Request::post(BELEG)
+        .header(header::HOST, "localhost:8787")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::json!({ "frage": frage }).to_string()))
+        .unwrap()
+}
+
+/// Eine Frage aus dem Kanalbefehl `beleg`.
+fn frage_holen(state: &AppState) -> String {
+    let zeile = beleg_ausgeben(state, &crate::kanal::konto_fuer_tests());
+    let antwort: serde_json::Value = serde_json::from_str(&zeile).unwrap();
+    assert_eq!(antwort["port"], 8787, "{zeile}");
+    antwort["frage"].as_str().unwrap_or_else(|| panic!("keine Frage: {zeile}")).to_string()
+}
+
+/// Der Beleg, wie der Befehl ihn führt: eine Frage über den Kanal, dann je
+/// eine Anfrage über 127.0.0.1 und über [::1]. Gibt die belegte Frage zurück.
+async fn belegen(state: &AppState) -> String {
+    let frage = frage_holen(state);
+    for gegenstelle in [LOKAL, LOKAL_V6] {
+        let (s, set, j) = schicke(&ueber(state, Verbindung::neu().mit_gegenstelle(gegenstelle)), beleg_anfrage(&frage)).await;
+        assert_eq!((s, set, j), (StatusCode::NO_CONTENT, None, serde_json::Value::Null), "{gegenstelle}");
+    }
+    frage
+}
+
+/// Die Antwortzeile des Kanalbefehls `code` nach einem bestandenen Beleg (Hilfe für die Tests aus 7b).
+async fn code_zeile(state: &AppState) -> String {
+    let frage = belegen(state).await;
+    einmal_code_ausgeben(state, &crate::kanal::konto_fuer_tests(), Some(&frage)).await
+}
+
 /// Gibt einen Code aus, wie der Kanal es täte, und liest ihn aus der Antwortzeile.
 async fn code_holen(state: &AppState) -> String {
-    let zeile = einmal_code_ausgeben(state, &crate::kanal::konto_fuer_tests()).await;
+    let zeile = code_zeile(state).await;
     let antwort: serde_json::Value = serde_json::from_str(&zeile).unwrap();
     antwort["code"].as_str().unwrap_or_else(|| panic!("kein Code: {zeile}")).to_string()
 }
@@ -447,7 +485,7 @@ async fn aufgabe_ohne_einmal_code_wird_von_code_ende_abgewiesen() {
 #[tokio::test(flavor = "multi_thread")]
 async fn kanal_gibt_code_gueltigkeit_und_port_und_schreibt_erst_ins_journal() {
     let state = zustand();
-    let zeile = einmal_code_ausgeben(&state, &crate::kanal::konto_fuer_tests()).await;
+    let zeile = code_zeile(&state).await;
     let antwort: serde_json::Value = serde_json::from_str(&zeile).unwrap();
     let code = antwort["code"].as_str().unwrap();
     assert_eq!(antwort, serde_json::json!({ "code": code, "gueltig_sekunden": 600, "port": 8787 }));
@@ -466,7 +504,7 @@ async fn kanal_gibt_code_gueltigkeit_und_port_und_schreibt_erst_ins_journal() {
 async fn kanal_ohne_schluessel_der_ausweise_fester_satz_und_kein_code() {
     let mut state = zustand();
     state.jwt = None;
-    let zeile = einmal_code_ausgeben(&state, &crate::kanal::konto_fuer_tests()).await;
+    let zeile = code_zeile(&state).await;
     assert_eq!(zeile, crate::kanal::fehler_antwort(SATZ_CODE_OHNE_SCHLUESSEL));
     assert!(!state.einmal_code.lock().unwrap().offen());
     assert!(code_vorgaenge(&state).is_empty());
@@ -477,7 +515,7 @@ async fn kanal_ohne_schluessel_der_ausweise_fester_satz_und_kein_code() {
 async fn kanal_ohne_datenspeicher_fester_satz_und_kein_code() {
     let state = AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), "Im Test ohne Speicher.");
     assert!(state.jwt.is_some());
-    let zeile = einmal_code_ausgeben(&state, &crate::kanal::konto_fuer_tests()).await;
+    let zeile = code_zeile(&state).await;
     assert_eq!(zeile, crate::kanal::fehler_antwort(SATZ_CODE_OHNE_SPEICHER));
     assert!(!state.einmal_code.lock().unwrap().offen());
 }
@@ -528,16 +566,253 @@ async fn code_ueber_kanal(state: &AppState) -> String {
     let ort = ordner.join(crate::kanal::KANAL_DATEI);
     let quelle: Arc<dyn crate::kanal::CodeQuelle> = Arc::new(CodeAusgabe(state.clone()));
     let kanal = crate::kanal::starten(&ort, crate::unix::eigene_uid(), std::future::pending(), Some(quelle)).unwrap();
-    let mut v = tokio::net::UnixStream::connect(&ort).await.unwrap();
-    v.write_all(b"{\"befehl\":\"code\"}\n").await.unwrap();
-    let mut zeile = String::new();
-    v.read_to_string(&mut zeile).await.unwrap();
-    let antwort: serde_json::Value = serde_json::from_str(zeile.trim_end()).unwrap();
+    let fragen = |anfrage: serde_json::Value| {
+        let ort = ort.clone();
+        async move {
+            let mut v = tokio::net::UnixStream::connect(&ort).await.unwrap();
+            v.write_all(format!("{anfrage}\n").as_bytes()).await.unwrap();
+            let mut zeile = String::new();
+            v.read_to_string(&mut zeile).await.unwrap();
+            serde_json::from_str::<serde_json::Value>(zeile.trim_end()).unwrap()
+        }
+    };
+    // Der Beleg: die Frage über den Kanal, zurück über beide Adressen.
+    let frage = fragen(serde_json::json!({ "befehl": "beleg" })).await["frage"].as_str().unwrap().to_string();
+    for gegenstelle in [LOKAL, LOKAL_V6] {
+        assert_eq!(schicke(&ueber(state, Verbindung::neu().mit_gegenstelle(gegenstelle)), beleg_anfrage(&frage)).await.0, StatusCode::NO_CONTENT);
+    }
+    let antwort = fragen(serde_json::json!({ "befehl": "code", "frage": frage })).await;
     let code = antwort["code"].as_str().unwrap().to_string();
     assert_eq!(antwort["gueltig_sekunden"], 600);
     drop(kanal);
     let _ = std::fs::remove_dir_all(&ordner);
     code
+}
+
+// ----- der Beleg der zwei Adressen (Schritt 7c) -----
+
+fn ohne_beleg() -> String {
+    crate::kanal::fehler_antwort(SATZ_CODE_OHNE_BELEG)
+}
+
+/// Prüft: kein Code offen und kein Vorgang „ausgegeben“.
+fn kein_code_und_kein_vorgang(state: &AppState, wie: &str) {
+    assert!(!state.einmal_code.lock().unwrap().offen(), "{wie}: ein Code ist offen");
+    assert!(code_vorgaenge(state).is_empty(), "{wie}: {:?}", code_vorgaenge(state));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn kanal_beleg_gibt_frage_und_port() {
+    let state = zustand();
+    let zeile = beleg_ausgeben(&state, &crate::kanal::konto_fuer_tests());
+    let antwort: serde_json::Value = serde_json::from_str(&zeile).unwrap();
+    let frage = antwort["frage"].as_str().unwrap();
+    assert_eq!(antwort, serde_json::json!({ "frage": frage, "port": 8787 }));
+    assert!(crate::passkey::beleg::form_gilt(frage), "{frage}");
+    assert!(state.beleg.lock().unwrap().offen());
+    // Jedes Mal eine neue.
+    assert_ne!(frage_holen(&state), frage);
+}
+
+/// Hält der Server [::1] nicht, lehnt `beleg` sofort mit dem festen Satz ab, ohne Frage.
+#[tokio::test(flavor = "multi_thread")]
+async fn server_ohne_v6_lehnt_beleg_sofort_mit_festem_satz_ab() {
+    let state = zustand().mit_v6(false);
+    let zeile = beleg_ausgeben(&state, &crate::kanal::konto_fuer_tests());
+    assert_eq!(zeile, crate::kanal::fehler_antwort(SATZ_BELEG_OHNE_V6));
+    assert!(!state.beleg.lock().unwrap().offen());
+    // Und ohne Frage gibt es keinen Code.
+    assert_eq!(einmal_code_ausgeben(&state, &crate::kanal::konto_fuer_tests(), None).await, ohne_beleg());
+    kein_code_und_kein_vorgang(&state, "ohne v6");
+}
+
+/// `code` ohne Frage, mit falscher, abgelaufener oder schon verbrauchter
+/// Frage: der feste Satz, kein Code, kein Vorgang.
+#[tokio::test(flavor = "multi_thread")]
+async fn code_ohne_falsche_abgelaufene_oder_verbrauchte_frage_gibt_festen_satz_ohne_code_und_vorgang() {
+    let state = zustand();
+    let konto = crate::kanal::konto_fuer_tests();
+    // Ohne Frage, auch nach einem bestandenen Beleg.
+    belegen(&state).await;
+    assert_eq!(einmal_code_ausgeben(&state, &konto, None).await, ohne_beleg());
+    // Mit falscher Frage.
+    belegen(&state).await;
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some("0123456789abcdef0123456789abcdef")).await, ohne_beleg());
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some("")).await, ohne_beleg());
+    // Abgelaufen: ausgegeben und angekommen vor mehr als 30 Sekunden.
+    let frueher = passkey::einmalcode::Uhren {
+        stetig: std::time::Instant::now() - passkey::beleg::GUELTIG - Duration::from_secs(1),
+        wand: std::time::SystemTime::now() - passkey::beleg::GUELTIG - Duration::from_secs(1),
+    };
+    let alt = {
+        let mut b = state.beleg.lock().unwrap();
+        let frage = b.ausgeben(&passkey::zufall(passkey::beleg::FRAGE_BYTES), frueher);
+        b.ankunft(&frage, passkey::beleg::Familie::V4, frueher);
+        b.ankunft(&frage, passkey::beleg::Familie::V6, frueher);
+        frage
+    };
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&alt)).await, ohne_beleg());
+    // Schon verbraucht: Die Frage galt einmal, danach nicht mehr.
+    let frage = belegen(&state).await;
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some("ffffffffffffffffffffffffffffffff")).await, ohne_beleg());
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&frage)).await, ohne_beleg(), "die offene ist mit der falschen verbraucht");
+    kein_code_und_kein_vorgang(&state, "ohne Beleg");
+    // Gegenprobe: mit bestandenem Beleg ein Code, danach ist die Frage verbraucht.
+    let frage = belegen(&state).await;
+    let zeile = einmal_code_ausgeben(&state, &konto, Some(&frage)).await;
+    assert!(zeile.contains("\"code\""), "{zeile}");
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&frage)).await, ohne_beleg());
+    assert_eq!(code_vorgaenge(&state), [TITEL_CODE_AUSGEGEBEN]);
+}
+
+/// Eine Frage nur über 127.0.0.1 (auch zweimal), nur über [::1] oder über
+/// eine Verbindung ohne bekannte Gegenstelle gibt keinen Code.
+#[tokio::test(flavor = "multi_thread")]
+async fn frage_nur_ueber_eine_adresse_oder_ohne_gegenstelle_gibt_keinen_code() {
+    let state = zustand();
+    let konto = crate::kanal::konto_fuer_tests();
+    let faelle: [(&str, Vec<Option<IpAddr>>); 4] = [
+        ("nur 127.0.0.1", vec![Some(LOKAL)]),
+        ("zweimal 127.0.0.1", vec![Some(LOKAL), Some(LOKAL)]),
+        ("nur [::1]", vec![Some(LOKAL_V6), Some(LOKAL_V6)]),
+        ("127.0.0.1 und ohne Gegenstelle", vec![Some(LOKAL), None]),
+    ];
+    for (wie, wege) in faelle {
+        let frage = frage_holen(&state);
+        for gegenstelle in wege {
+            let verbindung = match gegenstelle {
+                Some(ip) => Verbindung::neu().mit_gegenstelle(ip),
+                None => Verbindung::neu(),
+            };
+            schicke(&ueber(&state, verbindung), beleg_anfrage(&frage)).await;
+        }
+        assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&frage)).await, ohne_beleg(), "{wie}");
+    }
+    kein_code_und_kein_vorgang(&state, "eine Adresse");
+}
+
+fn nur_befehl_antwort() -> serde_json::Value {
+    serde_json::json!({ "fehler": SATZ_BELEG_NUR_BEFEHL, "art": "nur-lokal" })
+}
+
+/// `code/beleg` mit `Origin`, mit `Via` oder `X-Forwarded-For`, mit falschem
+/// Host oder ohne Gegenstelle: der feste Satz, und die Ankunft zählt nicht.
+#[tokio::test(flavor = "multi_thread")]
+async fn beleg_aus_browser_ueber_zwischenstation_mit_falschem_host_oder_ohne_gegenstelle_zaehlt_nicht() {
+    let state = zustand();
+    let konto = crate::kanal::konto_fuer_tests();
+    type Abwandlung = fn(&str) -> (Option<IpAddr>, Request<Body>);
+    let faelle: [(&str, Abwandlung); 8] = [
+        ("Origin", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert(header::ORIGIN, HERKUNFT.parse().unwrap());
+                r
+            })
+        }),
+        ("Origin null", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert(header::ORIGIN, "null".parse().unwrap());
+                r
+            })
+        }),
+        ("Via", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert("via", "1.1 zwischen".parse().unwrap());
+                r
+            })
+        }),
+        ("X-Forwarded-For", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert("x-forwarded-for", "127.0.0.1".parse().unwrap());
+                r
+            })
+        }),
+        ("Host 127.0.0.1", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert(header::HOST, "127.0.0.1:8787".parse().unwrap());
+                r
+            })
+        }),
+        ("Host [::1]", |f| {
+            (Some(LOKAL_V6), {
+                let mut r = beleg_anfrage(f);
+                r.headers_mut().insert(header::HOST, "[::1]:8787".parse().unwrap());
+                r
+            })
+        }),
+        ("ohne Gegenstelle", |f| (None, beleg_anfrage(f))),
+        ("Gegenstelle nicht Loopback", |f| (Some("fd00::7".parse().unwrap()), beleg_anfrage(f))),
+    ];
+    for (wie, abwandlung) in faelle {
+        let frage = frage_holen(&state);
+        assert_eq!(schicke(&lokal(&state), beleg_anfrage(&frage)).await.0, StatusCode::NO_CONTENT);
+        let (gegenstelle, req) = abwandlung(&frage);
+        let verbindung = gegenstelle.map_or_else(Verbindung::neu, |ip| Verbindung::neu().mit_gegenstelle(ip));
+        let (s, set, j) = schicke(&ueber(&state, verbindung), req).await;
+        // Die Schleuse davor weist manches schon ab (falsche Herkunft); was durchkommt, bekommt den festen Satz.
+        assert!(s.is_client_error() && s != StatusCode::NO_CONTENT, "{wie}: {s} {j}");
+        assert_eq!(set, None, "{wie}");
+        if s == StatusCode::FORBIDDEN && j["art"] != "abgelehnt" {
+            assert_eq!(j, nur_befehl_antwort(), "{wie}");
+        }
+        assert!(!j.to_string().contains(&frage), "{wie}: {j}");
+        assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&frage)).await, ohne_beleg(), "{wie}: die Ankunft zählte");
+    }
+    kein_code_und_kein_vorgang(&state, "abgewiesen");
+}
+
+/// Der feste Satz genau an den Prüfungen des Wegs (die Schleuse lässt `Via`, 127.0.0.1 und `Origin` durch).
+#[tokio::test(flavor = "multi_thread")]
+async fn beleg_weist_mit_festem_satz_ab() {
+    let state = zustand();
+    let mut mit_origin = beleg_anfrage("x");
+    mit_origin.headers_mut().insert(header::ORIGIN, HERKUNFT.parse().unwrap());
+    assert_eq!(schicke(&lokal(&state), mit_origin).await, (StatusCode::FORBIDDEN, None, nur_befehl_antwort()));
+    let mut via = beleg_anfrage("x");
+    via.headers_mut().insert("via", "1.1 zwischen".parse().unwrap());
+    assert_eq!(schicke(&lokal(&state), via).await, (StatusCode::FORBIDDEN, None, nur_befehl_antwort()));
+    let mut host = beleg_anfrage("x");
+    host.headers_mut().insert(header::HOST, "127.0.0.1:8787".parse().unwrap());
+    assert_eq!(schicke(&lokal(&state), host).await, (StatusCode::FORBIDDEN, None, nur_befehl_antwort()));
+    assert_eq!(schicke(&ueber(&state, Verbindung::neu()), beleg_anfrage("x")).await, (StatusCode::FORBIDDEN, None, nur_befehl_antwort()));
+}
+
+/// Eine unbekannte Frage bekommt 204 wie eine bekannte: Die Antwort verrät nichts.
+#[tokio::test(flavor = "multi_thread")]
+async fn unbekannte_frage_gibt_204_wie_eine_bekannte() {
+    let state = zustand();
+    let bekannt = frage_holen(&state);
+    let mut antworten = Vec::new();
+    for frage in [bekannt.as_str(), "0123456789abcdef0123456789abcdef", "kein-hex", ""] {
+        antworten.push(schicke(&lokal(&state), beleg_anfrage(frage)).await);
+    }
+    // Auch ohne offene Frage.
+    state.beleg.lock().unwrap().einloesen(None, passkey::einmalcode::Uhren::jetzt());
+    antworten.push(schicke(&lokal(&state), beleg_anfrage(&bekannt)).await);
+    assert!(antworten.iter().all(|a| *a == (StatusCode::NO_CONTENT, None, serde_json::Value::Null)), "{antworten:?}");
+}
+
+/// Ein zu großer Körper oder unbekannte Felder: abgewiesen, die Ankunft zählt nicht.
+#[tokio::test(flavor = "multi_thread")]
+async fn beleg_mit_zu_grossem_oder_fremdem_koerper_zaehlt_nicht() {
+    let state = zustand();
+    let konto = crate::kanal::konto_fuer_tests();
+    let frage = frage_holen(&state);
+    let koerper = |k: serde_json::Value| {
+        Request::post(BELEG).header(header::HOST, "localhost:8787").header(header::CONTENT_TYPE, "application/json").body(Body::from(k.to_string())).unwrap()
+    };
+    for k in [serde_json::json!({ "frage": frage, "mehr": 1 }), serde_json::json!({ "frage": frage, "fuell": "x".repeat(1100) }), serde_json::json!([frage])] {
+        let (s, _, j) = schicke(&ueber(&state, Verbindung::neu().mit_gegenstelle(LOKAL_V6)), koerper(k)).await;
+        assert!(s.is_client_error(), "{s} {j}");
+        assert!(!j.to_string().contains(&frage), "{j}");
+    }
+    assert_eq!(schicke(&lokal(&state), beleg_anfrage(&frage)).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(einmal_code_ausgeben(&state, &konto, Some(&frage)).await, ohne_beleg());
 }
 
 // ----- nichts nach außen -----

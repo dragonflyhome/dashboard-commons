@@ -18,6 +18,8 @@
 //! `speicher::passkeys`, die Wege in `api::passkey`, die Schleuse in
 //! `sicherheit::anmeldung_pflicht`.
 
+#[cfg(any(unix, test))]
+pub mod beleg;
 pub mod cookie;
 #[cfg(any(unix, test))]
 pub mod einmalcode;

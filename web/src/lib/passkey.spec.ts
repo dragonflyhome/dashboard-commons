@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	anlegen,
+	anlegenMitCode,
 	anmeldeArt,
 	anmelden,
 	aufLocalhost,
@@ -240,6 +241,53 @@ describe('Passkey anlegen', () => {
 			{ name: 'Handy' },
 			{ id: 'CQk', client_daten: 'AQ', attestation: 'BQ' }
 		]);
+	});
+});
+
+describe('Passkey mit Einmal-Code anlegen (Schritt 7c)', () => {
+	it('schickt Code und Namen nur im Körper an code/beginn, die Antwort an code/ende', async () => {
+		const aufrufe: Aufruf[] = [];
+		const f = fakeFetch(aufrufe, (url) =>
+			url.endsWith('/beginn')
+				? antwort(200, {
+						challenge: 'AQID',
+						rp_id: 'localhost',
+						rp_name: 'Dashboard',
+						benutzer_id: 'BAU',
+						benutzer_name: 'Hauptkonto',
+						anzeige_name: 'Dashboard (Laptop)',
+						verfahren: [-7],
+						ausschliessen: [],
+						zeitlimit_ms: 300000,
+						hauptkonto: true
+					})
+				: antwort(201, { status: 'registriert', vergleichszahl: null, ablauf: null })
+		);
+		const { credentials, optionen } = fakeCredentials({
+			rawId: bytes(9, 9),
+			response: { clientDataJSON: bytes(1), attestationObject: bytes(5) }
+		});
+		const code = 'ABCD-EFGH-JKMN-PQRS-TVWX-YZ01-23';
+		const e = await anlegenMitCode(code, 'Laptop', { fetch: f, credentials });
+		expect(e.status).toBe('registriert');
+		expect(aufrufe).toEqual([
+			{ url: '/api/passkey/code/beginn', body: { code, name: 'Laptop' } },
+			{ url: '/api/passkey/code/ende', body: { id: 'CQk', client_daten: 'AQ', attestation: 'BQ' } }
+		]);
+		// Der Code steht in keiner Adresse.
+		expect(aufrufe.every((a) => !a.url.includes(code))).toBe(true);
+		const pk = (optionen[0] as CredentialCreationOptions | undefined)?.publicKey;
+		expect(pk?.authenticatorSelection?.userVerification).toBe('required');
+	});
+
+	it('bei 403 der Satz des Servers, ohne den Authenticator zu fragen', async () => {
+		const satz = 'Dieser Einmal-Code gilt nicht (mehr). Bitte einen neuen holen.';
+		const f = fakeFetch([], () => antwort(403, { fehler: satz, art: 'einmal-code' }));
+		const { credentials, optionen } = fakeCredentials(null);
+		await expect(anlegenMitCode('falsch', 'Laptop', { fetch: f, credentials })).rejects.toThrow(
+			satz
+		);
+		expect(optionen).toHaveLength(0);
 	});
 });
 

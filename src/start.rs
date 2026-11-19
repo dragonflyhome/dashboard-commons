@@ -37,6 +37,8 @@ pub fn starten(module: Vec<ModulEintrag>) -> i32 {
         Aufruf::PruefeZusammenbau(rest) => crate::projekte::zusammenbau::ausfuehren(&rest),
         // Stop-Hook der Chats: ohne Server, jeder Fehler lässt den Stop durch.
         Aufruf::Herzschlag(rest) => crate::herzschlag::ausfuehren(&rest),
+        // Schritt 7c der macOS-Folge: der Einmal-Code im Terminal, ohne Server und ohne Mitschrift.
+        Aufruf::EinmalCode(einstellungen) => einmal_code(einstellungen.as_deref()),
         Aufruf::Hilfe => {
             print!("{}", dienst::HILFE);
             0
@@ -48,6 +50,18 @@ pub fn starten(module: Vec<ModulEintrag>) -> i32 {
             2
         }
     }
+}
+
+#[cfg(unix)]
+fn einmal_code(einstellungen: Option<&std::path::Path>) -> i32 {
+    crate::kanal::befehl::ausfuehren(einstellungen)
+}
+
+/// Unter Windows meldet Windows an: fester Satz, Ende 2.
+#[cfg(not(unix))]
+fn einmal_code(_einstellungen: Option<&std::path::Path>) -> i32 {
+    eprintln!("{}", dienst::SATZ_EINMAL_CODE_WINDOWS);
+    2
 }
 
 #[cfg(windows)]
@@ -65,4 +79,14 @@ fn dienst_starten(name: &str, einstellungen: std::path::PathBuf) -> i32 {
 fn dienst_starten(_name: &str, _einstellungen: std::path::PathBuf) -> i32 {
     eprintln!("--dienst gibt es nur unter Windows. Bitte --konsole --einstellungen <datei> nehmen.");
     2
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    /// Schritt 7c der macOS-Folge: Unter Windows gibt es keinen Einmal-Code, Ende 2.
+    #[test]
+    fn einmal_code_unter_windows_fester_satz_und_ende_2() {
+        assert_eq!(super::einmal_code(None), 2);
+        assert_eq!(crate::dienst::SATZ_EINMAL_CODE_WINDOWS, "Unter Windows braucht es keinen Einmal-Code: Dort meldet Windows von selbst an.");
+    }
 }

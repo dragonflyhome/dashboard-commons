@@ -137,6 +137,16 @@ pub struct AppState {
     /// Mac-Helfer kommen; `None` ohne die Einstellung.
     #[cfg(unix)]
     pub helfer_schluessel: Option<crate::helfer::Bund>,
+    /// Schritt 7c der macOS-Folge: die offene Frage des Belegs der zwei
+    /// Adressen (nur ihr Hash), nur im Arbeitsspeicher. Die Sperre gilt nie
+    /// über ein `await` hinweg.
+    #[cfg(unix)]
+    pub beleg: Arc<std::sync::Mutex<crate::passkey::beleg::BelegStand>>,
+    /// Schritt 7c der macOS-Folge: Hält der Server [::1]? Gesetzt in
+    /// `dienst::betreiben` nach dem Binden; ohne [::1] gibt es keinen Beleg
+    /// und darum keinen Einmal-Code. Beim Bau des Zustands `false`.
+    #[cfg(unix)]
+    pub v6_gebunden: bool,
     /// Kopfleiste, Fassung 3: die Ereignisnummern für `/api/stand` (frei und
     /// geschützt); im Dienst zählt eine Aufgabe mit (`api::stand::zaehlen_starten`).
     pub zaehler: Arc<api::stand::Ereigniszaehler>,
@@ -204,6 +214,14 @@ impl AppState {
         self
     }
 
+    /// Schritt 7c der macOS-Folge: derselbe Zustand mit dem Wissen, ob [::1]
+    /// gebunden ist (aus `dienst::binden`).
+    #[cfg(unix)]
+    pub fn mit_v6(mut self, gebunden: bool) -> Self {
+        self.v6_gebunden = gebunden;
+        self
+    }
+
     /// Derselbe Zustand mit anderem Modus (Startzeit bleibt).
     pub fn mit_modus(mut self, modus: Modus) -> Self {
         self.lauf = Arc::new(Lauf { modus, gestartet: self.lauf.gestartet });
@@ -231,10 +249,7 @@ impl AppState {
         // Etappe 7c: Ort des Schlüssels der Ausweise. Er steht vor dem Öffnen
         // des Speichers fest, weil außerhalb von Windows der Schlüssel der
         // Aufgaben-Links immer daneben liegt und der Speicher seinen Ort braucht.
-        let jwt_datei = match &einstellungen {
-            Some(e) => Some(e.jwt_schluessel_datei()),
-            None => jwt_schluessel_datei(&daten),
-        };
+        let jwt_datei = jwt_datei_fuer(einstellungen.as_deref(), &daten);
         let geoeffnet = match &sicherung {
             Some(ordner) => Speicher::oeffnen_mit_sicherung(&daten, ordner),
             None => Speicher::oeffnen(&daten),
@@ -429,6 +444,10 @@ impl AppState {
             sperre: Default::default(),
             #[cfg(unix)]
             helfer_schluessel,
+            #[cfg(unix)]
+            beleg: Default::default(),
+            #[cfg(unix)]
+            v6_gebunden: false,
             inhalt,
             lauf: Arc::new(Lauf::jetzt(modus)),
             sitzung: Default::default(),
@@ -672,6 +691,11 @@ impl AppState {
             sperre: Default::default(),
             #[cfg(unix)]
             helfer_schluessel: None,
+            #[cfg(unix)]
+            beleg: Default::default(),
+            // Wie ein Rechner mit IPv6; `betreiben` setzt es nach dem Binden.
+            #[cfg(unix)]
+            v6_gebunden: true,
             zaehler: api::stand::neu(),
             oeffnen: Default::default(),
             projekte: Arc::new(crate::projekte::Register::leer()),
@@ -1143,6 +1167,18 @@ pub fn jwt_schluessel_datei(daten: &Path) -> Option<PathBuf> {
     }
     let wert = |n: &str| std::env::var(n).ok();
     crate::passkey::geheim::ort_ohne_einstellungen(crate::passkey::geheim::Plattform::diese(), daten, wert("HOME").as_deref(), wert("XDG_DATA_HOME").as_deref())
+}
+
+/// Der Ort des Schlüssels der Ausweise, wie der Server ihn beim Start
+/// bildet: mit Einstellungsdatei `e.jwt_schluessel_datei()`, sonst
+/// [`jwt_schluessel_datei`] zur Datei des Datenspeichers `daten`. Auch der
+/// Befehl `dashboard einmal-code` (Schritt 7c der macOS-Folge) nimmt diese
+/// Funktion, damit er denselben Ort findet wie der Server.
+pub fn jwt_datei_fuer(einstellungen: Option<&Einstellungen>, daten: &Path) -> Option<PathBuf> {
+    match einstellungen {
+        Some(e) => Some(e.jwt_schluessel_datei()),
+        None => jwt_schluessel_datei(daten),
+    }
 }
 
 /// `data/pc.toml`: neben dem Projektordner, sonst im Repo.

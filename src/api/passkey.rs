@@ -48,6 +48,8 @@ use crate::speicher::aufgaben::{self, Zeit};
 use crate::speicher::meldungen::Wiederholung;
 use crate::speicher::passkeys::{AufgabenArt, Entscheidung, Freigeber, PasskeyAufgabe, PasskeyFehler};
 use crate::vertrag::api::Ereignis;
+#[cfg(unix)]
+use crate::vertrag::passkey::CodeBeginn;
 use crate::vertrag::passkey::{
     AnmeldeArt, AnmeldeOptionen, AnmeldenEnde, Anmeldewort, AntragBeginn, AntragEnde, AntragErgebnis, AntragOptionen, EigeneAntraege, Freigabe, PasskeyAnzahl,
     PasskeyListe, PasskeyStand, PasskeyZeile,
@@ -499,22 +501,29 @@ pub const SATZ_CODE_OHNE_SCHLUESSEL: &str = "Einen Einmal-Code gibt es gerade ni
 pub const SATZ_CODE_OHNE_SPEICHER: &str = "Einen Einmal-Code gibt es gerade nicht: Der Datenspeicher fehlt.";
 #[cfg(unix)]
 pub const SATZ_CODE_OHNE_JOURNAL: &str = "Einen Einmal-Code gibt es gerade nicht: Der Eintrag im Journal ließ sich nicht schreiben.";
+/// Schritt 7c: `code` ohne bestandenen Beleg der zwei Adressen (ohne,
+/// falsche, abgelaufene oder schon verbrauchte `frage`, oder sie kam nicht
+/// auf beiden Adressen an).
+#[cfg(unix)]
+pub const SATZ_CODE_OHNE_BELEG: &str = "Einen Einmal-Code gibt es nur nach dem Beleg beider Adressen für localhost.";
+/// Schritt 7c: `beleg`, wenn der Server [::1] nicht hält. Der Befehl gibt
+/// diesen Satz unverändert weiter.
+#[cfg(unix)]
+pub const SATZ_BELEG_OHNE_V6: &str = "Das Dashboard ist nur unter einer der zwei Adressen für localhost erreichbar. Darum gibt es keinen Code. Bitte den Rechner neu starten; ist IPv6 abgeschaltet, muss es wieder an sein.";
+/// Schritt 7c: Abweisung am Weg `code/beleg`. Nichts aus der Anfrage steht darin.
+#[cfg(unix)]
+pub const SATZ_BELEG_NUR_BEFEHL: &str = "Dieser Weg ist nur für den Befehl dashboard einmal-code auf diesem Rechner, nicht für einen Browser.";
 
-/// `POST /api/passkey/code/beginn`: Einmal-Code und Name des Geräts.
+/// Höchstens so viele Bytes hat der Körper von `code/beleg`.
+#[cfg(unix)]
+const BELEG_KOERPER_HOECHSTENS: usize = 1024;
+
+/// `POST /api/passkey/code/beleg`: die Frage aus dem Kanalbefehl `beleg`.
 #[cfg(unix)]
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CodeBeginn {
-    code: String,
-    name: String,
-}
-
-/// Nie den Code zeigen.
-#[cfg(unix)]
-impl std::fmt::Debug for CodeBeginn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CodeBeginn").finish_non_exhaustive()
-    }
+struct BelegKoerper {
+    frage: String,
 }
 
 /// Die Prüfungen, die den Code nicht berühren: Die Anfrage kam unmittelbar
@@ -616,27 +625,102 @@ pub async fn code_ende(
     anlegen_ende(&state, code_konto(), k, true).await
 }
 
-/// Die Quelle des Kanalbefehls `code`: gibt einen Einmal-Code aus.
+/// `POST /api/passkey/code/beleg` (Schritt 7c der macOS-Folge, nur
+/// außerhalb von Windows): vermerkt, dass die Frage aus dem Kanalbefehl
+/// `beleg` über diese Adresse ankam, nach der Familie der Gegenstelle (v4
+/// für 127.0.0.1, v6 für [::1]).
+///
+/// Nur unmittelbar von diesem Rechner (`nur_lokal`), Host genau
+/// `localhost:<port>`, und nie mit `Origin`: Ein Browser schickt bei POST
+/// immer `Origin`, also erreicht keine Webseite diesen Weg. Jede solche
+/// Abweisung ist ein fester Satz, und die Ankunft zählt nicht. Sonst ist die
+/// Antwort immer 204, auch für eine unbekannte oder abgelaufene Frage: Sie
+/// verrät nichts. Im Protokoll steht die Frage nie.
+#[cfg(unix)]
+pub async fn code_beleg(
+    State(state): State<AppState>,
+    verbindung: Option<Extension<ConnectInfo<Verbindung>>>,
+    uri: axum::http::Uri,
+    kopf: HeaderMap,
+    koerper: Bytes,
+) -> Result<StatusCode, AppError> {
+    let gegenstelle = verbindung.as_ref().and_then(|Extension(v)| v.0.gegenstelle);
+    let host = crate::sicherheit::host_genau_localhost(uri.authority().map(|a| a.as_str()), &kopf, state.port);
+    if !crate::sicherheit::nur_lokal(gegenstelle, &kopf) || !host || kopf.contains_key(header::ORIGIN) {
+        tracing::warn!("Beleg der Adressen: Anfrage abgewiesen, sie kam nicht vom Befehl auf diesem Rechner.");
+        return Err(AppError { status: StatusCode::FORBIDDEN, art: "nur-lokal", fehler: SATZ_BELEG_NUR_BEFEHL.into() });
+    }
+    if koerper.len() > BELEG_KOERPER_HOECHSTENS {
+        return Err(AppError::unlesbar("Der Inhalt ist kein passendes JSON."));
+    }
+    // Erst die Form: ein Objekt. Sonst läse serde auch eine Liste wie `["…"]` als Körper.
+    let wert: serde_json::Value = json_lesen(&kopf, &koerper)?;
+    if !wert.is_object() {
+        return Err(AppError::unlesbar("Der Inhalt ist kein passendes JSON."));
+    }
+    let k: BelegKoerper = serde_json::from_value(wert).map_err(|_| AppError::unlesbar("Der Inhalt ist kein passendes JSON."))?;
+    if let Some(familie) = passkey::beleg::familie(gegenstelle) {
+        state.beleg.lock().unwrap_or_else(std::sync::PoisonError::into_inner).ankunft(&k.frage, familie, passkey::einmalcode::Uhren::jetzt());
+    }
+    tracing::info!("Beleg der Adressen: Anfrage angenommen");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Die Quelle der Kanalbefehle `beleg` und `code`: gibt die Frage des
+/// Belegs und den Einmal-Code aus.
 #[cfg(unix)]
 pub struct CodeAusgabe(pub AppState);
 
 #[cfg(unix)]
 impl crate::kanal::CodeQuelle for CodeAusgabe {
-    fn code<'a>(&'a self, konto: &'a crate::kanal::KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
-        Box::pin(einmal_code_ausgeben(&self.0, konto))
+    fn beleg<'a>(&'a self, konto: &'a crate::kanal::KanalKonto) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+        Box::pin(async move { beleg_ausgeben(&self.0, konto) })
+    }
+
+    fn code<'a>(
+        &'a self,
+        konto: &'a crate::kanal::KanalKonto,
+        frage: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+        Box::pin(einmal_code_ausgeben(&self.0, konto, frage))
     }
 }
 
-/// Gibt einen Einmal-Code aus, als Antwortzeile für den Kanal. Verlangt die
-/// Befähigung der geprüften Gegenseite. Reihenfolge: Ohne Schlüssel der
-/// Ausweise und ohne Datenspeicher je ein fester Satz. Sonst zuerst der
-/// Vorgang im Journal; erst nach dem Festschreiben wird der Code gesetzt und
-/// beantwortet, danach geht die Meldung hinaus. Scheitert das Journal, gibt
-/// es keinen Code. Der Code steht nur in dieser Antwort: nie im Protokoll,
-/// im Journal oder in der Meldung.
+/// Der Kanalbefehl `beleg` (Schritt 7c): eine neue Frage (128 Bit, 30
+/// Sekunden, nur einmal; sie ersetzt eine offene) und der Port, als
+/// Antwortzeile. Hält der Server [::1] nicht, sofort ein fester Satz und
+/// keine Frage. Die Frage steht nur in dieser Antwort, nie im Protokoll.
 #[cfg(unix)]
-pub async fn einmal_code_ausgeben(state: &AppState, _konto: &crate::kanal::KanalKonto) -> String {
+pub fn beleg_ausgeben(state: &AppState, _konto: &crate::kanal::KanalKonto) -> String {
+    if !state.v6_gebunden {
+        return crate::kanal::fehler_antwort(SATZ_BELEG_OHNE_V6);
+    }
+    let frage = state
+        .beleg
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .ausgeben(&passkey::zufall(passkey::beleg::FRAGE_BYTES), passkey::einmalcode::Uhren::jetzt());
+    tracing::info!("Beleg der Adressen: Frage ausgegeben");
+    serde_json::json!({ "frage": frage, "port": state.port }).to_string()
+}
+
+/// Gibt einen Einmal-Code aus, als Antwortzeile für den Kanal. Verlangt die
+/// Befähigung der geprüften Gegenseite und die `frage` eines bestandenen
+/// Belegs der zwei Adressen (Schritt 7c); die offene Frage ist danach in
+/// jedem Fall verbraucht. Reihenfolge: Ohne bestandenen Beleg, ohne
+/// Schlüssel der Ausweise und ohne Datenspeicher je ein fester Satz. Sonst
+/// zuerst der Vorgang im Journal; erst nach dem Festschreiben wird der Code
+/// gesetzt und beantwortet, danach geht die Meldung hinaus. Scheitert das
+/// Journal, gibt es keinen Code. Der Code steht nur in dieser Antwort: nie
+/// im Protokoll, im Journal oder in der Meldung.
+#[cfg(unix)]
+pub async fn einmal_code_ausgeben(state: &AppState, _konto: &crate::kanal::KanalKonto, frage: Option<&str>) -> String {
     use crate::kanal::fehler_antwort;
+    let belegt = state.beleg.lock().unwrap_or_else(std::sync::PoisonError::into_inner).einloesen(frage, passkey::einmalcode::Uhren::jetzt());
+    if !belegt {
+        tracing::warn!("Einmal-Code: kein bestandener Beleg der zwei Adressen, kein Code.");
+        return fehler_antwort(SATZ_CODE_OHNE_BELEG);
+    }
     if state.jwt.is_none() {
         return fehler_antwort(SATZ_CODE_OHNE_SCHLUESSEL);
     }

@@ -88,8 +88,9 @@ fn hash(normiert: &str) -> [u8; 32] {
     Sha256::digest(normiert.as_bytes()).into()
 }
 
-/// Vergleich ohne frühes Ende: ODER über das XOR aller Bytes.
-fn gleich(a: &[u8; 32], b: &[u8; 32]) -> bool {
+/// Vergleich ohne frühes Ende: ODER über das XOR aller Bytes. Auch für den
+/// Beleg der Adressen (`beleg`).
+pub(crate) fn gleich(a: &[u8; 32], b: &[u8; 32]) -> bool {
     let mut unterschied = 0u8;
     for (x, y) in a.iter().zip(b.iter()) {
         unterschied |= std::hint::black_box(x ^ y);
