@@ -479,7 +479,7 @@ fn passkey_noetig(req: &Request, port: u16) -> Response {
 /// Schleuse 4b: Auf jedem nicht öffentlichen Weg (`oeffentlich`) muss die Anfrage als
 /// Inhaber gelten: Verbindung als Inhaber angemeldet (Negotiate über SSPI,
 /// `anmeldung`, 7b) oder ein gültiger Ausweis nach Anmeldung mit Passkey
-/// (Cookie `__Host-dashboard`, Etappe 7c). Liegt hinter der Herkunftsprüfung
+/// (Cookie `passkey::cookie::NAME`, Etappe 7c). Liegt hinter der Herkunftsprüfung
 /// und außerhalb (vor) dem Zeitlimit: So kommen auch `warten` und der
 /// Live-Kanal, die vom Zeitlimit ausgenommen sind, nicht ohne Anmeldung durch.
 /// Die Aushandlung selbst hat kein Zeitlimit (SSPI lokal, kurz).
