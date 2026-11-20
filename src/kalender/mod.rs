@@ -164,7 +164,7 @@ impl Regel {
             pflicht("monat", self.monat.is_some(), "`kalender`")?;
             pflicht("tag", self.tag.is_some(), "`kalender`")?;
             if !(1..=12).contains(&monat) || !(1..=30).contains(&tag) {
-                return Err(format!("Im chinesischen Kalender gibt es den Tag {tag} im Monat {monat} nicht. Erlaubt sind Monat 1–12 und Tag 1–30."));
+                return Err("Diesen Tag gibt es im chinesischen Kalender nicht. Erlaubt sind Monat 1–12 und Tag 1–30.".into());
             }
             return Ok(Art::Chinesisch { monat, tag, schaltmonat: self.schaltmonat.unwrap_or(false) });
         }
@@ -184,7 +184,7 @@ impl Regel {
             nur("`tage`", &["tage", "nach"])?;
             pflicht("nach", self.nach.is_some(), "`tage`")?;
             if !(-TAGE_HOECHSTENS..=TAGE_HOECHSTENS).contains(&t) {
-                return Err(format!("`tage = {t}` ist zu weit. Erlaubt sind höchstens {TAGE_HOECHSTENS} Tage davor oder danach."));
+                return Err(format!("Der Abstand in `tage` ist zu weit. Erlaubt sind höchstens {TAGE_HOECHSTENS} Tage davor oder danach."));
             }
             return Ok(Art::Abstand { nach: self.nach.as_deref().unwrap_or_default(), tage: t });
         }
@@ -193,9 +193,7 @@ impl Regel {
             let (monat, tag) = (u32::from(self.monat.unwrap_or(0)), u32::from(self.tag.unwrap_or(0)));
             // 2000 ist ein Schaltjahr: Der 29.2. ist erlaubt und gilt dann nur in Schaltjahren.
             if self.monat.is_none() || self.tag.is_none() || NaiveDate::from_ymd_opt(2000, monat, tag).is_none() {
-                return Err(format!(
-                    "Ein festes Datum braucht `monat` und `tag` als echten Tag, etwa `monat = 4, tag = 30`; den {tag}.{monat}. gibt es nicht."
-                ));
+                return Err("Ein festes Datum braucht `monat` und `tag` als echten Tag, etwa `monat = 4, tag = 30`; diesen Tag gibt es nicht.".into());
             }
             return Ok(Art::Datum { monat, tag });
         }
@@ -236,6 +234,9 @@ pub struct Kalender {
 pub struct Katalog {
     kalender: Vec<Kalender>,
 }
+
+/// Satz für eine Regel, die in keinem Jahr einen Tag ergibt.
+const SATZ_KOMMT_NIE_VOR: &str = "Diese Regel ergibt in keinem Jahr von 1912 bis 2100 einen Tag, etwa ein Schaltmonat, den es nie gibt, oder der 30. Tag eines Monats, der immer 29 Tage hat.";
 
 /// Höchstens so tief folgt die Rechnung Verweisen (Kreise weist die Prüfung vorher ab).
 const TIEFE_HOECHSTENS: usize = 16;
@@ -287,7 +288,18 @@ impl Katalog {
                 self.ohne_kreis(&k.kennung, f, &mut Vec::new())?;
             }
         }
+        for k in &self.kalender {
+            if let Some(f) = k.fest.iter().find(|f| !self.kommt_vor(Some(&k.kennung), &f.regel)) {
+                return Err(format!("Im Kalender „{}“, Fest „{}“: {SATZ_KOMMT_NIE_VOR}", k.kennung, f.kennung));
+            }
+        }
         Ok(())
+    }
+
+    /// Ergibt die Regel in einem der Jahre, für die gerechnet wird, einen Tag?
+    /// (Nicht bei unmöglichen Schaltmonaten oder dem 30. eines immer kurzen Monats.)
+    fn kommt_vor(&self, im: Option<&str>, regel: &Regel) -> bool {
+        (ERSTES_JAHR..=LETZTES_JAHR).any(|j| self.im_jahr(im, regel, j).is_some())
     }
 
     fn ohne_kreis<'a>(&'a self, kal: &'a str, f: &'a Fest, pfad: &mut Vec<(&'a str, &'a str)>) -> Result<(), String> {
@@ -339,6 +351,9 @@ impl Katalog {
                     bekannt.join(", ")
                 ));
             }
+        }
+        if !self.kommt_vor(None, regel) {
+            return Err(SATZ_KOMMT_NIE_VOR.into());
         }
         Ok(())
     }
@@ -420,8 +435,11 @@ impl Katalog {
             Ok(Art::Ostern(OsterRechnung::Westlich)) => "Ostersonntag nach westlicher Rechnung".into(),
             Ok(Art::Ostern(OsterRechnung::Orthodox)) => "Ostersonntag nach orthodoxer (julianischer) Rechnung".into(),
             Ok(Art::Chinesisch { monat, tag, schaltmonat }) => {
-                let s = if schaltmonat { "Schaltmonats nach dem " } else { "" };
-                format!("{tag}. Tag des {s}{monat}. Monats im chinesischen Kalender")
+                if schaltmonat {
+                    format!("{tag}. Tag des Schaltmonats nach dem {monat}. Monat im chinesischen Kalender")
+                } else {
+                    format!("{tag}. Tag des {monat}. Monats im chinesischen Kalender")
+                }
             }
             Ok(Art::Fest(v)) => bezug(v),
             Err(e) => e,
@@ -637,14 +655,14 @@ regel = { nach = "kirche.ostern", tage = -3 }
         let (d, h) = k.naechstes(None, &pfingsten, Abstand { zahl: 0, einheit: Einheit::Tag }, tag("2026-11-20")).unwrap();
         assert_eq!((d.to_string().as_str(), h.as_str()), ("2027-05-16", "Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)"));
         let eigene = regel("kalender = \"chinesisch\"\nmonat = 4\ntag = 4\nschaltmonat = true");
-        assert_eq!(k.herkunft(None, &eigene, 2028), "Eigene Regel · 4. Tag des Schaltmonats nach dem 4. Monats im chinesischen Kalender");
+        assert_eq!(k.herkunft(None, &eigene, 2028), "Eigene Regel · 4. Tag des Schaltmonats nach dem 4. Monat im chinesischen Kalender");
     }
 
     #[test]
     fn pruefung_weist_ab() {
         let falsch = |t: &str| regel(t).art().unwrap_err();
         assert!(falsch("").contains("leer"));
-        assert!(falsch("monat = 2\ntag = 30").contains("30.2."));
+        assert!(falsch("monat = 2\ntag = 30").contains("diesen Tag gibt es nicht"));
         assert!(falsch("monat = 5").contains("`tag`"));
         assert!(falsch("ostern = \"astronomisch\"").contains("westlich"));
         assert!(regel("nach = \"x\"\ntage = -366").art().is_ok(), "ein Jahr ist erlaubt");
@@ -681,5 +699,14 @@ regel = { nach = "kirche.ostern", tage = -3 }
         assert!(s.contains("nicht gibt") && !s.contains("ostara"), "nennt den Verweis nicht: {s}");
         assert!(k.ereignis_regel_pruefen(&regel("nach = \"chinesisch.neujahr\"\ntage = -3")).is_ok());
         assert!(k.ereignis_regel_pruefen(&regel("ostern = \"orthodox\"")).is_ok());
+        // Regeln ohne ein einziges Vorkommen 1912–2100 (Hinweis der Abnahme).
+        for nie in ["kalender = \"chinesisch\"\nmonat = 12\ntag = 1\nschaltmonat = true", "kalender = \"chinesisch\"\nmonat = 1\ntag = 1\nschaltmonat = true"] {
+            assert!(k.ereignis_regel_pruefen(&regel(nie)).unwrap_err().contains("in keinem Jahr"), "{nie}");
+        }
+        assert!(k.ereignis_regel_pruefen(&regel("kalender = \"chinesisch\"\nmonat = 11\ntag = 1\nschaltmonat = true")).is_ok(), "2033");
+        // Die Sätze nennen keine eingegebenen Zahlen.
+        assert!(!falsch("kalender = \"chinesisch\"\nmonat = 13\ntag = 1").contains("13"));
+        assert!(!falsch("monat = 2\ntag = 31").contains("31"));
+        assert!(!falsch("nach = \"x\"\ntage = 400").contains("400"));
     }
 }

@@ -66,7 +66,8 @@
 			{/if}
 		</span>
 		<span class="was">
-			{#if href !== null && anker(z) === undefined}
+			<!-- Ein Fest hat keinen Anker: auf seiner Projektseite kein Link auf dieselbe Seite. -->
+			{#if href !== null && anker(z) === undefined && (z.quelle !== 'kalender' || mitProjekt)}
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- zielHref baut mit resolve() -->
 				<a {href}>{z.titel}</a>
 			{:else}

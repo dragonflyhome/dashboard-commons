@@ -355,6 +355,17 @@ export function fristenListe(): FristenListe {
 					herkunft: null
 				},
 				hinweis: 'Termin steht noch aus'
+			}),
+			// Kalender, Stufe 1: ein Fest aus `kalender = [...]`, ohne Stufe, mit Herkunft.
+			fristZeile('kalender', 'kirche.pfingsten', 'Pfingstsonntag', 40, {
+				frist_stufe: null,
+				ziel: '/projects/beispiel',
+				ereignis: {
+					kennung: 'kirche.pfingsten',
+					titel: 'Kirchenjahr',
+					datum: tagIso(40),
+					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag'
+				}
 			})
 		],
 		hinweise: [],

@@ -285,8 +285,8 @@ impl Baustein for Fristen {
     fn pruefen(&self) -> Result<(), Mangel> {
         // Welche Kalender jemand zeigt, ist persönlich: Der Fehlersatz nennt den Eintrag nicht.
         let bekannt: Vec<&str> = Katalog::eingebaut().kalender().iter().map(|k| k.kennung.as_str()).collect();
-        if let Some(k) = self.kalender.iter().find(|k| !bekannt.contains(&k.as_str())) {
-            return Err(Mangel::bei("kalender", k, format!("In `kalender` steht ein Kalender, den es nicht gibt. Bekannt sind: {}.", bekannt.join(", "))));
+        if self.kalender.iter().any(|k| !bekannt.contains(&k.as_str())) {
+            return Err(Mangel::bei("kalender", "", format!("In `kalender` steht ein Kalender, den es nicht gibt. Bekannt sind: {}.", bekannt.join(", "))));
         }
         for e in &self.ereignis {
             kennung_und_titel("Das Ereignis", &e.kennung, &e.titel)?;
@@ -416,9 +416,10 @@ pub fn fristen_ueber_die_datei(d: &Datei<Fristen>, datei: &str, text: &str) -> R
         }
     }
     let mut kalender = BTreeSet::new();
-    if let Some(k) = teile.iter().flat_map(|t| &t.kalender).find(|k| !kalender.insert(k.as_str())) {
-        return Err(Mangel::beim_zweiten("kalender", k, "In `kalender` steht ein Kalender zweimal, auch über Teile hinweg zählt jeder nur einmal.")
-            .in_datei(datei, quelle));
+    if teile.iter().flat_map(|t| &t.kalender).any(|k| !kalender.insert(k.as_str())) {
+        return Err(
+            Mangel::bei("kalender", "", "In `kalender` steht ein Kalender zweimal, auch über Teile hinweg zählt jeder nur einmal.").in_datei(datei, quelle)
+        );
     }
     // Eine Frist an einem Ereignis mit Regel kehrt wieder; ein Datum ließe sich keinem Durchlauf zuordnen.
     let mit_regel: BTreeSet<&str> = teile.iter().flat_map(|t| &t.ereignis).filter(|e| e.regel.is_some()).map(|e| e.kennung.as_str()).collect();

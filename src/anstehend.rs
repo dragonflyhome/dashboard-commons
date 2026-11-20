@@ -474,7 +474,7 @@ pub fn alle_eintraege(inhalt: &Inhalt) -> Vec<AnstehendEintrag> {
     for a in &inhalt.speicher.aufgaben {
         // Etappe B3: Eine bewegliche Frist hat ihr Datum, sobald ihr Ereignis
         // eines hat; bis dahin keine Frist (sie hebt nichts an), aber `frist_bezug`.
-        let bezug = a.frist_bezug.as_ref().map(|b| (b, crate::fristen::bezug_aufloesen(&inhalt.fristen, &a.projekt, b, heute)));
+        let bezug = a.frist_bezug.as_ref().map(|b| (b, crate::fristen::bezug_aufloesen(&inhalt.fristen, &a.projekt, b, crate::fristen::bezug_ab(a, heute))));
         let frist = match &bezug {
             Some((_, (_, d))) => d.map(|d| d.format("%Y-%m-%d").to_string()),
             None => a.frist.clone(),

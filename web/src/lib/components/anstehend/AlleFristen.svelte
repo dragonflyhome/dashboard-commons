@@ -64,9 +64,9 @@
 		</summary>
 		<p class="muted small">
 			Aus Aufgaben, Fragen, Arbeiten und den Fristen der Projekte, nach Datum; bewegliche Fristen
-			ohne Datum am Ende.
+			ohne Datum am Ende. Dazu Feste der nächsten 30 Tage aus den Kalendern der Projekte.
 		</p>
-		<Fristenliste {liste} mitProjekt leerSatz="Gerade läuft keine Frist." />
+		<Fristenliste {liste} mitProjekt leerSatz="Gerade läuft keine Frist, und kein Fest steht an." />
 	</details>
 {/if}
 

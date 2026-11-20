@@ -55,6 +55,10 @@ impl Mangel {
     /// Zum Lesefehler in `datei` mit dem Text `quelle` machen.
     pub fn in_datei(self, datei: &str, quelle: &str) -> LeseFehler {
         let zeile = self.suche.as_ref().and_then(|(k, w)| {
+            // Ohne Wert (etwa eine Liste, deren Einträge der Satz nicht nennt): die Zeile des Schlüssels.
+            if w.is_empty() {
+                return zeile_mit_schluessel(quelle, k);
+            }
             let erste = zeile_mit(quelle, k, w)?;
             if !self.zweites {
                 return Some(erste);
@@ -269,6 +273,9 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
             let k = schluessel.unwrap_or("datum");
             return format!("{} steht ein Datum ohne Anführungszeichen. Bitte so schreiben: `{k} = \"{wert}\"`.", bei(schluessel));
         }
+        // Welche Kalender und Feste jemand nutzt, ist persönlich (Kalender, Stufe 1):
+        // bei `kalender` und `regel` nur die Art des Werts, nicht den Wert.
+        let ist = if matches!(schluessel, Some("kalender" | "regel")) { ist.split(['`', '"']).next().unwrap_or("") } else { ist };
         let mut s = format!("{} steht {}, erwartet ist {}.", bei(schluessel), art_deutsch(ist), art_deutsch(soll));
         if soll.contains("string")
             && (ist.starts_with("integer") || ist.starts_with("float"))

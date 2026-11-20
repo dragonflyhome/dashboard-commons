@@ -172,6 +172,46 @@ describe('Baustein Fristenliste', () => {
 		expect(screen.getByText('Gerade läuft keine Frist.')).toBeInTheDocument();
 	});
 
+	it('Kalender: Fest mit Herkunft, ohne Stufe und ohne Link auf dieselbe Seite; Frist mit Herkunft', () => {
+		const pfingsten = zeile({
+			quelle: 'kalender',
+			id: 'kirche.pfingsten',
+			titel: 'Pfingstsonntag',
+			frist: '2027-05-16',
+			tage_bis: 177,
+			ziel: '/projects/antrag',
+			ereignis: {
+				kennung: 'kirche.pfingsten',
+				titel: 'Kirchenjahr',
+				datum: '2027-05-16',
+				herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)'
+			}
+		});
+		const einkauf = zeile({
+			id: 'einkauf',
+			titel: 'Einkauf fürs Neujahrsfest',
+			frist: '2027-02-02',
+			tage_bis: 74,
+			frist_stufe: 'spaeter',
+			frist_bezug: { ereignis: 'neujahr', abstand: '-3 Tage' },
+			ereignis: {
+				kennung: 'neujahr',
+				titel: 'Neujahrsfest',
+				datum: '2027-02-06',
+				herkunft: 'Chinesischer Kalender · Chinesisches Neujahr'
+			}
+		});
+		const { container, unmount } = render(Fristenliste, { liste: liste([einkauf, pfingsten]) });
+		const [frist, festZeile] = [...container.querySelectorAll('li')];
+		expect(festZeile).toHaveAttribute('data-frist-stufe', 'keine');
+		expect(festZeile?.textContent).toMatch(/Fest\s*· Kirchenjahr · Pfingstsonntag · 49 Tage nach/);
+		expect(within(festZeile as HTMLElement).queryByRole('link')).toBeNull();
+		expect(frist?.textContent).toMatch(/· Chinesischer Kalender · Chinesisches Neujahr/);
+		unmount();
+		render(Fristenliste, { liste: liste([pfingsten]), mitProjekt: true });
+		expect(screen.getByRole('link', { name: 'Pfingstsonntag' })).toBeInTheDocument();
+	});
+
 	it('ohne Anmeldung nur der Satz zum Anmelden, kein Titel', () => {
 		const geladen = {
 			zustand: 'fehler' as const,

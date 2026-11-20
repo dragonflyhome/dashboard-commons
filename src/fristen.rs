@@ -21,7 +21,7 @@ use chrono::NaiveDate;
 use crate::anstehend::{FRIST_BALD_TAGE, Inhalt, alle_eintraege, archivierte, eine_frage_je_projekt, frist_stufe, tage_bis};
 use crate::inhalt::store::Bestand;
 use crate::kalender::{Katalog, Regel};
-use crate::vertrag::api::{AnstehendEintrag, AufgabeAnsicht, EintragsArt};
+use crate::vertrag::api::{AnstehendEintrag, Aufgabe, AufgabeAnsicht, AufgabeVerlaufArt, EintragsArt};
 use crate::vertrag::daten::{Baustein, Datei, DatenInhalt};
 use crate::vertrag::fristen::{Abstand, Einheit, EreignisStand, FristBezug, FristQuelle, FristZeile, Fristen, FristenListe, aufloesen};
 
@@ -39,12 +39,22 @@ fn text(d: NaiveDate) -> String {
     d.format("%Y-%m-%d").to_string()
 }
 
+/// Ab welchem Tag die bewegliche Frist einer Aufgabe ihr Vorkommen sucht:
+/// der Tag, an dem sie zuletzt gesetzt wurde (Verlauf, Art `frist`), sonst
+/// der Anlegetag. Eine Aufgabe gilt für ein Vorkommen eines Regel-Ereignisses:
+/// Versäumt, rückt sie nicht weiter, sondern wird überfällig.
+pub fn bezug_ab(a: &Aufgabe, heute: NaiveDate) -> NaiveDate {
+    let zeit = a.verlauf.iter().rev().find(|v| v.art == AufgabeVerlaufArt::Frist).map_or(a.erstellt.as_str(), |v| v.zeit.as_str());
+    zeit.get(..10).and_then(|t| NaiveDate::parse_from_str(t, "%Y-%m-%d").ok()).unwrap_or(heute)
+}
+
 /// Eine bewegliche Frist eines Projekts auflösen: wie es um ihr Ereignis
 /// steht (aus `fristen.toml` des Projekts) und ihr Datum, sobald das Ereignis
 /// eines hat. Ohne Datei oder mit unbekanntem Ereignis hängt sie (Titel `null`).
-pub fn bezug_aufloesen(dateien: &[FristenDatei], projekt: &str, bezug: &FristBezug, heute: NaiveDate) -> (EreignisStand, Option<NaiveDate>) {
+/// `ab`: bei einem Ereignis mit Regel das früheste Vorkommen ab hier ([`bezug_ab`]).
+pub fn bezug_aufloesen(dateien: &[FristenDatei], projekt: &str, bezug: &FristBezug, ab: NaiveDate) -> (EreignisStand, Option<NaiveDate>) {
     let stand = match dateien.iter().find(|d| d.projekt == projekt) {
-        Some(d) => d.inhalt.ereignis_stand(&bezug.ereignis, &bezug.abstand, heute),
+        Some(d) => d.inhalt.ereignis_stand(&bezug.ereignis, &bezug.abstand, ab),
         None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None },
     };
     let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
@@ -67,7 +77,7 @@ pub fn ansichten_aufloesen(b: &Bestand, ansichten: &mut [AufgabeAnsicht], heute:
     for a in ansichten.iter_mut() {
         let Some(bezug) = a.aufgabe.frist_bezug.clone() else { continue };
         let stand = match aus_bestand(b, &a.aufgabe.projekt) {
-            Some(d) => d.ereignis_stand(&bezug.ereignis, &bezug.abstand, heute),
+            Some(d) => d.ereignis_stand(&bezug.ereignis, &bezug.abstand, bezug_ab(&a.aufgabe, heute)),
             None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None },
         };
         let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
@@ -469,6 +479,35 @@ abstand = "-3 Tage"
         assert_eq!(l.hinweise, [SATZ_FESTE_GRENZE]);
         let einkauf = l.zeilen.iter().find(|z| z.id == "einkauf").unwrap();
         assert_eq!((einkauf.frist.as_deref(), einkauf.ereignis.as_ref().unwrap().herkunft.as_deref()), (None, None), "hängt, ohne zu raten");
+    }
+
+    /// Abnahme Runde 1: Eine Aufgabe an einem Regel-Ereignis gilt für das
+    /// Vorkommen ab dem Tag, an dem ihre Frist gesetzt wurde; versäumt wird sie
+    /// überfällig (Ampel rot) statt aufs nächste Jahr zu springen.
+    #[test]
+    fn aufgabe_an_regel_ereignis_gilt_fuer_ein_vorkommen() {
+        let mut a = aufgabe("kal", "a-20260201-0001", None, Some(("neujahr", "+0 Tage")));
+        a.erstellt = "2026-02-01T09:00:00+01:00".into();
+        let mit = |a: Aufgabe, heute: &str| Inhalt { heute: tag(heute), ..inhalt(vec![a], vec![datei("kal", MIT_KALENDER)], vec![kopf("kal", false)]) };
+        let i = mit(a.clone(), "2026-02-20");
+        let e = &alle_eintraege(&i)[0];
+        assert_eq!((e.frist.as_deref(), e.frist_stufe), (Some("2026-02-17"), Some(FristStufe::Ueberfaellig)), "Neujahr 2026, versäumt");
+        assert_eq!(stand(&i, "kal").unwrap().gesamt.ampel, StandAmpel::Rot);
+        // Später angelegt: das nächste Neujahr.
+        let mut spaet = a.clone();
+        spaet.erstellt = "2026-02-18T09:00:00+01:00".into();
+        assert_eq!(alle_eintraege(&mit(spaet, "2026-02-20"))[0].frist.as_deref(), Some("2027-02-06"));
+        // Die Frist neu gesetzt (Verlauf Art frist): ab diesem Tag.
+        let mut neu = a;
+        neu.verlauf.push(crate::vertrag::api::AufgabeVerlauf {
+            zeit: "2026-03-01T10:00:00+01:00".into(),
+            von: "chat:kal".into(),
+            art: AufgabeVerlaufArt::Frist,
+            alt: None,
+            neu: Some("neujahr +0 Tage".into()),
+            text: "Frist gesetzt.".into(),
+        });
+        assert_eq!(alle_eintraege(&mit(neu, "2026-03-02"))[0].frist.as_deref(), Some("2027-02-06"));
     }
 
     /// Auflage der Architektur: Ampel und nächste Frist sind mit und ohne aktive Kalender gleich.
