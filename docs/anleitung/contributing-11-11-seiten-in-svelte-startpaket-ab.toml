@@ -375,6 +375,51 @@ Archivierte Projekte. Eine Frist mit Datum folgt der Sicherheitsregel (sieben Ta
 pruefe meldet als Fehler: ein Ereignis, das es in der Datei nicht gibt, eine Kennung zweimal, einen Abstand im falschen Format, eine Frist ohne datum und ohne ereignis (ebenso datum mit ereignis, ereignis ohne abstand, abstand ohne ereignis und Daten nicht als JJJJ-MM-TT); als Hinweis ein Ereignis mit einem Datum in der Zukunft (ein Ereignis bekommt sein Datum, wenn es eingetreten ist; für einen Termin besser eine feste Frist).'''
 
 [[block]]
+titel = 'Feste und berechnete Termine (Kalender, Stufe 1)'
+text = '''
+Kurz für dich (Inhaber): Das Dashboard rechnet Feste selbst aus, etwa Ostern, Pfingsten oder das chinesische Neujahr. In der Fristenliste stehen sie als „Fest“ mit dem nächsten Termin und dem Satz, wonach er berechnet ist. Erinnerungen wie „drei Tage vorher einkaufen“ hängen sich daran und kommen jedes Jahr von selbst wieder.
+
+Kalender anzeigen. Oben in daten/fristen.toml nennt kalender die Kalender, deren Feste in der Fristenliste dieses Projekts stehen. Eingebaut sind kirche (Kirchenjahr), orthodox (Ostern und Pfingsten nach orthodoxer Rechnung) und chinesisch (Neujahr, Laternenfest, Drachenbootfest, Mondfest); ihre Regeln stehen unter vorlagen/kalender/. Feste sind keine Fristen: Sie haben keine Stufe, sind nie überfällig und zählen nicht für Ampel und nächste Frist. Unten in „Anstehend“ (Alle Fristen) stehen die Feste der nächsten 30 Tage, jedes einmal; auf der Projektseite stehen alle. Fehlt kalender, ist alles wie vorher.
+
+Ereignis mit Regel. Statt datum trägt ein Ereignis eine regel; der Server rechnet das Datum je Frist selbst: das früheste Vorkommen, dessen Frist heute oder später liegt. Eine Frist „-3 Tage“ springt also erst am Tag nach ihrem Ende zum nächsten Jahr, eine Frist „+3 Tage“ bleibt bis drei Tage nach dem Fest beim vergangenen. Solche Fristen kehren wieder; erledigt gibt es an ihnen nicht (pruefe lehnt es ab). Gerechnet wird für die Jahre 1912 bis 2100; danach hängt die Frist, ohne dass etwas geraten wird.'''
+
+[[block]]
+beispiel = '''
+# daten/fristen.toml
+kalender = ["kirche", "chinesisch"]
+
+[[ereignis]]
+kennung = "neujahr"
+titel = "Neujahrsfest der Familie"
+regel = { fest = "chinesisch.neujahr" }
+
+[[ereignis]]
+kennung = "sommerfest"
+titel = "Sommerfest"
+regel = { nach = "kirche.pfingsten", tage = 14 }
+
+[[frist]]
+kennung = "einkauf"
+titel = "Einkauf fürs Neujahrsfest"
+ereignis = "neujahr"
+abstand = "-3 Tage"'''
+
+[[block]]
+[block.tabelle]
+spalten = ['Regel', 'Form', 'Beispiel']
+zeilen = [
+  ['Fest eines Kalenders', 'fest = "<kalender>.<fest>"', 'fest = "kirche.ostern"'],
+  ['festes Datum', 'monat, tag (der 29.2. nur in Schaltjahren)', 'monat = 4, tag = 30'],
+  ['Abstand zu einem Fest', 'nach = "<kalender>.<fest>", tage (mit Vorzeichen)', 'nach = "kirche.ostern", tage = 60'],
+  ['Wochentag danach', 'wochentag (montag bis sonntag) und nach; der Bezugstag selbst zählt nicht', 'wochentag = "donnerstag", nach = "kirche.ostern"'],
+  ['Ostersonntag', 'ostern = "westlich" oder "orthodox"', 'ostern = "orthodox"'],
+  ['chinesischer Kalender', 'kalender = "chinesisch", monat (1–12), tag (1–30), wahlweise schaltmonat = true', 'kalender = "chinesisch", monat = 8, tag = 15'],
+]
+
+[[block]]
+text = 'Je Regel genau eine Art; datum und regel zusammen, unbekannte Schlüssel und Verweise ohne Kalender lehnt pruefe ab. Welche Kalender und Feste jemand nutzt, ist persönlich: Die Sätze von pruefe nennen sie nicht, und alles steht wie die übrigen Fristen nur mit Anmeldung da. In der Antwort trägt ereignis dazu herkunft, etwa „Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)“.'
+
+[[block]]
 titel = 'So fängst du an'
 nummeriert = true
 punkte = [

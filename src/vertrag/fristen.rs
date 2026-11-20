@@ -6,6 +6,10 @@
 //! - Ein **Ereignis** ([`FristEreignis`]) hat eine Kennung, einen Titel und ein
 //!   Datum, sobald es eingetreten ist. Es steht in `daten/fristen.toml`; das
 //!   Datum setzt der Chat dort und committet (der Server schreibt nie in den Inhalt).
+//!   Statt des Datums kann es eine **Regel** tragen (`crate::kalender`, etwa
+//!   `regel = { fest = "kirche.ostern" }`); dann rechnet der Server das Datum
+//!   je Frist selbst: das früheste Vorkommen, dessen Frist heute oder später
+//!   liegt. Solche Fristen kehren wieder, darum gibt es an ihnen kein `erledigt`.
 //! - Eine **Frist** ist fest (ein Datum) oder beweglich ([`FristBezug`]: die
 //!   Kennung eines Ereignisses und ein Abstand wie `+14 Tage` oder `+1 Monat`).
 //!   Sobald das Ereignis ein Datum hat, rechnet der Server daraus das Datum der
@@ -38,6 +42,7 @@ use ts_rs::TS;
 use super::anstehend::FristStufe;
 use super::daten::{Baustein, Datei, ist_datum, ist_kennung};
 use super::lesen::{LeseFehler, Mangel};
+use crate::kalender::{Katalog, Regel};
 
 // ----- Die Datei `daten/fristen.toml` -----
 
@@ -45,6 +50,11 @@ use super::lesen::{LeseFehler, Mangel};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Fristen {
+    /// Kalender, deren Feste in der Fristenliste dieses Projekts stehen
+    /// (`crate::kalender`), etwa `kalender = ["kirche", "chinesisch"]`. Feste
+    /// sind keine Fristen: Sie zählen nicht für Ampel und nächste Frist.
+    #[serde(default)]
+    pub kalender: Vec<String>,
     #[serde(default)]
     pub ereignis: Vec<FristEreignis>,
     #[serde(default)]
@@ -62,6 +72,10 @@ pub struct FristEreignis {
     /// JJJJ-MM-TT, sobald das Ereignis eingetreten ist; vorher fehlt es.
     #[serde(default)]
     pub datum: Option<String>,
+    /// Statt `datum`: Der Server rechnet das Datum nach dieser Regel
+    /// (`crate::kalender`), etwa `regel = { fest = "chinesisch.neujahr" }`.
+    #[serde(default)]
+    pub regel: Option<Regel>,
     #[serde(default)]
     pub hinweis: Option<String>,
 }
@@ -110,9 +124,12 @@ pub struct EreignisStand {
     pub kennung: String,
     /// Titel aus `daten/fristen.toml`; `null`: Das Ereignis gibt es dort nicht (mehr).
     pub titel: Option<String>,
-    /// JJJJ-MM-TT, sobald das Ereignis eingetreten ist; vorher `null`: Die
-    /// Frist hängt an ihm.
+    /// JJJJ-MM-TT: eingetreten oder, bei einem Ereignis mit Regel, berechnet
+    /// (das Vorkommen, das für diese Frist zählt); sonst `null`: Die Frist hängt an ihm.
     pub datum: Option<String>,
+    /// Nur bei einer Regel: wonach das Datum berechnet ist, etwa
+    /// „Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (5.4.2026)“.
+    pub herkunft: Option<String>,
 }
 
 /// Einheit eines Abstands.
@@ -211,6 +228,9 @@ pub enum FristQuelle {
     /// Nur die sichtbare Frage des Projekts (Warteschlange, Etappe B2).
     Frage,
     Arbeit,
+    /// Ein Fest eines Kalenders aus `kalender = [...]` in `daten/fristen.toml`
+    /// (Kalender, Stufe 1): nächstes Vorkommen ab heute, ohne Stufe.
+    Kalender,
 }
 
 /// Eine Zeile der Fristenliste.
@@ -263,6 +283,11 @@ impl Baustein for Fristen {
     /// entweder `datum` oder `ereignis` mit `abstand`. Doppelte Kennungen und
     /// unbekannte Ereignisse prüft [`fristen_ueber_die_datei`] (auch über Teile).
     fn pruefen(&self) -> Result<(), Mangel> {
+        // Welche Kalender jemand zeigt, ist persönlich: Der Fehlersatz nennt den Eintrag nicht.
+        let bekannt: Vec<&str> = Katalog::eingebaut().kalender().iter().map(|k| k.kennung.as_str()).collect();
+        if let Some(k) = self.kalender.iter().find(|k| !bekannt.contains(&k.as_str())) {
+            return Err(Mangel::bei("kalender", k, format!("In `kalender` steht ein Kalender, den es nicht gibt. Bekannt sind: {}.", bekannt.join(", "))));
+        }
         for e in &self.ereignis {
             kennung_und_titel("Das Ereignis", &e.kennung, &e.titel)?;
             if let Some(d) = e.datum.as_deref().filter(|d| !ist_datum(d, false)) {
@@ -274,6 +299,21 @@ impl Baustein for Fristen {
                         e.kennung
                     ),
                 ));
+            }
+            if let Some(r) = &e.regel {
+                let k = &e.kennung;
+                if e.datum.is_some() {
+                    return Err(Mangel::bei(
+                        "kennung",
+                        k,
+                        format!(
+                            "Das Ereignis „{k}“ hat `datum` und `regel`. Entweder trägt der Chat das Datum ein, oder der Server rechnet es nach der Regel."
+                        ),
+                    ));
+                }
+                if let Err(satz) = Katalog::eingebaut().ereignis_regel_pruefen(r) {
+                    return Err(Mangel::bei("kennung", k, format!("Beim Ereignis „{k}“ passt die `regel` nicht: {satz}")));
+                }
             }
         }
         for f in &self.frist {
@@ -375,6 +415,26 @@ pub fn fristen_ueber_die_datei(d: &Datei<Fristen>, datei: &str, text: &str) -> R
                 .in_datei(datei, quelle));
         }
     }
+    let mut kalender = BTreeSet::new();
+    if let Some(k) = teile.iter().flat_map(|t| &t.kalender).find(|k| !kalender.insert(k.as_str())) {
+        return Err(Mangel::beim_zweiten("kalender", k, "In `kalender` steht ein Kalender zweimal, auch über Teile hinweg zählt jeder nur einmal.")
+            .in_datei(datei, quelle));
+    }
+    // Eine Frist an einem Ereignis mit Regel kehrt wieder; ein Datum ließe sich keinem Durchlauf zuordnen.
+    let mit_regel: BTreeSet<&str> = teile.iter().flat_map(|t| &t.ereignis).filter(|e| e.regel.is_some()).map(|e| e.kennung.as_str()).collect();
+    for f in teile.iter().flat_map(|t| &t.frist).filter(|f| f.erledigt.is_some()) {
+        if let Some(e) = f.ereignis.as_deref().filter(|e| mit_regel.contains(e)) {
+            return Err(Mangel::bei(
+                "kennung",
+                &f.kennung,
+                format!(
+                    "Die Frist „{}“ hängt am Ereignis „{e}“ mit Regel und kehrt darum wieder; `erledigt` gibt es an ihr nicht. Sie rückt am Tag nach ihrem Ende von selbst zum nächsten Vorkommen.",
+                    f.kennung
+                ),
+            )
+            .in_datei(datei, quelle));
+        }
+    }
     Ok(())
 }
 
@@ -384,14 +444,20 @@ impl Datei<Fristen> {
         self.inhalte().into_iter().flat_map(|t| &t.ereignis).find(|e| e.kennung == kennung)
     }
 
-    /// Wie es um ein Ereignis steht (Titel und Datum, sonst `null`).
-    pub fn ereignis_stand(&self, kennung: &str) -> EreignisStand {
+    /// Wie es um ein Ereignis steht, für eine Frist mit diesem `abstand`
+    /// (Titel und Datum, sonst `null`). Bei einer Regel ist das Datum das
+    /// früheste Vorkommen, dessen Frist am Tag `heute` oder später liegt; außerhalb
+    /// der Jahre, für die gerechnet wird, fehlt es (die Frist hängt).
+    pub fn ereignis_stand(&self, kennung: &str, abstand: &str, heute: NaiveDate) -> EreignisStand {
         let e = self.ereignis(kennung);
-        EreignisStand {
-            kennung: kennung.to_string(),
-            titel: e.map(|e| e.titel.clone()),
-            datum: e.and_then(|e| e.datum.clone()).filter(|d| ist_datum(d, false)),
-        }
+        let (datum, herkunft) = match e.and_then(|e| e.regel.as_ref()) {
+            Some(r) => match Abstand::lesen(abstand).and_then(|a| Katalog::eingebaut().naechstes(None, r, a, heute)) {
+                Some((d, h)) => (Some(d.format("%Y-%m-%d").to_string()), Some(h)),
+                None => (None, None),
+            },
+            None => (e.and_then(|e| e.datum.clone()).filter(|d| ist_datum(d, false)), None),
+        };
+        EreignisStand { kennung: kennung.to_string(), titel: e.map(|e| e.titel.clone()), datum, herkunft }
     }
 }
 

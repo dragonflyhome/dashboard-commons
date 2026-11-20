@@ -1,0 +1,14 @@
+# Kalender „Ostern (orthodox)“: Ostern nach julianischer Rechnung, angegeben im heutigen
+# (gregorianischen) Kalender, und die Feste, die daran hängen (Allgemeinwissen).
+kennung = "orthodox"
+titel = "Ostern (orthodox)"
+
+[[fest]]
+kennung = "ostern"
+titel = "Ostersonntag (orthodox)"
+regel = { ostern = "orthodox" }
+
+[[fest]]
+kennung = "pfingsten"
+titel = "Pfingstsonntag (orthodox)"
+regel = { nach = "ostern", tage = 49 }

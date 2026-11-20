@@ -12,7 +12,8 @@ export const QUELLE_WORT: Readonly<Record<FristQuelle, string>> = {
 	datei: 'Frist',
 	aufgabe: 'Aufgabe',
 	frage: 'Frage',
-	arbeit: 'Arbeit'
+	arbeit: 'Arbeit',
+	kalender: 'Fest'
 };
 
 /**

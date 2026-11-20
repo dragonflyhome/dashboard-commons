@@ -26,7 +26,9 @@ use crate::sicherheit::FREIER_KANAL as FREIER_KANAL_PFAD;
 use crate::sicherheit::oeffentlich;
 
 /// Die Spürhunde: erfundene Texte, die nie frei hinausgehen dürfen.
-const SPUERHUNDE: [&str; 15] = [
+// Kalender, Stufe 1: Festtitel und Herkunft (welche Kalender jemand nutzt, ist persönlich).
+const SPUERHUNDE: [&str; 16] = [
+    "julianischer",
     // Zweig teilschritte (T4): Titel und Besitzer eines Schritts.
     "SPUERHUND-SCHRITT",
     "spuerhund-besitzer",
@@ -198,7 +200,7 @@ summary = \"x\"
     std::fs::write(
         p.join("daten").join("fristen.toml"),
         format!(
-            "[[ereignis]]\nkennung = \"brief\"\ntitel = \"SPUERHUND-EREIGNIS Brief\"\n\n\
+            "kalender = [\"orthodox\"]\n\n[[ereignis]]\nkennung = \"fest\"\ntitel = \"SPUERHUND-EREIGNIS Fest\"\nregel = {{ fest = \"orthodox.ostern\" }}\n\n[[frist]]\nkennung = \"festtag\"\ntitel = \"SPUERHUND-FRIST Festtag\"\nereignis = \"fest\"\nabstand = \"+0 Tage\"\n\n[[ereignis]]\nkennung = \"brief\"\ntitel = \"SPUERHUND-EREIGNIS Brief\"\n\n\
              [[frist]]\nkennung = \"vorbei\"\ntitel = \"SPUERHUND-FRIST vorbei\"\ndatum = \"{gestern}\"\n\n\
              [[frist]]\nkennung = \"spaeter\"\ntitel = \"SPUERHUND-FRIST später\"\nereignis = \"brief\"\nabstand = \"+14 Tage\"\n"
         ),

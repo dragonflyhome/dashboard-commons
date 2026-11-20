@@ -1,0 +1,60 @@
+# Kalender „Kirchenjahr“: Feste der westlichen Kirchen (Allgemeinwissen).
+# Eingebaut in den Dienst; welche Kalender angezeigt werden, steht im Projekt `kalender`.
+# Regelarten und Prüfung: src/kalender/mod.rs.
+kennung = "kirche"
+titel = "Kirchenjahr"
+
+[[fest]]
+kennung = "aschermittwoch"
+titel = "Aschermittwoch"
+regel = { nach = "ostern", tage = -46 }
+
+[[fest]]
+kennung = "karfreitag"
+titel = "Karfreitag"
+regel = { nach = "ostern", tage = -2 }
+
+[[fest]]
+kennung = "ostern"
+titel = "Ostersonntag"
+regel = { ostern = "westlich" }
+
+[[fest]]
+kennung = "ostermontag"
+titel = "Ostermontag"
+regel = { nach = "ostern", tage = 1 }
+
+[[fest]]
+kennung = "himmelfahrt"
+titel = "Christi Himmelfahrt"
+regel = { nach = "ostern", tage = 39 }
+
+[[fest]]
+kennung = "pfingsten"
+titel = "Pfingstsonntag"
+regel = { nach = "ostern", tage = 49 }
+
+[[fest]]
+kennung = "pfingstmontag"
+titel = "Pfingstmontag"
+regel = { nach = "ostern", tage = 50 }
+
+[[fest]]
+kennung = "dreifaltigkeit"
+titel = "Dreifaltigkeitssonntag"
+regel = { nach = "ostern", tage = 56 }
+
+[[fest]]
+kennung = "fronleichnam"
+titel = "Fronleichnam"
+regel = { nach = "ostern", tage = 60 }
+
+[[fest]]
+kennung = "heiligabend"
+titel = "Heiligabend"
+regel = { monat = 12, tag = 24 }
+
+[[fest]]
+kennung = "weihnachten"
+titel = "Erster Weihnachtstag"
+regel = { monat = 12, tag = 25 }

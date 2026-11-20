@@ -204,6 +204,7 @@ export type { PruefungGesamt } from './PruefungGesamt';
 export type { PruefungProjekt } from './PruefungProjekt';
 export type { PruefungsBericht } from './PruefungsBericht';
 export type { QuellenStand } from './QuellenStand';
+export type { Regel } from './Regel';
 export type { Regel321 } from './Regel321';
 export type { RepoRef } from './RepoRef';
 export type { RepoStatus } from './RepoStatus';

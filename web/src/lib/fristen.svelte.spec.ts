@@ -35,7 +35,7 @@ const haengt = zeile({
 	id: 'helferliste',
 	titel: 'Helferliste verschicken',
 	frist_bezug: { ereignis: 'aufbau', abstand: '-3 Tage' },
-	ereignis: { kennung: 'aufbau', titel: 'Termin für den Aufbau', datum: null }
+	ereignis: { kennung: 'aufbau', titel: 'Termin für den Aufbau', datum: null, herkunft: null }
 });
 const aufgeloest = zeile({
 	id: 'standanmeldung',
@@ -44,7 +44,7 @@ const aufgeloest = zeile({
 	tage_bis: 26,
 	frist_stufe: 'spaeter',
 	frist_bezug: { ereignis: 'zusage-da', abstand: '+1 Monat' },
-	ereignis: { kennung: 'zusage-da', titel: 'Zusage ist da', datum: '2026-10-31' }
+	ereignis: { kennung: 'zusage-da', titel: 'Zusage ist da', datum: '2026-10-31', herkunft: null }
 });
 const fest = zeile({
 	id: 'plakate',
@@ -60,7 +60,10 @@ describe('Fristen: Worte', () => {
 		expect(haengtSatz(aufgeloest)).toBeNull();
 		expect(haengtSatz(fest)).toBeNull();
 		expect(
-			haengtSatz({ ...haengt, ereignis: { kennung: 'aufbau', titel: null, datum: null } })
+			haengtSatz({
+				...haengt,
+				ereignis: { kennung: 'aufbau', titel: null, datum: null, herkunft: null }
+			})
 		).toBe('hängt an „aufbau“ (-3 Tage; dieses Ereignis fehlt in fristen.toml)');
 		// Eine Aufgabe ohne die Felder (ältere Antwort): kein Satz.
 		expect(haengtSatz({ frist: null })).toBeNull();

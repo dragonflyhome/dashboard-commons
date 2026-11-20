@@ -43,6 +43,9 @@ sysinfo = "~0.33"
 # Der GNU-Linker vermischt dann beide Import-Bibliotheken, und Local::now() stürzt ab.
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std", "serde"] }
 zeroize = "1"
+# Kalender (Ostern, chinesischer Kalender): Apache-2.0, aus dem Projekt icu4x; bringt core_maths
+# (MIT) und displaydoc (MIT oder Apache-2.0) mit. Genutzt, nicht kopiert. Genau gepinnt: Die Kiste kündigt häufige Brüche an; jede Aktualisierung nur mit vollem Neujahrstest.
+calendrical_calculations = { version = "=0.2.4", default-features = false }
 tokio-stream = { version = "0.1", features = ["sync", "time"] }
 futures-util = { version = "0.3", default-features = false }
 anyhow = "1"
