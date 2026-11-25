@@ -543,6 +543,17 @@ abstand = "-3 Tage"
         assert!(lesen(&doppelt).unwrap_err().contains("zweimal"));
         let falsch = MIT_KALENDER.replace("fest = \"chinesisch.neujahr\"", "fest = \"neujahr\"");
         assert!(lesen(&falsch).unwrap_err().contains("passt die `regel` nicht"));
+        // Abnahme Runde 2: die Zeile des betroffenen Kalenders, ohne ihn im Satz; auch über Teile.
+        let fehler = |t: &str| ProjektDaten::default().datei_einlesen("fristen.toml", "projects/kal/daten/fristen.toml", t).unwrap_err();
+        let e = fehler("# Kalender\nkalender = [\"kirche\", \"geheimbund\"]\n");
+        assert_eq!(e.zeile, Some(2), "{e:?}");
+        let e = fehler("[teil.a]\nkalender = [\"kirche\"]\n\n[teil.b]\nkalender = ['orthodox', 'kirche']\n");
+        assert_eq!((e.zeile, e.text.contains("zweimal"), e.text.contains("kirche")), (Some(5), true, false), "{e:?}");
+        // Typfehler nennen bei kalender und regel nur die Art, auch ohne Vorschlag mit Wert.
+        let e = fehler("kalender = \"geheimbund\"\n");
+        assert!(e.text.contains("ein Text") && !e.text.contains("geheimbund"), "{e:?}");
+        let e = fehler("[[ereignis]]\nkennung = \"x\"\ntitel = \"X\"\nregel = { fest = 1234 }\n");
+        assert!(e.text.contains("eine ganze Zahl") && !e.text.contains("1234") && !e.text.contains("Anführungszeichen"), "{e:?}");
     }
 
     /// Auflage zu B3: Lässt sich fristen.toml eines archivierten Projekts nicht

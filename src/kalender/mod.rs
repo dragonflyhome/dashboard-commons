@@ -164,7 +164,7 @@ impl Regel {
             pflicht("monat", self.monat.is_some(), "`kalender`")?;
             pflicht("tag", self.tag.is_some(), "`kalender`")?;
             if !(1..=12).contains(&monat) || !(1..=30).contains(&tag) {
-                return Err("Diesen Tag gibt es im chinesischen Kalender nicht. Erlaubt sind Monat 1–12 und Tag 1–30.".into());
+                return Err("Diesen Tag gibt es in diesem Kalender nicht. Erlaubt sind Monat 1–12 und Tag 1–30.".into());
             }
             return Ok(Art::Chinesisch { monat, tag, schaltmonat: self.schaltmonat.unwrap_or(false) });
         }

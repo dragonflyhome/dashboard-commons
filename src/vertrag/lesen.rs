@@ -55,16 +55,15 @@ impl Mangel {
     /// Zum Lesefehler in `datei` mit dem Text `quelle` machen.
     pub fn in_datei(self, datei: &str, quelle: &str) -> LeseFehler {
         let zeile = self.suche.as_ref().and_then(|(k, w)| {
-            // Ohne Wert (etwa eine Liste, deren Einträge der Satz nicht nennt): die Zeile des Schlüssels.
-            if w.is_empty() {
-                return zeile_mit_schluessel(quelle, k);
-            }
-            let erste = zeile_mit(quelle, k, w)?;
+            // Genau `k = "w"`, sonst `w` als Eintrag einer Liste `k = [..., "w"]`.
+            let finde = |nach| zeile_mit_ab(quelle, k, w, nach).or_else(|| zeile_mit_listeneintrag(quelle, k, w, nach));
+            // Ohne Treffer und ohne Wert: die Zeile des Schlüssels (mit Wert lieber keine als eine falsche).
+            let erste = finde(0).or_else(|| w.is_empty().then(|| zeile_mit_schluessel(quelle, k)).flatten())?;
             if !self.zweites {
                 return Some(erste);
             }
             // Ab der Zeile nach dem ersten Vorkommen weitersuchen; sonst bleibt die erste.
-            Some(zeile_mit_ab(quelle, k, w, erste).unwrap_or(erste))
+            Some(finde(erste).unwrap_or(erste))
         });
         LeseFehler { datei: datei.to_string(), zeile, text: self.text }
     }
@@ -115,6 +114,25 @@ pub fn zeile_mit_ab(text: &str, schluessel: &str, wert: &str, nach: usize) -> Op
             let Some((k, v)) = l.split_once('=') else { return false };
             let v = v.split('#').next().unwrap_or("").trim().trim_matches(['"', '\'']);
             k.trim() == schluessel && v == wert
+        })
+        .map(|(i, _)| i + 1)
+}
+
+/// Erste Zeile (ab 1) nach den ersten `nach` Zeilen der Form `schluessel = [..., "wert", ...]`
+/// (auch in einfachen Anführungszeichen); ein leerer Wert passt nie.
+fn zeile_mit_listeneintrag(text: &str, schluessel: &str, wert: &str, nach: usize) -> Option<usize> {
+    if wert.is_empty() {
+        return None;
+    }
+    let (doppelt, einfach) = (format!("\"{wert}\""), format!("'{wert}'"));
+    text.lines()
+        .enumerate()
+        .skip(nach)
+        .find(|(_, l)| {
+            schluessel_der_zeile(l) == Some(schluessel) && {
+                let v = wert_der_zeile(l);
+                v.starts_with('[') && (v.contains(&doppelt) || v.contains(&einfach))
+            }
         })
         .map(|(i, _)| i + 1)
 }
@@ -268,16 +286,18 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
     if let Some(rest) = meldung.strip_prefix("invalid type: ") {
         let (ist, soll) = rest.split_once(", expected").unwrap_or((rest, ""));
         // Ein Datum ohne Anführungszeichen ist in TOML ein eigener Typ; serde nennt es „map“.
+        // Welche Kalender und Feste jemand nutzt, ist persönlich (Kalender, Stufe 1):
+        // bei `kalender` und `regel` nur die Art des Werts, nie den Wert, auch nicht im Vorschlag.
+        let geschuetzt = matches!(schluessel, Some("kalender" | "regel"));
         let wert = wert_der_zeile(zeilentext);
-        if ist.trim() == "map" && ist_nacktes_datum(wert) {
+        if ist.trim() == "map" && ist_nacktes_datum(wert) && !geschuetzt {
             let k = schluessel.unwrap_or("datum");
             return format!("{} steht ein Datum ohne Anführungszeichen. Bitte so schreiben: `{k} = \"{wert}\"`.", bei(schluessel));
         }
-        // Welche Kalender und Feste jemand nutzt, ist persönlich (Kalender, Stufe 1):
-        // bei `kalender` und `regel` nur die Art des Werts, nicht den Wert.
-        let ist = if matches!(schluessel, Some("kalender" | "regel")) { ist.split(['`', '"']).next().unwrap_or("") } else { ist };
+        let ist = if geschuetzt { ist.split(['`', '"']).next().unwrap_or("") } else { ist };
         let mut s = format!("{} steht {}, erwartet ist {}.", bei(schluessel), art_deutsch(ist), art_deutsch(soll));
-        if soll.contains("string")
+        if !geschuetzt
+            && soll.contains("string")
             && (ist.starts_with("integer") || ist.starts_with("float"))
             && let Some(k) = schluessel
         {
