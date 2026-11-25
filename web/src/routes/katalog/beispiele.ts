@@ -339,12 +339,33 @@ export function fristenListe(): FristenListe {
 			fristZeile('aufgabe', 'a-20261104-0001', 'Getränkeliste prüfen und abschicken', 3),
 			fristZeile('datei', 'standanmeldung', 'Stand anmelden', 26, {
 				frist_bezug: { ereignis: 'zusage-da', abstand: '+1 Monat' },
-				ereignis: { kennung: 'zusage-da', titel: 'Zusage ist da', datum: tagIso(-5) }
+				ereignis: {
+					kennung: 'zusage-da',
+					titel: 'Zusage ist da',
+					datum: tagIso(-5),
+					herkunft: null
+				}
 			}),
 			fristZeile('datei', 'helferliste', 'Helferliste verschicken', null, {
 				frist_bezug: { ereignis: 'aufbau', abstand: '-3 Tage' },
-				ereignis: { kennung: 'aufbau', titel: 'Termin für den Aufbau', datum: null },
+				ereignis: {
+					kennung: 'aufbau',
+					titel: 'Termin für den Aufbau',
+					datum: null,
+					herkunft: null
+				},
 				hinweis: 'Termin steht noch aus'
+			}),
+			// Kalender, Stufe 1: ein Fest aus `kalender = [...]`, ohne Stufe, mit Herkunft.
+			fristZeile('kalender', 'kirche.pfingsten', 'Pfingstsonntag', 40, {
+				frist_stufe: null,
+				ziel: '/projects/beispiel',
+				ereignis: {
+					kennung: 'kirche.pfingsten',
+					titel: 'Kirchenjahr',
+					datum: tagIso(40),
+					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag'
+				}
 			})
 		],
 		hinweise: [],

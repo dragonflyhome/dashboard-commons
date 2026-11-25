@@ -48,6 +48,7 @@ mod gruppen_test;
 pub mod helfer;
 pub mod herzschlag;
 pub mod inhalt;
+pub mod kalender;
 #[cfg(any(unix, test))]
 pub mod kanal;
 pub mod meldungen;

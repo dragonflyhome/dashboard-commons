@@ -12,6 +12,9 @@
 	 * `liste` lässt er sich mit fertigen Daten zeigen (Katalog, „Anstehend“),
 	 * mit `mitProjekt` je Zeile mit dem Projekt. Fristtitel sind persönlich:
 	 * Ohne Anmeldung steht nur der Satz zum Anmelden da.
+	 *
+	 * Kalender, Stufe 1: Feste aktiver Kalender stehen als „Fest“ mit ihrer
+	 * Herkunft da, ohne Stufe; berechnete Ereignisse nennen ihre Herkunft auch.
 	 */
 	import type { Abgeleitet, FristenListe, Fristen, FristZeile } from '$vertrag';
 	import { istGeladen, type Quelle } from './abgeleitet.ts';
@@ -63,7 +66,8 @@
 			{/if}
 		</span>
 		<span class="was">
-			{#if href !== null && anker(z) === undefined}
+			<!-- Ein Fest hat keinen Anker: auf seiner Projektseite kein Link auf dieselbe Seite. -->
+			{#if href !== null && anker(z) === undefined && (z.quelle !== 'kalender' || mitProjekt)}
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- zielHref baut mit resolve() -->
 				<a {href}>{z.titel}</a>
 			{:else}
@@ -73,7 +77,8 @@
 				{QUELLE_WORT[z.quelle]}{#if mitProjekt && z.projekt_titel !== null}
 					· {z.projekt_titel}{/if}{#if haengt !== null}
 					· {haengt}{:else if aus !== null}
-					· {aus}{/if}{#if z.hinweis}
+					· {aus}{/if}{#if z.ereignis?.herkunft}
+					· {z.ereignis.herkunft}{/if}{#if z.hinweis}
 					· {z.hinweis}{/if}
 			</span>
 		</span>

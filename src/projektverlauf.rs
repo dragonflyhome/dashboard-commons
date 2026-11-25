@@ -14,7 +14,7 @@ use crate::speicher::meldungen::schluessel;
 use crate::vertrag::anstehend::{Arbeit, ArbeitsStand, Meldung};
 use crate::vertrag::api::{BauZustand, MeldungsArt, Vorgang, VorgangsArt};
 use crate::vertrag::daten::Datei;
-use crate::vertrag::fristen::FristenListe;
+use crate::vertrag::fristen::{FristQuelle, FristenListe};
 use crate::vertrag::plan::{EtappenStand, Plan};
 use crate::vertrag::system_seiten::EntscheidungsListe;
 use crate::vertrag::verlauf::{Art, Ereignis, Genauigkeit, Quelle, datum_lesen, tagesanfang, zeit_text};
@@ -120,7 +120,8 @@ pub fn aus_entscheidungen(slug: &str, l: &EntscheidungsListe) -> Vec<Ereignis> {
 /// einem Ereignis ohne Datum hängen, fehlen.
 pub fn aus_fristen(f: &FristenListe) -> Vec<Ereignis> {
     let mut liste = Vec::new();
-    for z in &f.zeilen {
+    // Feste (Kalender) sind keine Fristen und gehören nicht in den Verlauf.
+    for z in f.zeilen.iter().filter(|z| z.quelle != FristQuelle::Kalender) {
         let Some(tag) = z.frist.as_deref().and_then(|t| NaiveDate::parse_from_str(t, "%Y-%m-%d").ok()) else { continue };
         let quelle = format!("{:?}", z.quelle).to_lowercase();
         let mut x = ereignis(

@@ -5,4 +5,10 @@ import type { FristEreignis } from "./FristEreignis";
 /**
  * `daten/fristen.toml`: Ereignisse und Fristen eines Projekts.
  */
-export type Fristen = { ereignis: Array<FristEreignis>, frist: Array<Frist>, };
+export type Fristen = { 
+/**
+ * Kalender, deren Feste in der Fristenliste dieses Projekts stehen
+ * (`crate::kalender`), etwa `kalender = ["kirche", "chinesisch"]`. Feste
+ * sind keine Fristen: Sie zählen nicht für Ampel und nächste Frist.
+ */
+kalender: Array<string>, ereignis: Array<FristEreignis>, frist: Array<Frist>, };

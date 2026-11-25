@@ -9,7 +9,12 @@ export type EreignisStand = { kennung: string,
  */
 titel: string | null, 
 /**
- * JJJJ-MM-TT, sobald das Ereignis eingetreten ist; vorher `null`: Die
- * Frist hängt an ihm.
+ * JJJJ-MM-TT: eingetreten oder, bei einem Ereignis mit Regel, berechnet
+ * (das Vorkommen, das für diese Frist zählt); sonst `null`: Die Frist hängt an ihm.
  */
-datum: string | null, };
+datum: string | null, 
+/**
+ * Nur bei einer Regel: wonach das Datum berechnet ist, etwa
+ * „Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (5.4.2026)“.
+ */
+herkunft: string | null, };

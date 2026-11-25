@@ -3,4 +3,4 @@
 /**
  * Woher eine Frist der Fristenliste kommt.
  */
-export type FristQuelle = "datei" | "aufgabe" | "frage" | "arbeit";
+export type FristQuelle = "datei" | "aufgabe" | "frage" | "arbeit" | "kalender";

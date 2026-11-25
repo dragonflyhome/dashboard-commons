@@ -1,0 +1,24 @@
+# Kalender „Chinesisch“: Feste nach dem chinesischen Mondkalender (Allgemeinwissen).
+# Die Tage gelten nach Pekinger Zeit; gerechnet wird für die Jahre 1912 bis 2100.
+kennung = "chinesisch"
+titel = "Chinesischer Kalender"
+
+[[fest]]
+kennung = "neujahr"
+titel = "Chinesisches Neujahr"
+regel = { kalender = "chinesisch", monat = 1, tag = 1 }
+
+[[fest]]
+kennung = "laternenfest"
+titel = "Laternenfest"
+regel = { kalender = "chinesisch", monat = 1, tag = 15 }
+
+[[fest]]
+kennung = "drachenbootfest"
+titel = "Drachenbootfest"
+regel = { kalender = "chinesisch", monat = 5, tag = 5 }
+
+[[fest]]
+kennung = "mondfest"
+titel = "Mondfest"
+regel = { kalender = "chinesisch", monat = 8, tag = 15 }
