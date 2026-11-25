@@ -366,7 +366,7 @@ export function fristenListe(): FristenListe {
 					kennung: 'kirche.pfingsten',
 					titel: 'Kirchenjahr',
 					datum: tagIso(40),
-					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag',
+					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)',
 					zeitraum: null
 				}
 			}),
@@ -378,7 +378,8 @@ export function fristenListe(): FristenListe {
 					kennung: 'jahreskreis.samhain',
 					titel: 'Jahreskreis',
 					datum: tagIso(60),
-					herkunft: 'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende',
+					herkunft:
+						'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende (21.12.2026) · überliefert: Winterfylleþ (altenglisch, Beda)',
 					zeitraum: { anfang: tagIso(60), vollmond: tagIso(75), ende: tagIso(89) }
 				}
 			})

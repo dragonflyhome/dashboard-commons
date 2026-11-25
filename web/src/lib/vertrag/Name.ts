@@ -19,6 +19,6 @@ quelle: string,
  */
 bedeutung: string | null, stufe: Belegstufe, 
 /**
- * Die Deutung ist nur aus allgemeinen Nachschlagewerken genommen, nicht gegen eine Fachausgabe geprüft.
+ * Zuordnung oder Deutung nur aus allgemeinen Nachschlagewerken, nicht gegen eine Fachausgabe geprüft.
  */
 ungeprueft: boolean, };

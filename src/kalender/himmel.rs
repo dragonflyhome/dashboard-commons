@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright The ICU4X Project Developers
+// Copyright 2023 The Unicode Consortium (ICU4X Project Developers)
 // Herkunft: Kiste calendrical_calculations 0.2.4 (https://github.com/unicode-org/icu4x),
-// Datei src/astronomy.rs; dort nach Reingold & Dershowitz, Calendrical Calculations
-// (4. Auflage 2018, Lisp-Code unter Apache-2.0) und Meeus, Astronomical Algorithms.
+// Dateien src/astronomy.rs und src/helpers.rs (poly, binary_search, invert_angular); dort
+// nach Reingold & Dershowitz, Calendrical Calculations (4. Auflage 2018, Lisp-Code unter
+// Apache-2.0) und Meeus, Astronomical Algorithms.
 // Gegenüber der Quelle geändert: nur Teil 1 (Neumond, Mondphase, Mond- und Sonnenlänge,
 // Nutation, Aberration, ΔT); Zeitpunkte als f64 (Tage seit dem 1.1. des Jahres 1, UT)
 // statt `Moment`; die ausgeschriebenen Reihen als Tabellen mit einer Schleife; ΔT nur ab
-// 1800 (davor die Näherung der Quelle für ferne Jahre); neu `phase_ab` und `sonnenlaenge_ab`
-// nach dem Lisp-Code (lunar-phase-at-or-after, solar-longitude-after); deutsche Namen.
+// 1800 (davor die Näherung der Quelle für ferne Jahre); ΔT 2051–2150 mit −0,5628·(2150−J)
+// wie bei NASA (Espenak/Meeus) statt +0,5628, sonst springt ΔT 2050/51 um knapp zwei
+// Minuten; neu `phase_ab` und `sonnenlaenge_ab` nach dem Lisp-Code (lunar-phase-at-or-after,
+// solar-longitude-after); deutsche Namen.
 // Der Text der Lizenz steht in LICENSES/Apache-2.0.txt.
 
 //! Rechenkern für Sonne und Mond (Kalender, Stufe 2). Ein Zeitpunkt ist ein
@@ -48,7 +51,8 @@ fn delta_t(t: f64) -> f64 {
     let c = (mitte - 693596.0) / 36525.0;
     let y2000 = f64::from(j - 2000);
     match j {
-        2051..=2150 => (-20.0 + 32.0 * (f64::from((j - 1820) * (j - 1820)) / 10000.0) + 0.5628 * f64::from(2150 - j)) / 86400.0,
+        // Minus wie bei NASA (Espenak/Meeus); die Quelle hat hier ein Plus.
+        2051..=2150 => (-20.0 + 32.0 * (f64::from((j - 1820) * (j - 1820)) / 10000.0) - 0.5628 * f64::from(2150 - j)) / 86400.0,
         2006..=2050 => poly(y2000, &[62.92, 0.32217, 0.005589]) / 86400.0,
         1987..=2005 => poly(y2000, &[63.86, 0.3345, -0.060374, 0.0017275, 0.000651814, 0.00002373599]) / 86400.0,
         1900..=1986 => poly(c, &[-0.00002, 0.000297, 0.025184, -0.181133, 0.553040, -0.861938, 0.677066, -0.212591]),
@@ -283,11 +287,12 @@ mod tests {
     use super::*;
 
     // Vergleichswerte aus den Tests der Quelle (Lisp-Code von Reingold & Dershowitz),
-    // nur die Tage ab 1800, für die ΔT hier gleich gerechnet wird.
-    const TAGE: [f64; 9] = [694799.0, 704424.0, 708842.0, 709409.0, 709580.0, 727274.0, 728714.0, 744313.0, 764652.0];
+    // nur die Tage 1800–2050, für die ΔT hier gleich gerechnet wird (ab 2051 berichtigtes Vorzeichen).
+    const TAGE: [f64; 8] = [694799.0, 704424.0, 708842.0, 709409.0, 709580.0, 727274.0, 728714.0, 744313.0];
 
     fn nah(ist: f64, soll: f64) {
-        assert!((ist - soll).abs() <= soll.abs() * 1e-7, "ist {ist}, soll {soll}");
+        // Absolut: 1e-6 Tage (unter 0,1 s) bei Zeitpunkten, 1e-6 Grad bei Längen.
+        assert!((ist - soll).abs() <= 1e-6, "ist {ist}, soll {soll}");
     }
 
     #[test]
@@ -301,7 +306,6 @@ mod tests {
             357.15125499424175,
             336.1706924761211,
             228.18487947607719,
-            116.43935225951282,
         ];
         let mond = [
             287.9877436469169,
@@ -312,7 +316,6 @@ mod tests {
             152.3390442635215,
             51.66226507971774,
             26.68206023138705,
-            175.5008226195208,
         ];
         let neu = [
             694807.5633711396,
@@ -323,7 +326,6 @@ mod tests {
             727291.2094001573,
             728737.4476913146,
             744329.5739998783,
-            764676.1912733881,
         ];
         for (i, tag) in TAGE.into_iter().enumerate() {
             nah(sonnenlaenge(tag + 0.5), sonne[i]);
@@ -331,6 +333,23 @@ mod tests {
             nah(neumond(neumond_ab(tag)), neu[i]);
         }
         // Der 0. Neumond liegt am 11.1. des Jahres 1.
+    }
+
+    /// ΔT schließt 2050/51 stetig an (mit dem Plus der Quelle sprang es von 93 auf 206 s).
+    #[test]
+    fn delta_t_stetig() {
+        let mitte = |j: i32| gregorian::fixed_from_gregorian(j, 7, 1).to_i64_date() as f64;
+        let sekunden = |j: i32| delta_t(mitte(j)) * 86400.0;
+        // Je Jahr wächst ΔT hier um etwa 2 s; ein Sprung wäre über 100 s.
+        assert!((sekunden(2051) - sekunden(2050)).abs() < 3.0, "{} {}", sekunden(2050), sekunden(2051));
+        assert!((sekunden(2050) - 93.0).abs() < 1.0 && (sekunden(2150) - (-20.0 + 32.0 * 3.3 * 3.3)).abs() < 1.0, "{} {}", sekunden(2050), sekunden(2150));
+        for j in 2051..2150 {
+            assert!(sekunden(j + 1) > sekunden(j), "steigt {j}");
+        }
+    }
+
+    #[test]
+    fn null_neumond_am_11_januar() {
         assert_eq!(neumond(0) as i32, 11);
     }
 

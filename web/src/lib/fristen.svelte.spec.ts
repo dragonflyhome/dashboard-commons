@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FristenListe, FristZeile } from '$vertrag';
 import { eintrag } from '#lib/anstehend.beispiel.ts';
 import { ampelSatz, standZahlen } from '#lib/anstehend.ts';
-import { bezugSatz, haengtSatz, ladeFristen } from '#lib/fristen.ts';
+import { bezugSatz, haengtSatz, ladeFristen, nameKurz } from '#lib/fristen.ts';
 import AlleFristen from '#lib/components/anstehend/AlleFristen.svelte';
 import Fristenliste from '#lib/katalog/Fristenliste.svelte';
 import Fristen from '#lib/katalog/widgets/Fristen.svelte';
@@ -239,7 +239,8 @@ describe('Baustein Fristenliste', () => {
 				kennung: 'jahreskreis.samhain',
 				titel: 'Jahreskreis',
 				datum: '2027-09-30',
-				herkunft: 'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende',
+				herkunft:
+					'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende (21.12.2026) · überliefert: Winterfylleþ (altenglisch, Beda)',
 				zeitraum: { anfang: '2027-09-30', vollmond: '2027-10-15', ende: '2027-10-29' }
 			}
 		});
@@ -280,7 +281,7 @@ describe('Baustein Fristenliste', () => {
 		expect(kasten?.textContent).toMatch(/12\. Monat im Festjahr, Jahreskreis/);
 		expect(kasten?.querySelector('details')).not.toHaveAttribute('open');
 		expect(kasten?.querySelector('details li:last-child')?.textContent).toMatch(
-			/herbistmanoth \(althochdeutsch\).*belegt, Deutung nicht gegen\s+eine\s+Fachausgabe geprüft/s
+			/herbistmanoth \(althochdeutsch\).*belegt, nicht gegen eine Fachausgabe geprüft/s
 		);
 	});
 
@@ -351,5 +352,25 @@ describe('„Alle Fristen“ in Anstehend', () => {
 			r.unmount();
 		}
 		expect(await ladeFristen(() => Promise.reject(new Error('Netz')))).toBeNull();
+	});
+});
+
+describe('nameKurz (wie Name::kurz im Server)', () => {
+	const name = (stufe: 'belegt' | 'erschlossen' | 'neuzeitlich') => ({
+		name: 'Ostara',
+		sprache: 'neuheidnischer Festname',
+		quelle: 'Göttinnenname bei Jacob Grimm, Deutsche Mythologie, 1835',
+		bedeutung: null,
+		stufe,
+		ungeprueft: false
+	});
+	it('Quelle bis zum ersten Komma, eine unsichere Stufe dabei', () => {
+		expect(nameKurz(name('belegt'))).toBe(
+			'Ostara (neuheidnischer Festname, Göttinnenname bei Jacob Grimm)'
+		);
+		expect(nameKurz(name('neuzeitlich'))).toBe(
+			'Ostara (neuheidnischer Festname, Göttinnenname bei Jacob Grimm, neuzeitlich)'
+		);
+		expect(nameKurz(name('erschlossen'))).toMatch(/, erschlossen\)$/);
 	});
 });

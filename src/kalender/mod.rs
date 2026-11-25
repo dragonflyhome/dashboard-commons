@@ -283,11 +283,11 @@ impl Regel {
             }
             return Ok(Art::Datum { monat, tag });
         }
-        if self.nach.is_some() {
-            return Err("Eine Regel mit `nach` braucht auch `tage` oder `wochentag`.".into());
-        }
         if self.nummer.is_some() {
             return Err("`nummer` gehört zu einer Mondphase in `himmel`, mit `nach`.".into());
+        }
+        if self.nach.is_some() {
+            return Err("Eine Regel mit `nach` braucht auch `tage` oder `wochentag`.".into());
         }
         Err(format!("Die Regel ist leer. Erlaubt ist genau eine Art: {ARTEN}."))
     }
@@ -324,7 +324,7 @@ pub struct Name {
     #[serde(default)]
     pub bedeutung: Option<String>,
     pub stufe: Belegstufe,
-    /// Die Deutung ist nur aus allgemeinen Nachschlagewerken genommen, nicht gegen eine Fachausgabe geprüft.
+    /// Zuordnung oder Deutung nur aus allgemeinen Nachschlagewerken, nicht gegen eine Fachausgabe geprüft.
     #[serde(default)]
     pub ungeprueft: bool,
 }
@@ -356,7 +356,9 @@ pub struct Fest {
 
 /// Eine Jahreszeit eines Kalenders mit Mondmonaten: Sie beginnt mit dem
 /// Neumond, der den Monat `nach` beendet, und zählt ihre Monate bis zum nächsten
-/// solchen Monat durch („1. Wintervollmond“).
+/// solchen Monat durch („1. Wintervollmond“). Ihr Sonnenmonat (ein Fest mit
+/// `mondmonat = { enthaelt = … }`) trägt seine eigenen Namen; die übrigen
+/// Monate tragen die Namen nach ihrer Lage zu ihm.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Jahreszeit {
@@ -364,17 +366,12 @@ pub struct Jahreszeit {
     pub nach: String,
     /// Das Wort hinter der Nummer, etwa `Wintervollmond`.
     pub vollmond: String,
-    /// Überlieferte Namen je Nummer.
+    /// Überlieferte Namen der Monate vor dem Sonnenmonat.
     #[serde(default)]
-    pub monat: Vec<JahreszeitMonat>,
-}
-
-/// Die überlieferten Namen für den n-ten Monat einer Jahreszeit.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct JahreszeitMonat {
-    pub nummer: u8,
-    pub namen: Vec<Name>,
+    pub davor: Vec<Name>,
+    /// Überlieferte Namen der Monate nach dem Sonnenmonat.
+    #[serde(default)]
+    pub danach: Vec<Name>,
 }
 
 /// Ein Kalender: ein benannter Satz von Festen.
@@ -449,6 +446,14 @@ impl Katalog {
         Self::lesen_fuer(dateien, Ort::windows())
     }
 
+    /// Die eingebauten Kalender, gerechnet wie in Berlin (Mitteleuropa mit Sommerzeit), für Tests
+    /// unabhängig von der Ortszeit des Rechners.
+    #[cfg(test)]
+    pub(crate) fn berlin() -> Katalog {
+        Self::lesen_fuer(&EINGEBAUT, Ort { halbkugel: mond::Halbkugel::Nord, versatz: mond::mitteleuropa })
+            .unwrap_or(Katalog { kalender: Vec::new(), ort: Ort::windows() })
+    }
+
     /// Wie [`Katalog::lesen`], für einen anderen Ort (Tests; mit Belegstufe 3 der Ort des Inhabers).
     pub fn lesen_fuer(dateien: &[(&str, &str)], ort: Ort) -> Result<Katalog, String> {
         let mut kalender = Vec::new();
@@ -490,10 +495,6 @@ impl Katalog {
                         "Im Kalender „{}“ nennt eine Jahreszeit in `nach` kein Fest dieses Kalenders mit `mondmonat = {{ vollmond = … }}`, eines doppelt oder hat kein Wort in `vollmond`.",
                         k.kennung
                     ));
-                }
-                let mut nummern = BTreeSet::new();
-                if j.monat.iter().any(|m| !(1..=13).contains(&m.nummer) || !nummern.insert(m.nummer)) {
-                    return Err(format!("Im Kalender „{}“ zählt die Jahreszeit nach „{}“ ihre Monate nicht einmal je Nummer von 1 bis 13.", k.kennung, j.nach));
                 }
             }
         }
@@ -675,19 +676,33 @@ impl Katalog {
                 anker.push((self.mondmonat(&f.regel, y)?, j, f));
             }
         }
-        let (start, jz, fest) = anker.into_iter().filter(|(k, _, _)| *k <= m).max_by_key(|(k, _, _)| *k)?;
-        let (mut name, mut namen) = if start == m {
+        let (start, jz, fest) = anker.iter().filter(|(k, _, _)| *k <= m).max_by_key(|(k, _, _)| *k).copied()?;
+        let ende = anker.iter().map(|(k, _, _)| *k).filter(|k| *k > start).min()?;
+        // Der Sonnenmonat dieser Jahreszeit (der Monat mit ihrem Sonnentag).
+        let mut sonnenmonat = None;
+        for f in kal.fest.iter().filter(|f| matches!(f.regel.art(), Ok(Art::MondmonatMit(_)))) {
+            for y in jahr - 1..=jahr + 1 {
+                if let Some(k) = self.mondmonat(&f.regel, y).filter(|k| (start..ende).contains(k)) {
+                    sonnenmonat = Some((k, f));
+                }
+            }
+        }
+        let (mut name, namen) = if start == m {
             (fest.titel.clone(), fest.namen.clone())
         } else {
-            let n = u8::try_from(m - start).ok()?;
-            (format!("{n}. {}", jz.vollmond), jz.monat.iter().find(|x| x.nummer == n).map(|x| x.namen.clone()).unwrap_or_default())
+            let n = m - start;
+            let namen = match sonnenmonat {
+                Some((s, f)) if s == m => f.namen.clone(),
+                Some((s, _)) if m > s => jz.danach.clone(),
+                _ => jz.davor.clone(),
+            };
+            (format!("{n}. {}", jz.vollmond), namen)
         };
-        // Der Monat mit einem Sonnentag trägt dessen Monatsnamen dazu.
-        for f in &kal.fest {
-            if matches!(f.regel.art(), Ok(Art::MondmonatMit(_))) && (jahr - 1..=jahr + 1).any(|y| self.mondmonat(&f.regel, y) == Some(m)) {
-                name = format!("{name} · {}", f.titel);
-                namen.extend(f.namen.iter().cloned());
-            }
+        // Der Sonnenmonat trägt seinen Namen dazu („2. Wintervollmond · Yule-Mond“).
+        if let Some((s, f)) = sonnenmonat
+            && s == m
+        {
+            name = format!("{name} · {}", f.titel);
         }
         // Das Festjahr beginnt mit dem Monat, der den kürzesten Tag enthält.
         let anfang_jahr = |y: i32| self.ort.kuerzester_tag(y).map(mond::monat_bei);
@@ -836,9 +851,8 @@ mod tests {
         assert_eq!(namen, ["kirche", "orthodox", "chinesisch", "jahreskreis"]);
     }
 
-    /// Gerechnet wie in Berlin (Mitteleuropa mit Sommerzeit), Nordhalbkugel.
     fn berlin() -> Katalog {
-        Katalog::lesen_fuer(&EINGEBAUT, Ort { halbkugel: mond::Halbkugel::Nord, versatz: mond::mitteleuropa }).unwrap()
+        Katalog::berlin()
     }
 
     fn weltzeit_aus(tag_und_zeit: &str) -> f64 {
@@ -865,6 +879,7 @@ mod tests {
             }
         }
         assert!(groesste <= SONNE_MINUTEN, "Sonne: {groesste:.2} Minuten");
+        assert_eq!(include_str!("espenak-gleichen-2001-2100.txt").lines().filter(|z| !z.starts_with('#')).count(), 100);
         let mut zahl = 0;
         groesste = 0.0;
         for zeile in include_str!("espenak-phasen-2027.txt").lines().filter(|z| !z.starts_with('#')) {
@@ -879,10 +894,10 @@ mod tests {
     }
 
     /// Toleranzen in Minuten, gemessen gegen Espenak 2001–2100 (die Tabellen runden selbst auf
-    /// die Minute): über alle 4948 Phasen höchstens 2,5 Minuten (im Mittel 0,8), über die 400
-    /// Wenden und Gleichen höchstens 4,1 Minuten.
-    const SONNE_MINUTEN: f64 = 4.1;
-    const MOND_MINUTEN: f64 = 2.5;
+    /// die Minute): über alle 4948 Phasen höchstens 0,9 Minuten (im Mittel 0,3), über die 400
+    /// Wenden und Gleichen höchstens 2,7 Minuten (im Mittel 0,7).
+    const SONNE_MINUTEN: f64 = 2.7;
+    const MOND_MINUTEN: f64 = 0.9;
 
     /// Das Beispieljahr 2027 aus dem Konzept (Abschnitt 3a und 3b), Ortszeit Berlin.
     #[test]
@@ -932,29 +947,34 @@ mod tests {
             k.herkunft(None, &r, 2027),
             "Jahreskreis · Frühlingsfest (Ostara) · Tag-und-Nacht-Gleiche im März am 20.3.2027 um 21:24 Uhr Ortszeit · überliefert: Ostara (neuheidnischer Festname, Göttinnenname bei Jacob Grimm, neuzeitlich)"
         );
-        // Der laufende Mond durch das Jahr, mit dem Winter 2027/28 mit drei Monden.
-        for (heute, nummer, name, erster) in [
-            ("2026-10-20", 11, "Samhain", "Winterfylleþ"),
-            ("2026-11-20", 12, "1. Wintervollmond", "Blōtmōnaþ"),
-            ("2026-12-20", 1, "2. Wintervollmond · Yule-Mond", "Giuli"),
-            ("2027-01-20", 2, "Imbolc", "Sōlmōnaþ"),
-            ("2027-02-20", 3, "1. Frühlingsvollmond", "Hrēþmōnaþ"),
-            ("2027-03-20", 4, "2. Frühlingsvollmond · Ostara-Mond", "Ēosturmōnaþ"),
-            ("2027-04-20", 5, "Dreimilch-Mond", "Þrimilce"),
-            ("2027-05-20", 6, "1. Sommervollmond", "Līþa"),
-            ("2027-06-20", 7, "2. Sommervollmond · Litha-Mond", "Līþa"),
-            ("2027-07-20", 8, "Lughnassad (Lammas)", "Wēodmōnaþ"),
-            ("2027-08-20", 9, "1. Herbstvollmond", "Hāligmōnaþ"),
-            ("2027-09-20", 10, "2. Herbstvollmond · Mabon-Mond", "Hāligmōnaþ"),
-            ("2027-10-20", 11, "Samhain", "Winterfylleþ"),
-            ("2027-11-20", 12, "1. Wintervollmond", "Blōtmōnaþ"),
-            ("2027-12-20", 1, "2. Wintervollmond · Yule-Mond", "Giuli"),
-            ("2028-01-10", 2, "3. Wintervollmond", "Giuli"),
-            ("2028-02-10", 3, "Imbolc", "Sōlmōnaþ"),
+        // Der laufende Mond durch das Jahr: die 17 Zeilen der Tabelle in Abschnitt 3b
+        // (Samhain 2026 bis Imbolc 2028, mit dem Winter 2027/28 mit drei Monden), je am
+        // Tag des Vollmonds: Anfang, Vollmond, Ende, Nummer im Festjahr, Name, erster alter Name.
+        for (anfang, vollmond, ende, nummer, name, erster) in [
+            ("2026-10-10", "2026-10-26", "2026-11-09", 11, "Samhain", "Winterfylleþ"),
+            ("2026-11-09", "2026-11-24", "2026-12-09", 12, "1. Wintervollmond", "Blōtmōnaþ"),
+            ("2026-12-09", "2026-12-24", "2027-01-07", 1, "2. Wintervollmond · Yule-Mond", "Giuli"),
+            ("2027-01-07", "2027-01-22", "2027-02-06", 2, "Imbolc", "Sōlmōnaþ"),
+            ("2027-02-06", "2027-02-21", "2027-03-08", 3, "1. Frühlingsvollmond", "Hrēþmōnaþ"),
+            ("2027-03-08", "2027-03-22", "2027-04-07", 4, "2. Frühlingsvollmond · Ostara-Mond", "Ēosturmōnaþ"),
+            ("2027-04-07", "2027-04-21", "2027-05-06", 5, "Dreimilch-Mond", "Þrimilce"),
+            ("2027-05-06", "2027-05-20", "2027-06-04", 6, "1. Sommervollmond", "Līþa"),
+            ("2027-06-04", "2027-06-19", "2027-07-04", 7, "2. Sommervollmond · Litha-Mond", "Līþa"),
+            ("2027-07-04", "2027-07-18", "2027-08-02", 8, "Lughnassad (Lammas)", "Wēodmōnaþ"),
+            ("2027-08-02", "2027-08-17", "2027-08-31", 9, "1. Herbstvollmond", "Hāligmōnaþ"),
+            ("2027-08-31", "2027-09-16", "2027-09-30", 10, "2. Herbstvollmond · Mabon-Mond", "Hāligmōnaþ"),
+            ("2027-09-30", "2027-10-15", "2027-10-29", 11, "Samhain", "Winterfylleþ"),
+            ("2027-10-29", "2027-11-14", "2027-11-28", 12, "1. Wintervollmond", "Blōtmōnaþ"),
+            ("2027-11-28", "2027-12-13", "2027-12-27", 1, "2. Wintervollmond · Yule-Mond", "Giuli"),
+            ("2027-12-27", "2028-01-12", "2028-01-26", 2, "3. Wintervollmond", "Giuli"),
+            ("2028-01-26", "2028-02-10", "2028-02-25", 3, "Imbolc", "Sōlmōnaþ"),
         ] {
-            let m = k.mond("jahreskreis", tag(heute)).unwrap();
-            assert_eq!((m.nummer, m.name.as_str(), m.namen[0].name.as_str()), (nummer, name, erster), "{heute}");
-            assert_eq!(m.kalender, "Jahreskreis");
+            for heute in [anfang, vollmond] {
+                let m = k.mond("jahreskreis", tag(heute)).unwrap();
+                assert_eq!((m.nummer, m.name.as_str(), m.namen[0].name.as_str()), (nummer, name, erster), "{heute}");
+                assert_eq!(m.zeitraum, Zeitraum { anfang: anfang.into(), vollmond: vollmond.into(), ende: ende.into() }, "{heute}");
+                assert_eq!(m.kalender, "Jahreskreis");
+            }
         }
         // Am Tag des Neumonds (4.6.2027, 21:40 Uhr) schon der neue Monat, wie in der Fristenliste;
         // ebenso am 6.5.2027 (Neumond mittags).
@@ -966,6 +986,34 @@ mod tests {
         // Vollmond 20.2. 23:24 Weltzeit: in Berlin schon der 21.2.
         assert_eq!(m.zeitraum, Zeitraum { anfang: "2027-02-06".into(), vollmond: "2027-02-21".into(), ende: "2027-03-08".into() });
         assert!(k.mond("kirche", tag("2027-02-20")).is_none(), "ohne Jahreszeiten kein laufender Mond");
+    }
+
+    /// Die alten Namen hängen an der Lage zum Sonnenmonat, nicht an der Nummer (Abnahme):
+    /// Im Winter 2033/34 ist der Yule-Mond der 1. Wintervollmond und trägt Giuli, der Monat
+    /// danach die Namen nach der Wende; der Ostara-Mond 2034 trägt Ēosturmōnaþ.
+    #[test]
+    fn alte_namen_nach_der_lage() {
+        let k = berlin();
+        let m = k.mond("jahreskreis", tag("2033-12-01")).unwrap();
+        let namen: Vec<&str> = m.namen.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!((m.name.as_str(), m.zeitraum.anfang.as_str()), ("1. Wintervollmond · Yule-Mond", "2033-11-22"));
+        assert_eq!(namen, ["Giuli", "heilagmanoth", "hrútmánuðr", "jiuleis"]);
+        let m = k.mond("jahreskreis", tag("2034-01-01")).unwrap();
+        let namen: Vec<&str> = m.namen.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!((m.name.as_str(), namen.as_slice()), ("2. Wintervollmond", ["Giuli", "wintarmanoth"].as_slice()));
+        let m = k.mond("jahreskreis", tag("2034-03-25")).unwrap();
+        assert!(m.name.ends_with("· Ostara-Mond"), "{}", m.name);
+        assert_eq!(m.namen[0].name, "Ēosturmōnaþ");
+        assert!(m.namen.iter().any(|n| n.name == "Ostara-Mond" && n.stufe == Belegstufe::Neuzeitlich));
+        // Über 1950–2099: Jeder Sonnenmonat zeigt seinen eigenen ersten Namen.
+        for (heute, erster) in [("12-21", "Giuli"), ("03-21", "Ēosturmōnaþ"), ("06-21", "Līþa"), ("09-23", "Hāligmōnaþ")] {
+            for j in (1950..=2099).step_by(7) {
+                let m = k.mond("jahreskreis", tag(&format!("{j}-{heute}"))).unwrap();
+                if m.name.contains("-Mond") {
+                    assert_eq!(m.namen[0].name, erster, "{j}-{heute}: {}", m.name);
+                }
+            }
+        }
     }
 
     /// Grenzfälle aus den Tabellen 2001–2100: Neumond am Tag einer Wende oder
@@ -984,7 +1032,9 @@ mod tests {
         // Vollmond 29.6.2026 23:57 Weltzeit: in Berlin (Sommerzeit) der 30.6.
         let t = himmel::phase_ab(180.0, mond::tag_zahl(tag("2026-06-25")));
         assert_eq!(k.ort.tag(t), Some(tag("2026-06-30")));
-        assert_eq!(mond::Ort::windows().tag(mond::tag_zahl(tag("2027-06-01")) + 0.5), Some(tag("2027-06-01")), "Ortszeit von Windows rechnet");
+        // Die Ortszeit von Windows rechnet: Mittag Weltzeit liegt in jeder Zone höchstens einen Tag daneben.
+        let windows = mond::Ort::windows().tag(mond::tag_zahl(tag("2027-06-01")) + 0.5).unwrap();
+        assert!((windows - tag("2027-06-01")).num_days().abs() <= 1, "{windows}");
         // Mondphase nach einem Bezug: der 2. Vollmond nach Yule 2027 (22.12.) ist der vom 10.2.2028.
         let probe = Katalog::lesen_fuer(
             &[
@@ -1226,6 +1276,7 @@ regel = { nach = "kirche.ostern", tage = -3 }
         let s = falsch("himmel = \"vollmond\"\nnach = \"x\"\nnummer = 14");
         assert!(s.contains("1 bis 13") && !s.contains("14"), "{s}");
         assert!(falsch("nummer = 2").contains("gehört zu"));
+        assert!(falsch("nach = \"x\"\nnummer = 2").contains("`himmel`"), "verweist auf himmel");
         assert!(falsch("mondmonat = {}").contains("genau eines"));
         assert!(falsch("mondmonat = { vollmond = 2, enthaelt = \"gleiche-maerz\" }").contains("genau eines"));
         let s = falsch("mondmonat = { vollmond = 14 }");
@@ -1233,15 +1284,14 @@ regel = { nach = "kirche.ostern", tage = -3 }
         assert!(falsch("mondmonat = { enthaelt = \"vollmond\" }").contains("Wende oder Gleiche"));
         assert!(falsch("mondmonat = { vollmond = 2 }\nmonat = 1").contains("kein `monat`"));
         assert!(regel("himmel = \"neumond\"\nnach = \"x\"").art().is_ok(), "nummer ist wahlweise");
-        let jahreszeit = |nach: &str, nummer: u8| {
+        let jahreszeit = |nach: &str| {
             format!(
-                "kennung = \"k\"\ntitel = \"K\"\n[[fest]]\nkennung = \"m\"\ntitel = \"M\"\nregel = {{ mondmonat = {{ vollmond = 2 }} }}\n[[fest]]\nkennung = \"t\"\ntitel = \"T\"\nregel = {{ monat = 1, tag = 1 }}\n[[jahreszeit]]\nnach = \"{nach}\"\nvollmond = \"Wintervollmond\"\n[[jahreszeit.monat]]\nnummer = {nummer}\nnamen = []\n"
+                "kennung = \"k\"\ntitel = \"K\"\n[[fest]]\nkennung = \"m\"\ntitel = \"M\"\nregel = {{ mondmonat = {{ vollmond = 2 }} }}\n[[fest]]\nkennung = \"t\"\ntitel = \"T\"\nregel = {{ monat = 1, tag = 1 }}\n[[jahreszeit]]\nnach = \"{nach}\"\nvollmond = \"Wintervollmond\"\ndavor = []\n"
             )
         };
-        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("m", 1))]).is_ok());
-        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("t", 1))]).unwrap_err().contains("Jahreszeit"));
-        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("x", 1))]).unwrap_err().contains("Jahreszeit"));
-        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("m", 14))]).unwrap_err().contains("1 bis 13"));
+        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("m"))]).is_ok());
+        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("t"))]).unwrap_err().contains("Jahreszeit"));
+        assert!(Katalog::lesen(&[("k.toml", &jahreszeit("x"))]).unwrap_err().contains("Jahreszeit"));
         assert!(regel("nach = \"x\"\ntage = -366").art().is_ok(), "ein Jahr ist erlaubt");
         assert!(falsch("ostern = \"westlich\"\ntag = 1").contains("kein `tag`"));
         assert!(falsch("kalender = \"chinesisch\"\nmonat = 13\ntag = 1").contains("Monat 1–12"));

@@ -147,6 +147,8 @@ impl Ort {
 
     /// Der Zeitpunkt, an dem der Tag `d` in Ortszeit beginnt. Der Versatz gilt
     /// um Mitternacht Weltzeit; die Zeitumstellung liegt nachts nach 1 Uhr.
+    // shortcut: In Zonen, die vor 1 Uhr Weltzeit umstellen (etwa Sydney), liegt der Beginn am
+    // Umstellungstag eine Stunde daneben; aufrüsten mit dem Versatz zur Ortsmitternacht, wenn mit Stufe 3 Orte kommen.
     pub fn beginn(&self, d: NaiveDate) -> f64 {
         let t = tag_zahl(d);
         let v = weltzeit(t).map_or(0, self.versatz);

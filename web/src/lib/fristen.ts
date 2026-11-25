@@ -58,6 +58,9 @@ export const STUFE_WORT: Readonly<Record<Belegstufe, string>> = {
 	neuzeitlich: 'neuzeitlich'
 };
 
+/** Zusatz zu einem Namen mit `ungeprueft` (Zuordnung oder Deutung). */
+export const UNGEPRUEFT = 'nicht gegen eine Fachausgabe geprüft';
+
 /**
  * Kurz für eine Zeile, wie im Server: „Blōtmōnaþ (altenglisch, Beda)“, die
  * Quelle bis zum ersten Komma; eine unsichere Stufe steht dabei.

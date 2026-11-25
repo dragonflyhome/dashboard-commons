@@ -23,7 +23,14 @@
 	import { istGeladen, type Quelle } from './abgeleitet.ts';
 	import { BROWSER_ADRESSE } from '#lib/anmeldung.ts';
 	import { fristDringend, fristWorte } from '#lib/anstehend.ts';
-	import { bezugSatz, haengtSatz, nameKurz, QUELLE_WORT, STUFE_WORT } from '#lib/fristen.ts';
+	import {
+		bezugSatz,
+		haengtSatz,
+		nameKurz,
+		QUELLE_WORT,
+		STUFE_WORT,
+		UNGEPRUEFT
+	} from '#lib/fristen.ts';
 	import { fmtDate } from '#lib/format.ts';
 	import { zielHref } from '#lib/zieladresse.ts';
 
@@ -134,8 +141,7 @@
 							<li>
 								<b>{n.name}</b> ({n.sprache}){#if n.bedeutung}: {n.bedeutung}{/if}
 								<span class="muted"
-									>· {n.quelle} · {STUFE_WORT[n.stufe]}{#if n.ungeprueft}, Deutung nicht gegen eine
-										Fachausgabe geprüft{/if}</span
+									>· {n.quelle} · {STUFE_WORT[n.stufe]}{#if n.ungeprueft}, {UNGEPRUEFT}{/if}</span
 								>
 							</li>
 						{/each}
@@ -161,7 +167,8 @@
 		gap: 0.35rem;
 		margin: 0.4em 0 0.8em;
 	}
-	li {
+	/* Nur die Zeilen der Liste, nicht die Namen im Kasten des laufenden Monds. */
+	.fristenliste > li {
 		display: grid;
 		grid-template-columns: minmax(8rem, 12rem) 1fr;
 		gap: 0.2rem 0.75rem;
@@ -170,7 +177,7 @@
 		overflow-wrap: anywhere;
 		min-width: 0;
 	}
-	li:last-child {
+	.fristenliste > li:last-child {
 		border-bottom: 0;
 	}
 	.was {
@@ -196,7 +203,7 @@
 		font-weight: 600;
 	}
 	@media (max-width: 37.5rem) {
-		li {
+		.fristenliste > li {
 			grid-template-columns: 1fr;
 		}
 	}
