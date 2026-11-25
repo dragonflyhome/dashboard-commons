@@ -42,7 +42,7 @@ use ts_rs::TS;
 use super::anstehend::FristStufe;
 use super::daten::{Baustein, Datei, ist_datum, ist_kennung};
 use super::lesen::{LeseFehler, Mangel};
-use crate::kalender::{Katalog, Regel};
+use crate::kalender::{Katalog, Mond, Regel, Zeitraum};
 
 // ----- Die Datei `daten/fristen.toml` -----
 
@@ -130,6 +130,9 @@ pub struct EreignisStand {
     /// Nur bei einer Regel: wonach das Datum berechnet ist, etwa
     /// „Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (5.4.2026)“.
     pub herkunft: Option<String>,
+    /// Nur bei einem Mondmonat: von Neumond über Vollmond bis zum nächsten
+    /// Neumond (`datum` ist sein Anfang).
+    pub zeitraum: Option<Zeitraum>,
 }
 
 /// Einheit eines Abstands.
@@ -272,6 +275,9 @@ pub struct FristenListe {
     pub hinweise: Vec<String>,
     /// Der Datenspeicher fehlt: Aufgaben und Arbeiten fehlen in der Liste.
     pub speicher_fehlt: bool,
+    /// Nur in der Liste eines Projekts mit einem Kalender mit Jahreszeiten: der
+    /// laufende Mondmonat (keine Frist, nur zum Zeigen).
+    pub mond: Option<Mond>,
 }
 
 // ----- Prüfen beim Lesen (Fehler; der Hinweis zu einem Datum in der Zukunft steht in `inhalt::pruefung`) -----
@@ -451,14 +457,15 @@ impl Datei<Fristen> {
     /// der Jahre, für die gerechnet wird, fehlt es (die Frist hängt).
     pub fn ereignis_stand(&self, kennung: &str, abstand: &str, heute: NaiveDate) -> EreignisStand {
         let e = self.ereignis(kennung);
-        let (datum, herkunft) = match e.and_then(|e| e.regel.as_ref()) {
-            Some(r) => match Abstand::lesen(abstand).and_then(|a| Katalog::eingebaut().naechstes(None, r, a, heute)) {
-                Some((d, h)) => (Some(d.format("%Y-%m-%d").to_string()), Some(h)),
-                None => (None, None),
+        let katalog = Katalog::eingebaut();
+        let (datum, herkunft, zeitraum) = match e.and_then(|e| e.regel.as_ref()) {
+            Some(r) => match Abstand::lesen(abstand).and_then(|a| katalog.naechstes(None, r, a, heute)) {
+                Some((d, h)) => (Some(d.format("%Y-%m-%d").to_string()), Some(h), katalog.zeitraum(None, r, d)),
+                None => (None, None, None),
             },
-            None => (e.and_then(|e| e.datum.clone()).filter(|d| ist_datum(d, false)), None),
+            None => (e.and_then(|e| e.datum.clone()).filter(|d| ist_datum(d, false)), None, None),
         };
-        EreignisStand { kennung: kennung.to_string(), titel: e.map(|e| e.titel.clone()), datum, herkunft }
+        EreignisStand { kennung: kennung.to_string(), titel: e.map(|e| e.titel.clone()), datum, herkunft, zeitraum }
     }
 }
 

@@ -35,7 +35,13 @@ const haengt = zeile({
 	id: 'helferliste',
 	titel: 'Helferliste verschicken',
 	frist_bezug: { ereignis: 'aufbau', abstand: '-3 Tage' },
-	ereignis: { kennung: 'aufbau', titel: 'Termin für den Aufbau', datum: null, herkunft: null }
+	ereignis: {
+		kennung: 'aufbau',
+		titel: 'Termin für den Aufbau',
+		datum: null,
+		herkunft: null,
+		zeitraum: null
+	}
 });
 const aufgeloest = zeile({
 	id: 'standanmeldung',
@@ -44,7 +50,13 @@ const aufgeloest = zeile({
 	tage_bis: 26,
 	frist_stufe: 'spaeter',
 	frist_bezug: { ereignis: 'zusage-da', abstand: '+1 Monat' },
-	ereignis: { kennung: 'zusage-da', titel: 'Zusage ist da', datum: '2026-10-31', herkunft: null }
+	ereignis: {
+		kennung: 'zusage-da',
+		titel: 'Zusage ist da',
+		datum: '2026-10-31',
+		herkunft: null,
+		zeitraum: null
+	}
 });
 const fest = zeile({
 	id: 'plakate',
@@ -62,7 +74,7 @@ describe('Fristen: Worte', () => {
 		expect(
 			haengtSatz({
 				...haengt,
-				ereignis: { kennung: 'aufbau', titel: null, datum: null, herkunft: null }
+				ereignis: { kennung: 'aufbau', titel: null, datum: null, herkunft: null, zeitraum: null }
 			})
 		).toBe('hängt an „aufbau“ (-3 Tage; dieses Ereignis fehlt in fristen.toml)');
 		// Eine Aufgabe ohne die Felder (ältere Antwort): kein Satz.
@@ -121,7 +133,8 @@ describe('Baustein Fristenliste', () => {
 		frist_bald_tage: 7,
 		zeilen,
 		hinweise: [],
-		speicher_fehlt: false
+		speicher_fehlt: false,
+		mond: null
 	});
 
 	it('nach Datum vom Server, bewegliche ohne Datum am Ende mit „hängt an“, Anker je Datei-Frist', () => {
@@ -184,7 +197,8 @@ describe('Baustein Fristenliste', () => {
 				kennung: 'kirche.pfingsten',
 				titel: 'Kirchenjahr',
 				datum: '2027-05-16',
-				herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)'
+				herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)',
+				zeitraum: null
 			}
 		});
 		const einkauf = zeile({
@@ -198,7 +212,8 @@ describe('Baustein Fristenliste', () => {
 				kennung: 'neujahr',
 				titel: 'Neujahrsfest',
 				datum: '2027-02-06',
-				herkunft: 'Chinesischer Kalender · Chinesisches Neujahr'
+				herkunft: 'Chinesischer Kalender · Chinesisches Neujahr',
+				zeitraum: null
 			}
 		});
 		const { container, unmount } = render(Fristenliste, { liste: liste([einkauf, pfingsten]) });
@@ -210,6 +225,63 @@ describe('Baustein Fristenliste', () => {
 		unmount();
 		render(Fristenliste, { liste: liste([pfingsten]), mitProjekt: true });
 		expect(screen.getByRole('link', { name: 'Pfingstsonntag' })).toBeInTheDocument();
+	});
+
+	it('Kalender, Stufe 2: Mondmonat mit Zeitraum, laufender Mond mit überlieferten Namen', () => {
+		const samhain = zeile({
+			quelle: 'kalender',
+			id: 'jahreskreis.samhain',
+			titel: 'Samhain',
+			frist: '2027-09-30',
+			tage_bis: 330,
+			ziel: '/projects/kalender',
+			ereignis: {
+				kennung: 'jahreskreis.samhain',
+				titel: 'Jahreskreis',
+				datum: '2027-09-30',
+				herkunft: 'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende',
+				zeitraum: { anfang: '2027-09-30', vollmond: '2027-10-15', ende: '2027-10-29' }
+			}
+		});
+		const mond = {
+			kalender: 'Jahreskreis',
+			nummer: 12,
+			name: '1. Wintervollmond',
+			namen: [
+				{
+					name: 'Blōtmōnaþ',
+					sprache: 'altenglisch',
+					quelle: 'Beda, De temporum ratione 15, um 725',
+					bedeutung: 'Opfermonat',
+					stufe: 'belegt' as const,
+					ungeprueft: false
+				},
+				{
+					name: 'herbistmanoth',
+					sprache: 'althochdeutsch',
+					quelle: 'Einhard, Vita Karoli Magni 29',
+					bedeutung: null,
+					stufe: 'belegt' as const,
+					ungeprueft: true
+				}
+			],
+			zeitraum: { anfang: '2026-11-09', vollmond: '2026-11-24', ende: '2026-12-09' }
+		};
+		const { container } = render(Fristenliste, { liste: { ...liste([samhain]), mond } });
+		const zeitraum = container.querySelector('li [data-zeitraum]');
+		expect(zeitraum?.textContent).toMatch(
+			/Neumond 30\.09\.2027 bis 29\.10\.2027, Vollmond 15\.10\.2027/
+		);
+		expect(zeitraum?.querySelector('strong')?.textContent).toBe('Vollmond 15.10.2027');
+		const kasten = container.querySelector('[data-mond]');
+		expect(kasten?.textContent).toMatch(
+			/Laufender Mond:\s*1\. Wintervollmond\s*· Blōtmōnaþ \(altenglisch, Beda\)/
+		);
+		expect(kasten?.textContent).toMatch(/12\. Monat im Festjahr, Jahreskreis/);
+		expect(kasten?.querySelector('details')).not.toHaveAttribute('open');
+		expect(kasten?.querySelector('details li:last-child')?.textContent).toMatch(
+			/herbistmanoth \(althochdeutsch\).*belegt, Deutung nicht gegen\s+eine\s+Fachausgabe geprüft/s
+		);
 	});
 
 	it('ohne Anmeldung nur der Satz zum Anmelden, kein Titel', () => {
@@ -255,7 +327,8 @@ describe('„Alle Fristen“ in Anstehend', () => {
 		frist_bald_tage: 7,
 		zeilen: [fest, haengt],
 		hinweise: [],
-		speicher_fehlt: false
+		speicher_fehlt: false,
+		mond: null
 	};
 
 	it('lädt /api/fristen und zeigt die Liste mit Projekt, zugeklappt', async () => {

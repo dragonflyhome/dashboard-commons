@@ -39,7 +39,8 @@ const LISTE: FristenListe = {
 		}
 	],
 	hinweise: [],
-	speicher_fehlt: false
+	speicher_fehlt: false,
+	mond: null
 };
 
 describe('„Alle Fristen“ nach dem Abmelden', () => {

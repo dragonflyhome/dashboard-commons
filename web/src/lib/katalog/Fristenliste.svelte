@@ -15,12 +15,15 @@
 	 *
 	 * Kalender, Stufe 1: Feste aktiver Kalender stehen als „Fest“ mit ihrer
 	 * Herkunft da, ohne Stufe; berechnete Ereignisse nennen ihre Herkunft auch.
+	 * Stufe 2: Ein Mondmonat zeigt seinen Zeitraum mit hervorgehobenem Vollmond;
+	 * auf der Seite eines Projekts mit dem Jahreskreis steht oben der laufende
+	 * Mond, seine überlieferten Namen mit Quelle zum Aufklappen.
 	 */
-	import type { Abgeleitet, FristenListe, Fristen, FristZeile } from '$vertrag';
+	import type { Abgeleitet, FristenListe, Fristen, FristZeile, Zeitraum } from '$vertrag';
 	import { istGeladen, type Quelle } from './abgeleitet.ts';
 	import { BROWSER_ADRESSE } from '#lib/anmeldung.ts';
 	import { fristDringend, fristWorte } from '#lib/anstehend.ts';
-	import { bezugSatz, haengtSatz, QUELLE_WORT } from '#lib/fristen.ts';
+	import { bezugSatz, haengtSatz, nameKurz, QUELLE_WORT, STUFE_WORT } from '#lib/fristen.ts';
 	import { fmtDate } from '#lib/format.ts';
 	import { zielHref } from '#lib/zieladresse.ts';
 
@@ -52,6 +55,13 @@
 	}
 </script>
 
+{#snippet monat(r: Zeitraum)}
+	<span class="small" data-zeitraum
+		>Neumond {fmtDate(r.anfang)} bis {fmtDate(r.ende)},
+		<strong>Vollmond {fmtDate(r.vollmond)}</strong></span
+	>
+{/snippet}
+
 {#snippet zeile(z: FristZeile)}
 	{@const href = zielHref(z.ziel)}
 	{@const haengt = haengtSatz(z)}
@@ -72,6 +82,9 @@
 				<a {href}>{z.titel}</a>
 			{:else}
 				{z.titel}
+			{/if}
+			{#if z.ereignis?.zeitraum}
+				{@render monat(z.ereignis.zeitraum)}
 			{/if}
 			<span class="meta muted small">
 				{QUELLE_WORT[z.quelle]}{#if mitProjekt && z.projekt_titel !== null}
@@ -101,6 +114,35 @@
 		<p class="muted small">
 			Der Datenspeicher fehlt gerade: Fristen von Aufgaben und Arbeiten fehlen.
 		</p>
+	{/if}
+	{#if fristen.mond}
+		{@const m = fristen.mond}
+		{@const erster = m.namen[0]}
+		<div class="mond" data-mond>
+			<p>
+				<b>Laufender Mond:</b>
+				{m.name}{#if erster}
+					· {nameKurz(erster)}{/if}
+				<span class="muted small">({m.nummer}. Monat im Festjahr, {m.kalender})</span>
+				<br />{@render monat(m.zeitraum)}
+			</p>
+			{#if m.namen.length > 0}
+				<details>
+					<summary class="small">Überlieferte Namen und Quellen</summary>
+					<ul class="small">
+						{#each m.namen as n, i (i)}
+							<li>
+								<b>{n.name}</b> ({n.sprache}){#if n.bedeutung}: {n.bedeutung}{/if}
+								<span class="muted"
+									>· {n.quelle} · {STUFE_WORT[n.stufe]}{#if n.ungeprueft}, Deutung nicht gegen eine
+										Fachausgabe geprüft{/if}</span
+								>
+							</li>
+						{/each}
+					</ul>
+				</details>
+			{/if}
+		</div>
 	{/if}
 	{#if fristen.zeilen.length === 0}
 		<p class="muted small" data-leer>{leerSatz}</p>
@@ -135,6 +177,19 @@
 		display: grid;
 		gap: 0.1rem;
 		min-width: 0;
+	}
+	.mond {
+		margin: 0.4em 0 0.8em;
+		padding: 0.5rem 0.75rem;
+		border: 1px solid var(--line);
+		border-radius: 0.4rem;
+	}
+	.mond p {
+		margin: 0;
+	}
+	.mond ul {
+		margin: 0.3em 0 0;
+		padding-left: 1.2em;
 	}
 	.achtung {
 		color: var(--warn-text);

@@ -328,7 +328,7 @@ fn sauberes_repo_geht_durch() {
     assert!(text.contains("Nichts gefunden."), "{text}");
 }
 
-/// LICENSE (AGPL), LICENSES/CC0-1.0.txt und LICENSES/GPL-3.0-or-later.txt gehen mit ihrem
+/// LICENSE (AGPL), LICENSES/CC0-1.0.txt, LICENSES/GPL-3.0-or-later.txt und LICENSES/Apache-2.0.txt gehen mit ihrem
 /// echten Text durch; jede andere Datei in LICENSES/ steht nicht in der Positivliste.
 /// Ebenso die schon committeten Wurzeldateien rustfmt.toml, .git-blame-ignore-revs und
 /// CONTRIBUTING.md (die einzige erlaubte *.md, mit ihrem echten Text) und der öffentliche
@@ -346,6 +346,7 @@ fn lizenzdateien_gehen_durch() {
             "LICENSE",
             "LICENSES/CC0-1.0.txt",
             "LICENSES/GPL-3.0-or-later.txt",
+            "LICENSES/Apache-2.0.txt",
             "rustfmt.toml",
             ".git-blame-ignore-revs",
             "CONTRIBUTING.md",

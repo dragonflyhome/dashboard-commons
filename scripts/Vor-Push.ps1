@@ -833,9 +833,10 @@ $positiv = @(
     '^(?:Cargo\.toml|Cargo\.lock|LIESMICH\.txt|CHANGELOG\.txt|CONTRIBUTING\.md|KONTAKT-PGP\.asc|LICENSE(?:\.txt)?|\.gitignore|\.gitattributes|rustfmt\.toml|\.git-blame-ignore-revs)$',
     # Nur die Issue-Formulare (Merge-Angebote), nicht ganz .github (keine Workflows, die auf GitHub Code ausführen).
     '^\.github/ISSUE_TEMPLATE/(?!config\.yml$)[^/]+\.yml$',
-    # Lizenz der Dokumentation (CC0) und der übernommenen GPL-Dateien (src/herzschlag), Ort nach REUSE;
+    # Lizenz der Dokumentation (CC0), der übernommenen GPL-Dateien (src/herzschlag) und des
+    # Ports aus calendrical_calculations (Apache-2.0, src/kalender/himmel.rs), Ort nach REUSE;
     # LICENSE in der Wurzel bleibt allein für GitHub.
-    '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later)\.txt$'
+    '^LICENSES/(?:CC0-1\.0|GPL-3\.0-or-later|Apache-2\.0)\.txt$'
 ) | ForEach-Object { Rx $_ }
 $verboten = [ordered]@{
     'projects/<slug> gehört in den Inhalt (dashboard-inhalt)' = Rx '^projects/(?!_vorlage/)'

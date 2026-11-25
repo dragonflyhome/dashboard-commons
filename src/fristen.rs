@@ -20,7 +20,7 @@ use chrono::NaiveDate;
 
 use crate::anstehend::{FRIST_BALD_TAGE, Inhalt, alle_eintraege, archivierte, eine_frage_je_projekt, frist_stufe, tage_bis};
 use crate::inhalt::store::Bestand;
-use crate::kalender::{Katalog, Regel};
+use crate::kalender::{Art, Katalog, OsterRechnung, Regel};
 use crate::vertrag::api::{AnstehendEintrag, Aufgabe, AufgabeAnsicht, AufgabeVerlaufArt, EintragsArt};
 use crate::vertrag::daten::{Baustein, Datei, DatenInhalt};
 use crate::vertrag::fristen::{Abstand, Einheit, EreignisStand, FristBezug, FristQuelle, FristZeile, Fristen, FristenListe, aufloesen};
@@ -55,7 +55,7 @@ pub fn bezug_ab(a: &Aufgabe, heute: NaiveDate) -> NaiveDate {
 pub fn bezug_aufloesen(dateien: &[FristenDatei], projekt: &str, bezug: &FristBezug, ab: NaiveDate) -> (EreignisStand, Option<NaiveDate>) {
     let stand = match dateien.iter().find(|d| d.projekt == projekt) {
         Some(d) => d.inhalt.ereignis_stand(&bezug.ereignis, &bezug.abstand, ab),
-        None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None },
+        None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None, zeitraum: None },
     };
     let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
     (stand, datum)
@@ -78,7 +78,7 @@ pub fn ansichten_aufloesen(b: &Bestand, ansichten: &mut [AufgabeAnsicht], heute:
         let Some(bezug) = a.aufgabe.frist_bezug.clone() else { continue };
         let stand = match aus_bestand(b, &a.aufgabe.projekt) {
             Some(d) => d.ereignis_stand(&bezug.ereignis, &bezug.abstand, bezug_ab(&a.aufgabe, heute)),
-            None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None },
+            None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None, zeitraum: None },
         };
         let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
         a.aufgabe.frist = datum.map(text);
@@ -124,15 +124,22 @@ pub fn datei_zeilen(inhalt: &Inhalt, d: &FristenDatei) -> Vec<FristZeile> {
 /// Projekte („Alle Fristen“ in Anstehend); auf der Seite des Projekts alle.
 pub const FEST_VORSCHAU_TAGE: i64 = 30;
 
-/// Kalender, Stufe 1: je Fest der Kalender in `kalender = [...]` einer
+/// Kalender: je Fest der Kalender in `kalender = [...]` einer
 /// `fristen.toml` eine Zeile mit dem nächsten Vorkommen ab heute und seiner
-/// Herkunft. Feste sind keine Fristen: ohne Stufe, nie überfällig, nicht in
-/// Ampel und nächster Frist. Dazu, ob ein Fest kein Datum mehr hat (nach 2100).
-pub fn fest_zeilen(inhalt: &Inhalt, d: &FristenDatei) -> (Vec<FristZeile>, bool) {
+/// Herkunft; ein Mondmonat mit seinem Zeitraum (als Tag zählt sein Anfang).
+/// Fällt Ostern nach dem Mond auf den Sonntag des kirchlichen (westlichen)
+/// Osterns, steht eine Zeile mit beiden Herkünften; das orthodoxe Ostern bleibt
+/// immer eine eigene Zeile.
+/// Feste sind keine Fristen: ohne Stufe, nie überfällig, nicht in Ampel und
+/// nächster Frist. Je Zeile die Feste, für die sie steht (ihr eigenes und die
+/// zusammengelegten); dazu, ob ein Fest kein Datum mehr hat (nach 2100).
+pub fn fest_zeilen(inhalt: &Inhalt, d: &FristenDatei) -> (Vec<(FristZeile, Vec<String>)>, bool) {
     let katalog = Katalog::eingebaut();
     let projekt_titel = inhalt.projekte.iter().find(|p| p.slug == d.projekt).map(|p| p.titel.clone());
     let ab_heute = Abstand { zahl: 0, einheit: Einheit::Tag };
-    let mut aus = Vec::new();
+    let mut aus: Vec<(FristZeile, Vec<String>)> = Vec::new();
+    // Osterzeilen: Tag, Stelle in `aus`, ob schon Ostern nach dem Mond darin steht.
+    let mut ostern: Vec<(NaiveDate, usize, bool)> = Vec::new();
     let mut fehlt = false;
     for k in d.inhalt.inhalte().into_iter().flat_map(|t| &t.kalender).filter_map(|n| katalog.kalender().iter().find(|k| &k.kennung == n)) {
         for f in &k.fest {
@@ -142,20 +149,42 @@ pub fn fest_zeilen(inhalt: &Inhalt, d: &FristenDatei) -> (Vec<FristZeile>, bool)
                 fehlt = true;
                 continue;
             };
-            aus.push(FristZeile {
-                quelle: FristQuelle::Kalender,
-                id: kennung.clone(),
-                projekt: d.projekt.clone(),
-                projekt_titel: projekt_titel.clone(),
-                titel: f.titel.clone(),
-                frist: Some(text(tag)),
-                tage_bis: Some(tage_bis(tag, inhalt.heute)),
-                frist_stufe: None,
-                frist_bezug: None,
-                ereignis: Some(EreignisStand { kennung, titel: Some(k.titel.clone()), datum: Some(text(tag)), herkunft: Some(herkunft) }),
-                hinweis: None,
-                ziel: format!("/projects/{}", d.projekt),
-            });
+            // Das orthodoxe Ostern bleibt immer eine eigene Zeile.
+            let (ist_ostern, nach_mond) = match f.regel.art() {
+                Ok(Art::Ostern(r)) if r != OsterRechnung::Orthodox => (true, r == OsterRechnung::Astronomisch),
+                _ => (false, false),
+            };
+            if ist_ostern && let Some(o) = ostern.iter_mut().find(|(t, _, mond)| *t == tag && (*mond || nach_mond)) {
+                let (zeile, fuer) = &mut aus[o.1];
+                if let Some(e) = zeile.ereignis.as_mut() {
+                    e.herkunft = Some(format!("{} · zugleich {herkunft}", e.herkunft.take().unwrap_or_default()));
+                }
+                fuer.push(kennung);
+                o.2 |= nach_mond;
+                continue;
+            }
+            if ist_ostern {
+                ostern.push((tag, aus.len(), nach_mond));
+            }
+            let zeitraum = katalog.zeitraum(None, &regel, tag);
+            let fuer = vec![kennung.clone()];
+            aus.push((
+                FristZeile {
+                    quelle: FristQuelle::Kalender,
+                    id: kennung.clone(),
+                    projekt: d.projekt.clone(),
+                    projekt_titel: projekt_titel.clone(),
+                    titel: f.titel.clone(),
+                    frist: Some(text(tag)),
+                    tage_bis: Some(tage_bis(tag, inhalt.heute)),
+                    frist_stufe: None,
+                    frist_bezug: None,
+                    ereignis: Some(EreignisStand { kennung, titel: Some(k.titel.clone()), datum: Some(text(tag)), herkunft: Some(herkunft), zeitraum }),
+                    hinweis: None,
+                    ziel: format!("/projects/{}", d.projekt),
+                },
+                fuer,
+            ));
         }
     }
     (aus, fehlt)
@@ -226,10 +255,15 @@ pub fn fristenliste(inhalt: &Inhalt, projekt: Option<&str>) -> FristenListe {
         let (feste, fehlt) = fest_zeilen(inhalt, d);
         feste_fehlen |= fehlt;
         // Übergreifend nur die nahen Feste, sonst stünde dort das ganze Jahr; und jedes
-        // Fest einmal, auch wenn mehrere Projekte seinen Kalender nennen.
-        zeilen.extend(
-            feste.into_iter().filter(|z| projekt.is_some() || (z.tage_bis.is_some_and(|t| t <= FEST_VORSCHAU_TAGE) && feste_gesehen.insert(z.id.clone()))),
-        );
+        // Fest einmal, auch wenn mehrere Projekte seinen Kalender nennen. Eine
+        // zusammengelegte Osterzeile zählt für alle Feste, für die sie steht.
+        for (z, fuer) in feste {
+            if projekt.is_none() && (!z.tage_bis.is_some_and(|t| t <= FEST_VORSCHAU_TAGE) || feste_gesehen.contains(&z.id)) {
+                continue;
+            }
+            feste_gesehen.extend(fuer);
+            zeilen.push(z);
+        }
     }
     ordnen(&mut zeilen);
     let mut hinweise: Vec<String> = inhalt
@@ -241,7 +275,16 @@ pub fn fristenliste(inhalt: &Inhalt, projekt: Option<&str>) -> FristenListe {
     if feste_fehlen && projekt.is_some() {
         hinweise.push(SATZ_FESTE_GRENZE.to_string());
     }
-    FristenListe { heute: text(inhalt.heute), frist_bald_tage: FRIST_BALD_TAGE, zeilen, hinweise, speicher_fehlt: inhalt.speicher_fehlt }
+    // Der laufende Mond nur auf der Seite eines Projekts, das einen Kalender mit Jahreszeiten zeigt.
+    let mond = projekt.and_then(|p| {
+        inhalt
+            .fristen
+            .iter()
+            .filter(|d| d.projekt == p)
+            .flat_map(|d| d.inhalt.inhalte().into_iter().flat_map(|t| t.kalender.iter()))
+            .find_map(|k| Katalog::eingebaut().mond(k, inhalt.heute))
+    });
+    FristenListe { heute: text(inhalt.heute), frist_bald_tage: FRIST_BALD_TAGE, zeilen, hinweise, speicher_fehlt: inhalt.speicher_fehlt, mond }
 }
 
 #[cfg(test)]
@@ -479,6 +522,63 @@ abstand = "-3 Tage"
         assert_eq!(l.hinweise, [SATZ_FESTE_GRENZE]);
         let einkauf = l.zeilen.iter().find(|z| z.id == "einkauf").unwrap();
         assert_eq!((einkauf.frist.as_deref(), einkauf.ereignis.as_ref().unwrap().herkunft.as_deref()), (None, None), "hängt, ohne zu raten");
+    }
+
+    /// Kalender, Stufe 2: Mondmonate mit Zeitraum, der laufende Mond auf der
+    /// Projektseite und eine Zeile, wenn Osterregeln auf denselben Sonntag fallen.
+    /// (Gerechnet in der Ortszeit des Rechners; die Tage liegen fern von Mitternacht.)
+    #[test]
+    fn jahreskreis_in_der_liste() {
+        let mit = |heute: &str| Inhalt {
+            heute: tag(heute),
+            ..inhalt(Vec::new(), vec![datei("kal", "kalender = [\"kirche\", \"jahreskreis\"]\n")], vec![kopf("kal", false)])
+        };
+        let i = mit("2027-03-01");
+        let l = fristenliste(&i, Some("kal"));
+        let zeile = |l: &FristenListe, id: &str| l.zeilen.iter().find(|z| z.id == id).cloned();
+        let ostern = zeile(&l, "kirche.ostern").unwrap();
+        assert_eq!(ostern.frist.as_deref(), Some("2027-03-28"));
+        let h = ostern.ereignis.unwrap().herkunft.unwrap();
+        assert!(h.contains("zugleich Kirchenjahr · Ostersonntag nach dem Mond") && h.contains("zugleich Jahreskreis · Ostern nach dem Mond"), "{h}");
+        assert!(zeile(&l, "kirche.ostern-astronomisch").is_none() && zeile(&l, "jahreskreis.ostern").is_none());
+        let dreimilch = zeile(&l, "jahreskreis.dreimilch").unwrap();
+        assert_eq!(dreimilch.frist.as_deref(), Some("2027-04-07"));
+        let z = dreimilch.ereignis.unwrap().zeitraum.unwrap();
+        assert_eq!((z.anfang.as_str(), z.vollmond.as_str(), z.ende.as_str()), ("2027-04-07", "2027-04-21", "2027-05-06"));
+        assert!(zeile(&l, "jahreskreis.yule").unwrap().ereignis.unwrap().zeitraum.is_none(), "ein Sonnentag ist kein Monat");
+        let m = l.mond.as_ref().unwrap();
+        assert_eq!((m.nummer, m.name.as_str(), m.namen[0].name.as_str()), (3, "1. Frühlingsvollmond", "Hrēþmōnaþ"));
+        assert!(fristenliste(&i, None).mond.is_none(), "der laufende Mond nur auf der Projektseite");
+        assert!(crate::projektverlauf::aus_fristen(&l).is_empty(), "Feste und Monate nicht im Verlauf");
+        // 2038 weichen die Ostern ab: zwei Zeilen; das nach dem Mond trägt beide Kalender.
+        let l = fristenliste(&mit("2038-03-01"), Some("kal"));
+        assert_eq!(zeile(&l, "kirche.ostern").unwrap().frist.as_deref(), Some("2038-04-25"));
+        let astro = zeile(&l, "kirche.ostern-astronomisch").unwrap();
+        assert_eq!(astro.frist.as_deref(), Some("2038-03-28"));
+        assert!(astro.ereignis.unwrap().herkunft.unwrap().contains("zugleich Jahreskreis"));
+        // 16.4.2028: westlich, orthodox und nach dem Mond am selben Sonntag. Das orthodoxe
+        // bleibt eine eigene Zeile; nur das nach dem Mond wird zum westlichen gelegt.
+        let orth = |heute: &str| Inhalt {
+            heute: tag(heute),
+            ..inhalt(Vec::new(), vec![datei("kal", "kalender = [\"kirche\", \"orthodox\"]\n")], vec![kopf("kal", false)])
+        };
+        let l = fristenliste(&orth("2028-03-01"), Some("kal"));
+        assert_eq!(zeile(&l, "kirche.ostern").unwrap().frist.as_deref(), Some("2028-04-16"));
+        assert_eq!(zeile(&l, "orthodox.ostern").unwrap().frist.as_deref(), Some("2028-04-16"));
+        assert!(zeile(&l, "kirche.ostern").unwrap().ereignis.unwrap().herkunft.unwrap().contains("zugleich Kirchenjahr · Ostersonntag nach dem Mond"));
+        assert!(zeile(&l, "kirche.ostern-astronomisch").is_none());
+        // Übergreifend: Zwei Projekte mit verschiedenen Kalendern; die zusammengelegte Zeile
+        // zählt auch für das Ostern nach dem Mond des anderen Projekts.
+        let zwei = Inhalt {
+            heute: tag("2027-03-10"),
+            ..inhalt(
+                Vec::new(),
+                vec![datei("a", "kalender = [\"kirche\", \"jahreskreis\"]\n"), datei("b", "kalender = [\"jahreskreis\"]\n")],
+                vec![kopf("a", false), kopf("b", false)],
+            )
+        };
+        let am_28: Vec<String> = fristenliste(&zwei, None).zeilen.into_iter().filter(|z| z.frist.as_deref() == Some("2027-03-28")).map(|z| z.id).collect();
+        assert_eq!(am_28, ["kirche.ostern"]);
     }
 
     /// Abnahme Runde 1: Eine Aufgabe an einem Regel-Ereignis gilt für das
