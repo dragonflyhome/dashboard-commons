@@ -343,7 +343,8 @@ export function fristenListe(): FristenListe {
 					kennung: 'zusage-da',
 					titel: 'Zusage ist da',
 					datum: tagIso(-5),
-					herkunft: null
+					herkunft: null,
+					zeitraum: null
 				}
 			}),
 			fristZeile('datei', 'helferliste', 'Helferliste verschicken', null, {
@@ -352,7 +353,8 @@ export function fristenListe(): FristenListe {
 					kennung: 'aufbau',
 					titel: 'Termin für den Aufbau',
 					datum: null,
-					herkunft: null
+					herkunft: null,
+					zeitraum: null
 				},
 				hinweis: 'Termin steht noch aus'
 			}),
@@ -364,12 +366,43 @@ export function fristenListe(): FristenListe {
 					kennung: 'kirche.pfingsten',
 					titel: 'Kirchenjahr',
 					datum: tagIso(40),
-					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag'
+					herkunft: 'Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)',
+					zeitraum: null
+				}
+			}),
+			// Stufe 2: ein Mondmonat, als Tag zählt sein Anfang, dazu der Zeitraum.
+			fristZeile('kalender', 'jahreskreis.samhain', 'Samhain', 60, {
+				frist_stufe: null,
+				ziel: '/projects/beispiel',
+				ereignis: {
+					kennung: 'jahreskreis.samhain',
+					titel: 'Jahreskreis',
+					datum: tagIso(60),
+					herkunft:
+						'Jahreskreis · Samhain · Monat um den 11. Vollmond nach der Wintersonnenwende (21.12.2026) · überliefert: Winterfylleþ (altenglisch, Beda)',
+					zeitraum: { anfang: tagIso(60), vollmond: tagIso(75), ende: tagIso(89) }
 				}
 			})
 		],
 		hinweise: [],
-		speicher_fehlt: false
+		speicher_fehlt: false,
+		// Stufe 2: der laufende Mond, nur auf der Seite eines Projekts mit dem Jahreskreis.
+		mond: {
+			kalender: 'Jahreskreis',
+			nummer: 12,
+			name: '1. Wintervollmond',
+			namen: [
+				{
+					name: 'Blōtmōnaþ',
+					sprache: 'altenglisch',
+					quelle: 'Beda, De temporum ratione 15, um 725',
+					bedeutung: 'Opfermonat',
+					stufe: 'belegt',
+					ungeprueft: false
+				}
+			],
+			zeitraum: { anfang: tagIso(-10), vollmond: tagIso(5), ende: tagIso(19) }
+		}
 	};
 }
 

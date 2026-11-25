@@ -1,0 +1,325 @@
+# Kalender „Jahreskreis“ nach Sonne und Mond (Nordhalbkugel).
+# Eingebaut in den Dienst; welche Kalender angezeigt werden, steht im Projekt `kalender`.
+# Regelarten und Prüfung: src/kalender/mod.rs.
+#
+# Aufbau:
+# - Feste mit Tag sind nur die vier Sonnentage (Wenden und Gleichen), am Tag des
+#   berechneten Zeitpunkts in Ortszeit.
+# - Ein Monat läuft von Neumond zu Neumond und heißt nach seinem Vollmond. Die
+#   Sonnenmonate enthalten einen Sonnentag; Imbolc, Dreimilch-Mond, Lughnassad und Samhain
+#   sind der Monat um den 2., 5., 8. und 11. Vollmond nach dem kürzesten Tag (ein
+#   Vollmond am Tag der Wende zählt nicht). Als Termin zählt der Anfang des Monats.
+# - Das Festjahr läuft vom Monat mit der Wintersonnenwende bis vor den nächsten
+#   (12 oder 13 Monate).
+# - Jede Jahreszeit beginnt mit dem Neumond, der einen der vier Mondmonate beendet,
+#   und zählt ihre Monate durch („1. Wintervollmond“); der Sonnenmonat zählt mit.
+#
+# Namen: zuerst der sprechende, daneben überlieferte mit Quelle und Stufe
+# (belegt, erschlossen, neuzeitlich). Die Zuordnung alter Monatsnamen zu diesen
+# Mondmonaten ist eine eigene, ungefähre Zuordnung über die Monatsmitte; keine
+# Quelle ordnet einen Namen dem n-ten Vollmond zu. Der achtteilige Jahreskreis
+# als Ganzes ist neuzeitlich (Mitte des 20. Jahrhunderts). `ungeprueft = true`:
+# Zuordnung oder Deutung nur aus allgemeinen Nachschlagewerken, nicht gegen eine
+# Fachausgabe geprüft.
+kennung = "jahreskreis"
+titel = "Jahreskreis"
+
+# Die vier Sonnentage
+
+[[fest]]
+kennung = "yule"
+titel = "Mittwinter (Yule)"
+regel = { himmel = "sonnenwende-dezember" }
+
+[[fest.namen]]
+name = "Giuli"
+sprache = "altenglisch"
+quelle = "Beda, De temporum ratione 15, um 725"
+bedeutung = "Das Wort ist belegt, seine Herkunft ungeklärt; bei Beda der Name der zwei Monate um die Wintersonnenwende."
+stufe = "belegt"
+
+[[fest.namen]]
+name = "jól"
+sprache = "altnordisch"
+quelle = "altnordische Überlieferung"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "*jehwlą"
+sprache = "urgermanisch"
+quelle = "sprachwissenschaftliche Rekonstruktion"
+stufe = "erschlossen"
+ungeprueft = true
+
+[[fest.namen]]
+name = "jiuleis"
+sprache = "gotisch"
+quelle = "gotisches Kalenderfragment"
+bedeutung = "Lesung und Deutung umstritten"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest]]
+kennung = "ostara"
+titel = "Frühlingsfest (Ostara)"
+regel = { himmel = "gleiche-maerz" }
+
+[[fest.namen]]
+name = "Ostara"
+sprache = "neuheidnischer Festname"
+quelle = "Göttinnenname bei Jacob Grimm, Deutsche Mythologie, 1835, erschlossen aus althochdeutsch ôstarun; als Festname seit den 1970er Jahren"
+bedeutung = "Ein alter Name für ein Fest an der Tag-und-Nacht-Gleiche ist nicht belegt."
+stufe = "neuzeitlich"
+
+[[fest]]
+kennung = "litha"
+titel = "Mittsommer (Litha)"
+regel = { himmel = "sonnenwende-juni" }
+
+[[fest.namen]]
+name = "Litha"
+sprache = "neuheidnischer Festname"
+quelle = "nach Bedas Monatsname Līþa, als Festname seit den 1970er Jahren"
+bedeutung = "Bei Beda ein Monatsname, kein Fest."
+stufe = "neuzeitlich"
+
+[[fest]]
+kennung = "mabon"
+titel = "Herbstfest (Mabon)"
+regel = { himmel = "gleiche-september" }
+
+[[fest.namen]]
+name = "Mabon"
+sprache = "neuheidnischer Festname"
+quelle = "nach einer walisischen Sagengestalt, als Festname seit den 1970er Jahren"
+bedeutung = "Ein alter Name ist nicht belegt."
+stufe = "neuzeitlich"
+
+# Ostern nach dem Mond folgt aus der Gleiche im März. Die übrigen kirchlichen
+# Tage stehen nur im Kirchenjahr.
+[[fest]]
+kennung = "ostern"
+titel = "Ostern nach dem Mond"
+regel = { ostern = "astronomisch" }
+
+# Die vier Sonnenmonate: der Monat mit dem Sonnentag. Er trägt eigene alte Namen
+# (der erste steht neben dem Monat); die Stufe des Festnamens gilt auch für ihn.
+
+[[fest]]
+kennung = "yule-mond"
+titel = "Yule-Mond"
+regel = { mondmonat = { enthaelt = "sonnenwende-dezember" } }
+namen = [
+  { name = "Giuli", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Beda nennt die zwei Monate um die Wintersonnenwende Giuli; das Wort ist belegt, seine Herkunft ungeklärt.", stufe = "belegt" },
+  { name = "heilagmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "hrútmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "jiuleis", sprache = "gotisch", quelle = "gotisches Kalenderfragment", bedeutung = "Lesung und Deutung umstritten", stufe = "belegt", ungeprueft = true },
+]
+
+[[fest]]
+kennung = "ostara-mond"
+titel = "Ostara-Mond"
+regel = { mondmonat = { enthaelt = "gleiche-maerz" } }
+namen = [
+  { name = "Ēosturmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "nach einer Göttin Eostre; die Göttin nennt nur Beda, ob es sie gab, ist umstritten", stufe = "belegt" },
+  { name = "ostarmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "einmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "Ostara-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Ostara (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
+]
+
+[[fest]]
+kennung = "litha-mond"
+titel = "Litha-Mond"
+regel = { mondmonat = { enthaelt = "sonnenwende-juni" } }
+namen = [
+  { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so, in Jahren mit 13 Monden drei (Thrilithi)", stufe = "belegt" },
+  { name = "heuuimanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "sólmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "Litha-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Litha (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
+]
+
+[[fest]]
+kennung = "mabon-mond"
+titel = "Mabon-Mond"
+regel = { mondmonat = { enthaelt = "gleiche-september" } }
+namen = [
+  { name = "Hāligmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Monat heiliger Bräuche; in Grenzlage zu Winterfylleþ", stufe = "belegt" },
+  { name = "windumemanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "haustmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "Mabon-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Mabon (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
+]
+
+# Die vier Mondmonate
+
+[[fest]]
+kennung = "imbolc"
+titel = "Imbolc"
+regel = { mondmonat = { vollmond = 2 } }
+
+[[fest.namen]]
+name = "Sōlmōnaþ"
+sprache = "altenglisch"
+quelle = "Beda, De temporum ratione 15, um 725"
+bedeutung = "Kuchenmonat"
+stufe = "belegt"
+
+[[fest.namen]]
+name = "Oimelc, Imbolc"
+sprache = "altirisch"
+quelle = "Tochmarc Emire und Cormacs Glossar, 10./11. Jahrhundert"
+bedeutung = "glossiert als „Beginn des Frühlings“"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "hornung"
+sprache = "althochdeutsch"
+quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "þorri"
+sprache = "altnordisch"
+quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest]]
+kennung = "dreimilch"
+titel = "Dreimilch-Mond"
+regel = { mondmonat = { vollmond = 5 } }
+
+[[fest.namen]]
+name = "Þrimilce"
+sprache = "altenglisch"
+quelle = "Beda, De temporum ratione 15, um 725"
+bedeutung = "Dreimilch: Das Vieh wurde dreimal am Tag gemolken."
+stufe = "belegt"
+
+[[fest.namen]]
+name = "winnemanoth"
+sprache = "althochdeutsch"
+quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "gaukmánuðr"
+sprache = "altnordisch"
+quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest]]
+kennung = "lughnassad"
+titel = "Lughnassad (Lammas)"
+regel = { mondmonat = { vollmond = 8 } }
+
+[[fest.namen]]
+name = "Wēodmōnaþ"
+sprache = "altenglisch"
+quelle = "Beda, De temporum ratione 15, um 725"
+bedeutung = "Unkrautmonat"
+stufe = "belegt"
+
+[[fest.namen]]
+name = "Brón Trogaill, später Lugnasad"
+sprache = "altirisch"
+quelle = "Tochmarc Emire, 10./11. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "aranmanoth"
+sprache = "althochdeutsch"
+quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert"
+bedeutung = "Erntemonat"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "heyannir"
+sprache = "altnordisch"
+quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest]]
+kennung = "samhain"
+titel = "Samhain"
+regel = { mondmonat = { vollmond = 11 } }
+
+[[fest.namen]]
+name = "Winterfylleþ"
+sprache = "altenglisch"
+quelle = "Beda, De temporum ratione 15, um 725"
+bedeutung = "Winter-Vollmond: Der Winter beginnt mit dem Vollmond dieses Monats."
+stufe = "belegt"
+
+[[fest.namen]]
+name = "Samain"
+sprache = "altirisch"
+quelle = "Tochmarc Emire, 10./11. Jahrhundert"
+bedeutung = "glossiert als „Ende des Sommers“"
+stufe = "belegt"
+ungeprueft = true
+
+[[fest.namen]]
+name = "gormánuðr"
+sprache = "altnordisch"
+quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert"
+bedeutung = "erster Wintermonat"
+stufe = "belegt"
+ungeprueft = true
+
+# Die Jahreszeiten und die Namen ihrer übrigen Monate: davor für die Monate vor
+# dem Sonnenmonat der Jahreszeit, danach für die nach ihm. Im Frühling und Herbst
+# bleibt danach leer: Dort tragen schon der Sonnenmonat oder der nächste Mondmonat
+# die passenden Namen (der Monat zeigt dann nur seinen sprechenden Namen).
+
+[[jahreszeit]]
+nach = "samhain"
+vollmond = "Wintervollmond"
+davor = [
+  { name = "Blōtmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Opfermonat: Das Vieh wurde den Göttern geweiht.", stufe = "belegt" },
+  { name = "herbistmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "frermánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+danach = [
+  { name = "Giuli", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Beda nennt die zwei Monate um die Wintersonnenwende Giuli.", stufe = "belegt" },
+  { name = "wintarmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+
+[[jahreszeit]]
+nach = "imbolc"
+vollmond = "Frühlingsvollmond"
+davor = [
+  { name = "Hrēþmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "nach einer Göttin Hretha", stufe = "belegt" },
+  { name = "lenzinmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "gói", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+
+[[jahreszeit]]
+nach = "dreimilch"
+vollmond = "Sommervollmond"
+davor = [
+  { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so", stufe = "belegt" },
+  { name = "brachmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "eggtíð", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+danach = [
+  { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so", stufe = "belegt" },
+  { name = "heuuimanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "sólmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+
+[[jahreszeit]]
+nach = "lughnassad"
+vollmond = "Herbstvollmond"
+davor = [
+  { name = "Hāligmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Monat heiliger Bräuche", stufe = "belegt" },
+  { name = "witumanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "kornskurðarmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]

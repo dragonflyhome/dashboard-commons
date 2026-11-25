@@ -412,12 +412,27 @@ zeilen = [
   ['festes Datum', 'monat, tag (der 29.2. nur in Schaltjahren)', 'monat = 4, tag = 30'],
   ['Abstand zu einem Fest', 'nach = "<kalender>.<fest>", tage (mit Vorzeichen)', 'nach = "kirche.ostern", tage = 60'],
   ['Wochentag danach', 'wochentag (montag bis sonntag) und nach; der Bezugstag selbst zählt nicht', 'wochentag = "donnerstag", nach = "kirche.ostern"'],
-  ['Ostersonntag', 'ostern = "westlich" oder "orthodox"', 'ostern = "orthodox"'],
+  ['Ostersonntag', 'ostern = "westlich", "orthodox" oder "astronomisch" (erster Sonntag nach dem ersten Vollmond nach der Gleiche im März)', 'ostern = "orthodox"'],
   ['chinesischer Kalender', 'kalender = "chinesisch", monat (1–12), tag (1–30), wahlweise schaltmonat = true', 'kalender = "chinesisch", monat = 8, tag = 15'],
+  ['Sonnentag', 'himmel = "sonnenwende-dezember", "gleiche-maerz", "sonnenwende-juni" oder "gleiche-september" (der Tag in Ortszeit)', 'himmel = "gleiche-maerz"'],
+  ['Mondphase nach einem Fest', 'himmel = "neumond", "erstes-viertel", "vollmond" oder "letztes-viertel", nach, wahlweise nummer (1–13); der Bezugstag selbst zählt nicht', 'himmel = "vollmond", nummer = 2, nach = "jahreskreis.yule"'],
+  ['Mondmonat mit einem Sonnentag', 'mondmonat = { enthaelt = "<wende oder gleiche>" }; als Tag zählt der Neumond am Anfang', 'mondmonat = { enthaelt = "sonnenwende-juni" }'],
+  ['Mondmonat um den n-ten Vollmond', 'mondmonat = { vollmond = n } (1–13), gezählt ab dem Tag nach der Wintersonnenwende', 'mondmonat = { vollmond = 11 }'],
 ]
 
 [[block]]
 text = 'Je Regel genau eine Art; datum und regel zusammen, unbekannte Schlüssel und Verweise ohne Kalender lehnt pruefe ab. Welche Kalender und Feste jemand nutzt, ist persönlich: Die Sätze von pruefe nennen sie nicht, und alles steht wie die übrigen Fristen nur mit Anmeldung da. In der Antwort trägt ereignis dazu herkunft, etwa „Kirchenjahr · Pfingstsonntag · 49 Tage nach Ostersonntag (28.3.2027)“.'
+
+[[block]]
+titel = 'Mond und Jahreskreis (Kalender, Stufe 2)'
+text = '''
+Kurz für dich (Inhaber): Mit kalender = ["jahreskreis"] stehen die vier Sonnentage (Mittwinter, Frühlingsfest, Mittsommer, Herbstfest) und die Mondmonate des Jahres in der Fristenliste, je mit Neumond, Vollmond und Ende. Oben auf der Projektseite steht der laufende Mond mit seinem Namen und den alten Namen samt Quelle zum Aufklappen.
+
+Rechnung. Sonne und Mond rechnet das Dashboard selbst, ohne Netz (Port aus calendrical_calculations, siehe LIESMICH.txt). Die Zeitpunkte liegen im Vergleich mit veröffentlichten Tabellen höchstens wenige Minuten daneben; der Tag gilt in der Ortszeit des Rechners. Liegt ein Ereignis wenige Minuten um Mitternacht, kann der Tag um eins abweichen. Ein Monat läuft von Neumond zu Neumond; ob er einen Sonnentag enthält, entscheiden die Zeitpunkte, nicht die Tage. Gerechnet wird für die Nordhalbkugel; die Wahl aus dem Ort kommt mit einer späteren Stufe.
+
+Der Jahreskreis. Feste mit Tag sind nur die vier Sonnentage. Imbolc, der Dreimilch-Mond, Lughnassad (Lammas) und Samhain sind Monate: der Monat um den 2., 5., 8. und 11. Vollmond nach der Wintersonnenwende; ein Vollmond am Tag der Wende zählt nicht. Als Termin zählt der Anfang des Monats, eine Zeile je Monat. Jede Jahreszeit beginnt mit dem Neumond nach einem dieser Monate und zählt ihre Monde durch („1. Wintervollmond“); der Monat mit dem Sonnentag trägt dessen Namen dazu („2. Wintervollmond · Yule-Mond“). Das Festjahr läuft vom Monat mit der Wintersonnenwende bis vor den nächsten, 12 oder 13 Monate; der zusätzliche Mond fällt in den Winter.
+
+Namen. Zuerst steht der sprechende Name, daneben ein überlieferter mit Sprache und Quelle, in der Einzelansicht alle mit ihrer Stufe: belegt (in einer alten Quelle), erschlossen (rekonstruiert) oder neuzeitlich. Die Namen sind Daten in vorlagen/kalender/jahreskreis.toml (fest.namen und jahreszeit), nicht Code. Ostern nach dem Mond steht im Jahreskreis und im Kirchenjahr; fällt es auf den Sonntag des kirchlichen Osterns, steht eine Zeile mit beiden Herkünften.'''
 
 [[block]]
 titel = 'So fängst du an'

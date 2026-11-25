@@ -19,6 +19,13 @@ kennung = "ostern"
 titel = "Ostersonntag"
 regel = { ostern = "westlich" }
 
+# Steht immer neben dem kirchlichen Ostern; fallen beide auf denselben Sonntag,
+# zeigt die Fristenliste eine Zeile mit beiden Herkünften.
+[[fest]]
+kennung = "ostern-astronomisch"
+titel = "Ostersonntag nach dem Mond"
+regel = { ostern = "astronomisch" }
+
 [[fest]]
 kennung = "ostermontag"
 titel = "Ostermontag"

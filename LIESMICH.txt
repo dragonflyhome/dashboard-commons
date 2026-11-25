@@ -60,5 +60,17 @@ Programm zu verbinden: Die übernommenen Dateien bleiben unter der GPL, alles
 andere und die gebauten Programme als Ganzes (auch dashboard.exe und
 dashboard-herzschlag.exe) stehen unter der AGPL.
 
+Ausnahme: src\kalender\himmel.rs (Rechnung für Sonne und Mond) ist aus der
+Kiste calendrical_calculations 0.2.4 des Projekts ICU4X übernommen und
+geändert; sie steht weiter unter der Apache License, Fassung 2.0 (Kopf
+„SPDX-License-Identifier: Apache-2.0“, Herkunft und Änderungen dort). Der Text
+steht in LICENSES\Apache-2.0.txt. Die Apache-Lizenz ist mit der AGPL
+vereinbar; das Programm als Ganzes steht unter der AGPL. Die Vergleichswerte
+in src\kalender\espenak-*.txt stammen aus den Tabellen von Fred Espenak
+(www.Astropixels.com): „Moon Phases Table courtesy of Fred Espenak,
+www.Astropixels.com“ (https://www.astropixels.com/ephemeris/moon/phases2001gmt.html)
+und „Solstice and Equinox Table Courtesy of Fred Espenak, www.Astropixels.com“
+(https://www.astropixels.com/ephemeris/soleq2001.html).
+
 Die Dokumentation in docs\anleitung und docs\zielbild ist gemeinfrei
 (CC0-1.0). Der Text steht in LICENSES\CC0-1.0.txt.

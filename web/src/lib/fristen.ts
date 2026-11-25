@@ -4,7 +4,15 @@
  * im Server (aufgelöste Daten, Tage bis, Frist-Stufe, Ordnung); hier entstehen
  * nur Sätze.
  */
-import type { EreignisStand, FristBezug, FristenListe, FristQuelle, FristZeile } from '$vertrag';
+import type {
+	Belegstufe,
+	EreignisStand,
+	FristBezug,
+	FristenListe,
+	FristQuelle,
+	FristZeile,
+	Name
+} from '$vertrag';
 import { API } from './api/client.ts';
 
 /** Woher eine Zeile kommt, als Wort. */
@@ -41,6 +49,26 @@ export function bezugSatz(
 	if (z.frist === null || z.frist_bezug === null || z.ereignis?.datum == null) return null;
 	const [, m, t] = z.ereignis.datum.split('-');
 	return `aus „${z.ereignis.titel ?? z.frist_bezug.ereignis}“ (${t ?? ''}.${m ?? ''}.) ${z.frist_bezug.abstand}`;
+}
+
+/** Wie sicher ein überlieferter Name ist, als Wort. */
+export const STUFE_WORT: Readonly<Record<Belegstufe, string>> = {
+	belegt: 'belegt',
+	erschlossen: 'erschlossen',
+	neuzeitlich: 'neuzeitlich'
+};
+
+/** Zusatz zu einem Namen mit `ungeprueft` (Zuordnung oder Deutung). */
+export const UNGEPRUEFT = 'nicht gegen eine Fachausgabe geprüft';
+
+/**
+ * Kurz für eine Zeile, wie im Server: „Blōtmōnaþ (altenglisch, Beda)“, die
+ * Quelle bis zum ersten Komma; eine unsichere Stufe steht dabei.
+ */
+export function nameKurz(n: Name): string {
+	const quelle = (n.quelle.split(',')[0] ?? '').trim();
+	const stufe = n.stufe === 'belegt' ? '' : `, ${STUFE_WORT[n.stufe]}`;
+	return `${n.name} (${n.sprache}, ${quelle}${stufe})`;
 }
 
 /** Holt die Fristen aller sichtbaren Projekte; `null` ohne Anmeldung oder bei Fehlern. Wirft nie. */
