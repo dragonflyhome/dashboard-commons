@@ -1005,15 +1005,47 @@ mod tests {
         assert!(m.name.ends_with("· Ostara-Mond"), "{}", m.name);
         assert_eq!(m.namen[0].name, "Ēosturmōnaþ");
         assert!(m.namen.iter().any(|n| n.name == "Ostara-Mond" && n.stufe == Belegstufe::Neuzeitlich));
-        // Über 1950–2099: Jeder Sonnenmonat zeigt seinen eigenen ersten Namen.
-        for (heute, erster) in [("12-21", "Giuli"), ("03-21", "Ēosturmōnaþ"), ("06-21", "Līþa"), ("09-23", "Hāligmōnaþ")] {
-            for j in (1950..=2099).step_by(7) {
-                let m = k.mond("jahreskreis", tag(&format!("{j}-{heute}"))).unwrap();
-                if m.name.contains("-Mond") {
-                    assert_eq!(m.namen[0].name, erster, "{j}-{heute}: {}", m.name);
+        // Über 1950–2099, ohne Bedingung: Am Tag jedes Sonnentags läuft dessen Monat mit seinem
+        // Titel und ersten Namen; die Monate davor und danach in derselben Jahreszeit tragen die
+        // Namen der Jahreszeit (Frühling und Herbst danach keine).
+        let erster = |m: &Mond| m.namen.first().map(|n| n.name.clone()).unwrap_or_default();
+        let in_jahreszeit = |m: &Mond| m.name.starts_with(|c: char| c.is_ascii_digit());
+        let mut litha_zuerst = Vec::new();
+        for j in 1950..=2099 {
+            for (s, titel, eigen, davor, danach) in [
+                (Sonnenereignis::SonnenwendeDezember, "Yule-Mond", "Giuli", "Blōtmōnaþ", "Giuli"),
+                (Sonnenereignis::GleicheMaerz, "Ostara-Mond", "Ēosturmōnaþ", "Hrēþmōnaþ", ""),
+                (Sonnenereignis::SonnenwendeJuni, "Litha-Mond", "Līþa", "Līþa", "Līþa"),
+                (Sonnenereignis::GleicheSeptember, "Mabon-Mond", "Hāligmōnaþ", "Hāligmōnaþ", ""),
+            ] {
+                // Der Monat, der den berechneten Sonnentag enthält, geprüft an seinem Vollmond (am
+                // Sonnentag selbst kann schon der nächste laufen: Neumond am selben Tag nach dem
+                // Ereignis, etwa 23.9.1957; der Tag mit dem Neumond gehört zum neuen Monat).
+                let t = s.zeitpunkt(j).unwrap();
+                let nr = mond::monat_bei(t);
+                let tag_von = |n: i32| k.ort.tag(mond::vollmond(n)).unwrap();
+                let m = k.mond("jahreskreis", tag_von(nr)).unwrap();
+                assert!(m.name.ends_with(&format!("· {titel}")), "{j} {titel}: {}", m.name);
+                assert_eq!(erster(&m), eigen, "{j} {titel}");
+                let vor = k.mond("jahreskreis", tag_von(nr - 1)).unwrap();
+                if in_jahreszeit(&vor) {
+                    assert_eq!(erster(&vor), davor, "{j}: vor dem {titel}: {}", vor.name);
+                }
+                let nach = k.mond("jahreskreis", tag_von(nr + 1)).unwrap();
+                if in_jahreszeit(&nach) {
+                    assert_eq!(erster(&nach), danach, "{j}: nach dem {titel}: {}", nach.name);
+                    if titel == "Litha-Mond" {
+                        litha_zuerst.push(j);
+                    }
                 }
             }
         }
+        // Der Litha-Mond als 1. Sommervollmond (etwa ein Drittel der Jahre), festes Beispiel 2028.
+        assert!((40..=60).contains(&litha_zuerst.len()), "{litha_zuerst:?}");
+        let m = k.mond("jahreskreis", tag("2028-06-21")).unwrap();
+        assert_eq!(m.name, "1. Sommervollmond · Litha-Mond");
+        let m = k.mond("jahreskreis", tag(&m.zeitraum.ende)).unwrap();
+        assert_eq!((m.name.as_str(), erster(&m).as_str()), ("2. Sommervollmond", "Līþa"));
     }
 
     /// Grenzfälle aus den Tabellen 2001–2100: Neumond am Tag einer Wende oder

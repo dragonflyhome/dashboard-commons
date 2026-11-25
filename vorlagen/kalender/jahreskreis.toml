@@ -125,7 +125,7 @@ namen = [
   { name = "Ēosturmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "nach einer Göttin Eostre; die Göttin nennt nur Beda, ob es sie gab, ist umstritten", stufe = "belegt" },
   { name = "ostarmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
   { name = "einmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
-  { name = "Ostara-Mond", sprache = "neuheidnischer Name", quelle = "nach dem Festnamen Ostara, seit den 1970er Jahren", stufe = "neuzeitlich" },
+  { name = "Ostara-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Ostara (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
 ]
 
 [[fest]]
@@ -136,7 +136,7 @@ namen = [
   { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so, in Jahren mit 13 Monden drei (Thrilithi)", stufe = "belegt" },
   { name = "heuuimanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
   { name = "sólmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
-  { name = "Litha-Mond", sprache = "neuheidnischer Name", quelle = "nach dem Festnamen Litha, seit den 1970er Jahren", stufe = "neuzeitlich" },
+  { name = "Litha-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Litha (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
 ]
 
 [[fest]]
@@ -147,7 +147,7 @@ namen = [
   { name = "Hāligmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Monat heiliger Bräuche; in Grenzlage zu Winterfylleþ", stufe = "belegt" },
   { name = "windumemanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
   { name = "haustmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
-  { name = "Mabon-Mond", sprache = "neuheidnischer Name", quelle = "nach dem Festnamen Mabon, seit den 1970er Jahren", stufe = "neuzeitlich" },
+  { name = "Mabon-Mond", sprache = "neuheidnischer Name", quelle = "eigene Benennung nach dem Festnamen Mabon (dieser seit den 1970er Jahren)", stufe = "neuzeitlich" },
 ]
 
 # Die vier Mondmonate
@@ -275,9 +275,9 @@ stufe = "belegt"
 ungeprueft = true
 
 # Die Jahreszeiten und die Namen ihrer übrigen Monate: davor für die Monate vor
-# dem Sonnenmonat der Jahreszeit, danach für die nach ihm. Wo Tabelle und
-# Quellen nichts geben, bleibt die Liste leer (der Monat zeigt dann nur seinen
-# sprechenden Namen).
+# dem Sonnenmonat der Jahreszeit, danach für die nach ihm. Im Frühling und Herbst
+# bleibt danach leer: Dort tragen schon der Sonnenmonat oder der nächste Mondmonat
+# die passenden Namen (der Monat zeigt dann nur seinen sprechenden Namen).
 
 [[jahreszeit]]
 nach = "samhain"
@@ -308,6 +308,11 @@ davor = [
   { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so", stufe = "belegt" },
   { name = "brachmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
   { name = "eggtíð", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
+]
+danach = [
+  { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so", stufe = "belegt" },
+  { name = "heuuimanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
+  { name = "sólmánuðr", sprache = "altnordisch", quelle = "Snorri Sturluson, Skáldskaparmál, 13. Jahrhundert", stufe = "belegt", ungeprueft = true },
 ]
 
 [[jahreszeit]]

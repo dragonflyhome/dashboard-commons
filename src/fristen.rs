@@ -182,20 +182,23 @@ pub fn ostern_zusammenlegen(zeilen: Vec<(FristZeile, Option<OsterRechnung>)>) ->
         zeilen.iter().filter(|(_, o)| *o == Some(OsterRechnung::Astronomisch)).map(|(z, _)| z.frist.clone()).collect();
     let mut aus: Vec<FristZeile> = Vec::new();
     // Je Tag die Osterzeilen, die zu einer zusammengelegt werden.
-    let mut gruppen: Vec<(Option<String>, Vec<FristZeile>)> = Vec::new();
+    type Osterzeile = (Option<OsterRechnung>, FristZeile);
+    let mut gruppen: Vec<(Option<String>, Vec<Osterzeile>)> = Vec::new();
     for (z, o) in zeilen {
         let zusammen = matches!(o, Some(OsterRechnung::Westlich | OsterRechnung::Astronomisch)) && mit_mond.contains(&z.frist);
         if !zusammen {
             aus.push(z);
         } else if let Some((_, g)) = gruppen.iter_mut().find(|(t, _)| *t == z.frist) {
-            // Das westliche Ostern steht vorn.
-            if o == Some(OsterRechnung::Westlich) { g.insert(0, z) } else { g.push(z) }
+            g.push((o, z));
         } else {
-            gruppen.push((z.frist.clone(), vec![z]));
+            gruppen.push((z.frist.clone(), vec![(o, z)]));
         }
     }
-    for (_, g) in gruppen {
-        let mut teile = g.into_iter();
+    for (_, mut g) in gruppen {
+        // Feste Rangfolge für den Kopf: das westliche Ostern, dann eines des Kirchenjahrs, dann nach
+        // Kennung; so hängt nichts an der Reihenfolge der Projekte oder Kalender.
+        g.sort_by_key(|(o, z)| (*o != Some(OsterRechnung::Westlich), !z.id.starts_with("kirche."), z.id.clone()));
+        let mut teile = g.into_iter().map(|(_, z)| z);
         let Some(mut kopf) = teile.next() else { continue };
         for z in teile {
             if let (Some(e), Some(h)) = (kopf.ereignis.as_mut(), z.ereignis.and_then(|e| e.herkunft)) {
@@ -497,8 +500,10 @@ abstand = "-3 Tage"
 
     #[test]
     fn regel_ereignis_und_feste() {
+        // Feste Ortszeit (Mitteleuropa), nicht die des Rechners.
+        let berlin = Katalog::berlin();
         let i = inhalt(Vec::new(), vec![datei("kal", MIT_KALENDER)], vec![kopf("kal", false)]);
-        let l = fristenliste(&i, Some("kal"));
+        let l = fristenliste_mit(&berlin, &i, Some("kal"));
         let einkauf = l.zeilen.iter().find(|z| z.id == "einkauf").unwrap();
         // Neujahr 6.2.2027, drei volle Tage vorher: 2.2.2027.
         assert_eq!((einkauf.frist.as_deref(), einkauf.quelle), (Some("2027-02-02"), FristQuelle::Datei));
@@ -518,9 +523,10 @@ abstand = "-3 Tage"
         let verlauf: Vec<String> = crate::projektverlauf::aus_fristen(&l).into_iter().map(|e| e.kennung).collect();
         assert_eq!(verlauf, ["frist:datei:einkauf"]);
         // Übergreifend nur Feste der nächsten 30 Tage: am 4.11. keines, am 1.12. Heiligabend und Weihnachten.
-        assert!(fristenliste(&i, None).zeilen.iter().all(|z| z.quelle != FristQuelle::Kalender));
+        assert!(fristenliste_mit(&berlin, &i, None).zeilen.iter().all(|z| z.quelle != FristQuelle::Kalender));
         let dezember = Inhalt { heute: tag("2026-12-01"), ..inhalt(Vec::new(), vec![datei("kal", MIT_KALENDER)], vec![kopf("kal", false)]) };
-        let nah: Vec<String> = fristenliste(&dezember, None).zeilen.iter().filter(|z| z.quelle == FristQuelle::Kalender).map(|z| z.id.clone()).collect();
+        let nah: Vec<String> =
+            fristenliste_mit(&berlin, &dezember, None).zeilen.iter().filter(|z| z.quelle == FristQuelle::Kalender).map(|z| z.id.clone()).collect();
         assert_eq!(nah, ["kirche.heiligabend", "kirche.weihnachten"]);
         // Nennen zwei Projekte denselben Kalender, steht jedes Fest übergreifend nur einmal da.
         let nur_kirche = "kalender = [\"kirche\"]\n";
@@ -528,12 +534,13 @@ abstand = "-3 Tage"
             heute: tag("2026-12-01"),
             ..inhalt(Vec::new(), vec![datei("kal", MIT_KALENDER), datei("zwei", nur_kirche)], vec![kopf("kal", false), kopf("zwei", false)])
         };
-        let nah: Vec<String> = fristenliste(&zwei, None).zeilen.iter().filter(|z| z.quelle == FristQuelle::Kalender).map(|z| z.id.clone()).collect();
+        let nah: Vec<String> =
+            fristenliste_mit(&berlin, &zwei, None).zeilen.iter().filter(|z| z.quelle == FristQuelle::Kalender).map(|z| z.id.clone()).collect();
         assert_eq!(nah, ["kirche.heiligabend", "kirche.weihnachten"]);
-        assert_eq!(fristenliste(&zwei, Some("zwei")).zeilen.len(), 11, "auf der Projektseite alle seine Feste");
+        assert_eq!(fristenliste_mit(&berlin, &zwei, Some("zwei")).zeilen.len(), 11, "auf der Projektseite alle seine Feste");
         // Nach 2100 fehlen Feste leise, mit einem Hinweis auf der Projektseite.
         let spaet = Inhalt { heute: tag("2100-12-26"), ..inhalt(Vec::new(), vec![datei("kal", MIT_KALENDER)], vec![kopf("kal", false)]) };
-        let l = fristenliste(&spaet, Some("kal"));
+        let l = fristenliste_mit(&berlin, &spaet, Some("kal"));
         assert!(l.zeilen.iter().all(|z| z.quelle != FristQuelle::Kalender));
         assert_eq!(l.hinweise, [SATZ_FESTE_GRENZE]);
         let einkauf = l.zeilen.iter().find(|z| z.id == "einkauf").unwrap();
@@ -578,6 +585,10 @@ abstand = "-3 Tage"
         let astro = zeile(&l, "kirche.ostern-astronomisch").unwrap();
         assert_eq!(astro.frist.as_deref(), Some("2038-03-28"));
         assert!(astro.ereignis.unwrap().herkunft.unwrap().contains("zugleich Jahreskreis"));
+        // Fallen nur die zwei Ostern nach dem Mond zusammen, steht das des Kirchenjahrs vorn,
+        // auch wenn der Jahreskreis zuerst genannt ist.
+        let l = liste(&[("kal", r#"["jahreskreis", "kirche"]"#)], "2038-03-01", Some("kal"));
+        assert!(zeile(&l, "kirche.ostern-astronomisch").is_some() && zeile(&l, "jahreskreis.ostern").is_none());
         // 16.4.2028: westlich, orthodox und nach dem Mond am selben Sonntag. Das orthodoxe
         // bleibt eine eigene Zeile; nur das nach dem Mond wird zum westlichen gelegt.
         let l = liste(&[("kal", r#"["kirche", "orthodox"]"#)], "2028-03-01", Some("kal"));
