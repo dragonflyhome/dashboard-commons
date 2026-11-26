@@ -20,7 +20,8 @@ use chrono::NaiveDate;
 
 use crate::anstehend::{FRIST_BALD_TAGE, Inhalt, alle_eintraege, archivierte, eine_frage_je_projekt, frist_stufe, tage_bis};
 use crate::inhalt::store::Bestand;
-use crate::kalender::{Art, Katalog, OsterRechnung, Regel};
+use crate::kalender::orte::Orte;
+use crate::kalender::{Anzeige, Art, Katalog, OsterRechnung, Regel};
 use crate::vertrag::api::{AnstehendEintrag, Aufgabe, AufgabeAnsicht, AufgabeVerlaufArt, EintragsArt};
 use crate::vertrag::daten::{Baustein, Datei, DatenInhalt};
 use crate::vertrag::fristen::{Abstand, Einheit, EreignisStand, FristBezug, FristQuelle, FristZeile, Fristen, FristenListe, aufloesen};
@@ -52,9 +53,9 @@ pub fn bezug_ab(a: &Aufgabe, heute: NaiveDate) -> NaiveDate {
 /// steht (aus `fristen.toml` des Projekts) und ihr Datum, sobald das Ereignis
 /// eines hat. Ohne Datei oder mit unbekanntem Ereignis hängt sie (Titel `null`).
 /// `ab`: bei einem Ereignis mit Regel das früheste Vorkommen ab hier ([`bezug_ab`]).
-pub fn bezug_aufloesen(dateien: &[FristenDatei], projekt: &str, bezug: &FristBezug, ab: NaiveDate) -> (EreignisStand, Option<NaiveDate>) {
+pub fn bezug_aufloesen(dateien: &[FristenDatei], orte: &Orte, projekt: &str, bezug: &FristBezug, ab: NaiveDate) -> (EreignisStand, Option<NaiveDate>) {
     let stand = match dateien.iter().find(|d| d.projekt == projekt) {
-        Some(d) => d.inhalt.ereignis_stand(&bezug.ereignis, &bezug.abstand, ab),
+        Some(d) => d.inhalt.ereignis_stand(&bezug.ereignis, &bezug.abstand, ab, orte),
         None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None, zeitraum: None },
     };
     let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
@@ -74,10 +75,11 @@ pub fn aus_bestand(b: &Bestand, projekt: &str) -> Option<Datei<Fristen>> {
 /// Frist steht in `frist` das aufgelöste Datum (sonst `null`), dazu
 /// `frist_stufe` und `ereignis`. Gespeichert bleibt nur der Bezug.
 pub fn ansichten_aufloesen(b: &Bestand, ansichten: &mut [AufgabeAnsicht], heute: NaiveDate) {
+    let orte = Orte::aus_bestand(b);
     for a in ansichten.iter_mut() {
         let Some(bezug) = a.aufgabe.frist_bezug.clone() else { continue };
         let stand = match aus_bestand(b, &a.aufgabe.projekt) {
-            Some(d) => d.ereignis_stand(&bezug.ereignis, &bezug.abstand, bezug_ab(&a.aufgabe, heute)),
+            Some(d) => d.ereignis_stand(&bezug.ereignis, &bezug.abstand, bezug_ab(&a.aufgabe, heute), &orte),
             None => EreignisStand { kennung: bezug.ereignis.clone(), titel: None, datum: None, herkunft: None, zeitraum: None },
         };
         let datum = aufloesen(stand.datum.as_deref(), &bezug.abstand);
@@ -96,7 +98,7 @@ pub fn datei_zeilen(inhalt: &Inhalt, d: &FristenDatei) -> Vec<FristZeile> {
         let (frist_bezug, ereignis, datum) = match (&f.ereignis, &f.abstand) {
             (Some(e), Some(a)) => {
                 let bezug = FristBezug { ereignis: e.clone(), abstand: a.clone() };
-                let stand = d.inhalt.ereignis_stand(e, a, inhalt.heute);
+                let stand = d.inhalt.ereignis_stand(e, a, inhalt.heute, &inhalt.orte);
                 let datum = aufloesen(stand.datum.as_deref(), a);
                 (Some(bezug), Some(stand), datum)
             }
@@ -143,18 +145,23 @@ pub fn fest_zeilen(katalog: &Katalog, inhalt: &Inhalt, d: &FristenDatei) -> (Vec
                 fehlt = true;
                 continue;
             };
+            let (titel, herkunft, zeitraum) = match katalog.anzeige(k, f, chrono::Datelike::year(&tag)) {
+                Anzeige::Entfaellt => continue,
+                Anzeige::Neutral { titel, herkunft } => (titel, herkunft, None),
+                Anzeige::Normal => (f.titel.clone(), herkunft, katalog.zeitraum(None, &regel, tag)),
+            };
+
             let ostern = match f.regel.art() {
                 Ok(Art::Ostern(r)) => Some(r),
                 _ => None,
             };
-            let zeitraum = katalog.zeitraum(None, &regel, tag);
             aus.push((
                 FristZeile {
                     quelle: FristQuelle::Kalender,
                     id: kennung.clone(),
                     projekt: d.projekt.clone(),
                     projekt_titel: projekt_titel.clone(),
-                    titel: f.titel.clone(),
+                    titel,
                     frist: Some(text(tag)),
                     tage_bis: Some(tage_bis(tag, inhalt.heute)),
                     frist_stufe: None,
@@ -179,13 +186,14 @@ pub fn ostern_zusammenlegen(zeilen: Vec<(FristZeile, Option<OsterRechnung>)>) ->
     let mut gesehen = std::collections::BTreeSet::new();
     let zeilen: Vec<_> = zeilen.into_iter().filter(|(z, _)| gesehen.insert(z.id.clone())).collect();
     let mit_mond: std::collections::BTreeSet<Option<String>> =
-        zeilen.iter().filter(|(_, o)| *o == Some(OsterRechnung::Astronomisch)).map(|(z, _)| z.frist.clone()).collect();
+        zeilen.iter().filter(|(_, o)| matches!(o, Some(OsterRechnung::Astronomisch | OsterRechnung::GleicheFruehling))).map(|(z, _)| z.frist.clone()).collect();
     let mut aus: Vec<FristZeile> = Vec::new();
     // Je Tag die Osterzeilen, die zu einer zusammengelegt werden.
     type Osterzeile = (Option<OsterRechnung>, FristZeile);
     let mut gruppen: Vec<(Option<String>, Vec<Osterzeile>)> = Vec::new();
     for (z, o) in zeilen {
-        let zusammen = matches!(o, Some(OsterRechnung::Westlich | OsterRechnung::Astronomisch)) && mit_mond.contains(&z.frist);
+        let zusammen =
+            matches!(o, Some(OsterRechnung::Westlich | OsterRechnung::Astronomisch | OsterRechnung::GleicheFruehling)) && mit_mond.contains(&z.frist);
         if !zusammen {
             aus.push(z);
         } else if let Some((_, g)) = gruppen.iter_mut().find(|(t, _)| *t == z.frist) {
@@ -260,7 +268,7 @@ pub fn ordnen(zeilen: &mut [FristZeile]) {
 /// `anstehend::archiv_fristen`). Von den Fragen zählt je Projekt nur die
 /// sichtbare (Warteschlange); Meldungen haben keine Frist.
 pub fn fristenliste(inhalt: &Inhalt, projekt: Option<&str>) -> FristenListe {
-    fristenliste_mit(Katalog::eingebaut(), inhalt, projekt)
+    fristenliste_mit(&inhalt.orte.katalog(), inhalt, projekt)
 }
 
 /// [`fristenliste`] mit einem gegebenen Katalog (Tests rechnen so mit fester Ortszeit).
@@ -573,7 +581,7 @@ abstand = "-3 Tage"
         assert_eq!((z.anfang.as_str(), z.vollmond.as_str(), z.ende.as_str()), ("2027-04-07", "2027-04-21", "2027-05-06"));
         assert!(zeile(&l, "jahreskreis.yule").unwrap().ereignis.unwrap().zeitraum.is_none(), "ein Sonnentag ist kein Monat");
         let m = l.mond.as_ref().unwrap();
-        assert_eq!((m.nummer, m.name.as_str(), m.namen[0].name.as_str()), (3, "1. Frühlingsvollmond", "Hrēþmōnaþ"));
+        assert_eq!((m.nummer, m.name.as_str(), m.namen.as_ref().unwrap()[0].name.as_str()), (Some(3), "1. Frühlingsvollmond", "Hrēþmōnaþ"));
         assert!(liste(&beide, "2027-03-01", None).mond.is_none(), "der laufende Mond nur auf der Projektseite");
         assert!(crate::projektverlauf::aus_fristen(&l).is_empty(), "Feste und Monate nicht im Verlauf");
         // Der Kopf ist das westliche Ostern, auch wenn der Jahreskreis zuerst steht.
@@ -764,5 +772,28 @@ abstand = "+1 Monat"
         assert_eq!(l.archiv_fristen.len(), 1);
         assert_eq!((l.archiv_fristen[0].frist.as_deref(), l.archiv_fristen[0].tage_bis), (Some("2026-11-11"), Some(7)));
         assert_eq!(l.archiv_fristen[0].satz, "Eine Frist in einem archivierten Projekt läuft am 11.11.2026 ab.");
+    }
+
+    /// Heimatort auf der Südhalbkugel (privat, `heimat = true`): Fristenliste und
+    /// Anstehend rechnen aus dem Inhalt, ohne Neustart; Imbolc fällt in den August.
+    #[test]
+    fn heimatort_im_sueden() {
+        let s = crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>(
+            "standorte.toml",
+            "[[standort]]\nkennung = \"zuhause\"\ntitel = \"Zuhause\"\nbreite = -33.9\nlaenge = 151.2\nherkunft = \"hand\"\nzeitzone = \"Australia/Sydney\"\nheimat = true\n",
+        )
+        .unwrap();
+        let mut i = Inhalt { heute: tag("2027-06-01"), ..inhalt(Vec::new(), vec![datei("kal", "kalender = [\"jahreskreis\"]\n")], vec![kopf("kal", false)]) };
+        let zeile = |l: &FristenListe, id: &str| l.zeilen.iter().find(|z| z.id == id).and_then(|z| z.frist.clone());
+        // Ohne Ort: Norden, Imbolc im Januar/Februar des nächsten Jahres.
+        let nord = fristenliste(&i, Some("kal"));
+        assert!(zeile(&nord, "jahreskreis.imbolc").is_some_and(|d| d.starts_with("2028-0")), "{:?}", zeile(&nord, "jahreskreis.imbolc"));
+        i.orte = Orte::aus(Some(&s), crate::kalender::orte::vorlage().as_ref());
+        let sued = fristenliste(&i, Some("kal"));
+        assert!(zeile(&sued, "jahreskreis.imbolc").is_some_and(|d| d.starts_with("2027-08")), "{:?}", zeile(&sued, "jahreskreis.imbolc"));
+        assert_eq!(zeile(&sued, "jahreskreis.yule").as_deref(), Some("2027-06-22"));
+        // Anstehend („Alle Fristen“, 30 Tage) nimmt dieselbe Rechnung.
+        let alle = fristenliste(&i, None);
+        assert_eq!(zeile(&alle, "jahreskreis.yule").as_deref(), Some("2027-06-22"));
     }
 }

@@ -18,4 +18,10 @@ datum: string | null,
  * Statt `datum`: Der Server rechnet das Datum nach dieser Regel
  * (`crate::kalender`), etwa `regel = { fest = "chinesisch.neujahr" }`.
  */
-regel: Regel | null, hinweis: string | null, };
+regel: Regel | null, 
+/**
+ * Nur mit `regel`: Kennung eines benannten Orts (`standorte.toml` im Projekt
+ * `kalender`); dann rechnet die Regel nach diesem Ort (Ortszeit, Halbkugel,
+ * Wendekreise), sonst nach dem Heimatort.
+ */
+ort: string | null, hinweis: string | null, };

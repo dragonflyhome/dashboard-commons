@@ -1,0 +1,13 @@
+# Standardort des Projekts (Kalender, Stufe 3): eine allgemeine Vorgabe, kein Wohnort.
+# Die Mitte Deutschlands: Mühlhausen/Thüringen ist die nächste Stadt zum meistgenannten
+# geometrischen Mittelpunkt Deutschlands bei Niederdorla (Berechnung der TU Dresden, 1998).
+# Eigene Orte stehen privat in daten/standorte.toml des Projekts kalender; ein Ort dort mit
+# `heimat = true` ersetzt diesen als Heimatort.
+
+[[standort]]
+kennung = "mitte"
+titel = "Mitte Deutschlands (Mühlhausen/Thüringen)"
+breite = 51.2
+laenge = 10.5
+herkunft = "stadt"
+zeitzone = "Europe/Berlin"

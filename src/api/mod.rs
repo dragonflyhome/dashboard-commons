@@ -20,6 +20,7 @@ pub mod bauen;
 pub mod daten;
 pub mod events;
 pub mod fassungen;
+pub mod kalender;
 pub mod meldungen;
 pub mod neue_form;
 pub mod oeffnen;
@@ -114,6 +115,12 @@ pub fn routes() -> Router<AppState> {
         // Etappe B3: die Fristen aller sichtbaren Projekte (geschützt; die eines Projekts
         // stehen in `abgeleitet.fristen` von /api/projekte/<slug>/daten/fristen).
         .route("/api/fristen", get(anstehend::fristen))
+        // Kalender, Stufe 3: benannte Orte nur mit Kennung, abgefragte im Rumpf.
+        .route("/api/kalender/standorte", get(kalender::orte).post(kalender::merken))
+        .route("/api/kalender/zonen", get(kalender::zonen))
+        .route("/api/kalender/tag", get(kalender::tag))
+        .route("/api/kalender/feste", get(kalender::feste))
+        .route("/api/kalender/abfrage", post(kalender::abfrage_post))
         .route("/api/events", get(events::sse))
         // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).
         .route("/api/events/frei", get(events::sse_frei))

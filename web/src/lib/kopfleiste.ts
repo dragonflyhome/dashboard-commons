@@ -37,6 +37,7 @@ export interface Seite {
 		| '/anleitung'
 		| '/zielbild'
 		| '/entscheidungen'
+		| '/kalender'
 		| '/einstellungen';
 	label: string;
 }
@@ -53,6 +54,7 @@ export const SEITEN: readonly Seite[] = [
 	{ schluessel: 'anleitung', pfad: '/anleitung', label: 'Anleitung' },
 	{ schluessel: 'zielbild', pfad: '/zielbild', label: 'Zielbild' },
 	{ schluessel: 'entscheidungen', pfad: '/entscheidungen', label: 'Entscheidungen' },
+	{ schluessel: 'kalender', pfad: '/kalender', label: 'Kalender' },
 	{ schluessel: 'einstellungen', pfad: '/einstellungen', label: 'Einstellungen' }
 ];
 

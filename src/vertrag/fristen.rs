@@ -42,6 +42,7 @@ use ts_rs::TS;
 use super::anstehend::FristStufe;
 use super::daten::{Baustein, Datei, ist_datum, ist_kennung};
 use super::lesen::{LeseFehler, Mangel};
+use crate::kalender::orte::{Orte, ort_satz};
 use crate::kalender::{Katalog, Mond, Regel, Zeitraum};
 
 // ----- Die Datei `daten/fristen.toml` -----
@@ -76,6 +77,11 @@ pub struct FristEreignis {
     /// (`crate::kalender`), etwa `regel = { fest = "chinesisch.neujahr" }`.
     #[serde(default)]
     pub regel: Option<Regel>,
+    /// Nur mit `regel`: Kennung eines benannten Orts (`standorte.toml` im Projekt
+    /// `kalender`); dann rechnet die Regel nach diesem Ort (Ortszeit, Halbkugel,
+    /// Wendekreise), sonst nach dem Heimatort.
+    #[serde(default)]
+    pub ort: Option<String>,
     #[serde(default)]
     pub hinweis: Option<String>,
 }
@@ -322,6 +328,17 @@ impl Baustein for Fristen {
                     return Err(Mangel::bei("kennung", k, format!("Beim Ereignis „{k}“ passt die `regel` nicht: {satz}")));
                 }
             }
+            // Ob es den Ort gibt, steht in einer anderen Datei: Das sagt die Herkunft beim Rechnen.
+            if let Some(o) = &e.ort {
+                let k = &e.kennung;
+                if e.regel.is_none() || !ist_kennung(o) {
+                    return Err(Mangel::bei(
+                        "kennung",
+                        k,
+                        format!("Beim Ereignis „{k}“ gehört `ort` zu einer `regel` und nennt die `kennung` eines benannten Orts, etwa `ort = \"ferienhaus\"`."),
+                    ));
+                }
+            }
         }
         for f in &self.frist {
             kennung_und_titel("Die Frist", &f.kennung, &f.titel)?;
@@ -455,13 +472,21 @@ impl Datei<Fristen> {
     /// (Titel und Datum, sonst `null`). Bei einer Regel ist das Datum das
     /// früheste Vorkommen, dessen Frist am Tag `heute` oder später liegt; außerhalb
     /// der Jahre, für die gerechnet wird, fehlt es (die Frist hängt).
-    pub fn ereignis_stand(&self, kennung: &str, abstand: &str, heute: NaiveDate) -> EreignisStand {
+    /// `orte`: die benannten Orte; ohne `ort` am Ereignis gilt der Heimatort. Ein
+    /// unbekannter Ort oder ein Fest nach den Jahreszeiten zwischen den
+    /// Wendekreisen lässt das Datum fehlen, und die Herkunft sagt warum.
+    pub fn ereignis_stand(&self, kennung: &str, abstand: &str, heute: NaiveDate, orte: &Orte) -> EreignisStand {
         let e = self.ereignis(kennung);
-        let katalog = Katalog::eingebaut();
-        let (datum, herkunft, zeitraum) = match e.and_then(|e| e.regel.as_ref()) {
-            Some(r) => match Abstand::lesen(abstand).and_then(|a| katalog.naechstes(None, r, a, heute)) {
-                Some((d, h)) => (Some(d.format("%Y-%m-%d").to_string()), Some(h), katalog.zeitraum(None, r, d)),
-                None => (None, None, None),
+        let (datum, herkunft, zeitraum) = match e.and_then(|e| e.regel.as_ref().map(|r| (r, e.ort.as_deref()))) {
+            Some((r, ort)) => match orte.katalog_fuer(ort).and_then(|(k, b)| k.wendekreis_pruefen(r).map(|()| (k, b))) {
+                Err(satz) => (None, Some(satz), None),
+                Ok((katalog, b)) => match Abstand::lesen(abstand).and_then(|a| katalog.naechstes(None, r, a, heute)) {
+                    Some((d, h)) => {
+                        let h = format!("{h}{}", b.map(ort_satz).unwrap_or_default());
+                        (Some(d.format("%Y-%m-%d").to_string()), Some(h), katalog.zeitraum(None, r, d))
+                    }
+                    None => (None, None, None),
+                },
             },
             None => (e.and_then(|e| e.datum.clone()).filter(|d| ist_datum(d, false)), None, None),
         };
@@ -516,5 +541,41 @@ mod tests {
         assert_eq!(aufloesen(Some("2026-11"), "+14 Tage"), None);
         assert_eq!(aufloesen(Some("2026-11-04"), "14 Tage"), None);
         assert_eq!(Abstand { zahl: 1, einheit: Einheit::Monat }.von(tag("2026-08-31")), Some(tag("2026-09-30")));
+    }
+
+    /// Ereignisse mit Ort (Stufe 3): Dasselbe Fest am Heimatort und auf der
+    /// Südhalbkugel ergibt verschiedene Tage; zwischen den Wendekreisen gibt es
+    /// das Fest nicht; ein unbekannter Ort hängt mit Satz. Die Herkunft nennt den
+    /// Ort mit Titel und Zone, nie mit Zahlen.
+    #[test]
+    fn ereignis_mit_ort() {
+        let standorte = "[[standort]]\nkennung = \"london\"\ntitel = \"London\"\nbreite = 51.5\nlaenge = -0.1\nherkunft = \"stadt\"\nzeitzone = \"Europe/London\"\n\n\
+                         [[standort]]\nkennung = \"sydney\"\ntitel = \"Sydney\"\nbreite = -33.9\nlaenge = 151.2\nherkunft = \"stadt\"\nzeitzone = \"Australia/Sydney\"\n\n\
+                         [[standort]]\nkennung = \"singapur\"\ntitel = \"Singapur\"\nbreite = 1.4\nlaenge = 103.8\nherkunft = \"stadt\"\nzeitzone = \"Asia/Singapore\"\n";
+        let s = super::super::daten::datei_lesen::<super::super::standorte::Standorte>("standorte.toml", standorte).unwrap();
+        let orte = Orte::aus(Some(&s), None);
+        let fristen = "[[ereignis]]\nkennung = \"yule\"\ntitel = \"Yule\"\nregel = { fest = \"jahreskreis.yule\" }\n\n\
+                       [[ereignis]]\nkennung = \"yule-sued\"\ntitel = \"Yule im Süden\"\nregel = { fest = \"jahreskreis.yule\" }\nort = \"sydney\"\n\n\
+                       [[ereignis]]\nkennung = \"yule-tropen\"\ntitel = \"Yule am Äquator\"\nregel = { fest = \"jahreskreis.yule\" }\nort = \"singapur\"\n\n\
+                       [[ereignis]]\nkennung = \"wende-tropen\"\ntitel = \"Wende am Äquator\"\nregel = { himmel = \"sonnenwende-dezember\" }\nort = \"singapur\"\n\n\
+                       [[ereignis]]\nkennung = \"yule-mars\"\ntitel = \"Yule anderswo\"\nregel = { fest = \"jahreskreis.yule\" }\nort = \"mars\"\n";
+        let d = super::super::daten::datei_lesen::<Fristen>("fristen.toml", fristen).unwrap();
+        let heute = tag("2027-01-10");
+        let st = |k: &str| d.ereignis_stand(k, "+0 Tage", heute, &orte);
+        let heimat = st("yule");
+        assert_eq!(heimat.datum.as_deref(), Some("2027-12-22"));
+        assert!(!heimat.herkunft.unwrap().contains(" · Ort "), "ohne `ort` steht der Heimatort nicht in der Herkunft");
+        let sued = st("yule-sued");
+        assert_eq!(sued.datum.as_deref(), Some("2027-06-22"));
+        let h = sued.herkunft.unwrap();
+        assert!(h.ends_with(" · Ort Sydney · Australia/Sydney") && !h.contains("33") && !h.contains("151"), "{h}");
+        let tropen = st("yule-tropen");
+        assert_eq!((tropen.datum, tropen.herkunft.as_deref()), (None, Some(crate::kalender::SATZ_WENDEKREIS)));
+        assert!(st("wende-tropen").datum.is_some(), "eine eigene Regel mit `himmel` geht auch dort");
+        let mars = st("yule-mars");
+        assert!(mars.datum.is_none() && mars.herkunft.unwrap().contains("„mars“"));
+        // `ort` nur mit `regel` und als Kennung.
+        let ohne_regel = "[[ereignis]]\nkennung = \"x\"\ntitel = \"X\"\ndatum = \"2027-01-01\"\nort = \"london\"\n";
+        assert!(super::super::daten::datei_lesen::<Fristen>("fristen.toml", ohne_regel).unwrap_err().text.contains("gehört `ort` zu einer `regel`"));
     }
 }

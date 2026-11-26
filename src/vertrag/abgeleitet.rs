@@ -331,6 +331,10 @@ pub fn berechnen(b: &Berechnet, quellen: &Quellen, heute: NaiveDate) -> Result<S
             ),
         ));
     }
+    // Aus den Orten rechnet nichts: Eine Summe über `breite` wäre eine Koordinate.
+    if stamm == "standorte" {
+        return Err(("quelle", "Aus `standorte.toml` rechnet der Server nichts; die Orte sind persönlich.".to_string()));
+    }
     let tabelle = match quellen.get(stamm) {
         None => return Err(("quelle", format!("Die Quelle „{q}“ gibt es nicht: in `daten/` liegt keine Datei `{stamm}.toml`."))),
         Some(None) => {
@@ -466,6 +470,7 @@ fn feste_listen(stamm: &str) -> &'static [&'static str] {
         "fragen" => &["frage"],
         "orte" => &["ort"],
         "fristen" => &["ereignis", "frist"],
+        "standorte" => &["standort"],
         _ => &[],
     }
 }
@@ -524,6 +529,7 @@ fn schema(stamm: &str, liste: &str) -> Option<Vec<String>> {
         ("orte", "ort") => feldnamen::<Ort>(),
         ("fristen", "ereignis") => feldnamen::<super::fristen::FristEreignis>(),
         ("fristen", "frist") => feldnamen::<super::fristen::Frist>(),
+        ("standorte", "standort") => feldnamen::<super::standorte::Standort>(),
         _ => return None,
     })
 }

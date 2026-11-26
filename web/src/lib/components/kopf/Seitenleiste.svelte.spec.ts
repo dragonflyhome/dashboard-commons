@@ -79,7 +79,7 @@ describe('Seitenleiste (Kopfleiste, Fassung 3)', () => {
 			.getAllByRole('link')
 			.map((a) => a.textContent.replace(/,.*$/, '').trim());
 		expect(links[0]).toMatch(/^Anstehend/);
-		expect(links.slice(-8).map((l) => l.replace(/\d+$/, ''))).toEqual([
+		expect(links.slice(-9).map((l) => l.replace(/\d+$/, ''))).toEqual([
 			'Schlüssel',
 			'Hallo',
 			'Vorgänge',
@@ -87,6 +87,7 @@ describe('Seitenleiste (Kopfleiste, Fassung 3)', () => {
 			'Anleitung',
 			'Zielbild',
 			'Entscheidungen',
+			'Kalender',
 			'Einstellungen'
 		]);
 		expect(links.some((l) => /^PC\b/.test(l))).toBe(false);

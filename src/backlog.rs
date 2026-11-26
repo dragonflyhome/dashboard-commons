@@ -261,6 +261,7 @@ mod tests {
     fn inhalt() -> Inhalt {
         Inhalt {
             heute: NaiveDate::parse_from_str(HEUTE, "%Y-%m-%d").unwrap(),
+            orte: Default::default(),
             projekte: vec![kopf("beispiel"), kopf("anderes")],
             fragen: vec![FragenDatei {
                 projekt: "beispiel".into(),

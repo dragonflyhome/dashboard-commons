@@ -401,7 +401,9 @@ export function fristenListe(): FristenListe {
 					ungeprueft: false
 				}
 			],
-			zeitraum: { anfang: tagIso(-10), vollmond: tagIso(5), ende: tagIso(19) }
+			zeitraum: { anfang: tagIso(-10), vollmond: tagIso(5), ende: tagIso(19) },
+			hinweis: null,
+			phase: 'zunehmend'
 		}
 	};
 }

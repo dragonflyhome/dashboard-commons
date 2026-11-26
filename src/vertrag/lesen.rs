@@ -256,11 +256,18 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
         Some(k) => format!("Bei `{k}`"),
         None => "Hier".to_string(),
     };
+    // Persönliche Werte: welche Kalender und Feste jemand nutzt (Kalender, Stufe 1) und
+    // wo jemand ist (Stufe 3). Bei diesen Schlüsseln nur die Art des Werts, nie den Wert,
+    // auch nicht im Vorschlag und nicht im Protokoll.
+    let geschuetzt = matches!(schluessel, Some("kalender" | "regel" | "breite" | "laenge" | "zeitzone" | "versatz"));
 
     if let Some(rest) = meldung.strip_prefix("unknown variant ") {
         let (wert, erwartet) = rest.split_once(", expected").unwrap_or((rest, ""));
         let wert = wert.trim().trim_matches('`');
         let erlaubt = woerter_in_backticks(erwartet).join(", ");
+        if geschuetzt {
+            return format!("{} passt der Wert nicht. Erlaubt sind: {erlaubt}.", bei(schluessel));
+        }
         return format!("{} steht „{wert}“. Erlaubt sind: {erlaubt}.", bei(schluessel));
     }
     if let Some(rest) = meldung.strip_prefix("unknown field ") {
@@ -286,9 +293,6 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
     if let Some(rest) = meldung.strip_prefix("invalid type: ") {
         let (ist, soll) = rest.split_once(", expected").unwrap_or((rest, ""));
         // Ein Datum ohne Anführungszeichen ist in TOML ein eigener Typ; serde nennt es „map“.
-        // Welche Kalender und Feste jemand nutzt, ist persönlich (Kalender, Stufe 1):
-        // bei `kalender` und `regel` nur die Art des Werts, nie den Wert, auch nicht im Vorschlag.
-        let geschuetzt = matches!(schluessel, Some("kalender" | "regel"));
         let wert = wert_der_zeile(zeilentext);
         if ist.trim() == "map" && ist_nacktes_datum(wert) && !geschuetzt {
             let k = schluessel.unwrap_or("datum");
@@ -315,8 +319,10 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
     if meldung.contains("duplicate key") {
         return format!("{} steht der Schlüssel doppelt. Jeder Schlüssel darf nur einmal vorkommen.", bei(schluessel));
     }
-    // Die englische Einzelheit nur ins Protokoll, nicht in den Satz.
-    tracing::debug!("TOML-Lesefehler: {meldung}");
+    // Die englische Einzelheit nur ins Protokoll, nicht in den Satz (bei geschützten Schlüsseln gar nicht).
+    if !geschuetzt {
+        tracing::debug!("TOML-Lesefehler: {meldung}");
+    }
     match toml_satz(meldung) {
         Some(zusatz) => format!("Die Datei ist kein gültiges TOML. {zusatz}"),
         None => "Die Datei ist kein gültiges TOML. Bitte die genannte Zeile prüfen.".to_string(),
@@ -442,6 +448,37 @@ mod tests {
         assert!(!e.text.contains("expected") && !e.text.contains('('), "{e}");
         let e = fehler("name = \"\\q\"\n");
         assert!(e.text.contains("Rückwärtsstrich"), "{e}");
+    }
+
+    /// Kalender, Stufe 3: Lage, Zone und Versatz eines Orts sind persönlich. Ein
+    /// Lesefehler nennt Schlüssel und Zeile, nie den Wert (auch nicht im Vorschlag).
+    #[test]
+    fn ortswerte_nie_im_satz() {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        #[allow(dead_code)]
+        struct Ort {
+            breite: f64,
+            laenge: f64,
+            #[serde(default)]
+            zeitzone: Option<String>,
+            #[serde(default)]
+            versatz: Option<Art>,
+        }
+        for (text, wert) in [
+            ("breite = \"47.3\"\nlaenge = 73.9\n", "47"),
+            ("breite = 47.3\nlaenge = \"73.9\"\n", "73"),
+            ("breite = 47.3\nlaenge = 73,9\n", "73"),
+            ("breite = 2026-11-03\nlaenge = 73.9\n", "2026"),
+            ("breite = 47.3\nlaenge = 73.9\nzeitzone = 5.5\n", "5.5"),
+            ("breite = 47.3\nlaenge = 73.9\nzeitzone = [\"Asia/Almaty\"]\n", "Almaty"),
+            ("breite = 47.3\nlaenge = 73.9\nversatz = \"plus-fuenf\"\n", "fuenf"),
+        ] {
+            let e = toml_lesen::<Ort>("projects/kalender/daten/standorte.toml", text).unwrap_err();
+            assert!(e.zeile.is_some() && !e.text.contains(wert), "{text}: {e}");
+        }
+        // Ein ungeschützter Schlüssel nennt den Wert weiter (der Vorschlag hilft).
+        assert!(fehler("name = 1.5\n").text.contains("1.5"));
     }
 
     #[test]

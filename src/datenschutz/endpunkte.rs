@@ -101,7 +101,11 @@ async fn api_pc_rechner_und_datentraeger() {
 /// PC-Werte, Prüfung). Ohne Anmeldung antworten sie 401 (Schleuse
 /// `sicherheit::oeffentlich`, bei einigen zusätzlich der Handler); nur darum
 /// dürfen sie im Klartext liefern.
-const GESCHUETZT_KLARTEXT: [&str; 15] = [
+const GESCHUETZT_KLARTEXT: [&str; 19] = [
+    "/api/kalender/standorte",
+    "/api/kalender/zonen",
+    "/api/kalender/tag",
+    "/api/kalender/feste",
     "/api/pc/benutzer",
     "/api/pc/verlauf/voll",
     "/api/betrieb/voll",
