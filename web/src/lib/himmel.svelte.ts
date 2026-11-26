@@ -49,7 +49,8 @@ export class HimmelLaden {
 			}),
 			live.onNachholen(neu),
 			freierKanal.onBereit((k) => {
-				if (k === 'geschuetzt') neu();
+				// Nur wenn noch nichts da ist: angemeldet lädt schon der Start.
+				if (k === 'geschuetzt' && this.kopf === null) neu();
 			}),
 			freierKanal.onAbgemeldet(() => {
 				this.leeren();
@@ -62,12 +63,19 @@ export class HimmelLaden {
 	}
 }
 
-/** Der Satz für Name und Titel des Links, etwa „Mond: abnehmend. Sonne heute 07:53 bis 16:18. Ort: …. Zum Kalender“. */
+/**
+ * Der Satz für Name und Titel des Links, etwa „Mond: abnehmend. Sonne heute 07:53 bis 16:18. Ort: …. Zum Kalender“.
+ * Am Übergangstag zu Polartag oder -nacht steht die eine Zeit, die es gibt, vor dem Satz des Servers.
+ */
 export function himmelSatz(k: KalenderKopf): string {
 	const sonne =
 		k.aufgang !== null && k.untergang !== null
 			? `Sonne heute ${k.aufgang} bis ${k.untergang}.`
-			: (k.text ?? '');
+			: [
+					k.aufgang !== null ? `Sonnenaufgang heute ${k.aufgang}.` : '',
+					k.untergang !== null ? `Sonnenuntergang heute ${k.untergang}.` : '',
+					k.text ?? ''
+				].join(' ');
 	return `Mond: ${k.phase}. ${sonne} Ort: ${k.ort}. Zum Kalender`.replace(/\s+/g, ' ');
 }
 

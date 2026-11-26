@@ -271,9 +271,9 @@ export function laufenderMonat(jahr: KalenderJahr, tag: string): KalenderJahrMon
 	return jahr.monate.find((m) => m.zeitraum.anfang <= tag && tag < m.zeitraum.ende) ?? null;
 }
 
-/** Die nächsten drei Vollmonde ab dem Tag `tag` (heute eingeschlossen) in diesem Festjahr. */
-export function naechsteVollmonde(jahr: KalenderJahr, tag: string): KalenderZeitpunkt[] {
-	return jahr.viertel.filter((v) => v.kennung === 'vollmond' && v.datum >= tag).slice(0, 3);
+/** Die nächsten Vollmonde des Servers (drei ab dem Tag), die in der Spanne dieses Festjahrs liegen: sie bekommen im Kreis einen Ring. */
+export function vollmondeImKreis(jahr: KalenderJahr): KalenderZeitpunkt[] {
+	return jahr.naechste_vollmonde.filter((v) => v.datum < jahr.zeitraum.ende);
 }
 
 /** „2026/27“ aus der Spanne des Festjahrs (das Ende ist der erste Tag des nächsten). */
@@ -301,10 +301,10 @@ export function jahreskreisText(jahr: KalenderJahr, tag: string): Textfassung {
 		wann: `${fmtDate(s.datum)}, ${s.zeit} Uhr`,
 		dazu: 'Sonnentag'
 	}));
-	const voll: Zeile[] = naechsteVollmonde(jahr, tag).map((v) => ({
+	const voll: Zeile[] = jahr.naechste_vollmonde.map((v) => ({
 		was: 'Nächster Vollmond',
 		wann: `${fmtDate(v.datum)}, ${v.zeit} Uhr`,
-		dazu: 'Ring im Bild'
+		dazu: v.datum < jahr.zeitraum.ende ? 'Ring im Bild' : 'nach diesem Festjahr'
 	}));
 	return {
 		titel: `Jahreskreis ${festjahrName(jahr)} als Text`,

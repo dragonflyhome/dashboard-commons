@@ -5,7 +5,8 @@
 	 * ein Link zu /kalender. In sich geschlossen: keine Eigenschaften vom Layout,
 	 * der Laden (`himmel.svelte.ts`) startet in `onMount` und endet beim Entfernen.
 	 * Ohne 200-Antwort (ohne Anmeldung, fremdes Konto, Fehler, ohne Netz) zeichnet
-	 * er gar nichts. Die Breitenregeln stehen nur hier: am Handy nur das Symbol.
+	 * er gar nichts. Die Breitenregeln stehen nur hier: unter 64rem (Handy,
+	 * Tablet im Hochformat) nur das Symbol.
 	 */
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -22,6 +23,7 @@
 {#if k !== null}
 	{@const satz = himmelSatz(k)}
 	{@const mond = mondPfad(k.phase_grad, 9)}
+	{@const zeiten = k.aufgang !== null || k.untergang !== null}
 	<a
 		class="himmel"
 		href={resolve('/kalender')}
@@ -38,13 +40,13 @@
 				transform={mond.spiegeln !== k.sued ? 'scale(-1 1)' : undefined}
 			/>
 		</svg>
-		{#if k.aufgang !== null || k.untergang !== null}
+		{#if zeiten}
 			<span class="zeiten" aria-hidden="true"
 				>{#if k.aufgang !== null}↑ {k.aufgang}{/if}
 				{#if k.untergang !== null}↓ {k.untergang}{/if}</span
 			>
 		{/if}
-		<span class="ort" aria-hidden="true">· {k.ort}</span>
+		<span class="ort" aria-hidden="true">{zeiten ? '· ' : ''}{k.ort}</span>
 	</a>
 {/if}
 
@@ -75,8 +77,11 @@
 	svg {
 		flex: none;
 	}
+	/* Der Rand hält auch den Neumond sichtbar (gegen --card und --accent-soft über 3:1). */
 	.dunkel {
 		fill: var(--line);
+		stroke: var(--muted);
+		stroke-width: 1;
 	}
 	.hell {
 		fill: var(--text);
@@ -92,8 +97,13 @@
 			max-width: 18rem;
 		}
 	}
-	/* Am Handy gibt der Baustein zuerst nach: nur das Symbol, kleinerer Abstand. */
-	@media (max-width: 37.5rem) {
+	/*
+	 * Solange die Leiste als Schublade kommt (unter 64rem, Handy und Tablet im
+	 * Hochformat), gibt der Baustein zuerst nach: nur das Symbol. Mit Zeiten (gemessen
+	 * 123 px) laufen die Brotkrumen einer Unterseite schon bei 768 px in ihn hinein.
+	 * Der volle Satz bleibt im Namen des Links.
+	 */
+	@media (max-width: 63.99rem) {
 		.himmel {
 			padding: 0;
 		}

@@ -65,12 +65,15 @@
  *               geschützte Kanal, sonst der freie; gezählt über eine Hülle
  *               um window.EventSource, Abnahme); seit Fassung 3
  *               rechts in der Gruppe mit PC-Symbol und Glocke
- *   kopfleiste-3 (Kopfleiste, Fassung 3) mit Anmeldung bei 360, 375, 768
- *               und 1280 px, hell und dunkel (ohne Anmeldung seit Schritt E2
+ *   kopfleiste-3 (Kopfleiste, Fassung 3) mit Anmeldung bei 360, 375, 600,
+ *               640, 700, 720, 768, 900, 1024 und 1280 px, hell und dunkel (seit
+ *               Kalender S6 mit dem Himmel vorn rechts: voller Name samt Ort,
+ *               Zeiten und Ort erst ab 1024 px, Rand der dunklen Scheibe,
+ *               Brotkrumen breiter als 0 px) (ohne Anmeldung seit Schritt E2
  *               nicht mehr: /anstehend, /hallo und /katalog laden dann
  *               nicht; Kopfleiste und Kanal ohne Anmeldung prüft
  *               kopfleiste-2): Brotkrumen (Symbol,
- *               Glieder, Blatt; am Handy „…“), rechts PC, Glocke, Live-Punkt,
+ *               Glieder, Blatt; bis 704 px „…“), rechts Himmel, PC, Glocke, Live-Punkt,
  *               Schloss in dieser Reihenfolge, nichts überlappt, Ziele ab
  *               44 px, kein seitliches Scrollen, genau eine EventSource;
  *               unter 1024 px die Schublade (Tastatur: Enter öffnet, Escape
@@ -722,6 +725,7 @@ function KOPFLEISTE_3() {
     return { links: r.left, rechts: r.right, oben: r.top, unten: r.bottom, breite: r.width, hoehe: r.height };
   };
   const knopf = kopf?.querySelector(".schublade button") ?? null;
+  const himmel = kopf?.querySelector(".rechts a[data-himmel]") ?? null;
   const pc = kopf?.querySelector(".rechts a.pc") ?? null;
   const glocke = kopf?.querySelector('.rechts button[aria-haspopup="dialog"]') ?? null;
   const live = kopf?.querySelector('.rechts a[href$="#dashboard"]') ?? null;
@@ -732,6 +736,7 @@ function KOPFLEISTE_3() {
     ["Symbol", kopf?.querySelector('a[aria-label="Startseite"]')],
     ...[...(kopf?.querySelectorAll(".krumen .mitte a") ?? [])].map((e) => [e.textContent.trim(), e]),
     ["Blatt", blatt],
+    ["Himmel", himmel],
     ["PC", pc],
     ["Glocke", glocke],
     ["Live", live],
@@ -749,7 +754,7 @@ function KOPFLEISTE_3() {
       if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5)
         ueber.push(`${ziele[i][0]} / ${ziele[j][0]}`);
     }
-  const rechts = [pc, glocke, live, schloss];
+  const rechts = [himmel, pc, glocke, live, schloss];
   const reihenfolge = rechts.every((e) => e !== null) && rechts.every((e, i) => i === 0 || rechts[i - 1].getBoundingClientRect().right <= e.getBoundingClientRect().left + 0.5);
   const krumen = [...(kopf?.querySelectorAll(".krumen li") ?? [])].filter((e) => sichtbar(e)).map((e) => {
     // Nur was man sieht: ohne den Text für Vorlese-Programme.
@@ -783,6 +788,20 @@ function KOPFLEISTE_3() {
     body: { pe: getComputedStyle(document.body).pointerEvents, of: document.body.style.overflow, ofBerechnet: getComputedStyle(document.body).overflowY },
     quellen: window.__eventQuellen ? window.__eventQuellen() : null,
     hintergrund: getComputedStyle(document.body).backgroundColor,
+    // Kalender, Stufe 6: Himmel (Name, sichtbare Teile, Breiten) und der Platz der Brotkrumen.
+    himmel: himmel
+      ? {
+          name: himmel.getAttribute("aria-label"),
+          ortVoll: (himmel.querySelector(".ort")?.textContent ?? "").replace(/^\s*·\s*/, "").trim(),
+          ortSichtbar: sichtbar(himmel.querySelector(".ort")),
+          zeitenSichtbar: sichtbar(himmel.querySelector(".zeiten")),
+          breite: Math.round(himmel.getBoundingClientRect().width),
+          rand: getComputedStyle(himmel.querySelector("svg .dunkel")).stroke,
+        }
+      : null,
+    rechtsBreite: Math.round(kopf?.querySelector(".rechts")?.getBoundingClientRect().width ?? 0),
+    krumenBreite: Math.round(kopf?.querySelector(".links")?.getBoundingClientRect().width ?? 0),
+    krumenNoetig: kopf?.querySelector(".links")?.scrollWidth ?? 0,
   };
 }
 
@@ -1172,7 +1191,7 @@ async function bisWahr(cdp, f, ms = 4000) {
 
 /**
  * Kopfleiste, Fassung 3: mit Anmeldung (`cdp`, localhost) und ohne (`frei`,
- * 127.0.0.1) bei 360, 375, 768 und 1280 px, hell und dunkel.
+ * 127.0.0.1) bei 360, 375, 600, 640, 700, 720, 768, 900, 1024 und 1280 px, hell und dunkel.
  * `unterseite`: eine Unterseite eines Projekts nur in neuer Form (Brotkrumen
  * mit zwei mittleren Gliedern), sonst `null`.
  */
@@ -1181,19 +1200,28 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite) {
   console.log(`\n== Kopfleiste, Fassung 3 (${wer}) ==`);
   for (const thema of ["light", "dark"]) {
     await cdp.thema(thema);
-    for (const breite of [360, 375, 768, 1280]) {
+    // 600 bis 768 px (Kalender S6, Abnahme M1): Tablet im Hochformat mit Himmel.
+    for (const breite of [360, 375, 600, 640, 700, 720, 768, 900, 1024, 1280]) {
       const t = `kopfleiste-3 (${wer}, ${thema === "light" ? "hell" : "dunkel"}, ${breite} px)`;
       await sicher(t, async () => {
         await cdp.breite(breite);
         await cdp.oeffnen("/anstehend");
         // PC-Werte kommen alle 5 s über den Kanal; der erste gleich nach dem Verbinden.
         await bisWahr(cdp, () => Number(document.querySelector("header a.pc svg")?.dataset.werte ?? 0) > 0, 7000);
+        await bisWahr(cdp, () => document.querySelector("header a[data-himmel]") !== null, 5000);
         let k = await cdp.rufe(KOPFLEISTE_3);
         messen(t, `Brotkrumen ${JSON.stringify(k.krumen)}, PC „${k.pc?.name}“ ${k.pc?.punkte} Werte, Glocke „${k.glocke?.name}“, zu klein: ${k.klein.join(", ") || "nichts"}, Überlappung: ${k.ueber.join(", ") || "keine"}, seitlich ${k.seitlich} px, Leiste fest ${k.festSichtbar}`);
+        messen(`${t} Himmel`, `${k.himmel?.breite} px (Zeiten ${k.himmel?.zeitenSichtbar}, Ort ${k.himmel?.ortSichtbar}), rechts ${k.rechtsBreite} px, Brotkrumen ${k.krumenBreite} px, Rand ${k.himmel?.rand}`);
         pruefe(k.ueber.length === 0, `${t}: nichts überlappt`, k.ueber.join(", "));
         pruefe(k.klein.length === 0, `${t}: Ziele mindestens 44 px`, k.klein.join(", "));
         pruefe(k.seitlich <= 0, `${t}: kein seitliches Scrollen`, `${k.seitlich} px`);
-        pruefe(k.reihenfolge, `${t}: rechts PC, Glocke, Live-Punkt, Schloss in dieser Reihenfolge`);
+        pruefe(k.reihenfolge, `${t}: rechts Himmel, PC, Glocke, Live-Punkt, Schloss in dieser Reihenfolge`);
+        // Himmel: gibt zuerst nach (unter 48rem ohne Ort, unter 37,5rem nur das Symbol); der Name bleibt ganz.
+        pruefe(k.krumenBreite > 0, `${t}: die Brotkrumen behalten Platz`, `${k.krumenBreite} px`);
+        const h = k.himmel;
+        pruefe(h !== null && h.ortVoll !== "" && (h.name ?? "").includes(`Ort: ${h.ortVoll}. Zum Kalender`) && /^Mond: /.test(h.name ?? ""), `${t}: Himmel mit vollem Namen samt Ort`, JSON.stringify(h));
+        pruefe(h !== null && h.ortSichtbar === breite >= 1024 && h.zeitenSichtbar === breite >= 1024, `${t}: Himmel zeigt ${breite >= 1024 ? "Zeiten und Ort" : "nur das Symbol (Schublade)"}`, JSON.stringify(h));
+        pruefe(h !== null && h.rand !== "none" && h.rand !== "", `${t}: die dunkle Mondscheibe hat einen Rand`, h?.rand ?? "");
         const kanal = mitAnmeldung ? "/api/events" : "/api/events/frei";
         pruefe(JSON.stringify(k.quellen) === JSON.stringify([kanal]), `${t}: genau eine EventSource (${kanal})`, JSON.stringify(k.quellen));
         pruefe(k.blatt?.text === "Anstehend" && k.blatt.aktuell === "page" && k.krumen.length === 2, `${t}: Brotkrumen Symbol › Anstehend, das Blatt ist die aktuelle Seite`, JSON.stringify(k.krumen));
@@ -1339,13 +1367,14 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite) {
           pruefe(listen.length === 1, `${t}: / holt /api/projects genau einmal`, listen.map((a) => `${a.status}`).join(", "));
         }
 
-        // Brotkrumen einer Unterseite: am Handy „…“, sonst alle Glieder.
+        // Brotkrumen einer Unterseite: bis 44rem (704 px) „…“, sonst alle Glieder.
         if (unterseite !== null) {
           await cdp.oeffnen(unterseite.pfad);
           k = await cdp.rufe(KOPFLEISTE_3);
-          const soll = breite <= 600 ? ["", "…", unterseite.blatt] : ["", "Projekte", unterseite.projekt, unterseite.blatt];
+          const soll = breite <= 704 ? ["", "…", unterseite.blatt] : ["", "Projekte", unterseite.projekt, unterseite.blatt];
           const ist = k.krumen.map((x) => x.replace(/^›\s*/, ""));
-          pruefe(JSON.stringify(ist) === JSON.stringify(soll), `${t}: Brotkrumen der Unterseite ${breite <= 600 ? "mit „…“" : "vollständig"}`, JSON.stringify(k.krumen));
+          messen(`${t} Unterseite`, `Brotkrumen ${k.krumenBreite} px (brauchen ${k.krumenNoetig} px), Himmel ${k.himmel?.breite} px, rechts ${k.rechtsBreite} px, seitlich ${k.seitlich} px`);
+          pruefe(JSON.stringify(ist) === JSON.stringify(soll), `${t}: Brotkrumen der Unterseite ${breite <= 704 ? "mit „…“" : "vollständig"}`, JSON.stringify(k.krumen));
           pruefe(k.ueber.length === 0 && k.seitlich <= 0, `${t}: Unterseite ohne Überlappung, ohne seitliches Scrollen`, k.ueber.join(", "));
           if (breite >= 1024) {
             pruefe(k.festAktuell.length === 1 && k.festAktuell[0] === unterseite.blatt, `${t}: in der Leiste ist die Unterseite markiert (eingerückt unter dem Projekt)`, JSON.stringify(k.festAktuell));

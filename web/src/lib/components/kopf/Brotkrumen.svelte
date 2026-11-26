@@ -173,7 +173,7 @@
 	.mitte a:hover {
 		color: var(--text);
 	}
-	/* „…“ nur am Handy. */
+	/* „…“ nur am Handy und auf schmalen Tablets (bis 44rem, siehe unten). */
 	.auslassung {
 		display: none;
 		color: var(--muted);
@@ -213,7 +213,9 @@
 		font-weight: 400;
 		color: var(--ok-text);
 	}
-	@media (max-width: 37.5rem) {
+	/* Bis 44rem: Bei 640 px brauchen Symbol, zwei Glieder und Blatt 241 px, neben der
+	   rechten Gruppe bleiben nur rund 190 px (Edge-Probe kopfleiste-3). */
+	@media (max-width: 44rem) {
 		/* Der Weg steht für Vorlese-Programme im „…“; die Links selbst fehlen,
 		   damit die Tastatur nicht auf Unsichtbares springt. */
 		.mitte {

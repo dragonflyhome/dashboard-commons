@@ -578,11 +578,20 @@ pub fn kopf_antwort(ort: &Benannt, heute: NaiveDate, jetzt_t: f64) -> KalenderKo
         _ => None,
     };
     let (aufgang, untergang) = z.as_ref().map_or((None, None), |z| (um(z.aufgang), um(z.untergang)));
-    let satz = match z.as_ref().map(|z| z.aufgang) {
-        _ if aufgang.is_some() && untergang.is_some() => None,
-        Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
-        Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
-        _ => Some("Heute gibt es hier keine Zeit für Auf- und Untergang."),
+    // Fehlt nur eine Zeit (Übergangstag zu Polartag oder -nacht), spricht der Satz von ihr,
+    // damit er der sichtbaren Zeit nicht widerspricht; fehlen beide, nach dem Aufgang.
+    let keine = |s: Option<Sonnenzeit>| matches!(s, None | Some(Sonnenzeit::Keine | Sonnenzeit::Um(_)));
+    let satz = match (aufgang.is_some(), untergang.is_some()) {
+        (true, true) => None,
+        (false, true) if keine(z.as_ref().map(|z| z.aufgang)) => Some("Für den Aufgang gibt es heute hier keine Zeit."),
+        (false, true) => Some("Die Sonne geht heute nicht auf."),
+        (true, false) if keine(z.as_ref().map(|z| z.untergang)) => Some("Für den Untergang gibt es heute hier keine Zeit."),
+        (true, false) => Some("Die Sonne geht heute nicht unter."),
+        (false, false) => match z.as_ref().map(|z| z.aufgang) {
+            Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
+            Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
+            _ => Some("Heute gibt es hier keine Zeit für Auf- und Untergang."),
+        },
     };
     let beginn = o.beginn_ab(heute).unwrap_or_else(|| mond::tag_zahl(heute));
     KalenderKopf {
@@ -1953,6 +1962,27 @@ mod tests {
         let k = super::kopf_antwort(&tromsoe, d("2027-06-21"), mittag_utc("2027-06-21"));
         assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."));
         assert!(super::kopf_antwort(&benannt_an("sydney", -33.9, 151.2, "Australia/Sydney"), d("2027-06-21"), mittag_utc("2027-06-21")).sued);
+    }
+
+    /// S5: Tromsø an den Übergangstagen 2027 (Mai in den Polartag, Juli hinaus; vgl.
+    /// `tag::polartag_grenzen_tromsoe`): Fehlt nur eine Zeit, spricht der Satz von der
+    /// fehlenden Seite, nie „geht nicht unter“ neben einem Untergang.
+    #[test]
+    fn kopf_satz_an_uebergangstagen() {
+        let tromsoe = benannt_an("tromsoe", 69.6492, 18.9553, "Europe/Oslo");
+        let tage = |von: &str| d(von).iter_days().take(14).map(|t| (t, super::kopf_antwort(&tromsoe, t, mittag_utc(&t.to_string())))).collect::<Vec<_>>();
+        let mai = tage("2027-05-12");
+        let (t, k) = mai.iter().find(|(_, k)| k.aufgang.is_some() && k.untergang.is_none()).expect("Übergangstag im Mai");
+        assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."), "{t}: {k:?}");
+        let juli = tage("2027-07-18");
+        let (t, k) = juli.iter().find(|(_, k)| k.aufgang.is_none() && k.untergang.is_some()).expect("Übergangstag im Juli");
+        assert!(matches!(k.text.as_deref(), Some("Die Sonne geht heute nicht auf." | "Für den Aufgang gibt es heute hier keine Zeit.")), "{t}: {k:?}");
+        // Kein Tag der beiden Folgen widerspricht sich: ein Satz zum Untergang nur ohne Untergang, zum Aufgang nur ohne Aufgang.
+        for (t, k) in mai.iter().chain(&juli) {
+            let satz = k.text.as_deref().unwrap_or("");
+            assert_eq!(k.text.is_none(), k.aufgang.is_some() && k.untergang.is_some(), "{t}: {k:?}");
+            assert!(!(satz.contains("unter") && k.untergang.is_some()) && !(satz.contains("nicht auf") && k.aufgang.is_some()), "{t}: {k:?}");
+        }
     }
 
     /// `GET /api/kalender/kopf`: nur angemeldet; Form; der Heimatort mit Titel, ohne Zahl und Zone.

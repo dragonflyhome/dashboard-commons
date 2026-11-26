@@ -30,6 +30,21 @@ Hinzugefügt
 Behoben
 - Die Beschreibungen der Sätze für eine Regel ohne Vorkommen und für einen
   Verweis per nach auf eine Zählung standen vertauscht im Code.
+- Kopfleiste: Bei Tablet-Breite rollt die Leiste nicht mehr seitlich und
+  die Brotkrumen behalten ihren Platz; unter 1024 px zeigt der Himmel nur das
+  Mondsymbol, sein Name nennt Zeiten und Ort weiter.
+- Kopfleiste: Auf Unterseiten eines Projekts überlappen die Brotkrumen bei
+  schmalen Tablets nicht mehr die Teile rechts; bis 704 px stehen die
+  mittleren Glieder als „…“ (vorgelesen wird der ganze Weg).
+- Kopfleiste: Der Neumond hat einen Rand und bleibt so sichtbar.
+- Kopfleiste: Am Übergangstag zu Polartag oder Polarnacht passt der Satz zur
+  angezeigten Zeit, und der vorgelesene Name nennt diese Zeit.
+- Kalenderseite: „Das Jahr“ nennt auch am Ende des Festjahrs drei nächste
+  Vollmonde.
+- Kalenderseite: Ein geleertes Datumsfeld lässt den Jahreskreis beim
+  geladenen Tag statt eines kaputten Zeigers.
+- Kalenderseite: Nach „Als Heimatort“ steht der Fokus auf der Rückmeldung
+  „Heimatort ist jetzt …“.
 
 0.27.2 - 2026-11-26
 -------------------

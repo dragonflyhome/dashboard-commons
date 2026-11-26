@@ -1028,7 +1028,7 @@ impl Katalog {
         let jahre = ERSTES_JAHR..=LETZTES_JAHR;
         if !(jahre.contains(&erster_tag.year()) && jahre.contains(&ende_tag.pred_opt()?.year())) {
             let hinweis = Some(SATZ_FESTJAHR_RAND.to_string());
-            return Some(KalenderJahr { zeitraum, monate: Vec::new(), sonnentage: Vec::new(), viertel: Vec::new(), hinweis });
+            return Some(KalenderJahr { zeitraum, monate: Vec::new(), sonnentage: Vec::new(), viertel: Vec::new(), naechste_vollmonde: Vec::new(), hinweis });
         }
         let zeitpunkt = |kennung: &str, name: &str, t: f64| -> Option<KalenderZeitpunkt> {
             let z = ort.ortszeit(t)?;
@@ -1056,11 +1056,20 @@ impl Katalog {
                 monate.push(KalenderJahrMonat { nummer: m.nummer?, name: m.name, namen: m.namen.unwrap_or_default(), jahreszeit, zeitraum: m.zeitraum });
             }
         }
+        // Drei Vollmonde ab dem Beginn des Tags, nicht nur die der Spanne (am Ende des Festjahrs).
+        let mut naechste_vollmonde = Vec::new();
+        let mut t = ort.beginn_ab(heute)?;
+        for _ in 0..3 {
+            t = himmel::phase_ab(Phase::Vollmond.grad(), t);
+            naechste_vollmonde.push(zeitpunkt("vollmond", Phase::Vollmond.name(), t)?);
+            t += 1.0;
+        }
         Some(KalenderJahr {
             zeitraum,
             monate,
             sonnentage: sonnentage.into_iter().map(|(_, z)| z).collect(),
             viertel,
+            naechste_vollmonde,
             hinweis: tropen.then(|| HINWEIS_WENDEKREIS.to_string()),
         })
     }
@@ -2034,10 +2043,44 @@ regel = { nach = "kirche.ostern", tage = -3 }
         );
         assert_eq!(j.sonnentage[1].zeit, "21:24");
         assert_eq!(j.viertel.len(), 48);
-        assert_eq!(k.festjahr("jahreskreis", tag("2026-12-09")), Some(j.clone()));
-        assert_eq!(k.festjahr("jahreskreis", tag("2027-11-27")), Some(j));
+        // Dasselbe Festjahr am ersten und letzten Tag; nur die nächsten Vollmonde hängen am Tag.
+        let ohne_naechste = |mut x: KalenderJahr| {
+            x.naechste_vollmonde.clear();
+            x
+        };
+        assert_eq!(k.festjahr("jahreskreis", tag("2026-12-09")).map(ohne_naechste), Some(ohne_naechste(j.clone())));
+        assert_eq!(k.festjahr("jahreskreis", tag("2027-11-27")).map(ohne_naechste), Some(ohne_naechste(j)));
         assert_eq!(k.festjahr("jahreskreis", tag("2026-12-08")).unwrap().zeitraum.ende, "2026-12-09");
         assert!(k.festjahr("kirche", tag("2027-06-21")).is_none(), "ohne Jahreszeiten kein Festjahr");
+    }
+
+    /// S1: Auch am Ende des Festjahrs drei nächste Vollmonde ab dem Tag (der Tag selbst
+    /// zählt mit), nach der Zeit, im Abstand eines Mondmonats; die in der Spanne sind
+    /// dieselben wie in `viertel`. Am Rand 2100 leer wie die anderen Listen.
+    #[test]
+    fn festjahr_drei_naechste_vollmonde() {
+        let k = berlin();
+        for heute in ["2027-06-21", "2027-11-20", "2027-12-10", "2027-12-20", "2028-12-10", "2028-12-20"] {
+            let j = k.festjahr("jahreskreis", tag(heute)).unwrap();
+            let v = &j.naechste_vollmonde;
+            assert_eq!(v.len(), 3, "{heute}: {v:?}");
+            assert!(v.iter().all(|x| x.kennung == "vollmond" && x.name == "Vollmond"), "{heute}: {v:?}");
+            assert!(v[0].datum.as_str() >= heute && v[0].datum.as_str() < tag_text(tag(heute) + Duration::days(31)).as_str(), "{heute}: {v:?}");
+            for p in v.windows(2) {
+                let abstand = (tag(&p[1].datum) - tag(&p[0].datum)).num_days();
+                assert!((29..=30).contains(&abstand), "{heute}: {v:?}");
+            }
+            for x in v.iter().filter(|x| x.datum < j.zeitraum.ende) {
+                // Gleicher Tag; die Minute kann je nach Startpunkt der Suche um eins abweichen.
+                assert!(j.viertel.iter().any(|v| v.kennung == "vollmond" && v.datum == x.datum), "{heute}: {x:?}");
+            }
+        }
+        // Der Vollmond am Tag selbst zählt (19.6.2027).
+        assert_eq!(k.festjahr("jahreskreis", tag("2027-06-19")).unwrap().naechste_vollmonde[0].datum, "2027-06-19");
+        // Die letzte Woche des Festjahrs 2026/27: kein Vollmond mehr in der Spanne, trotzdem drei.
+        let ende = k.festjahr("jahreskreis", tag("2027-11-20")).unwrap();
+        assert!(ende.naechste_vollmonde.iter().all(|x| x.datum >= ende.zeitraum.ende), "{:?}", ende.naechste_vollmonde);
+        assert!(k.festjahr("jahreskreis", tag("2100-12-30")).unwrap().naechste_vollmonde.is_empty());
     }
 
     /// Der Winter 2027/28 hat drei Monde: 13 Monate, der dritte Wintervollmond vor Imbolc.

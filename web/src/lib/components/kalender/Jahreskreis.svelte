@@ -13,7 +13,7 @@
 		festjahrName,
 		jahreskreisText,
 		laufenderMonat,
-		naechsteVollmonde
+		vollmondeImKreis
 	} from '#lib/textfassung.ts';
 	import { tagZahl } from '#lib/zeit/tage.ts';
 	import Textfassung from '../Textfassung.svelte';
@@ -78,7 +78,8 @@
 	}
 
 	const laufend = $derived(laufenderMonat(jahr, tag));
-	const naechste = $derived(naechsteVollmonde(jahr, tag));
+	const naechste = $derived(jahr.naechste_vollmonde);
+	const ringe = $derived(vollmondeImKreis(jahr));
 	const zeiten = $derived(
 		jahr.monate.length === 0
 			? []
@@ -116,7 +117,7 @@
 				>
 				<circle class="voll" {...kreis(winkel(m.zeitraum.vollmond), R.voll)} r="3.5" />
 			{/each}
-			{#each naechste as v (v.datum)}
+			{#each ringe as v (v.datum)}
 				<circle class="naechster" {...kreis(winkel(v.datum), R.voll)} r="7" />
 			{/each}
 			{#each jahr.sonnentage as s (s.kennung)}
@@ -139,7 +140,7 @@
 			<h3>Mondmonate</h3>
 			<ol class="plain">
 				{#each jahr.monate as m (m.nummer)}
-					<li class:laufend={m === laufend}>
+					<li class:laufend={m === laufend} aria-current={m === laufend ? 'date' : undefined}>
 						<b>{m.nummer}.</b>
 						{m.name}
 						<span class="muted small"
@@ -215,7 +216,7 @@
 		stroke: var(--accent);
 	}
 	.nummer.laufend {
-		fill: var(--card);
+		fill: var(--on-accent);
 		font-weight: 700;
 	}
 	.leer {

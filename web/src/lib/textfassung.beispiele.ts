@@ -161,6 +161,13 @@ export const JAHR: KalenderJahr = (() => {
 			{ kennung: 'neumond', name: 'Neumond', datum: anfang, zeit: '12:00' },
 			{ kennung: 'vollmond', name: 'Vollmond', datum: vollmond, zeit: '18:00' }
 		]),
+		// Ab dem 21.6.2027, wie der Server sie liefert (drei, auch über das Festjahr hinaus).
+		naechste_vollmonde: ['2027-07-18', '2027-08-17', '2027-09-16'].map((datum) => ({
+			kennung: 'vollmond',
+			name: 'Vollmond',
+			datum,
+			zeit: '18:00'
+		})),
 		hinweis: null
 	};
 })();

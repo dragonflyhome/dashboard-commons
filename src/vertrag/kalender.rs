@@ -309,6 +309,9 @@ pub struct KalenderJahr {
     pub sonnentage: Vec<KalenderZeitpunkt>,
     /// Neumond, erstes Viertel, Vollmond, letztes Viertel in der Spanne, nach der Zeit.
     pub viertel: Vec<KalenderZeitpunkt>,
+    /// Die nächsten drei Vollmonde ab dem Beginn des Tags, auch über das Ende der Spanne
+    /// hinaus; leer außerhalb der Jahre, für die gerechnet wird.
+    pub naechste_vollmonde: Vec<KalenderZeitpunkt>,
     /// Ein Satz ohne Zahlen, wenn Monate fehlen.
     pub hinweis: Option<String>,
 }

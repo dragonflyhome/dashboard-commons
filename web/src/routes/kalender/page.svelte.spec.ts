@@ -609,6 +609,28 @@ describe('Seite /kalender', () => {
 		expect(screen.queryByRole('button', { name: 'Als Heimatort' })).toBeNull();
 		const post = f.mock.calls.find((c) => String(c[0]) === '/api/kalender/heimat');
 		expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({ ort: 'hütte' });
+		// Der Fokus fällt nicht auf body: Er steht wie bei „Ort merken“ auf der Rückmeldung.
+		const meldung = await screen.findByText('Heimatort ist jetzt „Hütte“.');
+		expect(meldung).toHaveAttribute('role', 'status');
+		expect(meldung).toHaveAttribute('tabindex', '-1');
+		expect(document.activeElement).toBe(meldung);
+	});
+
+	it('Stufe 6: ein geleertes Datumsfeld lässt den Jahreskreis beim geladenen Tag (kein Zeiger mit NaN)', async () => {
+		server();
+		const { container } = render(Page);
+		const abschnitt = (await screen.findByRole('heading', { name: 'Das Jahr' })).closest('section');
+		if (abschnitt === null) throw new Error('Abschnitt fehlt');
+		const feld = container.querySelector<HTMLInputElement>('input[type="date"]');
+		if (feld === null) throw new Error('Datumsfeld fehlt');
+		await fireEvent.input(feld, { target: { value: '' } });
+		expect(feld.value).toBe('');
+		const bild = within(abschnitt).getByRole('img');
+		const zeiger = bild.querySelector('path.zeiger')?.getAttribute('d') ?? '';
+		expect(zeiger).toMatch(/^M [\d.-]+ [\d.-]+ L [\d.-]+ [\d.-]+$/);
+		expect(zeiger).not.toContain('NaN');
+		// Der Name nennt den geladenen Tag (21.6.2026), nicht „am “.
+		expect(bild.getAttribute('aria-label')).toMatch(/, am .*2026$/);
 	});
 
 	it('Stufe 6: „Das Jahr“ mit Kreis (role=img, Name), Liste der Monate, Sonnentage, nächste Vollmonde und Textfassung', async () => {

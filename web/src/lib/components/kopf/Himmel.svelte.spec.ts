@@ -127,6 +127,8 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 			name: 'Mond: abnehmend. Die Sonne geht heute nicht auf. Ort: Hütte. Zum Kalender'
 		});
 		expect(neu.textContent).not.toContain('↑');
+		// Ohne Zeiten kein „·“ vor dem Ort.
+		expect(neu.querySelector('.ort')?.textContent).toBe('Hütte');
 		for (const l of h.abgemeldet) l();
 		await waitFor(() => {
 			expect(container.querySelector('[data-himmel]')).toBeNull();
@@ -147,6 +149,30 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 			})
 		).toBe(
 			'Mond: abnehmend. Die Sonne geht heute nicht unter. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zum Kalender'
+		);
+	});
+
+	it('Übergangstag zu Polartag und -nacht: der Name nennt die eine Zeit und den Satz zur fehlenden Seite', () => {
+		expect(
+			himmelSatz({
+				...KOPF,
+				ort: 'Tromsø',
+				untergang: null,
+				text: 'Die Sonne geht heute nicht unter.'
+			})
+		).toBe(
+			'Mond: abnehmend. Sonnenaufgang heute 07:53. Die Sonne geht heute nicht unter. Ort: Tromsø. Zum Kalender'
+		);
+		expect(
+			himmelSatz({
+				...KOPF,
+				ort: 'Tromsø',
+				aufgang: null,
+				untergang: '00:17 (am 27.7.)',
+				text: 'Für den Aufgang gibt es heute hier keine Zeit.'
+			})
+		).toBe(
+			'Mond: abnehmend. Sonnenuntergang heute 00:17 (am 27.7.). Für den Aufgang gibt es heute hier keine Zeit. Ort: Tromsø. Zum Kalender'
 		);
 	});
 });

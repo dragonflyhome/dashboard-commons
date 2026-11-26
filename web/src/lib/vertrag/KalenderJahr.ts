@@ -20,6 +20,11 @@ sonnentage: Array<KalenderZeitpunkt>,
  */
 viertel: Array<KalenderZeitpunkt>, 
 /**
+ * Die nächsten drei Vollmonde ab dem Beginn des Tags, auch über das Ende der Spanne
+ * hinaus; leer außerhalb der Jahre, für die gerechnet wird.
+ */
+naechste_vollmonde: Array<KalenderZeitpunkt>, 
+/**
  * Ein Satz ohne Zahlen, wenn Monate fehlen.
  */
 hinweis: string | null, };

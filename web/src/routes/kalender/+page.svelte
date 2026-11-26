@@ -77,7 +77,7 @@
 		null
 	);
 
-	// „Ort merken“: Titel und Rückmeldung.
+	// „Ort merken“ und „Als Heimatort“: Titel und Rückmeldung (ein ganzer Satz).
 	let merkTitel = $state('');
 	let gemerkt = $state<string | null>(null);
 	let gemerktFeld = $state<HTMLElement | null>(null);
@@ -280,7 +280,7 @@
 			const neu = await senden<KalenderOrt>(`${API}/kalender/standorte`, koerper);
 			vergessen();
 			await orteLaden(neu.kennung);
-			gemerkt = neu.titel;
+			gemerkt = `Gemerkt als „${neu.titel}“.`;
 			fehler = null;
 			// Das Merken-Formular ist weg; der Fokus geht auf die Rückmeldung.
 			await tick();
@@ -300,13 +300,19 @@
 		freiGebete = [];
 	}
 
-	/** Macht den gewählten Ort zum Heimatort; danach die Orte neu, der Ort bleibt gewählt. */
+	/**
+	 * Macht den gewählten Ort zum Heimatort; danach die Orte neu, der Ort bleibt gewählt.
+	 * Der Knopf ist dann weg; der Fokus geht wie bei „Ort merken“ auf die Rückmeldung.
+	 */
 	async function alsHeimat(): Promise<void> {
 		const koerper: KalenderHeimat = { ort };
 		try {
 			await senden<KalenderOrte>(`${API}/kalender/heimat`, koerper);
 			await orteLaden(ort);
+			gemerkt = `Heimatort ist jetzt „${gewaehltOrt?.titel ?? ort}“.`;
 			fehler = null;
+			await tick();
+			gemerktFeld?.focus();
 		} catch (e) {
 			fehler = fehlerText(e);
 		}
@@ -446,7 +452,7 @@
 		</form>
 	{/if}
 	<p role="status" data-gemerkt tabindex="-1" class:leer={gemerkt === null} bind:this={gemerktFeld}>
-		{#if gemerkt !== null}Gemerkt als „{gemerkt}“.{/if}
+		{gemerkt ?? ''}
 	</p>
 	{#if zonen !== null}
 		<p class="muted small" data-tzdb>Zeitzonen-Daten {zonen.tzdb}</p>
@@ -568,7 +574,7 @@
 				jahr.zeitraum.anfang
 			)} bis vor den {fmtDate(jahr.zeitraum.ende)}"
 		>
-			<Jahreskreis {jahr} tag={datum} />
+			<Jahreskreis {jahr} tag={tag.datum} />
 		</Abschnitt>
 	{/if}
 {/if}
