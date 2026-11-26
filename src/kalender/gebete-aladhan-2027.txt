@@ -1,0 +1,24 @@
+# Quelle: AlAdhan Prayer Times API (aladhan.com), abgerufen 2026-11-26.
+#   URL-Muster: https://api.aladhan.com/v1/timings/21-06-2027?latitude=<breite>&longitude=<laenge>&method=<3|2>&school=0&timezonestring=<zone>
+#   Werte aus der JSON-Antwort (data.timings), Zeiten HH:MM in Ortszeit mit Sommerzeit.
+# AlAdhan-Dienst, teilweise unabhängig (gleiches Verfahren): eigene Umsetzung nach praytimes.org, nicht adhan-js,
+#   mathematisch dasselbe Grundverfahren.
+# Methode 3 = MWL (Fajr 18°, Isha 17°), Methode 2 = ISNA (15°/15°); school=0: Asr Standard (Schafiiten, Schattenlänge 1);
+#   Hochbreite laut meta.latitudeAdjustmentMethod ANGLE_BASED (Anteil Winkel/60 der Nacht) = Regel `winkel`;
+#   alle meta.offset = 0. Datum 21.6.2027. Isha nach Mitternacht (Paris MWL 00:11) gehört zum 22.6.
+# Spalte Zone: IANA-Name, wie übergeben; das Kürzel dahinter ist unsere Angabe.
+# Stadt     | Breite   | Länge     | Zone                              | Methode | Fajr  | Sunrise | Dhuhr | Asr   | Maghrib | Isha
+London      | 51.5074  | -0.1278   | Europe/London (BST, UTC+1)        | MWL     | 02:31 | 04:43   | 13:02 | 17:25 | 21:21   | 23:27
+Paris       | 48.8566  | 2.3522    | Europe/Paris (CEST, UTC+2)        | MWL     | 03:26 | 05:47   | 13:52 | 18:10 | 21:58   | 00:11
+Moskau      | 55.7558  | 37.6173   | Europe/Moscow (MSK, UTC+3)        | MWL     | 01:49 | 03:45   | 12:31 | 17:03 | 21:18   | 23:08
+Sydney      | -33.8688 | 151.2093  | Australia/Sydney (AEST, UTC+10)   | MWL     | 05:30 | 07:00   | 11:57 | 14:36 | 16:54   | 18:18
+Kapstadt    | -33.9249 | 18.4241   | Africa/Johannesburg (SAST, UTC+2) | MWL     | 06:22 | 07:51   | 12:48 | 15:27 | 17:45   | 19:09
+Mekka       | 21.4225  | 39.8262   | Asia/Riyadh (AST, UTC+3)          | MWL     | 04:14 | 05:39   | 12:22 | 15:42 | 19:06   | 20:26
+Kairo       | 30.0444  | 31.2357   | Africa/Cairo (EEST, UTC+3)        | MWL     | 04:18 | 05:54   | 12:57 | 16:32 | 19:59   | 21:30
+London      | 51.5074  | -0.1278   | Europe/London (BST, UTC+1)        | ISNA    | 02:53 | 04:43   | 13:02 | 17:25 | 21:21   | 23:12
+Paris       | 48.8566  | 2.3522    | Europe/Paris (CEST, UTC+2)        | ISNA    | 03:50 | 05:47   | 13:52 | 18:10 | 21:58   | 23:55
+Moskau      | 55.7558  | 37.6173   | Europe/Moscow (MSK, UTC+3)        | ISNA    | 02:08 | 03:45   | 12:31 | 17:03 | 21:18   | 22:55
+Sydney      | -33.8688 | 151.2093  | Australia/Sydney (AEST, UTC+10)   | ISNA    | 05:46 | 07:00   | 11:57 | 14:36 | 16:54   | 18:08
+Kapstadt    | -33.9249 | 18.4241   | Africa/Johannesburg (SAST, UTC+2) | ISNA    | 06:37 | 07:51   | 12:48 | 15:27 | 17:45   | 18:59
+Mekka       | 21.4225  | 39.8262   | Asia/Riyadh (AST, UTC+3)          | ISNA    | 04:29 | 05:39   | 12:22 | 15:42 | 19:06   | 20:15
+Kairo       | 30.0444  | 31.2357   | Africa/Cairo (EEST, UTC+3)        | ISNA    | 04:36 | 05:54   | 12:57 | 16:32 | 19:59   | 21:18

@@ -29,6 +29,7 @@ pub mod pc;
 pub mod projekte;
 pub mod pruefung;
 pub mod schluessel;
+pub mod schreiben;
 pub mod sitzungen;
 pub mod staedte;
 pub mod stand;
@@ -122,6 +123,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/kalender/tag", get(kalender::tag))
         .route("/api/kalender/feste", get(kalender::feste))
         .route("/api/kalender/abfrage", post(kalender::abfrage_post))
+        // Kalender, Stufe 4: die Auswahl der Gebetszeiten je Ort (privat).
+        .route("/api/kalender/gebete", get(kalender::gebete).post(kalender::gebete_speichern))
         .route("/api/kalender/staedte", post(staedte::suchen))
         .route("/api/events", get(events::sse))
         // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).

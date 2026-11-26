@@ -6,6 +6,7 @@ import type { Fortschritt } from "./Fortschritt";
 import type { Fragen } from "./Fragen";
 import type { Fristen } from "./Fristen";
 import type { Gantt } from "./Gantt";
+import type { Gebete } from "./Gebete";
 import type { Kanban } from "./Kanban";
 import type { Kennzahlen } from "./Kennzahlen";
 import type { Orte } from "./Orte";
@@ -35,6 +36,10 @@ plan: Datei<Plan> | null,
  * `daten/standorte.toml` (Kalender, Stufe 3), ohne Koordinaten.
  */
 standorte: Datei<Standorte> | null, 
+/**
+ * `daten/gebete.toml` (Kalender, Stufe 4), ohne die Auswahl.
+ */
+gebete: Datei<Gebete> | null, 
 /**
  * `daten/eigen-<name>.toml` unter dem Schlüssel `<name>`, als JSON durchgereicht.
  */

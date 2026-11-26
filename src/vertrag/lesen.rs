@@ -259,7 +259,7 @@ fn satz(meldung: &str, zeilentext: &str, ausschnitt: &str) -> String {
     // Persönliche Werte: welche Kalender und Feste jemand nutzt (Kalender, Stufe 1) und
     // wo jemand ist (Stufe 3). Bei diesen Schlüsseln nur die Art des Werts, nie den Wert,
     // auch nicht im Vorschlag und nicht im Protokoll.
-    let geschuetzt = matches!(schluessel, Some("kalender" | "regel" | "breite" | "laenge" | "zeitzone" | "versatz"));
+    let geschuetzt = matches!(schluessel, Some("kalender" | "regel" | "breite" | "laenge" | "zeitzone" | "versatz" | "varianten" | "ort"));
 
     if let Some(rest) = meldung.strip_prefix("unknown variant ") {
         let (wert, erwartet) = rest.split_once(", expected").unwrap_or((rest, ""));

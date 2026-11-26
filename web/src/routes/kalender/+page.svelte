@@ -12,10 +12,14 @@
 	 * Zustand dieser Seite und sind weg, sobald man sie verlässt. Die
 	 * Städtesuche schickt den Suchtext ebenso nur im Rumpf von
 	 * `POST /api/kalender/staedte`.
+	 *
+	 * Gebetszeiten (Stufe 4): Die Auswahl der Varianten speichert die Seite für
+	 * benannte Orte (`POST /api/kalender/gebete`); beim anderen Ort geht sie nur
+	 * im Rumpf der Abfrage mit und ist mit ihm vergessen.
 	 */
 	import { onMount, tick } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { Abschnitt, Absatz, Auswahl, Hinweis, Knopf } from '$katalog';
+	import { Abschnitt, Absatz, Auswahl, Hinweis, Knopf, Schalter } from '$katalog';
 	import { API, fehlerText, getJson, readError } from '#lib/api/client.ts';
 	import { abrufen } from '#lib/api/antwortet.svelte.ts';
 	import { fmtDate } from '#lib/format.ts';
@@ -27,6 +31,8 @@
 		KalenderAbfrage,
 		KalenderAbfrageAntwort,
 		KalenderFeste,
+		KalenderGebete,
+		KalenderGebeteSpeichern,
 		KalenderMerken,
 		KalenderOrt,
 		KalenderOrte,
@@ -65,6 +71,15 @@
 	let gemerkt = $state<string | null>(null);
 	let gemerktFeld = $state<HTMLElement | null>(null);
 	let zonen = $state<KalenderZonen | null>(null);
+
+	// Gebetszeiten: Varianten und gespeicherte Auswahl; beim anderen Ort nur hier im Speicher.
+	let gebete = $state<KalenderGebete | null>(null);
+	let freiGebete = $state<string[]>([]);
+	/** Zählt jeden Speicherversuch, damit die Schalter nach einem Fehler den gespeicherten Stand zeigen. */
+	let gebeteStand = $state(0);
+	const gewaehlt = $derived(
+		frei !== null ? freiGebete : (gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
+	);
 
 	// „Stadt suchen“: Suchtext und Antwort, nur hier im Speicher.
 	let suchtext = $state('');
@@ -134,6 +149,10 @@
 			(z) => (zonen = z),
 			() => (zonen = null)
 		);
+		getJson<KalenderGebete>(`${API}/kalender/gebete`).then(
+			(g) => (gebete = g),
+			() => (gebete = null)
+		);
 	});
 
 	/** Nur die letzte Anfrage zählt; eine langsamere ältere überschreibt nichts. */
@@ -142,7 +161,8 @@
 	async function laden(
 		d: string,
 		o: string,
-		f: { breite: number; laenge: number; zeitzone: string | null } | null
+		f: { breite: number; laenge: number; zeitzone: string | null } | null,
+		g: string[] = []
 	): Promise<void> {
 		const nr = ++laufend;
 		try {
@@ -163,7 +183,8 @@
 					bis: festeBis,
 					breite: f.breite,
 					laenge: f.laenge,
-					zeitzone: f.zeitzone
+					zeitzone: f.zeitzone,
+					gebete: g.length > 0 ? g : null
 				};
 				const a = await senden<KalenderAbfrageAntwort>(`${API}/kalender/abfrage`, koerper);
 				if (nr !== laufend) return;
@@ -179,8 +200,30 @@
 
 	$effect(() => {
 		if (orte === null || datum === '') return;
-		void laden(datum, ort, frei);
+		void laden(datum, ort, frei, [...freiGebete]);
 	});
+
+	/** Ein Schalter einer Variante: beim anderen Ort nur für die Abfrage, sonst gespeichert. */
+	async function umschalten(kennung: string, an: boolean): Promise<void> {
+		const neu = an ? [...gewaehlt, kennung] : gewaehlt.filter((k) => k !== kennung);
+		if (frei !== null) {
+			freiGebete = neu;
+			return;
+		}
+		await gebeteSpeichern(ort, neu);
+	}
+
+	async function gebeteSpeichern(o: string, varianten: string[]): Promise<void> {
+		const koerper: KalenderGebeteSpeichern = { ort: o, varianten };
+		try {
+			gebete = await senden<KalenderGebete>(`${API}/kalender/gebete`, koerper);
+			fehler = null;
+			await laden(datum, ort, null);
+		} catch (e) {
+			fehler = fehlerText(e);
+		}
+		gebeteStand++;
+	}
 
 	function abschicken(e: SubmitEvent): void {
 		e.preventDefault();
@@ -217,6 +260,7 @@
 		laenge = null;
 		zeitzone = '';
 		merkTitel = '';
+		freiGebete = [];
 	}
 
 	const grad = (n: number): string => `${n.toFixed(1).replace('.', ',')}°`;
@@ -281,10 +325,13 @@
 								</li>
 							{/each}
 						</ul>
-						<p class="muted small" data-quelle>Städteliste: {staedte.quelle}</p>
 					{/if}
 				{/if}
 			</div>
+			<!-- Namensnennung der Städteliste (Lizenzpflicht), dauerhaft am Suchfeld. -->
+			<p class="muted small" data-quelle>
+				Städteliste: {staedte?.quelle ?? 'GeoNames (geonames.org), CC BY 4.0'}
+			</p>
 			<label class="feld">
 				Breite (Grad, Norden positiv)
 				<input
@@ -387,6 +434,64 @@
 			<p><strong>{tag.laengster_tag}</strong></p>
 		{/if}
 	</Abschnitt>
+
+	{#if gebete !== null && gebete.varianten.length > 0}
+		<Abschnitt titel="Gebetszeiten">
+			{#if gebete.hinweis}
+				<Hinweis>{gebete.hinweis}</Hinweis>
+			{/if}
+			{#each gebete.auswahl.filter((a) => a.fehlt) as a (a.ort)}
+				<p data-fehlt>
+					Den Ort „{a.ort}“ gibt es nicht mehr.
+					<Knopf art="leise" onclick={() => void gebeteSpeichern(a.ort, [])}
+						>Seine Auswahl entfernen</Knopf
+					>
+				</p>
+			{/each}
+			<fieldset class="varianten">
+				<legend>Varianten für {frei === null ? ortTitel : 'den anderen Ort'}</legend>
+				{#key gebeteStand}
+					{#each gebete.varianten as v (v.kennung)}
+						<Schalter
+							an={gewaehlt.includes(v.kennung)}
+							beschriftung={v.titel}
+							onwechsel={(an: boolean) => void umschalten(v.kennung, an)}
+						/>
+					{/each}
+				{/key}
+			</fieldset>
+			<p class="muted small">
+				{#if frei === null}Die Auswahl wird für diesen Ort gespeichert.{:else}Für den anderen Ort
+					gilt die Auswahl nur, solange du auf dieser Seite bist.{/if}
+			</p>
+			{#if tag.gebete.length > 0}
+				<div class="gebete">
+					{#each tag.gebete as l (l.kennung)}
+						<section class="gebetsliste" aria-label={l.titel}>
+							<h3>{l.titel}</h3>
+							{#if l.hinweis}
+								<Hinweis>{l.hinweis}</Hinweis>
+							{/if}
+							<ul class="plain zeilen">
+								{#each l.zeilen as z, i (i)}
+									<li>
+										<span class="wann"><b>{z.zeit ?? z.text ?? ''}</b></span>
+										<span class="was">
+											{z.name}
+											{#if z.umfasst.length > 0}<span class="small">mit {z.umfasst.join(', ')}</span
+												>{/if}
+											{#if z.hinweis}<span class="small" data-hochbreite>{z.hinweis}</span>{/if}
+											<span class="muted small">{z.herkunft}</span>
+										</span>
+									</li>
+								{/each}
+							</ul>
+						</section>
+					{/each}
+				</div>
+			{/if}
+		</Abschnitt>
+	{/if}
 
 	{#if tag.mond}
 		{@const m = tag.mond}
@@ -503,6 +608,27 @@
 		display: grid;
 		gap: 0.1rem;
 		min-width: 0;
+	}
+	.varianten {
+		display: grid;
+		gap: 0.4rem;
+		margin: 0.4rem 0;
+		padding: 0.5rem 0.9rem 0.8rem;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+	}
+	/* Die Varianten nebeneinander, schmal untereinander. */
+	.gebete {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+		gap: 0.5rem 1.25rem;
+	}
+	.gebetsliste h3 {
+		margin: 0.6em 0 0.2em;
+		font-size: var(--text-md);
+	}
+	.gebetsliste .zeilen > li {
+		grid-template-columns: minmax(5rem, 8rem) 1fr;
 	}
 	@media (max-width: 37.5rem) {
 		.zeilen > li {

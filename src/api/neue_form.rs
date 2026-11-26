@@ -115,9 +115,12 @@ async fn daten_lesen(state: AppState, slug: String, name: String) -> Result<Json
         return Err(AppError::nicht_gefunden(format!("Im Projekt „{slug}“ gibt es keine Datei daten/{name}.toml.")).into());
     };
     // Die Orte des Kalenders: Summen und Spannen über `breite` und `laenge` wären
-    // Koordinaten; darum rechnet der Server dort nichts ab.
-    let mut abgeleitet =
-        if matches!(inhalt, DatenInhalt::Standorte(_)) { abgeleitet::ableiten(&toml::Table::new(), heute) } else { abgeleitet::ableiten(&tabelle, heute) };
+    // Koordinaten; darum rechnet der Server dort nichts ab, ebenso nicht aus der Auswahl der Gebetszeiten.
+    let mut abgeleitet = if matches!(inhalt, DatenInhalt::Standorte(_) | DatenInhalt::Gebete(_)) {
+        abgeleitet::ableiten(&toml::Table::new(), heute)
+    } else {
+        abgeleitet::ableiten(&tabelle, heute)
+    };
     // Etappe B2: die Warteschlange der Fragen, aus derselben Rechnung wie
     // Anstehend (mit Antworten und Einstufungen), damit der Baustein `Fragen`
     // dieselbe eine Frage zeigt. Lässt sich der Inhalt nicht sammeln, fehlt sie.

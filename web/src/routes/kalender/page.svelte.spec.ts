@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
 	KalenderAbfrageAntwort,
 	KalenderFeste,
+	KalenderGebete,
 	KalenderOrt,
 	KalenderOrte,
 	KalenderStaedte,
@@ -56,7 +57,8 @@ const TAG: KalenderTag = {
 		phase: 'zunehmend',
 		hinweis: 'Namen sind nicht überall belegt.'
 	},
-	hinweis: 'Die Zeiten gelten für die Mitte des Orts.'
+	hinweis: 'Die Zeiten gelten für die Mitte des Orts.',
+	gebete: []
 };
 
 const FESTE: KalenderFeste = {
@@ -117,6 +119,55 @@ const STAEDTE: KalenderStaedte = {
 	hinweis: null
 };
 
+// Erfundene Auswahl: am Heimatort eine Variante, dazu ein Ort, den es nicht mehr gibt.
+const GEBETE: KalenderGebete = {
+	varianten: [
+		{ kennung: 'fuenf-mwl', titel: 'Fünf Zeiten, MWL' },
+		{ kennung: 'drei-isna', titel: 'Drei Zeiten, ISNA' }
+	],
+	auswahl: [
+		{ ort: 'zuhause', varianten: ['fuenf-mwl'], fehlt: false },
+		{ ort: 'alt', varianten: ['drei-isna'], fehlt: true }
+	],
+	hinweis: null
+};
+
+const TAG_GEBETE: KalenderTag = {
+	...TAG,
+	gebete: [
+		{
+			kennung: 'fuenf-mwl',
+			titel: 'Fünf Zeiten, MWL',
+			zeilen: [
+				{
+					name: 'Ischa',
+					zeit: '22:41',
+					text: null,
+					umfasst: [],
+					hinweis: 'nach der Siebtel-Regel',
+					herkunft: 'MWL 17° · Siebtel-Regel · Ort Zuhause · Europe/Berlin'
+				}
+			],
+			hinweis: null
+		},
+		{
+			kennung: 'drei-isna',
+			titel: 'Drei Zeiten, ISNA',
+			zeilen: [
+				{
+					name: 'Abend und Nacht',
+					zeit: null,
+					text: 'keine Zeit',
+					umfasst: ['Ischa'],
+					hinweis: null,
+					herkunft: 'ISNA · Refraktion 0,833° · Ort Zuhause · Europe/Berlin'
+				}
+			],
+			hinweis: 'An diesem Tag fehlen hier Zeiten.'
+		}
+	]
+};
+
 /** Ein gefälschtes fetch, das je Pfad antwortet und jeden Aufruf mitschreibt. */
 function server(
 	tag: KalenderTag = TAG,
@@ -124,6 +175,7 @@ function server(
 ): ReturnType<typeof vi.fn> {
 	let orte = ORTE;
 	const f = vi.fn((pfad: string, init?: RequestInit) => {
+		if (pfad === '/api/kalender/gebete') return Promise.resolve(json(GEBETE));
 		if (pfad === '/api/kalender/staedte' && init?.method === 'POST')
 			return Promise.resolve(json(staedte));
 		if (pfad === '/api/kalender/standorte' && init?.method === 'POST') {
@@ -275,7 +327,8 @@ describe('Seite /kalender', () => {
 		const f = server();
 		render(Page);
 		await screen.findByText('04:43');
-		expect(screen.queryByText(/Städteliste:/)).toBeNull();
+		// Die Namensnennung steht dauerhaft am Suchfeld (Lizenzpflicht), auch vor der Suche.
+		expect(screen.getByText('Städteliste: GeoNames (geonames.org), CC BY 4.0')).toBeInTheDocument();
 		await fireEvent.input(screen.getByLabelText('Stadt suchen'), {
 			target: { value: '  Nebelf  ' }
 		});
@@ -297,12 +350,82 @@ describe('Seite /kalender', () => {
 		expect(screen.getByLabelText(/Länge/)).toHaveValue(-33.75);
 		expect(screen.getByLabelText(/Zeitzone/)).toHaveValue('America/Sao_Paulo');
 		expect(document.activeElement).toBe(screen.getByLabelText(/Breite/));
-		expect(screen.queryByText(/Städteliste:/)).toBeNull();
+		expect(screen.getByText(/Städteliste:/)).toBeInTheDocument();
 		expect(localStorage.length).toBe(0);
 		expect(sessionStorage.length).toBe(0);
 	});
 
-	it('ohne Städteliste steht ein Satz da, keine Namensnennung', async () => {
+	it('Gebetszeiten: Varianten nebeneinander mit Hinweis und Herkunft; ein Schalter speichert am benannten Ort', async () => {
+		const f = server(TAG_GEBETE);
+		render(Page);
+		expect(await screen.findByText('22:41')).toBeInTheDocument();
+		expect(screen.getByRole('region', { name: 'Fünf Zeiten, MWL' })).toBeInTheDocument();
+		expect(screen.getByRole('region', { name: 'Drei Zeiten, ISNA' })).toBeInTheDocument();
+		expect(screen.getByText('nach der Siebtel-Regel')).toBeInTheDocument();
+		expect(
+			screen.getByText('MWL 17° · Siebtel-Regel · Ort Zuhause · Europe/Berlin')
+		).toBeInTheDocument();
+		expect(screen.getByText('keine Zeit')).toBeInTheDocument();
+		expect(screen.getByText('mit Ischa')).toBeInTheDocument();
+		expect(screen.getByText('An diesem Tag fehlen hier Zeiten.')).toBeInTheDocument();
+		expect(screen.getByText(/Den Ort „alt“ gibt es nicht mehr/)).toBeInTheDocument();
+		expect(screen.getByRole('switch', { name: 'Fünf Zeiten, MWL' })).toHaveAttribute(
+			'aria-checked',
+			'true'
+		);
+		const drei = screen.getByRole('switch', { name: 'Drei Zeiten, ISNA' });
+		expect(drei).toHaveAttribute('aria-checked', 'false');
+
+		const gespeichert = () =>
+			f.mock.calls
+				.filter(
+					(c) =>
+						String(c[0]) === '/api/kalender/gebete' &&
+						(c[1] as RequestInit | undefined)?.method === 'POST'
+				)
+				.map((c) => JSON.parse((c[1] as RequestInit).body as string) as unknown);
+		await fireEvent.click(drei);
+		await vi.waitFor(() => {
+			expect(gespeichert()).toEqual([{ ort: 'zuhause', varianten: ['fuenf-mwl', 'drei-isna'] }]);
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Seine Auswahl entfernen' }));
+		await vi.waitFor(() => {
+			expect(gespeichert()).toContainEqual({ ort: 'alt', varianten: [] });
+		});
+		expect(localStorage.length).toBe(0);
+	});
+
+	it('Gebetszeiten beim anderen Ort: die Auswahl geht nur in der Abfrage mit, nichts wird gespeichert', async () => {
+		const f = server(TAG_GEBETE);
+		render(Page);
+		await screen.findByText('22:41');
+		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.52' } });
+		await fireEvent.input(screen.getByLabelText(/Länge/), { target: { value: '13.405' } });
+		const form = screen.getByRole('group', { name: 'Anderer Ort' }).closest('form');
+		if (form === null) throw new Error('Formular fehlt');
+		await fireEvent.submit(form);
+		await screen.findByText(/Gerechnet für Breite/);
+		const schalter = screen.getByRole('switch', { name: 'Drei Zeiten, ISNA' });
+		expect(schalter).toHaveAttribute('aria-checked', 'false');
+		await fireEvent.click(schalter);
+		await vi.waitFor(() => {
+			const abfragen = f.mock.calls
+				.filter((c) => String(c[0]) === '/api/kalender/abfrage')
+				.map((c) => JSON.parse((c[1] as RequestInit).body as string) as Record<string, unknown>);
+			expect(abfragen.at(-1)?.gebete).toEqual(['drei-isna']);
+		});
+		expect(
+			f.mock.calls.some(
+				(c) =>
+					String(c[0]) === '/api/kalender/gebete' &&
+					(c[1] as RequestInit | undefined)?.method === 'POST'
+			)
+		).toBe(false);
+		expect(localStorage.length).toBe(0);
+		expect(sessionStorage.length).toBe(0);
+	});
+
+	it('ohne Städteliste steht ein Satz da, die Namensnennung bleibt', async () => {
 		const satz = 'Die Städteliste ist noch nicht eingerichtet; Breite und Länge gehen immer.';
 		server(TAG, { treffer: [], quelle: STAEDTE.quelle, hinweis: satz });
 		render(Page);
@@ -312,6 +435,6 @@ describe('Seite /kalender', () => {
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Suchen' }));
 		expect(await screen.findByText(satz)).toBeInTheDocument();
-		expect(screen.queryByText(/Städteliste:/)).toBeNull();
+		expect(screen.getAllByText(/Städteliste:/)).toHaveLength(1);
 	});
 });

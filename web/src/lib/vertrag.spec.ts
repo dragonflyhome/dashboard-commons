@@ -163,6 +163,7 @@ const detailNeu: ProjectDetail = {
 		fristen: null,
 		plan: null,
 		standorte: null,
+		gebete: null,
 		eigen: { rezept: { menge: 3 } }
 	}
 };

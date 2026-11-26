@@ -14,6 +14,28 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Gebetszeiten auf der Kalenderseite: Weltliga (MWL) und Nordamerika
+  (ISNA) mit Asr früh und spät, fünf Zeiten und drei zusammengelegte
+  nebeneinander, Hochbreite nach der Siebtel-Regel mit Hinweis, im
+  Polargebiet „keine Zeit“ statt erfundener Zeiten. Rechenweisen und
+  Varianten als Daten in vorlagen/kalender/gebete.toml.
+- Auswahl der Varianten je Ort privat in daten/gebete.toml, gespeichert
+  über die Seite; für einen nachgeschlagenen Ort nur in der Abfrage.
+- Skript Staedte-Umwandeln.ps1 bereitet die Städteliste von GeoNames samt
+  Prüfsummen für die Städtesuche auf.
+
+Geändert
+- Ort merken und die Auswahl der Gebetszeiten schreiben über einen
+  gemeinsamen sicheren Weg; offene Seiten erfahren die Änderung sofort.
+- Die Namensnennung der Städteliste steht dauerhaft am Suchfeld.
+
+Behoben
+- Ein Tag, den es an einem Ort nicht gibt (etwa Samoa am 30.12.2011),
+  zeigt einen Satz statt einer leeren Liste.
+- Eine Datei der Orte mit doppelter Kennung führt beim Merken zu einem Satz
+  statt zu einem Serverfehler.
+
 0.25.0 - 2026-11-26
 -------------------
 

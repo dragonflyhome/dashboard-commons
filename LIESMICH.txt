@@ -70,7 +70,9 @@ in src\kalender\espenak-*.txt stammen aus den Tabellen von Fred Espenak
 (www.Astropixels.com): „Moon Phases Table courtesy of Fred Espenak,
 www.Astropixels.com“ (https://www.astropixels.com/ephemeris/moon/phases2001gmt.html)
 und „Solstice and Equinox Table Courtesy of Fred Espenak, www.Astropixels.com“
-(https://www.astropixels.com/ephemeris/soleq2001.html).
+(https://www.astropixels.com/ephemeris/soleq2001.html). Die Vergleichswerte
+in src\kalender\gebete-adhan-js.txt sind wörtlich aus den Tests von adhan-js
+(https://github.com/batoulapps/adhan-js, MIT-Lizenz) übernommen.
 
 Die Dokumentation in docs\anleitung und docs\zielbild ist gemeinfrei
 (CC0-1.0). Der Text steht in LICENSES\CC0-1.0.txt.

@@ -55,6 +55,70 @@ pub struct KalenderTag {
     pub mond: Option<Mond>,
     /// Ein Satz, etwa wenn noch kein Ort eingetragen ist.
     pub hinweis: Option<String>,
+    /// Die Gebetszeiten der ausgewählten Varianten (Stufe 4), je Variante eine Liste.
+    pub gebete: Vec<Gebetsliste>,
+}
+
+/// Die Gebetszeiten einer Variante an einem Tag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Gebetsliste {
+    /// Kennung der Variante, etwa `fuenf-mwl`.
+    pub kennung: String,
+    pub titel: String,
+    pub zeilen: Vec<Gebetszeile>,
+    /// Ein Satz ohne Zahlen, wenn Zeiten fehlen (Polargebiet).
+    pub hinweis: Option<String>,
+}
+
+/// Eine Gebetszeit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct Gebetszeile {
+    pub name: String,
+    /// „HH:MM“ wie bei den Tageszeiten.
+    pub zeit: Option<String>,
+    /// Statt der Zeit: „keine Zeit“.
+    pub text: Option<String>,
+    /// Namen der zusammengelegten Gebete ohne eigene Zeit, etwa „Ischa“.
+    pub umfasst: Vec<String>,
+    /// Hochbreite, etwa „nach der Siebtel-Regel“.
+    pub hinweis: Option<String>,
+    /// Wie gerechnet, etwa „MWL 17° · Siebtel-Regel · Ort Zuhause · Europe/Berlin“.
+    pub herkunft: String,
+}
+
+/// Eine Variante der Vorlage zur Auswahl.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct GebeteVariante {
+    pub kennung: String,
+    pub titel: String,
+}
+
+/// Die gespeicherte Auswahl an einem Ort.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct GebeteOrtAuswahl {
+    /// Kennung des Orts.
+    pub ort: String,
+    pub varianten: Vec<String>,
+    /// Den Ort gibt es nicht mehr (die Auswahl lässt sich dann nur leeren).
+    pub fehlt: bool,
+}
+
+/// `GET /api/kalender/gebete` und Antwort auf `POST /api/kalender/gebete`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderGebete {
+    pub varianten: Vec<GebeteVariante>,
+    pub auswahl: Vec<GebeteOrtAuswahl>,
+    /// Ein Satz, wenn die gespeicherte Auswahl nicht lesbar ist.
+    pub hinweis: Option<String>,
+}
+
+/// Rumpf von `POST /api/kalender/gebete`: die Auswahl an einem benannten Ort;
+/// eine leere Liste entfernt sie.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct KalenderGebeteSpeichern {
+    pub ort: String,
+    pub varianten: Vec<String>,
 }
 
 /// Ein Vorkommen eines Fests.
@@ -98,6 +162,9 @@ pub struct KalenderAbfrage {
     /// IANA-Zeitzone; ohne sie ein fester Versatz nach der Länge (Näherung).
     #[serde(default)]
     pub zeitzone: Option<String>,
+    /// Varianten der Gebetszeiten nur für diese Antwort (nichts wird gespeichert).
+    #[serde(default)]
+    pub gebete: Option<Vec<String>>,
 }
 
 /// Antwort auf eine freie Abfrage, mit den gerundeten Koordinaten, für die gerechnet wurde.

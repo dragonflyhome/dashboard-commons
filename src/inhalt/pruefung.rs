@@ -606,6 +606,10 @@ fn daten_pruefen(daten_ordner: &Path, slug: &str, befunde: &mut Vec<Befund>) {
                     let projekte = daten_ordner.parent().and_then(Path::parent).unwrap_or(Path::new("."));
                     fristen_orte(f, &text, &datei, projekte, befunde);
                 }
+                if let Some(g) = &daten.gebete {
+                    let projekte = daten_ordner.parent().and_then(Path::parent).unwrap_or(Path::new("."));
+                    gebete_orte(g, &text, &datei, projekte, befunde);
+                }
                 if let Some(f) = &daten.fragen {
                     let fragen: Vec<Frage> = f.inhalte().into_iter().flat_map(|t| t.frage.clone()).collect();
                     fragen_hinweise(&fragen, &text, &datei, befunde);
@@ -1129,21 +1133,42 @@ fn fristen_hinweise(daten: &ProjektDaten, quelle: &str, datei: &str, heute: chro
 /// shortcut: Die privaten Orte kommen aus demselben Projektordner wie das geprüfte
 /// Projekt; liegt `kalender` in einer anderen Inhaltsquelle, über `Quellen` suchen.
 fn fristen_orte(f: &crate::vertrag::daten::Datei<crate::vertrag::fristen::Fristen>, quelle: &str, datei: &str, projekte: &Path, befunde: &mut Vec<Befund>) {
-    use crate::kalender::orte::{Orte, PROJEKT, satz_unbekannt, vorlage};
+    use crate::kalender::orte::satz_unbekannt;
     let mut orte = None;
     for e in f.inhalte().into_iter().flat_map(|t| &t.ereignis) {
         let Some(k) = e.ort.as_deref() else { continue };
-        let orte = orte.get_or_insert_with(|| {
-            let pfad = projekte.join(PROJEKT).join("daten").join("standorte.toml");
-            let privat = std::fs::read_to_string(pfad)
-                .ok()
-                .and_then(|t| crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>("standorte.toml", &t).ok());
-            Orte::aus(privat.as_ref(), vorlage().as_ref())
-        });
+        let orte = orte.get_or_insert_with(|| benannte_orte(projekte));
         if orte.finden(k).is_none() {
             let zeile = zeile_mit(quelle, "kennung", &e.kennung).map(|z| feld_im_eintrag(quelle, z, "ort").unwrap_or(z));
             befunde.push(Befund::fehler(datei, zeile, format!("Beim Ereignis „{}“: {}", e.kennung, satz_unbekannt(k))));
         }
+    }
+}
+
+/// Die privaten Orte und die Vorlage, wie sie [`fristen_orte`] sieht.
+fn benannte_orte(projekte: &Path) -> crate::kalender::orte::Orte {
+    use crate::kalender::orte::{Orte, PROJEKT, vorlage};
+    let pfad = projekte.join(PROJEKT).join("daten").join("standorte.toml");
+    let privat =
+        std::fs::read_to_string(pfad).ok().and_then(|t| crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>("standorte.toml", &t).ok());
+    Orte::aus(privat.as_ref(), vorlage().as_ref())
+}
+
+/// Kalender, Stufe 4: `ort` einer Auswahl der Gebetszeiten verweist auf einen
+/// benannten Ort wie `ort` an einem Ereignis ([`fristen_orte`], gleicher shortcut).
+/// Der Satz nennt nur die Ortskennung, nie die Varianten.
+fn gebete_orte(g: &crate::vertrag::daten::Datei<crate::vertrag::gebete::Gebete>, quelle: &str, datei: &str, projekte: &Path, befunde: &mut Vec<Befund>) {
+    let alle = g.alle();
+    if alle.is_empty() {
+        return;
+    }
+    let orte = benannte_orte(projekte);
+    for a in alle.into_iter().filter(|a| orte.finden(&a.ort).is_none()) {
+        befunde.push(Befund::fehler(
+            datei,
+            zeile_mit(quelle, "ort", &a.ort),
+            format!("Die Auswahl der Gebetszeiten nennt den Ort „{}“, den es nicht mehr gibt. Auf der Seite Kalender lässt sich diese Auswahl leeren.", a.ort),
+        ));
     }
 }
 
