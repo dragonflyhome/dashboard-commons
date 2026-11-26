@@ -48,6 +48,7 @@
 	import Textfassung from '#lib/components/Textfassung.svelte';
 	import EtwasAnderes from '#lib/components/EtwasAnderes.svelte';
 	import Ring from '#lib/components/pc/Ring.svelte';
+	import Jahreskreis from '#lib/components/kalender/Jahreskreis.svelte';
 	import Sparkline from '#lib/components/pc/Sparkline.svelte';
 	import Kpi from '#lib/components/blocks/Kpi.svelte';
 	import Progress from '#lib/components/blocks/Progress.svelte';
@@ -602,6 +603,15 @@
 					Ohne Ist-Daten (kein Streifen), mit einer Arbeit ohne gültige Etappe:
 				</p>
 				<Plan plan={projektPlanOhneDaten()} />
+			</Beispiel>
+			<Beispiel
+				id="jahreskreis"
+				name="Jahreskreis"
+				herkunft="eigen"
+				beschreibung="Kalender, Stufe 6: ein Festjahr als Kreis, oben die Wende im Winter. Innen die Jahreszeiten, außen die Mondmonate mit Nummer und Namen (schmal nur die Nummern), der laufende hervorgehoben, Vollmonde als Punkte, die nächsten drei mit Ring, die Sonnentage als Marken und ein Zeiger für den Tag. Daneben dieselben Angaben als Liste. Steht auf /kalender; die Daten rechnet der Server."
+				code={SCHNIPSEL.jahreskreis}
+			>
+				<Jahreskreis jahr={TB.JAHR} tag="2027-06-21" />
 			</Beispiel>
 			<Beispiel
 				id="fristenliste"

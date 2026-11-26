@@ -8,6 +8,7 @@ import type {
 	Belegung,
 	FlowData,
 	GanttData,
+	KalenderJahr,
 	KpiItem,
 	PcMesswert,
 	ProgressRow,
@@ -110,3 +111,56 @@ export function dichteEreignisse(heute: Date): VerlaufEreignis[] {
 		e(-12, 11, 'routine')
 	];
 }
+
+/**
+ * Kalender, Stufe 6: ein Festjahr des Jahreskreises (2026/27, nach dem Beispieljahr; die
+ * Uhrzeiten und die Viertel zwischen Neu- und Vollmond sind erfunden).
+ */
+export const JAHR: KalenderJahr = (() => {
+	const monate: [string, string, string, string | null][] = [
+		['2026-12-09', '2026-12-24', '2. Wintervollmond · Yule-Mond', 'Wintervollmond'],
+		['2027-01-07', '2027-01-22', 'Imbolc', 'Frühlingsvollmond'],
+		['2027-02-06', '2027-02-21', '1. Frühlingsvollmond', 'Frühlingsvollmond'],
+		['2027-03-08', '2027-03-22', '2. Frühlingsvollmond · Ostara-Mond', 'Frühlingsvollmond'],
+		['2027-04-07', '2027-04-21', 'Beltane', 'Sommervollmond'],
+		['2027-05-06', '2027-05-20', '1. Sommervollmond', 'Sommervollmond'],
+		['2027-06-04', '2027-06-19', '2. Sommervollmond · Litha-Mond', 'Sommervollmond'],
+		['2027-07-04', '2027-07-18', 'Lughnassad (Lammas)', 'Herbstvollmond'],
+		['2027-08-02', '2027-08-17', '1. Herbstvollmond', 'Herbstvollmond'],
+		['2027-08-31', '2027-09-16', '2. Herbstvollmond · Mabon-Mond', 'Herbstvollmond'],
+		['2027-09-30', '2027-10-15', 'Samhain', 'Wintervollmond'],
+		['2027-10-29', '2027-11-14', '1. Wintervollmond', 'Wintervollmond']
+	];
+	const ende = '2027-11-28';
+	return {
+		zeitraum: { anfang: '2026-12-09', ende },
+		monate: monate.map(([anfang, vollmond, name, jahreszeit], i) => ({
+			nummer: i + 1,
+			name,
+			namen: [],
+			jahreszeit,
+			zeitraum: { anfang, vollmond, ende: monate[i + 1]?.[0] ?? ende }
+		})),
+		sonnentage: [
+			{ kennung: 'wende-winter', name: 'Wintersonnenwende', datum: '2026-12-21', zeit: '21:50' },
+			{
+				kennung: 'gleiche-fruehling',
+				name: 'Frühlings-Tagundnachtgleiche',
+				datum: '2027-03-20',
+				zeit: '21:24'
+			},
+			{ kennung: 'wende-sommer', name: 'Sommersonnenwende', datum: '2027-06-21', zeit: '16:10' },
+			{
+				kennung: 'gleiche-herbst',
+				name: 'Herbst-Tagundnachtgleiche',
+				datum: '2027-09-23',
+				zeit: '08:01'
+			}
+		],
+		viertel: monate.flatMap(([anfang, vollmond]) => [
+			{ kennung: 'neumond', name: 'Neumond', datum: anfang, zeit: '12:00' },
+			{ kennung: 'vollmond', name: 'Vollmond', datum: vollmond, zeit: '18:00' }
+		]),
+		hinweis: null
+	};
+})();

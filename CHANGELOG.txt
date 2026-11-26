@@ -14,6 +14,23 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Kopfleiste: oben rechts der Mond in seiner Phase, Sonnenauf- und
+  -untergang von heute und der Heimatort, als Link zur Kalenderseite; nur
+  angemeldet, am Handy nur das Mondsymbol.
+- Kalenderseite: Knopf „Als Heimatort“ für eigene Orte und den Standardort;
+  die Datei der Orte behält dabei Kommentare und Koordinaten unverändert.
+- Kalenderseite: Abschnitt „Das Jahr“ mit dem Festjahr des Jahreskreises als
+  Kreis und Liste (Jahreszeiten, Mondmonate, Vollmonde, Sonnentage), auch für
+  einen nachgeschlagenen Ort; ein Beispiel im Katalog.
+- Schnittstellen GET /api/kalender/kopf, GET /api/kalender/jahr und
+  POST /api/kalender/heimat, alle nur angemeldet; POST /api/kalender/abfrage
+  nimmt jahr = true.
+
+Behoben
+- Die Beschreibungen der Sätze für eine Regel ohne Vorkommen und für einen
+  Verweis per nach auf eine Zählung standen vertauscht im Code.
+
 0.27.0 - 2026-11-26
 -------------------
 

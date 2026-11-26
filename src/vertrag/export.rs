@@ -110,6 +110,10 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         // Kalender, Stufe 4
         crate::vertrag::kalender::KalenderGebete,
         crate::vertrag::kalender::KalenderGebeteSpeichern,
+        // Kalender, Stufe 6
+        crate::vertrag::kalender::KalenderKopf,
+        crate::vertrag::kalender::KalenderHeimat,
+        crate::vertrag::kalender::KalenderJahr,
         Block,
         Projekt,
         Status,

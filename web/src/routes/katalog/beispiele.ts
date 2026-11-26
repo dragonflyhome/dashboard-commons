@@ -863,6 +863,7 @@ einheit = "GB"              # „0,2 von 1,5 GB“`,
 	fragen: `<Fragen daten={ladeDaten<Fragen>(slug, 'fragen')} />
 <!-- Zeigt nur die eine sichtbare Frage der Warteschlange (Etappe B2), dahinter
      „noch N Fragen warten“. Reihenfolge: Stufe, dann Frist, dann die Datei. -->`,
+	jahreskreis: `<Jahreskreis jahr={j} tag={datum} />   <!-- j: GET /api/kalender/jahr?ort=<kennung>&datum=<tag> -->`,
 	plan: `<!-- Steht schon auf jeder Projektseite (nicht in Seite.svelte einbauen). -->
 <Plan plan={p} />   <!-- p: GET /api/projekte/<slug>/plan -->`,
 	standTeil: `<Stand gesamt={stand.gesamt} schwerpunkt={stand.schwerpunkt} kurz={stand.kurz}

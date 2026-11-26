@@ -19,6 +19,9 @@
 	 *
 	 * Zählungen (Stufe 5): die aktiven Zählkalender des Tags in der Reihenfolge der
 	 * Vorlage, unabhängig vom Ort; eingeschaltet über `kalender = [...]` einer fristen.toml.
+	 *
+	 * Stufe 6: Der gewählte Ort wird auf Knopfdruck Heimatort (`POST /api/kalender/heimat`);
+	 * „Das Jahr“ zeigt das Festjahr des Jahreskreises am Ort als Kreis und Liste.
 	 */
 	import { onMount, tick } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -31,12 +34,15 @@
 	import { lokalerTag } from '#lib/tageswechsel.ts';
 	import { tagPlus } from '#lib/zeit/tage.ts';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
+	import Jahreskreis from '#lib/components/kalender/Jahreskreis.svelte';
 	import type {
 		KalenderAbfrage,
 		KalenderAbfrageAntwort,
 		KalenderFeste,
 		KalenderGebete,
 		KalenderGebeteSpeichern,
+		KalenderHeimat,
+		KalenderJahr,
 		KalenderMerken,
 		KalenderOrt,
 		KalenderOrte,
@@ -59,6 +65,7 @@
 	let datum = $state(heute);
 	let tag = $state<KalenderTag | null>(null);
 	let feste = $state<KalenderFeste | null>(null);
+	let jahr = $state<KalenderJahr | null>(null);
 	let fehler = $state<string | null>(null);
 
 	// „Anderer Ort“: Eingaben und der abgeschickte Ort, nur hier im Speicher.
@@ -178,13 +185,15 @@
 		try {
 			if (f === null) {
 				const ortTeil = o === '' ? '' : `&ort=${encodeURIComponent(o)}`;
-				const [t, fe] = await Promise.all([
+				const [t, fe, j] = await Promise.all([
 					getJson<KalenderTag>(`${API}/kalender/tag?datum=${encodeURIComponent(d)}${ortTeil}`),
-					getJson<KalenderFeste>(`${API}/kalender/feste?von=${heute}&bis=${festeBis}${ortTeil}`)
+					getJson<KalenderFeste>(`${API}/kalender/feste?von=${heute}&bis=${festeBis}${ortTeil}`),
+					getJson<KalenderJahr>(`${API}/kalender/jahr?datum=${encodeURIComponent(d)}${ortTeil}`)
 				]);
 				if (nr !== laufend) return;
 				tag = t;
 				feste = fe;
+				jahr = j;
 				gerechnet = null;
 			} else {
 				const koerper: KalenderAbfrage = {
@@ -194,12 +203,14 @@
 					breite: f.breite,
 					laenge: f.laenge,
 					zeitzone: f.zeitzone,
-					gebete: g.length > 0 ? g : null
+					gebete: g.length > 0 ? g : null,
+					jahr: true
 				};
 				const a = await senden<KalenderAbfrageAntwort>(`${API}/kalender/abfrage`, koerper);
 				if (nr !== laufend) return;
 				tag = a.tag;
 				feste = a.feste;
+				jahr = a.jahr;
 				gerechnet = { breite: a.breite, laenge: a.laenge, naeherung: a.naeherung };
 			}
 			fehler = null;
@@ -289,6 +300,20 @@
 		freiGebete = [];
 	}
 
+	/** Macht den gewählten Ort zum Heimatort; danach die Orte neu, der Ort bleibt gewählt. */
+	async function alsHeimat(): Promise<void> {
+		const koerper: KalenderHeimat = { ort };
+		try {
+			await senden<KalenderOrte>(`${API}/kalender/heimat`, koerper);
+			await orteLaden(ort);
+			fehler = null;
+		} catch (e) {
+			fehler = fehlerText(e);
+		}
+	}
+
+	const gewaehltOrt = $derived(orte?.find((o) => o.kennung === ort) ?? null);
+
 	const grad = (n: number): string => `${n.toFixed(1).replace('.', ',')}°`;
 	const ortTitel = $derived(orte?.find((o) => o.kennung === ort)?.titel ?? 'meinem Ort');
 </script>
@@ -310,6 +335,9 @@
 <Abschnitt titel="Ort und Tag">
 	{#if orte !== null && orte.length > 0}
 		<Auswahl beschriftung="Ort" {optionen} bind:wert={ort} onwechsel={vergessen} />
+		{#if gewaehltOrt !== null && !gewaehltOrt.heimat && frei === null}
+			<Knopf onclick={() => void alsHeimat()}>Als Heimatort</Knopf>
+		{/if}
 	{/if}
 	<label class="feld">
 		Tag
@@ -530,6 +558,17 @@
 			{#if m.hinweis}
 				<Hinweis>{m.hinweis}</Hinweis>
 			{/if}
+		</Abschnitt>
+	{/if}
+
+	{#if jahr !== null}
+		<Abschnitt
+			titel="Das Jahr"
+			unterzeile="Festjahr des Jahreskreises vom {fmtDate(
+				jahr.zeitraum.anfang
+			)} bis vor den {fmtDate(jahr.zeitraum.ende)}"
+		>
+			<Jahreskreis {jahr} tag={datum} />
 		</Abschnitt>
 	{/if}
 {/if}

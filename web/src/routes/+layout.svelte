@@ -16,6 +16,7 @@
 	import { Schublade } from '$katalog';
 	import Brotkrumen from '#lib/components/kopf/Brotkrumen.svelte';
 	import Seitenleiste from '#lib/components/kopf/Seitenleiste.svelte';
+	import Himmel from '#lib/components/kopf/Himmel.svelte';
 	import PcSymbol from '#lib/components/kopf/PcSymbol.svelte';
 	import Glocke from '#lib/components/kopf/Glocke.svelte';
 	import LiveBadge from '#lib/components/LiveBadge.svelte';
@@ -185,8 +186,9 @@
 			onblatt={() => aktualitaet.pruefen(nachziehen)}
 		/>
 	</div>
-	<!-- Rechts, in dieser Reihenfolge: PC, Glocke, Live-Punkt, Schloss. -->
+	<!-- Rechts, in dieser Reihenfolge: Himmel, PC, Glocke, Live-Punkt, Schloss. -->
 	<div class="rechts">
+		<Himmel />
 		<PcSymbol />
 		<Glocke />
 		<LiveBadge />
@@ -238,7 +240,7 @@
 		flex: 1 1 auto;
 		min-width: 0;
 	}
-	/* Rechts: PC, Glocke, Live-Punkt und Schloss, nie umbrechend. */
+	/* Rechts: Himmel, PC, Glocke, Live-Punkt und Schloss, nie umbrechend. */
 	.rechts {
 		display: flex;
 		flex: none;
