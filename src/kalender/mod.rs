@@ -30,7 +30,9 @@
 //!   die Stellung im 260-Tage-Zyklus einer Zählung aus `zaehlungen.toml` ([`zaehlung`]);
 //!   `zeichen` ist der erste Name des Zeichens dieser Zählung. Sie trifft manchmal
 //!   zweimal im Jahr: [`Katalog::vorkommen`] liefert alle Tage eines Zeitraums,
-//!   [`Katalog::im_jahr`] nur den ersten des Jahres.
+//!   [`Katalog::im_jahr`] nur den ersten des Jahres. Darum verweist eine Regel auf ein
+//!   solches Fest nur mit `fest`, nicht mit `nach` (Abstand, Wochentag, Mondphase rechneten
+//!   nur vom ersten Tag); einen Abstand trägt die Frist.
 //!
 //! Jede Zählung aus `vorlagen/kalender/zaehlungen.toml` ist zugleich ein eingebauter
 //! Kalender mit ihrer Kennung (aktiv über `kalender = [...]`); ihre Feste stehen dort
@@ -506,6 +508,9 @@ fn kurz_datum(d: NaiveDate) -> String {
 }
 
 /// Satz für eine Regel, die in keinem Jahr einen Tag ergibt.
+/// Satz für einen Verweis per `nach` auf eine Zählung (sie trifft manchmal zweimal im Jahr).
+const SATZ_NACH_ZAEHLUNG: &str = "Auf eine Zählung verweist ein Termin nur mit `fest`; einen Abstand trägt die Frist.";
+
 const SATZ_KOMMT_NIE_VOR: &str = "Diese Regel ergibt in keinem Jahr von 1912 bis 2100 einen Tag, etwa ein Schaltmonat, den es nie gibt, oder der 30. Tag eines Monats, der immer 29 Tage hat.";
 
 /// Satz für ein Fest nach den Jahreszeiten an einem Ort zwischen den Wendekreisen.
@@ -651,6 +656,9 @@ impl Katalog {
                         return Err(format!("{wo}Das Fest „{v}“ gibt es nicht."));
                     }
                 }
+                if self.nach_zaehlung(Some(&k.kennung), &f.regel) {
+                    return Err(format!("{wo}{SATZ_NACH_ZAEHLUNG}"));
+                }
             }
             let mut nach = BTreeSet::new();
             for j in &k.jahreszeit {
@@ -733,6 +741,9 @@ impl Katalog {
                 ));
             }
         }
+        if self.nach_zaehlung(None, regel) {
+            return Err(SATZ_NACH_ZAEHLUNG.into());
+        }
         if !self.kommt_vor(None, regel) {
             return Err(SATZ_KOMMT_NIE_VOR.into());
         }
@@ -800,6 +811,16 @@ impl Katalog {
             }
             _ => Ok(()),
         }
+    }
+
+    /// Nennt `nach` ein Fest, das (über `fest` aufgelöst) eine Zählung ist? Davon rechneten
+    /// Abstand, Wochentag und Mondphase nur vom ersten Vorkommen im Jahr.
+    fn nach_zaehlung(&self, im: Option<&str>, regel: &Regel) -> bool {
+        regel
+            .nach
+            .as_deref()
+            .and_then(|v| self.finden(im, v))
+            .is_some_and(|(k, f)| matches!(self.aufgeloest(Some(&k.kennung), &f.regel).art(), Ok(Art::Zaehlung(_))))
     }
 
     /// Die Regel, die rechnet: Verweisen (`fest`) gefolgt.
@@ -1231,6 +1252,16 @@ mod tests {
         }
         assert!(k.ereignis_regel_pruefen(&zaehlregel("hochland", 8, "B'atz'")).is_ok());
         assert!(k.ereignis_regel_pruefen(&zaehlregel("maya-584285", 13, "Ajaw")).is_ok());
+        // `nach` auf eine Zählung verlöre das zweite Vorkommen im Jahr: abgelehnt, am Ereignis und in einer Kalenderdatei.
+        let batz = || Some("hochland.waqxaqib-batz".to_string());
+        for r in [Regel { nach: batz(), tage: Some(3), ..Default::default() }, Regel { nach: batz(), wochentag: Some("montag".into()), ..Default::default() }] {
+            assert_eq!(k.ereignis_regel_pruefen(&r).unwrap_err(), SATZ_NACH_ZAEHLUNG);
+        }
+        assert!(k.ereignis_regel_pruefen(&Regel { nach: Some("kirche.ostern".into()), tage: Some(3), ..Default::default() }).is_ok());
+        let datei =
+            "kennung = \"probe\"\ntitel = \"Probe\"\n[[fest]]\nkennung = \"a\"\ntitel = \"A\"\nregel = { nach = \"hochland.waqxaqib-batz\", tage = 3 }\n";
+        let fehler = Katalog::lesen(&[("probe.toml", datei), EINGEBAUT[4]]).unwrap_err();
+        assert!(fehler.ends_with(SATZ_NACH_ZAEHLUNG), "{fehler}");
     }
 
     fn berlin() -> Katalog {

@@ -79,12 +79,12 @@ pub struct Zaehlzeile {
     pub teile: Vec<String>,
     pub herkunft: String,
     pub stufe: Belegstufe,
-    /// Der feste Satz der Variante, der Satz zum Zählbeginn oder „Tag außerhalb der Zeit“ bzw. „0.0 Hunab Ku“.
+    /// Der feste Satz der Variante oder der Satz zum Zählbeginn; „Tag außerhalb der Zeit“ und „0.0 Hunab Ku“ stehen nur in `stellung`.
     pub hinweis: Option<String>,
 }
 
 /// Satz am Zählbeginn der Langen Zählung.
-pub const SATZ_ZAEHLBEGINN: &str = "Zählbeginn: Rechnerisch 0.0.0.0.0; die Epigraphik schreibt diesen Tag als 13.0.0.0.0.";
+pub const SATZ_ZAEHLBEGINN: &str = "Zählbeginn: Rechnerisch 0.0.0.0.0; in den Maya-Inschriften steht dieser Tag als 13.0.0.0.0.";
 pub const AUSSERHALB: &str = "Tag außerhalb der Zeit";
 pub const HUNAB_KU: &str = "0.0 Hunab Ku";
 
@@ -323,11 +323,11 @@ impl Zaehlvariante {
         self.zeichen.iter().position(|n| n.first().is_some_and(|n| n == name))
     }
 
-    /// „Kin 92 Yellow Magnetic Human“.
-    fn kin_name(&self, k: i64) -> String {
+    /// „Yellow Magnetic Human“: Farbe, Ton und Siegel eines Kin (auch der Name des Jahres).
+    fn siegel_name(&self, k: i64) -> String {
         let siegel = index(k - 1, 20);
         let farbe = eintrag(&self.farben, i64::try_from(siegel % 4).unwrap_or(0));
-        format!("Kin {k} {farbe} {} {}", eintrag(&self.toene, (k - 1).rem_euclid(13)), erster(&self.zeichen, siegel))
+        format!("{farbe} {} {}", eintrag(&self.toene, (k - 1).rem_euclid(13)), erster(&self.zeichen, siegel))
     }
 
     /// Die Zeile für den Tag mit der JDN `j`.
@@ -372,18 +372,14 @@ impl Zaehlvariante {
                 } else {
                     None
                 };
-                if let Some(b) = besonders {
-                    hinweis = Some(b.into());
-                }
-                let jahr = self.kin_name(d.jahr_kin);
-                let jahr = jahr.splitn(3, ' ').nth(2).unwrap_or_default();
+                // Der Sondername steht nur in `stellung`; `hinweis` behält die Einordnung der Variante.
                 besonders
                     .map(str::to_string)
                     .into_iter()
                     .chain(d.mond.map(|(m, t)| format!("Mond {m} Tag {t}")))
                     .chain(d.mond.map(|(_, t)| eintrag(&self.wochentage, (t - 1).rem_euclid(7)).to_string()))
-                    .chain(d.kin.map(|k| self.kin_name(k)))
-                    .chain([format!("Jahr {jahr}")])
+                    .chain(d.kin.map(|k| format!("Kin {k} {}", self.siegel_name(k))))
+                    .chain([format!("Jahr {}", self.siegel_name(d.jahr_kin))])
                     .collect()
             }
             _ => Vec::new(),
@@ -458,6 +454,22 @@ mod tests {
         }
     }
 
+    /// Ankernamen je Variante (Index 0, 4, 19), damit vertauschte Einträge der Vorlage auffallen.
+    #[test]
+    fn ankernamen() {
+        for (kennung, namen) in [
+            ("maya-584283", ["Imix", "Chikchan", "Ajaw"]),
+            ("maya-584285", ["Imix", "Chikchan", "Ajaw"]),
+            ("hochland", ["Imox", "Kan", "Ajpu"]),
+            ("azteken-caso", ["Cipactli", "Coatl", "Xochitl"]),
+            ("azteken-tena", ["Cipactli", "Coatl", "Xochitl"]),
+            ("dreamspell", ["Dragon", "Serpent", "Sun"]),
+        ] {
+            let z = v(kennung).zeichen;
+            assert_eq!([erster(&z, 0), erster(&z, 4), erster(&z, 19)], namen, "{kennung}");
+        }
+    }
+
     #[test]
     fn maya_testwerte() {
         let z = v("maya-584283").zeile(584_283);
@@ -520,11 +532,13 @@ mod tests {
         assert!(s("1996-02-28").stellung.contains("Kin 51 "));
         let hunab = s("1996-02-29");
         assert!(hunab.stellung.starts_with("0.0 Hunab Ku · Jahr ") && !hunab.stellung.contains("Kin"), "{}", hunab.stellung);
-        assert_eq!(hunab.hinweis.as_deref(), Some(HUNAB_KU));
+        // An den Sondertagen steht der Name nur in `stellung`; `hinweis` behält die Einordnung.
+        assert_eq!(hunab.hinweis, d.hinweis);
         assert!(s("1996-03-01").stellung.starts_with("Mond 8 Tag 23 · ") && s("1996-03-01").stellung.contains("Kin 52 "));
         let aus = s("1988-07-25");
         assert!(aus.stellung.starts_with("Tag außerhalb der Zeit · Kin 138 "), "{}", aus.stellung);
-        assert_eq!(aus.hinweis.as_deref(), Some(AUSSERHALB));
+        assert_eq!(aus.hinweis, d.hinweis);
+        assert!(aus.hinweis.as_deref().is_some_and(|h| h.contains("nicht als Maya-Zählung an")), "{:?}", aus.hinweis);
         assert_eq!(s("2025-07-26").stellung, "Mond 1 Tag 1 · Dali · Kin 124 Yellow Resonant Seed · Jahr Yellow Resonant Seed");
         assert_eq!(s("2026-11-26").stellung, "Mond 5 Tag 12 · Alpha · Kin 92 Yellow Magnetic Human · Jahr Red Galactic Moon");
         assert!(s("2030-07-24").stellung.starts_with("Mond 13 Tag 28 · Silio · Kin 127 "));

@@ -28,8 +28,16 @@ Hinzugefügt
 
 Geändert
 - Die Auswahl der Gebetszeiten merkt sich ungesendete Klicks je Ort.
+- Der Satz zum Zählbeginn der Langen Zählung sagt laienverständlich, wie
+  der Tag in den Maya-Inschriften steht.
 
 Behoben
+- Eine Regel, die mit nach (Abstand, Wochentag, Mondphase) auf ein Fest
+  einer Zählung verweist, wird abgelehnt, statt still nur vom ersten Tag
+  des Jahres zu rechnen; auf eine Zählung verweist ein Termin mit fest.
+- Am Tag außerhalb der Zeit und an „0.0 Hunab Ku“ behält der
+  13-Monde-Kalender seine Einordnung als neuzeitliche Umdeutung; der
+  Sondername steht nur noch in der Stellung.
 - Die Herkunft einer Gebetszeit nennt die Regel der Hochbreite nur noch,
   wenn sie an diesem Tag greift.
 - Nach einem Fehlschlag beim Speichern der Gebetszeiten bleibt der

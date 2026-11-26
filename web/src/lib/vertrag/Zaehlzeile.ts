@@ -10,6 +10,6 @@ export type Zaehlzeile = { kennung: string, titel: string,
  */
 stellung: string, teile: Array<string>, herkunft: string, stufe: Belegstufe, 
 /**
- * Der feste Satz der Variante, der Satz zum Zählbeginn oder „Tag außerhalb der Zeit“ bzw. „0.0 Hunab Ku“.
+ * Der feste Satz der Variante oder der Satz zum Zählbeginn; „Tag außerhalb der Zeit“ und „0.0 Hunab Ku“ stehen nur in `stellung`.
  */
 hinweis: string | null, };
