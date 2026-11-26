@@ -4,7 +4,7 @@
 //! Frei (die Seite `/anmelden` muss jeder erreichen):
 //! - `GET  /api/passkey/stand`: ist diese Sitzung angemeldet, und wie?
 //! - `POST /api/passkey/anmelden/beginn` und `…/ende`: Anmeldung mit einem
-//!   registrierten Passkey; danach der Ausweis im Cookie `__Host-dashboard`.
+//!   registrierten Passkey; danach der Ausweis im Cookie (`passkey::cookie`).
 //! - `POST /api/passkey/abmelden`: Ausweis sperren und Cookie löschen.
 //!
 //! Mit Windows-Anmeldung, aber ohne die Inhaber-Pflicht (`konto_noetig`): Der
@@ -87,7 +87,7 @@ pub enum AusweisStand {
     Ungueltig,
 }
 
-/// Prüft das Cookie `__Host-dashboard`: Signatur und Inhalt
+/// Prüft das Cookie mit dem Ausweis (`cookie::NAME`): Signatur und Inhalt
 /// (`JwtSchluessel::pruefen`), dann im Datenspeicher Sperrliste und ob der
 /// Passkey noch registriert ist.
 pub async fn ausweis_aus(state: &AppState, kopf: &HeaderMap) -> AusweisStand {
@@ -982,9 +982,11 @@ pub(crate) mod tests {
         let (s, set, j) = schicke(&app, post("/api/passkey/anmelden/ende", k.clone(), None)).await;
         assert_eq!(s, StatusCode::OK, "{j}");
         let set = set.unwrap();
-        for teil in ["__Host-dashboard=", "HttpOnly", "Secure", "SameSite=Strict", "Path=/", "Max-Age=900"] {
+        for teil in [&format!("{}=", cookie::NAME)[..], "HttpOnly", "SameSite=Strict", "Path=/", "Max-Age=900"] {
             assert!(set.contains(teil), "{teil} fehlt: {set}");
         }
+        assert!(set.starts_with(&format!("{}=", cookie::NAME)), "{set}");
+        assert_eq!(set.contains("Secure"), cookie::SICHER, "{set}");
         let ausweis = ausweis_aus_cookie(&set);
         assert!(!j.to_string().contains(&ausweis), "Ausweis nie im Körper");
         let (s, _, _) = schicke(&app, get("/api/vorgaenge/uebersicht", Some(&ausweis))).await;

@@ -4,7 +4,8 @@
 //! Zwei Wege führen zum selben Inhaber: Im Hauptkonto meldet Windows ihn
 //! von selbst an (Negotiate, 7b). Sitzt er in einem anderen Windows-Konto,
 //! meldet sie sich mit einem Passkey an und bekommt einen kurzlebigen,
-//! signierten Ausweis (JWT) als Cookie `__Host-dashboard`.
+//! signierten Ausweis (JWT) als Cookie (`cookie`: unter Windows
+//! `__Host-dashboard`, sonst `dashboard`).
 //!
 //! - `webauthn`: die Prüfung der Antworten des Browsers, selbst gebaut und eng
 //!   (nur Attestation `none`, Herkunft genau `http://localhost:<port>`, UP und
