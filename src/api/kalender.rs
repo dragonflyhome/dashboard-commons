@@ -567,6 +567,28 @@ const JAHRESKREIS: &str = "jahreskreis";
 /// Heimatort ist nur ein eigener Ort oder der Standardort (ohne Werte).
 pub const SATZ_HEIMAT_NICHT: &str = "Heimatort kann nur ein eigener Ort oder der Standardort sein.";
 
+/// Der Satz der Kopfleiste, wenn Auf- oder Untergang ohne Uhrzeit bleibt (`auf`, `unter`:
+/// die Zeit wird gezeigt). Fehlt nur eine Zeit (Übergangstag zu Polartag oder -nacht),
+/// spricht er von ihr, damit er der sichtbaren Zeit nicht widerspricht: „geht nicht auf“
+/// nur bei `BleibtDarunter`, „geht nicht unter“ nur bei `BleibtDarueber`; alles andere
+/// (auch der Aufgang `BleibtDarueber` am Tag nach dem Polartag) heißt „keine Zeit“.
+/// Fehlen beide, zählt der Aufgang.
+fn kopf_satz(roh: Option<(Sonnenzeit, Sonnenzeit)>, auf: bool, unter: bool) -> Option<&'static str> {
+    let (a, u) = roh.unzip();
+    match (auf, unter) {
+        (true, true) => None,
+        (false, true) if a == Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
+        (false, true) => Some("Für den Aufgang gibt es heute hier keine Zeit."),
+        (true, false) if u == Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
+        (true, false) => Some("Für den Untergang gibt es heute hier keine Zeit."),
+        (false, false) => match a {
+            Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
+            Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
+            _ => Some("Heute gibt es hier keine Zeit für Auf- und Untergang."),
+        },
+    }
+}
+
 /// Der Himmel von heute am Ort `ort` für die Kopfleiste: Auf- und Untergang am Tag
 /// `heute` (fehlt einer, ein Satz ohne Zahlen), die Mondphase zum Zeitpunkt `jetzt_t`
 /// (Weltzeit, [`mond::aus_weltzeit`]) und der Tag des nächsten Vollmonds ab Beginn von heute.
@@ -578,21 +600,7 @@ pub fn kopf_antwort(ort: &Benannt, heute: NaiveDate, jetzt_t: f64) -> KalenderKo
         _ => None,
     };
     let (aufgang, untergang) = z.as_ref().map_or((None, None), |z| (um(z.aufgang), um(z.untergang)));
-    // Fehlt nur eine Zeit (Übergangstag zu Polartag oder -nacht), spricht der Satz von ihr,
-    // damit er der sichtbaren Zeit nicht widerspricht; fehlen beide, nach dem Aufgang.
-    let keine = |s: Option<Sonnenzeit>| matches!(s, None | Some(Sonnenzeit::Keine | Sonnenzeit::Um(_)));
-    let satz = match (aufgang.is_some(), untergang.is_some()) {
-        (true, true) => None,
-        (false, true) if keine(z.as_ref().map(|z| z.aufgang)) => Some("Für den Aufgang gibt es heute hier keine Zeit."),
-        (false, true) => Some("Die Sonne geht heute nicht auf."),
-        (true, false) if keine(z.as_ref().map(|z| z.untergang)) => Some("Für den Untergang gibt es heute hier keine Zeit."),
-        (true, false) => Some("Die Sonne geht heute nicht unter."),
-        (false, false) => match z.as_ref().map(|z| z.aufgang) {
-            Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
-            Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
-            _ => Some("Heute gibt es hier keine Zeit für Auf- und Untergang."),
-        },
-    };
+    let satz = kopf_satz(z.as_ref().map(|z| (z.aufgang, z.untergang)), aufgang.is_some(), untergang.is_some());
     let beginn = o.beginn_ab(heute).unwrap_or_else(|| mond::tag_zahl(heute));
     KalenderKopf {
         ort: ort.titel.clone(),
@@ -1983,6 +1991,27 @@ mod tests {
             assert_eq!(k.text.is_none(), k.aufgang.is_some() && k.untergang.is_some(), "{t}: {k:?}");
             assert!(!(satz.contains("unter") && k.untergang.is_some()) && !(satz.contains("nicht auf") && k.aufgang.is_some()), "{t}: {k:?}");
         }
+    }
+
+    /// Abnahme S6 Runde 2, A2: Die Seite ohne Zeit bestimmt den Satz direkt. Am Tag nach dem
+    /// Polartag (Aufgang `BleibtDarueber`, Untergang mit Zeit) heißt es nicht „geht nicht auf“,
+    /// spiegelbildlich beim Untergang `BleibtDarunter` nicht „geht nicht unter“.
+    #[test]
+    fn kopf_satz_je_seite() {
+        use super::{Sonnenzeit::*, kopf_satz};
+        let auf_keine = Some("Für den Aufgang gibt es heute hier keine Zeit.");
+        let unter_keine = Some("Für den Untergang gibt es heute hier keine Zeit.");
+        assert_eq!(kopf_satz(Some((BleibtDarueber, Um(0.5))), false, true), auf_keine);
+        assert_eq!(kopf_satz(Some((Keine, Um(0.5))), false, true), auf_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), Um(0.6))), false, true), auf_keine, "Zeit ohne Uhrzeit am Tag");
+        assert_eq!(kopf_satz(Some((BleibtDarunter, Um(0.5))), false, true), Some("Die Sonne geht heute nicht auf."));
+        assert_eq!(kopf_satz(Some((Um(0.5), BleibtDarunter)), true, false), unter_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), Keine)), true, false), unter_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), BleibtDarueber)), true, false), Some("Die Sonne geht heute nicht unter."));
+        assert_eq!(kopf_satz(Some((BleibtDarunter, BleibtDarunter)), false, false), Some("Die Sonne geht heute nicht auf."));
+        assert_eq!(kopf_satz(Some((BleibtDarueber, BleibtDarueber)), false, false), Some("Die Sonne geht heute nicht unter."));
+        assert_eq!(kopf_satz(None, false, false), Some("Heute gibt es hier keine Zeit für Auf- und Untergang."));
+        assert_eq!(kopf_satz(Some((Um(0.5), Um(0.6))), true, true), None);
     }
 
     /// `GET /api/kalender/kopf`: nur angemeldet; Form; der Heimatort mit Titel, ohne Zahl und Zone.

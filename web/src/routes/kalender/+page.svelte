@@ -306,10 +306,12 @@
 	 */
 	async function alsHeimat(): Promise<void> {
 		const koerper: KalenderHeimat = { ort };
+		// Vor dem Warten festhalten: Wird währenddessen ein anderer Ort gewählt, nennt die Rückmeldung trotzdem diesen.
+		const titel = gewaehltOrt?.titel ?? ort;
 		try {
 			await senden<KalenderOrte>(`${API}/kalender/heimat`, koerper);
 			await orteLaden(ort);
-			gemerkt = `Heimatort ist jetzt „${gewaehltOrt?.titel ?? ort}“.`;
+			gemerkt = `Heimatort ist jetzt „${titel}“.`;
 			fehler = null;
 			await tick();
 			gemerktFeld?.focus();

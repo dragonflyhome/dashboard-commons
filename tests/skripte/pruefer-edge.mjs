@@ -73,7 +73,7 @@
  *               nicht mehr: /anstehend, /hallo und /katalog laden dann
  *               nicht; Kopfleiste und Kanal ohne Anmeldung prüft
  *               kopfleiste-2): Brotkrumen (Symbol,
- *               Glieder, Blatt; bis 704 px „…“), rechts Himmel, PC, Glocke, Live-Punkt,
+ *               Glieder, Blatt; bis 768 px „…“, auch in einer Gruppe), rechts Himmel, PC, Glocke, Live-Punkt,
  *               Schloss in dieser Reihenfolge, nichts überlappt, Ziele ab
  *               44 px, kein seitliches Scrollen, genau eine EventSource;
  *               unter 1024 px die Schublade (Tastatur: Enter öffnet, Escape
@@ -1193,9 +1193,10 @@ async function bisWahr(cdp, f, ms = 4000) {
  * Kopfleiste, Fassung 3: mit Anmeldung (`cdp`, localhost) und ohne (`frei`,
  * 127.0.0.1) bei 360, 375, 600, 640, 700, 720, 768, 900, 1024 und 1280 px, hell und dunkel.
  * `unterseite`: eine Unterseite eines Projekts nur in neuer Form (Brotkrumen
- * mit zwei mittleren Gliedern), sonst `null`.
+ * mit zwei mittleren Gliedern), sonst `null`; `gruppenseite` dieselbe Seite
+ * als Teil einer Gruppe (drei mittlere Glieder, Abnahme S6 Runde 2 A1), sonst `null`.
  */
-async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite) {
+async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite, gruppenseite = null) {
   const wer = mitAnmeldung ? "angemeldet" : "ohne Anmeldung";
   console.log(`\n== Kopfleiste, Fassung 3 (${wer}) ==`);
   for (const thema of ["light", "dark"]) {
@@ -1216,7 +1217,7 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite) {
         pruefe(k.klein.length === 0, `${t}: Ziele mindestens 44 px`, k.klein.join(", "));
         pruefe(k.seitlich <= 0, `${t}: kein seitliches Scrollen`, `${k.seitlich} px`);
         pruefe(k.reihenfolge, `${t}: rechts Himmel, PC, Glocke, Live-Punkt, Schloss in dieser Reihenfolge`);
-        // Himmel: gibt zuerst nach (unter 48rem ohne Ort, unter 37,5rem nur das Symbol); der Name bleibt ganz.
+        // Himmel: gibt zuerst nach (unter 64rem nur das Symbol); der Name bleibt ganz.
         pruefe(k.krumenBreite > 0, `${t}: die Brotkrumen behalten Platz`, `${k.krumenBreite} px`);
         const h = k.himmel;
         pruefe(h !== null && h.ortVoll !== "" && (h.name ?? "").includes(`Ort: ${h.ortVoll}. Zum Kalender`) && /^Mond: /.test(h.name ?? ""), `${t}: Himmel mit vollem Namen samt Ort`, JSON.stringify(h));
@@ -1367,17 +1368,20 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite) {
           pruefe(listen.length === 1, `${t}: / holt /api/projects genau einmal`, listen.map((a) => `${a.status}`).join(", "));
         }
 
-        // Brotkrumen einer Unterseite: bis 44rem (704 px) „…“, sonst alle Glieder.
-        if (unterseite !== null) {
-          await cdp.oeffnen(unterseite.pfad);
+        // Brotkrumen einer Unterseite, auch als Teil einer Gruppe: bis 48rem (768 px) „…“, sonst alle Glieder.
+        for (const [art, seite] of [["Unterseite", unterseite], ["Gruppen-Unterseite", gruppenseite]]) {
+          if (seite === null) continue;
+          await cdp.oeffnen(seite.pfad);
           k = await cdp.rufe(KOPFLEISTE_3);
-          const soll = breite <= 704 ? ["", "…", unterseite.blatt] : ["", "Projekte", unterseite.projekt, unterseite.blatt];
+          const kurz = breite <= 768;
+          const soll = kurz ? ["", "…", seite.blatt] : ["", "Projekte", ...(seite.gruppe ? [seite.gruppe] : []), seite.projekt, seite.blatt];
           const ist = k.krumen.map((x) => x.replace(/^›\s*/, ""));
-          messen(`${t} Unterseite`, `Brotkrumen ${k.krumenBreite} px (brauchen ${k.krumenNoetig} px), Himmel ${k.himmel?.breite} px, rechts ${k.rechtsBreite} px, seitlich ${k.seitlich} px`);
-          pruefe(JSON.stringify(ist) === JSON.stringify(soll), `${t}: Brotkrumen der Unterseite ${breite <= 704 ? "mit „…“" : "vollständig"}`, JSON.stringify(k.krumen));
-          pruefe(k.ueber.length === 0 && k.seitlich <= 0, `${t}: Unterseite ohne Überlappung, ohne seitliches Scrollen`, k.ueber.join(", "));
-          if (breite >= 1024) {
-            pruefe(k.festAktuell.length === 1 && k.festAktuell[0] === unterseite.blatt, `${t}: in der Leiste ist die Unterseite markiert (eingerückt unter dem Projekt)`, JSON.stringify(k.festAktuell));
+          messen(`${t} ${art}`, `Brotkrumen ${k.krumenBreite} px (brauchen ${k.krumenNoetig} px), Himmel ${k.himmel?.breite} px, rechts ${k.rechtsBreite} px, seitlich ${k.seitlich} px`);
+          pruefe(JSON.stringify(ist) === JSON.stringify(soll), `${t}: Brotkrumen der ${art} ${kurz ? "mit „…“" : "vollständig"}`, JSON.stringify(k.krumen));
+          pruefe(k.ueber.length === 0 && k.seitlich <= 0, `${t}: ${art} ohne Überlappung, ohne seitliches Scrollen`, k.ueber.join(", "));
+          pruefe(k.krumenNoetig <= k.krumenBreite + 1, `${t}: ${art}: die Brotkrumen passen in ihren Platz`, `${k.krumenNoetig} > ${k.krumenBreite}`);
+          if (breite >= 1024 && !seite.gruppe) {
+            pruefe(k.festAktuell.length === 1 && k.festAktuell[0] === seite.blatt, `${t}: in der Leiste ist die Unterseite markiert (eingerückt unter dem Projekt)`, JSON.stringify(k.festAktuell));
           }
         }
       });
@@ -1807,20 +1811,62 @@ function datenKopieren() {
   console.log(`data\\: ${liste.length} eingecheckte Dateien kopiert`);
 }
 
-/** Eine Unterseite eines Projekts nur in neuer Form (für die Brotkrumen), aus dem angemeldeten Edge (Schritt E2). */
+/**
+ * Je eine Unterseite eines Projekts nur in neuer Form (für die Brotkrumen), aus dem
+ * angemeldeten Edge (Schritt E2): `unterseite` von einem Projekt ohne Gruppe, `gruppenseite`
+ * von einem Teil einer Gruppe aus `data/gruppen.toml` (drei mittlere Glieder, Abnahme S6
+ * Runde 2 A1); fehlt eine, `null` und ein Hinweis. Hat kein Teil einer echten Gruppe eine
+ * Unterseite, ist `gruppenseite` ein zweites Projekt ohne Gruppe mit `probe: true`; dann legt
+ * `probeGruppe` dafür vorübergehend eine Gruppe an.
+ */
 async function unterseiteFinden(cdp) {
   const json = (pfad) => cdp.rufe(async (p) => (await fetch(p, { headers: { accept: "application/json" } })).json(), pfad);
+  let unterseite = null;
+  let gruppenseite = null;
+  let zweite = null;
   try {
     const liste = await json("/api/projects");
+    const gruppeVon = new Map((liste.gruppen ?? []).flatMap((g) => (g.teile ?? []).map((t) => [t, g.titel ?? g.slug])));
     for (const p of liste.projects) {
+      const gruppe = gruppeVon.get(p.slug) ?? null;
+      if (gruppe === null ? unterseite !== null && zweite !== null : gruppenseite !== null) continue;
       const k = await json(`/api/projekte/${p.slug}`);
       const s = [...(k.kopf?.seiten ?? [])].sort((a, b) => a.order - b.order)[0];
-      if (!k.vorschau && s) return { pfad: `/projects/${p.slug}/${s.name}`, projekt: k.kopf.title, blatt: s.title };
+      if (k.vorschau || !s) continue;
+      const seite = { pfad: `/projects/${p.slug}/${s.name}`, projekt: k.kopf.title, blatt: s.title, gruppe };
+      if (gruppe !== null) gruppenseite = seite;
+      else if (unterseite === null) unterseite = seite;
+      else zweite = { ...seite, slug: p.slug, probe: true };
+      if (unterseite !== null && gruppenseite !== null) break;
     }
   } catch (e) {
     hinweise.push(`Keine Unterseite für die Brotkrumen gefunden: ${e}`);
   }
-  return null;
+  if (unterseite === null) hinweise.push("Keine Unterseite eines Projekts ohne Gruppe für die Brotkrumen gefunden.");
+  gruppenseite ??= zweite;
+  if (gruppenseite === null) hinweise.push("Keine Unterseite eines Projekts in einer Gruppe für die Brotkrumen gefunden (data/gruppen.toml).");
+  return { unterseite, gruppenseite };
+}
+
+/**
+ * Für eine `gruppenseite` mit `probe`: hängt an `data/gruppen.toml` (live gelesen) eine Gruppe
+ * mit ihrem Projekt an, ruft `f` mit der Seite samt Glied der Gruppe und stellt die Datei
+ * danach wieder her; die echten Gruppen bleiben die ganze Zeit stehen.
+ */
+async function probeGruppe(gruppenseite, f) {
+  if (gruppenseite?.probe !== true) return f(gruppenseite);
+  const datei = join(ordner, "repo", "data", "gruppen.toml");
+  const vorher = existsSync(datei) ? readFileSync(datei, "utf8") : null;
+  const titel = "Probegruppe der Kopfleiste";
+  mkdirSync(dirname(datei), { recursive: true });
+  writeFileSync(datei, `${vorher ?? ""}\n[[gruppe]]\nslug = "probe-kopfleiste"\ntitel = "${titel}"\nteile = ["${gruppenseite.slug}"]\n`);
+  console.log(`Gruppen-Unterseite: Probegruppe mit ${gruppenseite.pfad} (keine echte Gruppe hat eine Unterseite)`);
+  try {
+    return await f({ ...gruppenseite, gruppe: titel });
+  } finally {
+    if (vorher === null) rmSync(datei, { force: true });
+    else writeFileSync(datei, vorher);
+  }
 }
 
 async function main() {
@@ -1873,9 +1919,9 @@ async function main() {
   await nichtsPruefen(cdp);
   await fehlerseitePruefen(cdp);
   await neueFormPruefen(cdp, projekte);
-  const unterseite = await unterseiteFinden(cdp);
+  const { unterseite, gruppenseite } = await unterseiteFinden(cdp);
   await kopfleiste2Pruefen(cdp, true);
-  await kopfleiste3Pruefen(cdp, true, unterseite);
+  await probeGruppe(gruppenseite, (g) => kopfleiste3Pruefen(cdp, true, unterseite, g));
   await anstehendPruefen(cdp);
   await systemSeitenAngemeldet(cdp);
   await bedienungPruefen(cdp, ["/pc", "/", ...mitZeitNeu]);
