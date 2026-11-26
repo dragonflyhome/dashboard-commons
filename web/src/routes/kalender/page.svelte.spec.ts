@@ -58,7 +58,33 @@ const TAG: KalenderTag = {
 		hinweis: 'Namen sind nicht überall belegt.'
 	},
 	hinweis: 'Die Zeiten gelten für die Mitte des Orts.',
-	gebete: []
+	gebete: [],
+	zaehlungen: []
+};
+
+// Erfundene Zeilen in der Form des Servers (Stufe 5).
+const TAG_ZAEHLUNGEN: KalenderTag = {
+	...TAG,
+	zaehlungen: [
+		{
+			kennung: 'maya-584283',
+			titel: 'Maya, Korrelation 584283',
+			stellung: '13.0.14.2.8 · 9 Lamat · 1 Mak · Kalenderrunde 17048',
+			teile: ['13.0.14.2.8', '9 Lamat', '1 Mak', 'Kalenderrunde 17048'],
+			herkunft: 'Maya · Tzolkin · Korrelation 584283',
+			stufe: 'belegt',
+			hinweis: null
+		},
+		{
+			kennung: 'dreamspell',
+			titel: '13-Monde-Kalender (Dreamspell)',
+			stellung: 'Mond 5 Tag 12 · Alpha · Kin 92 Yellow Magnetic Human',
+			teile: ['Mond 5 Tag 12', 'Alpha', 'Kin 92 Yellow Magnetic Human'],
+			herkunft: '13-Monde-Kalender (Dreamspell) · neuzeitlich',
+			stufe: 'neuzeitlich',
+			hinweis: 'Neuzeitliche Umdeutung.'
+		}
+	]
 };
 
 const FESTE: KalenderFeste = {
@@ -470,6 +496,91 @@ describe('Seite /kalender', () => {
 		).toBe(false);
 		expect(localStorage.length).toBe(0);
 		expect(sessionStorage.length).toBe(0);
+	});
+
+	it('Zählungen: ein Abschnitt in der Reihenfolge des Servers mit Stellung, Stufe, Hinweis und Herkunft', async () => {
+		server(TAG_ZAEHLUNGEN);
+		const { container } = render(Page);
+		expect(await screen.findByRole('heading', { name: 'Zählungen' })).toBeInTheDocument();
+		const zeilen = [...container.querySelectorAll('[data-zaehlung]')].map((z) =>
+			z.getAttribute('data-zaehlung')
+		);
+		expect(zeilen).toEqual(['maya-584283', 'dreamspell']);
+		expect(screen.getByText('Maya, Korrelation 584283')).toBeInTheDocument();
+		expect(screen.getByText(/13\.0\.14\.2\.8 · 9 Lamat · 1 Mak/)).toBeInTheDocument();
+		expect(screen.getByText('(neuzeitlich)')).toBeInTheDocument();
+		expect(screen.queryByText('(belegt)')).toBeNull();
+		expect(screen.getByText('Neuzeitliche Umdeutung.')).toBeInTheDocument();
+		expect(screen.getByText('Maya · Tzolkin · Korrelation 584283')).toBeInTheDocument();
+	});
+
+	it('Zählungen: ohne aktive Zählung kein Abschnitt', async () => {
+		server();
+		render(Page);
+		await screen.findByText('04:43');
+		expect(screen.queryByRole('heading', { name: 'Zählungen' })).toBeNull();
+	});
+
+	it('Gebetszeiten: Wünsche je Ort; ein Fehlschlag zeigt den gespeicherten Stand, der Fokus bleibt', async () => {
+		const offen: ((ok: boolean) => void)[] = [];
+		const sonst = server(TAG_GEBETE) as unknown as (
+			p: string,
+			i?: RequestInit
+		) => Promise<Response>;
+		// Hält jede Antwort auf das Speichern zurück; der Test gibt sie als Erfolg oder Fehlschlag frei.
+		const f = vi.fn((pfad: string, init?: RequestInit): Promise<Response> => {
+			if (pfad === '/api/kalender/gebete' && init?.method === 'POST') {
+				const k = JSON.parse(init.body as string) as { ort: string; varianten: string[] };
+				return new Promise<Response>((r) => {
+					offen.push((ok) => {
+						r(
+							ok
+								? json({ ...GEBETE, auswahl: [{ ...k, fehlt: false }] })
+								: new Response(JSON.stringify({ fehler: 'Nicht gespeichert.' }), { status: 409 })
+						);
+					});
+				});
+			}
+			return sonst(pfad, init);
+		});
+		vi.stubGlobal('fetch', f);
+		const gespeichert = () =>
+			f.mock.calls
+				.filter(([p, init]) => p === '/api/kalender/gebete' && init?.method === 'POST')
+				.map(([, init]) => JSON.parse(init?.body as string) as unknown);
+		render(Page);
+		await screen.findByText('22:41');
+		// Klick am Heimatort, Ortswechsel und Klick an der Hütte, bevor die erste Antwort kommt.
+		await fireEvent.click(screen.getByRole('switch', { name: 'Drei Zeiten, ISNA' }));
+		const ortWahl = screen.getByRole('combobox', { name: /^Ort / });
+		ortWahl.focus();
+		await fireEvent.keyDown(ortWahl, { key: 'ArrowDown' });
+		const huette = await screen.findByRole('option', { name: 'Hütte' });
+		await fireEvent.pointerDown(huette, { pointerType: 'mouse' });
+		await fireEvent.pointerUp(huette, { pointerType: 'mouse' });
+		await fireEvent.click(huette);
+		await vi.waitFor(() => {
+			expect(f.mock.calls.some(([p]) => p.includes('ort=h%C3%BCtte'))).toBe(true);
+		});
+		await fireEvent.click(screen.getByRole('switch', { name: 'Fünf Zeiten, MWL' }));
+		offen.shift()?.(true);
+		await vi.waitFor(() => {
+			expect(gespeichert()).toHaveLength(2);
+		});
+		expect(gespeichert()).toEqual([
+			{ ort: 'zuhause', varianten: ['fuenf-mwl', 'drei-isna'] },
+			{ ort: 'hütte', varianten: ['fuenf-mwl'] }
+		]);
+		// Der zweite schlägt fehl: Der Schalter zeigt wieder den gespeicherten Stand und behält den Fokus.
+		const fuenf = screen.getByRole('switch', { name: 'Fünf Zeiten, MWL' });
+		fuenf.focus();
+		offen.shift()?.(false);
+		await vi.waitFor(() => {
+			expect(screen.getByRole('alert')).toBeInTheDocument();
+			expect(fuenf).toHaveAttribute('aria-checked', 'false');
+		});
+		expect(document.activeElement).toBe(fuenf);
+		expect(fuenf.isConnected).toBe(true);
 	});
 
 	it('ohne Städteliste steht ein Satz da, die Namensnennung bleibt', async () => {

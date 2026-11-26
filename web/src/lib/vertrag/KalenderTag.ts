@@ -2,6 +2,7 @@
 import type { Gebetsliste } from "./Gebetsliste";
 import type { Mond } from "./Mond";
 import type { Tageszeile } from "./Tageszeile";
+import type { Zaehlzeile } from "./Zaehlzeile";
 
 /**
  * `GET /api/kalender/tag`: Tageszeiten und Mond eines Tags an einem Ort.
@@ -38,4 +39,8 @@ hinweis: string | null,
 /**
  * Die Gebetszeiten der ausgewählten Varianten (Stufe 4), je Variante eine Liste.
  */
-gebete: Array<Gebetsliste>, };
+gebete: Array<Gebetsliste>, 
+/**
+ * Die aktiven Zählkalender (Stufe 5) in der Reihenfolge der Vorlage, unabhängig vom Ort; ohne aktive leer.
+ */
+zaehlungen: Array<Zaehlzeile>, };

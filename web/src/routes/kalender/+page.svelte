@@ -16,8 +16,12 @@
 	 * Gebetszeiten (Stufe 4): Die Auswahl der Varianten speichert die Seite für
 	 * benannte Orte (`POST /api/kalender/gebete`); beim anderen Ort geht sie nur
 	 * im Rumpf der Abfrage mit und ist mit ihm vergessen.
+	 *
+	 * Zählungen (Stufe 5): die aktiven Zählkalender des Tags in der Reihenfolge der
+	 * Vorlage, unabhängig vom Ort; eingeschaltet über `kalender = [...]` einer fristen.toml.
 	 */
 	import { onMount, tick } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { resolve } from '$app/paths';
 	import { Abschnitt, Absatz, Auswahl, Hinweis, Knopf, Schalter } from '$katalog';
 	import { API, fehlerText, getJson, readError } from '#lib/api/client.ts';
@@ -75,17 +79,16 @@
 	// Gebetszeiten: Varianten und gespeicherte Auswahl; beim anderen Ort nur hier im Speicher.
 	let gebete = $state<KalenderGebete | null>(null);
 	let freiGebete = $state<string[]>([]);
-	/** Zählt Fehlschläge beim Speichern, damit die Schalter danach den gespeicherten Stand zeigen. */
-	let gebeteStand = $state(0);
-	/** Der gewünschte, noch nicht bestätigte Stand: Klicks während des Speicherns gehen nicht verloren. */
-	let wunsch = $state<{ ort: string; varianten: string[] } | null>(null);
+	/**
+	 * Die gewünschten, noch nicht bestätigten Stände je Ort: Klicks während des Speicherns
+	 * gehen nicht verloren, auch nicht bei einem schnellen Ortswechsel.
+	 */
+	const wuensche = new SvelteMap<string, string[]>();
 	let speichertGebete = false;
 	const gewaehlt = $derived(
 		frei !== null
 			? freiGebete
-			: wunsch?.ort === ort
-				? wunsch.varianten
-				: (gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
+			: (wuensche.get(ort) ?? gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
 	);
 
 	// „Stadt suchen“: Suchtext und Antwort, nur hier im Speicher.
@@ -217,18 +220,16 @@
 			freiGebete = neu;
 			return;
 		}
-		wunsch = { ort, varianten: neu };
-		// Läuft schon ein Speichern, schickt die Schleife danach den neuesten Wunsch.
+		wuensche.set(ort, neu);
+		// Läuft schon ein Speichern, schickt die Schleife danach die neuesten Wünsche jedes Orts.
 		if (speichertGebete) return;
 		speichertGebete = true;
 		try {
-			while (wunsch !== null) {
-				const w: { ort: string; varianten: string[] } = wunsch;
-				if (!(await gebeteSpeichern(w.ort, w.varianten))) {
-					wunsch = null;
-					break;
-				}
-				if (wunsch === w) wunsch = null;
+			for (let e = wuensche.entries().next(); !e.done; e = wuensche.entries().next()) {
+				const [o, w] = e.value;
+				// Schlägt es fehl, zeigen die Schalter dieses Orts wieder den gespeicherten Stand.
+				const gut = await gebeteSpeichern(o, w);
+				if (!gut || wuensche.get(o) === w) wuensche.delete(o);
 			}
 		} finally {
 			speichertGebete = false;
@@ -246,7 +247,6 @@
 			return true;
 		} catch (e) {
 			fehler = fehlerText(e);
-			gebeteStand++;
 			return false;
 		}
 	}
@@ -476,15 +476,13 @@
 			{/each}
 			<fieldset class="varianten">
 				<legend>Varianten für {frei === null ? ortTitel : 'den anderen Ort'}</legend>
-				{#key gebeteStand}
-					{#each gebete.varianten as v (v.kennung)}
-						<Schalter
-							an={gewaehlt.includes(v.kennung)}
-							beschriftung={v.titel}
-							onwechsel={(an: boolean) => void umschalten(v.kennung, an)}
-						/>
-					{/each}
-				{/key}
+				{#each gebete.varianten as v (v.kennung)}
+					<Schalter
+						an={gewaehlt.includes(v.kennung)}
+						beschriftung={v.titel}
+						onwechsel={(an: boolean) => void umschalten(v.kennung, an)}
+					/>
+				{/each}
 			</fieldset>
 			<p class="muted small">
 				{#if frei === null}Die Auswahl wird für diesen Ort gespeichert.{:else}Für den anderen Ort
@@ -534,6 +532,26 @@
 			{/if}
 		</Abschnitt>
 	{/if}
+{/if}
+
+{#if tag !== null && tag.zaehlungen.length > 0}
+	<Abschnitt titel="Zählungen">
+		<ul class="plain zeilen">
+			{#each tag.zaehlungen as z (z.kennung)}
+				<li data-zaehlung={z.kennung}>
+					<span class="wann"><b>{z.titel}</b></span>
+					<span class="was">
+						<span
+							>{z.stellung}{#if z.stufe !== 'belegt'}
+								<span class="muted small">({z.stufe})</span>{/if}</span
+						>
+						{#if z.hinweis}<span class="small">{z.hinweis}</span>{/if}
+						<span class="muted small">{z.herkunft}</span>
+					</span>
+				</li>
+			{/each}
+		</ul>
+	</Abschnitt>
 {/if}
 
 {#if feste !== null}

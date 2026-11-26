@@ -159,8 +159,10 @@ fn gebetsliste(ort: &Ort, d: NaiveDate, v: &Variante, wo: &str) -> Gebetsliste {
         .map(|z| {
             let winkel = methode.map_or(0.0, |m| if z.regel == "fajr" { m.fajr_winkel } else { m.isha_winkel });
             let grad = format!("{}°", winkel.to_string().replace('.', ","));
+            // Die Regel der Hochbreite steht nur in der Herkunft, wenn sie an diesem Tag greift.
             let wie = match z.regel.as_str() {
-                "fajr" | "isha" => format!("{kurz} {grad} · {regel}"),
+                "fajr" | "isha" if z.hochbreite.is_some() => format!("{kurz} {grad} · {regel}"),
+                "fajr" | "isha" => format!("{kurz} {grad}"),
                 "sunrise" | "maghrib" => format!("{kurz} · Refraktion {refraktion}°"),
                 "dhuhr" => format!("{kurz} · wahrer Mittag"),
                 "asr-shafi" => format!("{kurz} · Schatten einfach"),
@@ -225,6 +227,7 @@ fn tag_antwort(katalog: &Katalog, aktive: &[String], d: NaiveDate, titel: Option
         taglaenge,
         laengster_tag: katalog.laengster_tag(d),
         mond: aktive.iter().find_map(|k| katalog.mond(k, d)),
+        zaehlungen: katalog.zaehlzeilen(aktive, d),
     }
 }
 
@@ -235,9 +238,7 @@ fn feste_antwort(katalog: &Katalog, aktive: &[String], von: NaiveDate, bis: Naiv
         for f in &k.fest {
             let kennung = format!("{}.{}", k.kennung, f.kennung);
             let regel = Regel { fest: Some(kennung.clone()), ..Default::default() };
-            // Das Fest eines Jahres liegt höchstens ein Jahr neben ihm.
-            for j in von.year() - 1..=bis.year() + 1 {
-                let Some(d) = katalog.im_jahr(None, &regel, j).filter(|d| (von..=bis).contains(d)) else { continue };
+            for (d, j) in katalog.vorkommen(None, &regel, von, bis) {
                 let (titel, herkunft, zeitraum) = match katalog.anzeige(k, f, d.year()) {
                     Anzeige::Entfaellt => continue,
                     Anzeige::Neutral { titel, herkunft } => (titel, herkunft, None),
@@ -572,6 +573,9 @@ mod tests {
     const STANDORTE: &str = "[[standort]]\nkennung = \"ort-2\"\ntitel = \"Zweiter Ort\"\nbreite = -38.6\nlaenge = -62.4\nherkunft = \"hand\"\nversatz = \"-03:00\"\n\n\
                              [[standort]]\nkennung = \"zuhause\"\ntitel = \"Zuhause\"\nbreite = 47.3\nlaenge = 73.9\nherkunft = \"hand\"\nzeitzone = \"Asia/Almaty\"\nheimat = true\n\n\
                              [[standort]]\nkennung = \"ort-3\"\ntitel = \"Tropen\"\nbreite = 1.3\nlaenge = 103.8\nherkunft = \"stadt\"\nzeitzone = \"Asia/Singapore\"\n";
+    /// Was von einer aktiven Zählung und einem Ereignis mit `zaehlung` nie hinausgehen darf
+    /// (außer in angemeldeten Antworten).
+    const ZAEHL_WOERTER: [&str; 5] = ["hochland", "Hochland", "B'atz'", "Waqxaqib", "Cholq'ij"];
     /// Jede Schreibweise der privaten Lagen: Punkt, Komma, ganzzahlig, und der Versatz.
     const ZAHLEN: [&str; 15] = ["47.3", "47,3", "473", "73.9", "73,9", "739", "38.6", "38,6", "386", "62.4", "62,4", "624", "-03:00", "UTC-3", "UTC-03"];
     const ZONE: &str = "Asia/Almaty";
@@ -725,6 +729,38 @@ mod tests {
         let app = router_angemeldet(AppState::fuer_tests(&wurzel));
         let (_, v) = schicke(&app, get("/api/kalender/standorte")).await;
         assert_eq!((v["orte"][0]["kennung"].as_str(), v["orte"][0]["heimat"].as_bool()), (Some("mitte"), Some(true)), "{v}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Stufe 5: Die aktiven Zählungen stehen in GET tag und POST abfrage in der Reihenfolge der
+    /// Vorlage, unabhängig vom Ort; ohne aktive Zählung ist die Liste leer. Waqxaqib' B'atz'
+    /// steht 2025 zweimal in den Festen.
+    #[tokio::test]
+    async fn zaehlungen_im_tag() {
+        let wurzel = inhalt("zaehlungen");
+        let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+        let (_, t) = schicke(&app, get("/api/kalender/tag?datum=2026-11-26")).await;
+        assert_eq!(t["zaehlungen"], serde_json::json!([]), "{t}");
+        let fristen = FRISTEN.replace("kalender = [\"jahreskreis\", \"kirche\"]", "kalender = [\"dreamspell\", \"hochland\", \"maya-584283\"]");
+        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), fristen).unwrap();
+        let kennungen = |t: &Value| t["zaehlungen"].as_array().unwrap().iter().map(|z| z["kennung"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        for pfad in ["/api/kalender/tag?datum=2026-11-26", "/api/kalender/tag?datum=2026-11-26&ort=ort-2"] {
+            let (s, t) = schicke(&app, get(pfad)).await;
+            assert_eq!(s, StatusCode::OK, "{t}");
+            assert_eq!(kennungen(&t), ["maya-584283", "hochland", "dreamspell"], "{t}");
+            let maya = &t["zaehlungen"][0];
+            assert_eq!(maya["stellung"], "13.0.14.2.8 · 9 Lamat · 1 Mak · Kalenderrunde 17048");
+            assert_eq!(maya["teile"].as_array().unwrap().len(), 4);
+            assert_eq!((maya["stufe"].as_str(), maya["hinweis"].clone()), (Some("belegt"), Value::Null));
+            assert!(maya["herkunft"].as_str().unwrap().starts_with("Maya · "), "{maya}");
+            assert_eq!(t["zaehlungen"][2]["stufe"], "neuzeitlich");
+        }
+        let (_, a) = schicke(&app, post(serde_json::json!({"breite": 51.5, "laenge": -0.1, "datum": "2026-11-26"}))).await;
+        assert_eq!(kennungen(&a["tag"]), ["maya-584283", "hochland", "dreamspell"], "{a}");
+        let (_, f) = schicke(&app, get("/api/kalender/feste?von=2025-01-01&bis=2025-12-31")).await;
+        let tage: Vec<&str> =
+            f["feste"].as_array().unwrap().iter().filter(|x| x["kennung"] == "hochland.waqxaqib-batz").filter_map(|x| x["datum"].as_str()).collect();
+        assert_eq!(tage, ["2025-01-18", "2025-10-05"], "{f}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 
@@ -1142,6 +1178,16 @@ mod tests {
         let _wache = tracing::subscriber::set_default(abonnent);
         assert!(nennt("Lage 47.3 Nord", "47.3") && nennt("-47,3", "47,3") && nennt("x473", "473") && !nennt("14730", "473"));
         let wurzel = inhalt("datenschutz");
+        // Stufe 5: eine aktive Zählung und ein Ereignis mit `zaehlung` (nennen Kanal, Journal und Protokoll nicht).
+        let fristen = FRISTEN.replace("\"kirche\"]", "\"kirche\", \"hochland\"]")
+            + "\n[[ereignis]]\nkennung = \"zaehltag\"\ntitel = \"Feier\"\nregel = { zaehlung = { variante = \"hochland\", zahl = 8, zeichen = \"B'atz'\" } }\n\n\
+               [[frist]]\nkennung = \"zaehlfrist\"\ntitel = \"Vorher\"\nereignis = \"zaehltag\"\nabstand = \"-1 Tag\"\n";
+        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), &fristen).unwrap();
+        let ohne_zaehlung = |was: &str, text: &str| {
+            for w in ZAEHL_WOERTER {
+                assert!(!text.contains(w), "{was} nennt {w}: {text}");
+            }
+        };
         let state = AppState::fuer_tests(&wurzel);
         let (frei, app) = (router(state.clone()), router_angemeldet(state.clone()));
 
@@ -1205,7 +1251,7 @@ mod tests {
         let kanal = tokio::spawn(strom_text(res, Duration::from_millis(1500)));
         tokio::time::sleep(Duration::from_millis(100)).await;
         std::fs::write(standorte_datei(&wurzel), format!("# geändert\n{STANDORTE}")).unwrap();
-        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), format!("# geändert\n{FRISTEN}")).unwrap();
+        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), format!("# geändert\n{fristen}")).unwrap();
 
         // Angemeldet: Daten-Weg, Fristen, Anstehend. Die Ereignisse rechnen nach dem
         // privaten Ort (Herkunft mit Titel und Zone), ohne Zahl und ohne Tageszeit.
@@ -1228,12 +1274,15 @@ mod tests {
             }
         }
         assert!(fristen_text.contains("Ort Zuhause · Asia/Almaty") && fristen_text.contains("Ort Zweiter Ort · fester Versatz"), "{fristen_text}");
+        // Angemeldet steht das Ereignis der Zählung in den Fristen (sonst prüfte der Rest nichts).
+        assert!(fristen_text.contains("260-Tage-Zyklus der Zählung Hochland"), "{fristen_text}");
         let kanal = kanal.await.unwrap();
         assert!(kanal.contains("anmeldung"), "Kanal nicht gelesen: {kanal}");
         let kanal = kanal_ohne_zeitstempel(&kanal);
         assert!(kanal.contains("anmeldung") && !kanal.contains("\"at\""), "{kanal}");
         ohne_zahlen_und_zone("Ereigniskanal", &kanal);
         ohne_tageszeiten("Ereigniskanal", &kanal, true);
+        ohne_zaehlung("Ereigniskanal", &kanal);
 
         // `dashboard pruefe` mit gültiger Datei, mit einem unbekannten Ort am Ereignis
         // und mit kaputten Standorten (dazu der Daten-Weg und die Prüfung im Server).
@@ -1242,11 +1291,21 @@ mod tests {
         let p = pruefe();
         assert!(!p.contains("Fehler"), "{p}");
         ohne_zahlen_und_zone("pruefe", &p);
-        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), FRISTEN.replace("ort = \"ort-2\"", "ort = \"ort-9\"")).unwrap();
+        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), fristen.replace("ort = \"ort-2\"", "ort = \"ort-9\"")).unwrap();
         let p = pruefe();
         assert!(p.contains("Beim Ereignis „winter“: Den Ort „ort-9“ gibt es nicht."), "{p}");
         ohne_zahlen_und_zone("pruefe mit unbekanntem Ort", &p);
-        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), FRISTEN).unwrap();
+        // Ein unbekanntes Zeichen: Der Satz nennt weder Zeichen noch Zahl.
+        std::fs::write(
+            wurzel.join("projects/kalender/daten/fristen.toml"),
+            fristen.replace("zahl = 8, zeichen = \"B'atz'\"", "zahl = 7, zeichen = \"Spuerhund\""),
+        )
+        .unwrap();
+        let p = pruefe();
+        assert!(p.contains("passt die `regel` nicht") && !p.contains("Spuerhund") && !p.contains("zahl = 7"), "{p}");
+        // Die erlaubten Zählungen der öffentlichen Vorlage darf der Satz nennen, das Zeichen am Ereignis nicht.
+        assert!(!p.contains("B'atz'"), "{p}");
+        std::fs::write(wurzel.join("projects/kalender/daten/fristen.toml"), &fristen).unwrap();
         for (alt, neu) in [
             ("breite = 47.3", "breite = \"47.3\""),
             ("laenge = 73.9", "laenge = 73,9"),
@@ -1284,6 +1343,7 @@ mod tests {
         let journal = format!("{:?}{:?}", speicher.vorgaenge_alle().unwrap(), speicher.meldungen_mit_archiv().unwrap());
         ohne_zahlen_und_zone("Journal", &journal);
         ohne_tageszeiten("Journal", &journal, true);
+        ohne_zaehlung("Journal", &journal);
         let db = speicher.pfad().to_path_buf();
         for pfad in [db.clone(), PathBuf::from(format!("{}-wal", db.display()))] {
             if let Ok(b) = std::fs::read(&pfad) {
@@ -1300,6 +1360,7 @@ mod tests {
         let protokoll = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
         ohne_zahlen_und_zone("Protokoll", &protokoll);
         ohne_tageszeiten("Protokoll", &protokoll, true);
+        ohne_zaehlung("Protokoll", &protokoll);
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 
@@ -1374,8 +1435,10 @@ mod tests {
             assert!(z["herkunft"].as_str().unwrap().starts_with("MWL") && z["herkunft"].as_str().unwrap().ends_with(" · Ort Zuhause · Asia/Almaty"), "{z}");
         }
         let ischa = gebetszeile(&fuenf, "Ischa");
-        assert_eq!(ischa["herkunft"], "MWL 17° · Siebtel-Regel · Ort Zuhause · Asia/Almaty", "{ischa}");
+        // Die Regel der Hochbreite steht nur in der Herkunft, wenn sie greift.
+        let regel = if ischa["hinweis"].is_null() { "" } else { " · Siebtel-Regel" };
         assert!(ischa["hinweis"].is_null() || ischa["hinweis"] == "nach der Siebtel-Regel", "{ischa}");
+        assert_eq!(ischa["herkunft"], format!("MWL 17°{regel} · Ort Zuhause · Asia/Almaty"), "{ischa}");
         assert_eq!(gebetszeile(&fuenf, "Dhuhr")["herkunft"], "MWL · wahrer Mittag · +1 min · Ort Zuhause · Asia/Almaty");
         assert!(gebetszeile(&fuenf, "Asr früh")["zeit"].as_str() < gebetszeile(&fuenf, "Asr spät")["zeit"].as_str());
         let drei = gebetsliste(&tag, "drei-isna");
@@ -1471,6 +1534,15 @@ mod tests {
         let fajr = gebetszeile(&gebetsliste(&v["tag"], "fuenf-mwl"), "Fadschr");
         assert_eq!(fajr["hinweis"], "nach der Siebtel-Regel, weil die Sonne nachts nicht 18° unter den Horizont sinkt", "{fajr}");
         assert_eq!(fajr["herkunft"], "MWL 18° · Siebtel-Regel · Abgefragter Ort · Europe/London");
+        // Im Winter greift die Regel nicht: kein Hinweis, die Herkunft nennt sie nicht.
+        let winter = serde_json::json!({"breite": 51.5, "laenge": -0.1, "zeitzone": "Europe/London", "datum": "2027-12-21", "gebete": ["fuenf-mwl"]});
+        let (_, v) = schicke(&app, post(winter)).await;
+        let fajr = gebetszeile(&gebetsliste(&v["tag"], "fuenf-mwl"), "Fadschr");
+        assert_eq!(
+            (fajr["hinweis"].clone(), fajr["herkunft"].clone()),
+            (Value::Null, serde_json::json!("MWL 18° · Abgefragter Ort · Europe/London")),
+            "{fajr}"
+        );
         let (_, v) = schicke(&app, abfrage(69.6, 19.0, "Europe/Oslo", serde_json::json!(["fuenf-mwl", "drei-mwl"]))).await;
         let liste = gebetsliste(&v["tag"], "fuenf-mwl");
         assert_eq!(liste["hinweis"], super::SATZ_GEBETE_POLAR);

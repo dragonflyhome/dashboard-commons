@@ -294,6 +294,8 @@ export type { VorgangsZustand } from './VorgangsZustand';
 export type { WartendGruppe } from './WartendGruppe';
 export type { WindowsInfo } from './WindowsInfo';
 export type { WingetEntry } from './WingetEntry';
+export type { ZaehlRegel } from './ZaehlRegel';
+export type { Zaehlzeile } from './Zaehlzeile';
 export type { Zeitpunkt } from './Zeitpunkt';
 export type { Zeitraum } from './Zeitraum';
 export type { Zeitstrahl } from './Zeitstrahl';
