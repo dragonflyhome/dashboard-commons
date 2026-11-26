@@ -229,12 +229,34 @@ Ergebnis der Probe: alle Grenzen eingehalten, Vendor-Import für 3a freigegeben;
 [[block]]
 titel = "Token und Katalog"
 punkte = [
-  "Token in web/src/lib/katalog/token.css. Vorhanden (in app.css): Flächen und Text (--bg, --card, --text, --muted, --line, --shadow, --radius), Akzent, Bedeutungsfarben (--ok, --warn, --bad, --plan, --done, --info), Schrift (--font, --mono). Fehlt und kommt dazu: Abstände (--abstand-1 bis --abstand-6), Schriftstufen (--fs-*), Rundungen, Fokus- und Hover-Farben, Dauer und Kurven für Bewegung, Breiten (360 px, Mitte, 1180 px), eine Palette für Kategorien (--kat-1 bis --kat-10, etwa für Ordnerfarben). Schriften: nur die des Systems.",
+  "Token in web/src/lib/katalog/token.css. Vorhanden (in app.css): Flächen und Text (--bg, --card, --text, --muted, --line, --shadow, --radius), Akzent, Bedeutungsfarben (--ok, --warn, --bad, --plan, --done, --info), Schrift (--font, --mono). Fehlt und kommt dazu: Abstände (--abstand-1 bis --abstand-6), Schriftstufen (--fs-*), Rundungen, Fokus- und Hover-Farben, Dauer und Kurven für Bewegung, Breiten (360 px, Mitte, 1180 px), eine Palette für Kategorien (--reihe-1 bis --reihe-10, etwa für Ordnerfarben). Schriften: nur die des Systems.",
   "Eine Farbsprache statt zwei: Die Klassen st-* und c-* meinen dasselbe; sie werden zu den sechs Bedeutungen (ok, laeuft, wartet, problem, info, neutral).",
   "Grundteile als Komponenten: Karte, Knopf, Pille, Hinweis, Leer- und Fehlerzustand sind bisher nur CSS-Klassen; sie werden Komponenten im Katalog, gebaut auf dem Toolkit.",
   "Katalog web/src/lib/katalog/ (Import $katalog): Text-Bausteine (Abschnitt, Absatz, Text, Liste, Tabelle, Hinweis, Zitat, Reiter, Bild), Daten-Bausteine (Kennzahlen, Ampel, Fortschritt, Zeitstrahl, Gantt, Fluss, Fragen; auf Projektseiten nur für Inhalt, nie für Stand), die vier Teile der Projektseite (Stand, Aufgabenliste, Plan, Zeitleiste), Grundteile (Karte, Pille, Knopf).",
   "Seite /katalog: jeder Baustein in jedem Zustand, hell und dunkel, 360 px und 1280 px. Hier misst der Prüfer.",
   "Hell/dunkel folgt dem System, mit Schalter. Ab 360 px Breite nutzbar. Tastatur, sichtbarer Fokus, Kontrast mindestens 4,5 : 1, Bewegung aus bei prefers-reduced-motion, jeder Bild-Baustein hat eine Textfassung.",
+]
+
+[[block]]
+titel = "Farben: Bedeutung, Farbreihe, externe Vorgabe"
+text = """Projektseiten und Bauteile nennen nie eine Farbe: keinen Farbwert, keinen Farbnamen und kein Token, das einen bestimmten Farbton meint. Farbwerte stehen nur dort, wo die Farbschemata festgelegt sind (web/src/app.css). Jede Farbe auf dem Bildschirm gehört zu genau einer von drei Klassen."""
+
+[[block]]
+[block.tabelle]
+spalten = ["Klasse", "Wofür", "Wie genannt"]
+zeilen = [
+  ["Bedeutung", "alles, was einen Zustand aus dem Vertrag zeigt, auch Zustände der Oberfläche (nahe Frist: wartet, Antwort angekommen: ok, ungültige Eingabe: problem)", "Klasse b-<bedeutung> (oder Eigenschaft bedeutung eines Katalog-Bausteins), gemalt mit --ton, --ton-soft, --ton-text"],
+  ["Farbreihe des Schemas", "Farben ohne Bedeutung: Flächen, Text, Linien, Fokus, Auswahl, Diagrammreihen, Kategorien", "benannte Rollen der Farbordnung: Hintergrund, Fläche, Vordergrund, Vordergrund leise, Linie, Grundfarbe mit ihren beiden Dreiklang-Partnern, Fokus, nummerierte Reihen für Kategorien"],
+  ["Externe Vorgabe", "Farben, die von außen festgelegt sind, etwa der Himmel in einem Bild oder die Farbe eines fremden Logos", "nur als eigene Eigenschaft --extern-<name> mit Kennzeichnung extern und Herkunft am Ort der Festlegung; nie für Text oder Bedeutung"],
+]
+
+[[block]]
+punkte = [
+  "Jedes Schema belegt jede Rolle der Farbreihe und jede Bedeutung. Die Kontrastmessung je Schema bleibt die Schwelle, auch für die Farbreihe. Die Grundfarbe und ihre beiden Dreiklang-Partner liegen im Farbkreis gleich weit auseinander; ein Test misst den Abstand.",
+  "Namen nennen die Rolle oder die Bedeutung, nie den Farbton. Kein alter Name bekommt eine neue Bedeutung, damit keine Seite still die Farbe wechselt.",
+  "Eine Prüfregel lässt in var() nur Namen aus der einen Liste der Rollen zu und weist Farbwerte außerhalb der Schemata ab, außer gekennzeichnete externe Vorgaben. Tippfehler gehen so nie still durch.",
+  "Umstellung ohne stilles Verlieren: Alte Namen bleiben als Verweise, solange der Prüfer sie irgendwo meldet (auch in letzten grünen Fassungen); in der Übergangszeit meldet er sie als Hinweis mit Datei und Zeile, danach weist er sie ab, erst dann verschwinden die Verweise.",
+  "Bilder und Website-Entwürfe (assets/) sind von der Regel ausgenommen; sie sind selbst externe Vorgabe.",
 ]
 
 [[block]]
