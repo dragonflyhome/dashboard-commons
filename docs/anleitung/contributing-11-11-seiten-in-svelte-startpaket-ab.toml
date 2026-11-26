@@ -415,9 +415,12 @@ zeilen = [
   ['Ostersonntag', 'ostern = "westlich", "orthodox" oder "astronomisch" (erster Sonntag nach dem ersten Vollmond nach der Gleiche im März)', 'ostern = "orthodox"'],
   ['chinesischer Kalender', 'kalender = "chinesisch", monat (1–12), tag (1–30), wahlweise schaltmonat = true', 'kalender = "chinesisch", monat = 8, tag = 15'],
   ['Sonnentag', 'himmel = "sonnenwende-dezember", "gleiche-maerz", "sonnenwende-juni" oder "gleiche-september" (der Tag in Ortszeit)', 'himmel = "gleiche-maerz"'],
+  ['Sonnentag nach Rolle', 'himmel = "wende-winter", "gleiche-fruehling", "wende-sommer" oder "gleiche-herbst"; auf der Südhalbkugel die andere Jahreshälfte', 'himmel = "wende-winter"'],
+  ['Ostern nach der Frühlingsgleiche des Orts', 'ostern = "gleiche-fruehling" (wie astronomisch, im Süden nach der Gleiche im September)', 'ostern = "gleiche-fruehling"'],
   ['Mondphase nach einem Fest', 'himmel = "neumond", "erstes-viertel", "vollmond" oder "letztes-viertel", nach, wahlweise nummer (1–13); der Bezugstag selbst zählt nicht', 'himmel = "vollmond", nummer = 2, nach = "jahreskreis.yule"'],
   ['Mondmonat mit einem Sonnentag', 'mondmonat = { enthaelt = "<wende oder gleiche>" }; als Tag zählt der Neumond am Anfang', 'mondmonat = { enthaelt = "sonnenwende-juni" }'],
   ['Mondmonat um den n-ten Vollmond', 'mondmonat = { vollmond = n } (1–13), gezählt ab dem Tag nach der Wintersonnenwende', 'mondmonat = { vollmond = 11 }'],
+  ['Ort eines Ereignisses (wahlweise, nur mit regel)', 'ort = "<kennung>" eines benannten Orts aus projects/kalender/daten/standorte.toml; die Regel rechnet dann nach diesem Ort', 'ort = "ferienhaus"'],
 ]
 
 [[block]]
@@ -428,11 +431,30 @@ titel = 'Mond und Jahreskreis (Kalender, Stufe 2)'
 text = '''
 Kurz für dich (Inhaber): Mit kalender = ["jahreskreis"] stehen die vier Sonnentage (Mittwinter, Frühlingsfest, Mittsommer, Herbstfest) und die Mondmonate des Jahres in der Fristenliste, je mit Neumond, Vollmond und Ende. Oben auf der Projektseite steht der laufende Mond mit seinem Namen und den alten Namen samt Quelle zum Aufklappen.
 
-Rechnung. Sonne und Mond rechnet das Dashboard selbst, ohne Netz (Port aus calendrical_calculations, siehe LIESMICH.txt). Die Zeitpunkte liegen im Vergleich mit veröffentlichten Tabellen höchstens wenige Minuten daneben; der Tag gilt in der Ortszeit des Rechners. Liegt ein Ereignis wenige Minuten um Mitternacht, kann der Tag um eins abweichen. Ein Monat läuft von Neumond zu Neumond; ob er einen Sonnentag enthält, entscheiden die Zeitpunkte, nicht die Tage. Gerechnet wird für die Nordhalbkugel; die Wahl aus dem Ort kommt mit einer späteren Stufe.
+Rechnung. Sonne und Mond rechnet das Dashboard selbst, ohne Netz (Port aus calendrical_calculations, siehe LIESMICH.txt). Die Zeitpunkte liegen im Vergleich mit veröffentlichten Tabellen höchstens wenige Minuten daneben; der Tag gilt in der Ortszeit des Rechners. Liegt ein Ereignis wenige Minuten um Mitternacht, kann der Tag um eins abweichen. Ein Monat läuft von Neumond zu Neumond; ob er einen Sonnentag enthält, entscheiden die Zeitpunkte, nicht die Tage. Gerechnet wird für den Heimatort (Stufe 3); ohne Ort für die Nordhalbkugel in der Ortszeit des Rechners.
 
-Der Jahreskreis. Feste mit Tag sind nur die vier Sonnentage. Imbolc, der Dreimilch-Mond, Lughnassad (Lammas) und Samhain sind Monate: der Monat um den 2., 5., 8. und 11. Vollmond nach der Wintersonnenwende; ein Vollmond am Tag der Wende zählt nicht. Als Termin zählt der Anfang des Monats, eine Zeile je Monat. Jede Jahreszeit beginnt mit dem Neumond nach einem dieser Monate und zählt ihre Monde durch („1. Wintervollmond“); der Monat mit dem Sonnentag trägt dessen Namen dazu („2. Wintervollmond · Yule-Mond“). Das Festjahr läuft vom Monat mit der Wintersonnenwende bis vor den nächsten, 12 oder 13 Monate; der zusätzliche Mond fällt in den Winter.
+Der Jahreskreis. Feste mit Tag sind nur die vier Sonnentage. Imbolc, Beltane, Lughnassad (Lammas) und Samhain sind Monate: der Monat um den 2., 5., 8. und 11. Vollmond nach der Wintersonnenwende; ein Vollmond am Tag der Wende zählt nicht. Als Termin zählt der Anfang des Monats, eine Zeile je Monat. Jede Jahreszeit beginnt mit dem Neumond nach einem dieser Monate und zählt ihre Monde durch („1. Wintervollmond“); der Monat mit dem Sonnentag trägt dessen Namen dazu („2. Wintervollmond · Yule-Mond“). Das Festjahr läuft vom Monat mit der Wintersonnenwende bis vor den nächsten, 12 oder 13 Monate; der zusätzliche Mond fällt in den Winter.
 
 Namen. Zuerst steht der sprechende Name, daneben ein überlieferter mit Sprache und Quelle, in der Einzelansicht alle mit ihrer Stufe: belegt (in einer alten Quelle), erschlossen (rekonstruiert) oder neuzeitlich. Die Namen sind Daten in vorlagen/kalender/jahreskreis.toml (fest.namen und jahreszeit), nicht Code. Ostern nach dem Mond steht im Jahreskreis und im Kirchenjahr; fällt es auf den Sonntag des kirchlichen Osterns, steht eine Zeile mit beiden Herkünften.'''
+
+[[block]]
+titel = 'Orte, Zeitzonen und Tageszeiten (Kalender, Stufe 3)'
+text = '''
+Kurz für dich (Inhaber): Die Seite Kalender zeigt für einen Ort Sonnenaufgang, Mittag, Sonnenuntergang, die Dämmerungen und die Taglänge, dazu den laufenden Mond und die Feste der nächsten 30 Tage. Jeden anderen Ort kannst du dort nachschlagen; er wird nur gespeichert, wenn du „Ort merken“ drückst.
+
+Orte. Der öffentliche Standardort steht in vorlagen/kalender/standorte.toml: die Mitte Deutschlands, eine allgemeine Vorgabe, kein Wohnort. Eigene Orte stehen privat in projects/kalender/daten/standorte.toml, je Ort kennung (neutral, etwa zuhause oder ort-2), titel, breite und laenge in Grad (Norden und Osten positiv, beim Lesen auf 0,1° gerundet, etwa 10 km), herkunft = "hand" oder "stadt", zeitzone (IANA, etwa "Europe/Berlin") und wahlweise versatz (etwa "+08:00") sowie heimat = true für höchstens einen Ort. Der Heimatort ist der private Ort mit heimat = true, sonst der Standardort; nach ihm rechnen Jahreskreis und Mondmonate. Koordinaten, Zone und Versatz privater Orte gehen nie hinaus: nicht in Antworten außer der Kalenderseite, nicht in Sätze von pruefe, nicht ins Protokoll.
+
+Zeitzonen. Die Regeln samt Geschichte kommen aus der IANA-Datenbank (Bibliothek jiff, Daten mitgeliefert); die Fassung steht auf der Kalenderseite. Solange eine Zone noch keine Zonenzeit hatte (Kürzel LMT), gilt die mittlere Ortszeit des Orts selbst. Zeiten vor 1970 sind in der IANA-Datenbank unsicher und tragen diesen Zusatz. Ein Tag beginnt mit der frühesten Uhrzeit seines Datums (fehlt Mitternacht, mit der Umstellung); einen Tag, den es am Ort nicht gibt, hat dort keine Termine. An Umstellungstagen steht hinter jeder Uhrzeit das Kürzel der Zone.
+
+Halbkugel und Wendekreise. Der Jahreskreis nennt seine Sonnentage nach ihrer Rolle (himmel = "wende-winter", "gleiche-fruehling", "wende-sommer", "gleiche-herbst", ebenso in mondmonat.enthaelt; Ostern dort mit ostern = "gleiche-fruehling"). Auf der Südhalbkugel tauschen sie damit die Jahreshälfte (Yule im Juni, Ostara im September); das Kirchenjahr bleibt an der Gleiche im März. Zwischen den Wendekreisen (23,44° Nord und Süd) zeigt der Jahreskreis nur die Sonnentage mit beschreibendem Titel und den Mond mit Phase, ohne Fest- und Monatsnamen, mit einem Satz warum; ein Termin, der dort auf ein Fest des Jahreskreises verweist, zeigt „Gilt an diesem Ort nicht“.
+
+Ereignisse mit Ort. Ein Ereignis mit regel kann ort = "<kennung>" tragen; dann gelten Kalendertag, Halbkugel und Wendekreise dieses Orts. Ein unbekannter Ort ist ein Fehler in pruefe. Die Herkunft nennt den Ort mit Titel und Zeitzone, nie mit Zahlen, etwa „… · Ort Ferienhaus · Europe/Lisbon“.
+
+Tageszeiten. Aufgang und Untergang mit Refraktion und halbem Sonnendurchmesser (0,833° auf Meereshöhe), wahrer Mittag, Dämmerung bei 6, 12 und 18 Grad (vorlagen/kalender/tageszeiten.toml). Im Polargebiet steht „Sonne geht nicht unter“ oder „geht nicht auf“, eine fehlende Dämmerung als „keine“, nie eine erfundene Zeit. Am Tag der Sommersonnenwende des Heimatorts steht auf der Kalenderseite „Längster Tag“ mit der Taglänge.
+
+Schnittstelle, nur angemeldet. GET /api/kalender/standorte (Kennung, Titel, Zeitart), GET /api/kalender/zonen (IANA-Namen und Fassung), GET /api/kalender/tag?datum=&ort=, GET /api/kalender/feste?von=&bis=&ort= (höchstens 400 Tage); in der Adresse stehen nur Kennungen. Für einen anderen Ort POST /api/kalender/abfrage mit breite, laenge und wahlweise zeitzone im Rumpf; gerechnet wird gerundet auf 0,1°, ohne Zone mit einem Versatz nach der Länge (als Näherung gekennzeichnet), nichts wird gespeichert oder protokolliert. POST /api/kalender/standorte mit titel, breite, laenge und zeitzone merkt einen Ort unter einer neutralen Kennung (ort-1, ort-2 …) in der privaten Datei; festschreiben tut ihn wie alles im Inhalt ein Chat.
+
+Veröffentlichung. Vor jeder Fassung zieht der Dashboard-Chat die Zeitzonen-Daten mit cargo update -p jiff-tzdb nach (eigener Commit), damit neue Regeln der Länder mitkommen.'''
 
 [[block]]
 titel = 'So fängst du an'

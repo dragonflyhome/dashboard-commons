@@ -36,11 +36,13 @@ pub mod daten;
 pub mod fassungen;
 pub mod fristen;
 pub mod gruppen;
+pub mod kalender;
 pub mod lesen;
 pub mod passkey;
 pub mod plan;
 pub mod projekt;
 pub mod schwerpunkte;
+pub mod standorte;
 pub mod system_seiten;
 pub mod verlauf;
 

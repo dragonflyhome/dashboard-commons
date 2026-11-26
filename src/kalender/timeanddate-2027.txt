@@ -1,0 +1,15 @@
+# Quelle: timeanddate.com, Sonnenauf- und -untergang je Stadt und Monat, https://www.timeanddate.com/sun/<land>/<stadt>?month=<M>&year=2027 (uk/london, spain/madrid, australia/sydney, singapore/singapore, iceland/reykjavik, norway/tromso), abgerufen 2026-11-26
+# Zeitangaben: Ortszeit laut Seite ("All times are local time for <Stadt>"); auf Seiten mit Sommerzeit im Monat zusaetzlich "Time is adjusted for DST when applicable" (London 06, Madrid 07, Sydney 12, Tromsoe 06 und 03); Zeiten mit Refraktion; mittag = Solar Noon; buergerlich = Civil Twilight Start/End
+# Koordinaten laut Seite (nur im Seitenskript TAD.lat/TAD.lon, nicht als sichtbarer Text): London: 51.507, -0.127; Madrid: 40.414, -3.704; Sydney: -33.864, 151.208; Singapur: 1.284, 103.851; Reykjavik: 64.146, -21.942; Tromsoe: 69.649, 18.955
+London;2027-06-21;aufgang=04:43;untergang=21:21;mittag=13:02;buergerlich_beginn=03:55;buergerlich_ende=22:09;text=Astronomical Twilight "Rest of night" (keine astronomische Nacht)
+London;2027-12-21;aufgang=08:03;untergang=15:53;mittag=11:58;buergerlich_beginn=07:23;buergerlich_ende=16:33
+Madrid;2027-01-15;aufgang=08:36;untergang=18:12;mittag=13:24;buergerlich_beginn=08:06;buergerlich_ende=18:42
+Madrid;2027-07-15;aufgang=06:57;untergang=21:44;mittag=14:20;buergerlich_beginn=06:24;buergerlich_ende=22:16
+Sydney;2027-06-21;aufgang=06:59;untergang=16:53;mittag=11:56;buergerlich_beginn=06:32;buergerlich_ende=17:21
+Sydney;2027-12-21;aufgang=05:40;untergang=20:05;mittag=12:52;buergerlich_beginn=05:11;buergerlich_ende=20:34
+Singapur;2027-06-21;aufgang=07:00;untergang=19:12;mittag=13:06;buergerlich_beginn=06:37;buergerlich_ende=19:34
+Reykjavik;2027-06-21;aufgang=02:55;untergang=00:03;mittag=13:29;buergerlich_beginn=-;buergerlich_ende=-;text=Aufgangszelle zweizeilig "- / 02:55", Untergangszelle "00:03 / -": Untergang 00:03 kurz nach Mitternacht (Tageslicht des Vortags), Aufgang 02:55, kein weiterer Untergang an diesem Kalendertag; Tageslaenge 21:08:26; Civil Twilight "Rest of night" (buergerliche Daemmerung die ganze Nacht); nautisch und astronomisch "-"
+Reykjavik;2027-03-20;aufgang=07:29;untergang=19:42;mittag=13:35;buergerlich_beginn=06:41;buergerlich_ende=20:30
+Tromsoe;2027-06-21;aufgang=-;untergang=-;mittag=12:45;buergerlich_beginn=-;buergerlich_ende=-;text=Up, doesn’t set (Mitternachtssonne); Daemmerungsspalten astronomisch, nautisch, buergerlich je "-"
+Tromsoe;2027-12-21;aufgang=-;untergang=-;mittag=11:42;buergerlich_beginn=09:31;buergerlich_ende=13:53;text=Down, doesn’t rise (Polarnacht); Mittag bei Sonnenhoehe -2,3°
+Tromsoe;2027-03-20;aufgang=05:45;untergang=18:00;mittag=11:51;buergerlich_beginn=04:44;buergerlich_ende=19:01

@@ -602,6 +602,10 @@ fn daten_pruefen(daten_ordner: &Path, slug: &str, befunde: &mut Vec<Befund>) {
                 stand_pflege_hinweise(&daten, &text, &datei, abgeleitet::heute(), befunde);
                 zeitstrahl_hinweise(&daten, &text, &datei, befunde);
                 fristen_hinweise(&daten, &text, &datei, abgeleitet::heute(), befunde);
+                if let Some(f) = &daten.fristen {
+                    let projekte = daten_ordner.parent().and_then(Path::parent).unwrap_or(Path::new("."));
+                    fristen_orte(f, &text, &datei, projekte, befunde);
+                }
                 if let Some(f) = &daten.fragen {
                     let fragen: Vec<Frage> = f.inhalte().into_iter().flat_map(|t| t.frage.clone()).collect();
                     fragen_hinweise(&fragen, &text, &datei, befunde);
@@ -1112,6 +1116,33 @@ fn fristen_hinweise(daten: &ProjektDaten, quelle: &str, datei: &str, heute: chro
                     e.kennung
                 ),
             ));
+        }
+    }
+}
+
+/// Kalender, Stufe 3: `ort` an einem Ereignis verweist auf einen benannten Ort,
+/// aus der Vorlage oder aus der privaten `standorte.toml` im Projekt `kalender`.
+/// Ein unbekannter ist ein Fehler wie ein unbekanntes Fest. Hier und nicht in
+/// `fristen_ueber_die_datei`, weil das Lesen einer Datei die andere nicht sieht.
+/// Der Satz nennt Ereignis und Kennung, nie Zahlen. Eine unlesbare
+/// `standorte.toml` zählt wie keine (ihren Fehler meldet das Projekt `kalender`).
+/// shortcut: Die privaten Orte kommen aus demselben Projektordner wie das geprüfte
+/// Projekt; liegt `kalender` in einer anderen Inhaltsquelle, über `Quellen` suchen.
+fn fristen_orte(f: &crate::vertrag::daten::Datei<crate::vertrag::fristen::Fristen>, quelle: &str, datei: &str, projekte: &Path, befunde: &mut Vec<Befund>) {
+    use crate::kalender::orte::{Orte, PROJEKT, satz_unbekannt, vorlage};
+    let mut orte = None;
+    for e in f.inhalte().into_iter().flat_map(|t| &t.ereignis) {
+        let Some(k) = e.ort.as_deref() else { continue };
+        let orte = orte.get_or_insert_with(|| {
+            let pfad = projekte.join(PROJEKT).join("daten").join("standorte.toml");
+            let privat = std::fs::read_to_string(pfad)
+                .ok()
+                .and_then(|t| crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>("standorte.toml", &t).ok());
+            Orte::aus(privat.as_ref(), vorlage().as_ref())
+        });
+        if orte.finden(k).is_none() {
+            let zeile = zeile_mit(quelle, "kennung", &e.kennung).map(|z| feld_im_eintrag(quelle, z, "ort").unwrap_or(z));
+            befunde.push(Befund::fehler(datei, zeile, format!("Beim Ereignis „{}“: {}", e.kennung, satz_unbekannt(k))));
         }
     }
 }
@@ -2274,6 +2305,32 @@ mod tests {
             "{}",
             b[0]
         );
+    }
+
+    /// Kalender, Stufe 3: Ein unbekannter `ort` an einem Ereignis ist ein Fehler,
+    /// geprüft gegen die Vorlage (`mitte`) und die privaten Orte im Projekt
+    /// `kalender`; der Satz nennt Ereignis und Kennung, nie Zahlen.
+    #[test]
+    fn ereignis_mit_unbekanntem_ort() {
+        let (dir, ordner) = temp_projekt("ereignis-ort");
+        let datei = ordner.join("daten").join("fristen.toml");
+        let mit_ort = |ort: &str| {
+            std::fs::write(&datei, format!("kalender = [\"jahreskreis\"]\n\n[[ereignis]]\nkennung = \"feier\"\ntitel = \"Feier\"\nregel = {{ fest = \"jahreskreis.litha\" }}\nort = \"{ort}\"\n")).unwrap();
+            pruefe_projekt(&dir, "p")
+        };
+        assert_eq!(zaehlen(&mit_ort("mitte")), (0, 0));
+        let b = mit_ort("zuhause");
+        assert_eq!(zaehlen(&b), (1, 0), "{b:#?}");
+        let satz = b[0].to_string();
+        assert!(satz.starts_with("projects/p/daten/fristen.toml, Zeile 7: Beim Ereignis „feier“: Den Ort „zuhause“ gibt es nicht."), "{satz}");
+        assert!(!b[0].text.chars().any(|c| c.is_ascii_digit()), "{satz}");
+        // Mit der privaten Datei im Projekt kalender gibt es ihn.
+        let k = dir.join("kalender").join("daten");
+        std::fs::create_dir_all(&k).unwrap();
+        std::fs::write(k.join("standorte.toml"), "[[standort]]\nkennung = \"zuhause\"\ntitel = \"Zuhause\"\nbreite = 47.3\nlaenge = 73.9\nherkunft = \"hand\"\nzeitzone = \"Asia/Almaty\"\nheimat = true\n").unwrap();
+        let b = mit_ort("zuhause");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(zaehlen(&b), (0, 0), "{b:#?}");
     }
 
     /// Etappe 2e: `kennung` im Zeitstrahl. Doppelt (auch über Teile) oder

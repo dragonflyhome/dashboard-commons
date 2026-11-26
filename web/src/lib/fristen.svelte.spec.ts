@@ -266,7 +266,9 @@ describe('Baustein Fristenliste', () => {
 					ungeprueft: true
 				}
 			],
-			zeitraum: { anfang: '2026-11-09', vollmond: '2026-11-24', ende: '2026-12-09' }
+			zeitraum: { anfang: '2026-11-09', vollmond: '2026-11-24', ende: '2026-12-09' },
+			hinweis: null,
+			phase: 'zunehmend'
 		};
 		const { container } = render(Fristenliste, { liste: { ...liste([samhain]), mond } });
 		const zeitraum = container.querySelector('li [data-zeitraum]');
@@ -279,6 +281,7 @@ describe('Baustein Fristenliste', () => {
 			/Laufender Mond:\s*1\. Wintervollmond\s*· Blōtmōnaþ \(altenglisch, Beda\)/
 		);
 		expect(kasten?.textContent).toMatch(/12\. Monat im Festjahr, Jahreskreis/);
+		expect(kasten?.querySelector('[data-phase]')?.textContent).toBe('zunehmend');
 		expect(kasten?.querySelector('details')).not.toHaveAttribute('open');
 		expect(kasten?.querySelector('details li:last-child')?.textContent).toMatch(
 			/herbistmanoth \(althochdeutsch\).*belegt, nicht gegen eine Fachausgabe geprüft/s

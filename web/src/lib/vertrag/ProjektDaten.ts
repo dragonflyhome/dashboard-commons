@@ -10,6 +10,7 @@ import type { Kanban } from "./Kanban";
 import type { Kennzahlen } from "./Kennzahlen";
 import type { Orte } from "./Orte";
 import type { Plan } from "./Plan";
+import type { Standorte } from "./Standorte";
 import type { Zeitstrahl } from "./Zeitstrahl";
 
 /**
@@ -30,6 +31,10 @@ fristen: Datei<Fristen> | null,
  * `daten/plan.toml` (Etappe B8): die Etappen, nur Absicht.
  */
 plan: Datei<Plan> | null, 
+/**
+ * `daten/standorte.toml` (Kalender, Stufe 3), ohne Koordinaten.
+ */
+standorte: Datei<Standorte> | null, 
 /**
  * `daten/eigen-<name>.toml` unter dem Schlüssel `<name>`, als JSON durchgereicht.
  */

@@ -1,4 +1,5 @@
-# Kalender „Jahreskreis“ nach Sonne und Mond (Nordhalbkugel).
+# Kalender „Jahreskreis“ nach Sonne und Mond. Die Sonnentage stehen nach ihrer Rolle
+# (wende-winter …): Auf der Südhalbkugel tauschen sie die Jahreshälfte (Yule im Juni).
 # Eingebaut in den Dienst; welche Kalender angezeigt werden, steht im Projekt `kalender`.
 # Regelarten und Prüfung: src/kalender/mod.rs.
 #
@@ -6,7 +7,7 @@
 # - Feste mit Tag sind nur die vier Sonnentage (Wenden und Gleichen), am Tag des
 #   berechneten Zeitpunkts in Ortszeit.
 # - Ein Monat läuft von Neumond zu Neumond und heißt nach seinem Vollmond. Die
-#   Sonnenmonate enthalten einen Sonnentag; Imbolc, Dreimilch-Mond, Lughnassad und Samhain
+#   Sonnenmonate enthalten einen Sonnentag; Imbolc, Beltane, Lughnassad und Samhain
 #   sind der Monat um den 2., 5., 8. und 11. Vollmond nach dem kürzesten Tag (ein
 #   Vollmond am Tag der Wende zählt nicht). Als Termin zählt der Anfang des Monats.
 # - Das Festjahr läuft vom Monat mit der Wintersonnenwende bis vor den nächsten
@@ -29,7 +30,7 @@ titel = "Jahreskreis"
 [[fest]]
 kennung = "yule"
 titel = "Mittwinter (Yule)"
-regel = { himmel = "sonnenwende-dezember" }
+regel = { himmel = "wende-winter" }
 
 [[fest.namen]]
 name = "Giuli"
@@ -63,7 +64,7 @@ ungeprueft = true
 [[fest]]
 kennung = "ostara"
 titel = "Frühlingsfest (Ostara)"
-regel = { himmel = "gleiche-maerz" }
+regel = { himmel = "gleiche-fruehling" }
 
 [[fest.namen]]
 name = "Ostara"
@@ -75,7 +76,7 @@ stufe = "neuzeitlich"
 [[fest]]
 kennung = "litha"
 titel = "Mittsommer (Litha)"
-regel = { himmel = "sonnenwende-juni" }
+regel = { himmel = "wende-sommer" }
 
 [[fest.namen]]
 name = "Litha"
@@ -87,7 +88,7 @@ stufe = "neuzeitlich"
 [[fest]]
 kennung = "mabon"
 titel = "Herbstfest (Mabon)"
-regel = { himmel = "gleiche-september" }
+regel = { himmel = "gleiche-herbst" }
 
 [[fest.namen]]
 name = "Mabon"
@@ -101,7 +102,20 @@ stufe = "neuzeitlich"
 [[fest]]
 kennung = "ostern"
 titel = "Ostern nach dem Mond"
-regel = { ostern = "astronomisch" }
+regel = { ostern = "gleiche-fruehling" }
+
+# Einer von drei Donnerstagen, die getrennt benannt stehen: dieser im Jahreskreis,
+# Christi Himmelfahrt und Fronleichnam im Kirchenjahr. Der Tag der Gleiche selbst zählt nicht.
+[[fest]]
+kennung = "ostara-donnerstag"
+titel = "Erster Donnerstag nach Ostara"
+regel = { wochentag = "donnerstag", nach = "ostara" }
+
+[[fest.namen]]
+name = "Donnerstag nach Ostara"
+sprache = "eigene Benennung"
+quelle = "eigene Benennung nach dem Festnamen Ostara (dieser seit den 1970er Jahren)"
+stufe = "neuzeitlich"
 
 # Die vier Sonnenmonate: der Monat mit dem Sonnentag. Er trägt eigene alte Namen
 # (der erste steht neben dem Monat); die Stufe des Festnamens gilt auch für ihn.
@@ -109,7 +123,7 @@ regel = { ostern = "astronomisch" }
 [[fest]]
 kennung = "yule-mond"
 titel = "Yule-Mond"
-regel = { mondmonat = { enthaelt = "sonnenwende-dezember" } }
+regel = { mondmonat = { enthaelt = "wende-winter" } }
 namen = [
   { name = "Giuli", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Beda nennt die zwei Monate um die Wintersonnenwende Giuli; das Wort ist belegt, seine Herkunft ungeklärt.", stufe = "belegt" },
   { name = "heilagmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
@@ -120,7 +134,7 @@ namen = [
 [[fest]]
 kennung = "ostara-mond"
 titel = "Ostara-Mond"
-regel = { mondmonat = { enthaelt = "gleiche-maerz" } }
+regel = { mondmonat = { enthaelt = "gleiche-fruehling" } }
 namen = [
   { name = "Ēosturmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "nach einer Göttin Eostre; die Göttin nennt nur Beda, ob es sie gab, ist umstritten", stufe = "belegt" },
   { name = "ostarmanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
@@ -131,7 +145,7 @@ namen = [
 [[fest]]
 kennung = "litha-mond"
 titel = "Litha-Mond"
-regel = { mondmonat = { enthaelt = "sonnenwende-juni" } }
+regel = { mondmonat = { enthaelt = "wende-sommer" } }
 namen = [
   { name = "Līþa", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "„mild, schiffbar“; Beda nennt zwei Monate um die Sommersonnenwende so, in Jahren mit 13 Monden drei (Thrilithi)", stufe = "belegt" },
   { name = "heuuimanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
@@ -142,7 +156,7 @@ namen = [
 [[fest]]
 kennung = "mabon-mond"
 titel = "Mabon-Mond"
-regel = { mondmonat = { enthaelt = "gleiche-september" } }
+regel = { mondmonat = { enthaelt = "gleiche-herbst" } }
 namen = [
   { name = "Hāligmōnaþ", sprache = "altenglisch", quelle = "Beda, De temporum ratione 15, um 725", bedeutung = "Monat heiliger Bräuche; in Grenzlage zu Winterfylleþ", stufe = "belegt" },
   { name = "windumemanoth", sprache = "althochdeutsch", quelle = "Einhard, Vita Karoli Magni 29, 9. Jahrhundert", stufe = "belegt", ungeprueft = true },
@@ -188,7 +202,7 @@ ungeprueft = true
 
 [[fest]]
 kennung = "dreimilch"
-titel = "Dreimilch-Mond"
+titel = "Beltane"
 regel = { mondmonat = { vollmond = 5 } }
 
 [[fest.namen]]
@@ -197,6 +211,14 @@ sprache = "altenglisch"
 quelle = "Beda, De temporum ratione 15, um 725"
 bedeutung = "Dreimilch: Das Vieh wurde dreimal am Tag gemolken."
 stufe = "belegt"
+
+[[fest.namen]]
+name = "Beltaine, Beltane"
+sprache = "altirisch"
+quelle = "Cormacs Glossar, 10. Jahrhundert"
+bedeutung = "Fest zum Sommeranfang; Cormac deutet den Namen als „glückliches Feuer“"
+stufe = "belegt"
+ungeprueft = true
 
 [[fest.namen]]
 name = "winnemanoth"

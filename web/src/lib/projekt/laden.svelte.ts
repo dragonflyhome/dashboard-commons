@@ -107,12 +107,13 @@ const standard: Umgebung = {
 
 /**
  * Etappe B2: Dateien aus `daten/` mit persönlichem Inhalt (Fragen, seit
- * Etappe B3 Fristen). Der Server verlangt für jede Datei die Anmeldung (seit
- * Schritt E3 auch im Handler selbst). Ohne Anmeldung fragt der Lader diese
+ * Etappe B3 Fristen, seit Kalender Stufe 3 Standorte). Der Server verlangt
+ * für jede Datei die Anmeldung (seit Schritt E3 auch im Handler selbst).
+ * Ohne Anmeldung fragt der Lader diese
  * gar nicht erst an (`mitZugang`), damit eine Seite beim Laden höchstens einen
  * 401 erzeugt; er zeigt gleich den Satz zum Anmelden (`geschuetzt.spec.ts`).
  */
-export const GESCHUETZTE_DATEN: readonly string[] = ['fragen', 'fristen'];
+export const GESCHUETZTE_DATEN: readonly string[] = ['fragen', 'fristen', 'standorte'];
 
 /**
  * Dateien, die auch von Anstehend abhängen (Etappe B2: die Warteschlange der

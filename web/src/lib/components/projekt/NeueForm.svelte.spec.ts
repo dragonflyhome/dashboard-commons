@@ -32,6 +32,7 @@ const daten: ProjektDaten = {
 	orte: null,
 	fristen: null,
 	plan: null,
+	standorte: null,
 	eigen: { rezept: { menge: 3 } }
 };
 

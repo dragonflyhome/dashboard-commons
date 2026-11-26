@@ -97,6 +97,16 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         OeffnenAntwort,
         // Schritt E1b: die Orte mit Pfad (geschützt)
         OrteVoll,
+        // Kalender, Stufe 3
+        crate::vertrag::kalender::KalenderOrte,
+        crate::vertrag::kalender::KalenderTag,
+        crate::vertrag::kalender::KalenderFeste,
+        crate::vertrag::kalender::KalenderAbfrage,
+        crate::vertrag::kalender::KalenderAbfrageAntwort,
+        crate::vertrag::kalender::KalenderZonen,
+        crate::vertrag::kalender::KalenderMerken,
+        crate::vertrag::kalender::KalenderStaedteAnfrage,
+        crate::vertrag::kalender::KalenderStaedte,
         Block,
         Projekt,
         Status,

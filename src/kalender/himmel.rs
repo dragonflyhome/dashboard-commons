@@ -11,6 +11,14 @@
 // wie bei NASA (Espenak/Meeus) statt +0,5628, sonst springt ΔT 2050/51 um knapp zwei
 // Minuten; neu `phase_ab` und `sonnenlaenge_ab` nach dem Lisp-Code (lunar-phase-at-or-after,
 // solar-longitude-after); deutsche Namen.
+// Teil 2 (Stufe 3): Schiefe der Ekliptik, Deklination, Zeitgleichung, Refraktion,
+// `sine_offset`, `approx_moment_of_depression`, `moment_of_depression`, `local_from_apparent`,
+// `universal_from_local`; statt `Location` Breite und Länge als Zahlen (Höhe nur in der
+// Refraktion); `moment_of_depression` als Schleife, die bei 30 Sekunden (30/86400 Tagen)
+// abbricht statt bei `30.0` Tagen (dort endet die Suche immer nach dem ersten Schritt), mit
+// höchstens 10 Schritten, ohne Zusammenlaufen `None`; Deklination vorzeichenrichtig (−90…90 statt
+// 0…360, gleichwertig in tan und cos); Höhe nur in `refraktion` (für den Abgleich, sonst 0);
+// `early` als `morgens`.
 // Der Text der Lizenz steht in LICENSES/Apache-2.0.txt.
 
 //! Rechenkern für Sonne und Mond (Kalender, Stufe 2). Ein Zeitpunkt ist ein
@@ -282,6 +290,99 @@ pub fn sonnenlaenge_ab(lambda: f64, t: f64) -> f64 {
     umkehren(sonnenlaenge, lambda, t.max(tau - 5.0), tau + 5.0)
 }
 
+// ----- Teil 2: Sonnenstand am Ort -----
+
+/// Schiefe der Ekliptik in Grad (Neigung der Erdachse, etwa 23,44°).
+fn schiefe(t: f64) -> f64 {
+    23.0 + 26.0 / 60.0 + 21.448 / 3600.0 + poly(jahrhunderte(t), &[0.0, -46.8150 / 3600.0, -0.00059 / 3600.0, 0.001813 / 3600.0])
+}
+
+/// Deklination in Grad (−90 bis 90) eines Punkts mit ekliptikaler Breite `beta` und Länge `lambda`.
+pub fn deklination(t: f64, beta: f64, lambda: f64) -> f64 {
+    let e = schiefe(t).to_radians();
+    (beta.to_radians().sin() * e.cos() + beta.to_radians().cos() * e.sin() * lambda.to_radians().sin()).asin().to_degrees()
+}
+
+/// Zeitgleichung in Tagen: wahre minus mittlere Sonnenzeit (höchstens ein halber Tag).
+fn zeitgleichung(t: f64) -> f64 {
+    let c = jahrhunderte(t);
+    let lambda = poly(c, &[280.46645, 36000.76983, 0.0003032]);
+    let anomalie = poly(c, &[357.52910, 35999.05030, -0.0001559, -0.00000048]);
+    let exz = poly(c, &[0.016708617, -0.000042037, -0.0000001236]);
+    let y = (schiefe(t) / 2.0).to_radians().tan().powi(2);
+    let g = (y * sin_grad(2.0 * lambda) - 2.0 * exz * sin_grad(anomalie) + 4.0 * exz * y * sin_grad(anomalie) * (2.0 * lambda).to_radians().cos()
+        - 0.5 * y * y * sin_grad(4.0 * lambda)
+        - 1.25 * exz * exz * sin_grad(2.0 * anomalie))
+        / (2.0 * std::f64::consts::PI);
+    g.signum() * g.abs().min(0.5)
+}
+
+/// Refraktion samt Kimmtiefe in Grad für eine Höhe in Metern (auf Meereshöhe 34′).
+pub(crate) fn refraktion(hoehe: f64) -> f64 {
+    let h = hoehe.max(0.0);
+    let r = 6.372e6;
+    34.0 / 60.0 + (r / (r + h)).acos().to_degrees() + 19.0 / 3600.0 * h.sqrt()
+}
+
+/// Weltzeit aus mittlerer Ortszeit der Länge `laenge` (Grad, Osten positiv).
+pub fn welt_aus_lokal(t: f64, laenge: f64) -> f64 {
+    t - laenge / 360.0
+}
+
+/// Mittlere Ortszeit aus wahrer (scheinbarer) Sonnenzeit.
+pub fn lokal_aus_scheinbar(t: f64, laenge: f64) -> f64 {
+    t - zeitgleichung(welt_aus_lokal(t, laenge))
+}
+
+/// Sinus des Abstands zwischen der Sonne zur Ortszeit `t` und dem Stand mit der
+/// Tiefe `alpha` unter dem Horizont. Über 1: Die Sonne bleibt darüber; unter −1: darunter.
+pub fn sinus_abstand(t: f64, breite: f64, laenge: f64, alpha: f64) -> f64 {
+    let u = welt_aus_lokal(t, laenge);
+    let delta = deklination(u, 0.0, sonnenlaenge(u)).to_radians();
+    let phi = breite.to_radians();
+    phi.tan() * delta.tan() + alpha.to_radians().sin() / (delta.cos() * phi.cos())
+}
+
+/// Ungefährer Zeitpunkt (mittlere Ortszeit) nahe `t`, an dem die Sonne die Tiefe
+/// `alpha` erreicht, morgens oder abends; `None`, wenn sie das an diesem Tag nicht tut.
+fn tiefe_ungefaehr(t: f64, breite: f64, laenge: f64, alpha: f64, morgens: bool) -> Option<f64> {
+    let tag = t.floor();
+    let ersatz = if alpha >= 0.0 { if morgens { tag } else { tag + 1.0 } } else { tag + 0.5 };
+    let mut wert = sinus_abstand(t, breite, laenge, alpha);
+    if wert.abs() > 1.0 {
+        wert = sinus_abstand(ersatz, breite, laenge, alpha);
+    }
+    if wert.abs() > 1.0 {
+        return None;
+    }
+    let versatz = (wert.asin().to_degrees().rem_euclid(360.0) / 360.0 + 0.5).rem_euclid(1.0) - 0.5;
+    Some(lokal_aus_scheinbar(tag + if morgens { 0.25 - versatz } else { 0.75 + versatz }, laenge))
+}
+
+/// Größter Abstand zweier Schritte, bei dem die Suche nach der Tiefe endet: 30 Sekunden.
+pub const TIEFE_GENAU: f64 = 30.0 / 86400.0;
+
+/// Der Zeitpunkt (mittlere Ortszeit) nahe `t`, an dem die Sonne die Tiefe `alpha`
+/// erreicht (negativ: über dem Horizont), morgens oder abends; `None`, wenn sie das
+/// an diesem Tag nicht tut. `genau`: Abbruch, sobald zwei Schritte so nah beieinander liegen.
+pub fn tiefe_mit(t: f64, breite: f64, laenge: f64, alpha: f64, morgens: bool, genau: f64) -> Option<f64> {
+    let mut alt = t;
+    for _ in 0..10 {
+        let neu = tiefe_ungefaehr(alt, breite, laenge, alpha, morgens)?;
+        if (alt - neu).abs() < genau {
+            return Some(neu);
+        }
+        alt = neu;
+    }
+    // Ohne Zusammenlaufen (nahe der Polargrenze) gibt es keine Zeit statt einer geratenen.
+    None
+}
+
+/// [`tiefe_mit`] mit der Genauigkeit [`TIEFE_GENAU`].
+pub fn tiefe(t: f64, breite: f64, laenge: f64, alpha: f64, morgens: bool) -> Option<f64> {
+    tiefe_mit(t, breite, laenge, alpha, morgens, TIEFE_GENAU)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,6 +447,54 @@ mod tests {
         for j in 2051..2150 {
             assert!(sekunden(j + 1) > sekunden(j), "steigt {j}");
         }
+    }
+
+    /// Sonnenuntergang in Jerusalem (Höhe 740 m, Weltzeit + 2 h) wie im Test `check_sunset`
+    /// der Quelle; die Werte stammen aus dem Lisp-Code, der bei 30 Sekunden abbricht.
+    fn untergang_jerusalem(tag: f64, genau: f64) -> f64 {
+        let (breite, laenge) = (31.78, 35.24);
+        let lokal = tiefe_mit(tag + 0.75, breite, laenge, refraktion(740.0) + 16.0 / 60.0, false, genau).unwrap();
+        welt_aus_lokal(lokal, laenge) + 2.0 / 24.0
+    }
+
+    const UNTERGANG: [f64; 8] =
+        [694799.7602310368, 704424.7619096127, 708842.730647343, 709409.7603906896, 709580.7240122546, 727274.745361792, 728714.734750938, 744313.699821144];
+
+    #[test]
+    fn untergang_wie_die_quelle() {
+        for (tag, soll) in TAGE.into_iter().zip(UNTERGANG) {
+            let ist = untergang_jerusalem(tag, TIEFE_GENAU);
+            assert!((ist - soll).abs() * 86400.0 < 1.0, "{tag}: {} s", (ist - soll) * 86400.0);
+        }
+        // Schiefe am Tag 727274 aus `check_obliquity`.
+        assert!((schiefe(727274.0) - 23.440304562352033).abs() < 1e-9);
+    }
+
+    /// Mit dem Abbruch der Quelle (`30.0` Tage) endet die Suche nach dem ersten
+    /// Schritt; das weicht hier messbar ab, an hohen Breiten um Minuten.
+    #[test]
+    fn abbruch_nach_30_sekunden() {
+        let mut groesste = 0.0_f64;
+        for tag in TAGE {
+            groesste = groesste.max((untergang_jerusalem(tag, 30.0) - untergang_jerusalem(tag, TIEFE_GENAU)).abs() * 86400.0);
+        }
+        assert!(groesste > 1.0, "Jerusalem: {groesste} s");
+        // Breite 60–68° Nord über ein Jahr: Aufgang und Untergang, größte Abweichung.
+        let alpha = refraktion(0.0) + 16.0 / 60.0;
+        let anfang = gregorian::fixed_from_gregorian(2027, 1, 1).to_i64_date() as f64;
+        let mut hoch = 0.0_f64;
+        for breite in [60.0, 63.0, 66.0, 68.0] {
+            for d in 0..365 {
+                let tag = anfang + f64::from(d);
+                for (start, morgens) in [(0.25, true), (0.75, false)] {
+                    if let (Some(g), Some(f)) = (tiefe_mit(tag + start, breite, 19.0, alpha, morgens, 30.0), tiefe(tag + start, breite, 19.0, alpha, morgens)) {
+                        hoch = hoch.max((g - f).abs() * 1440.0);
+                    }
+                }
+            }
+        }
+        // Gemessen: Jerusalem 1,6 s, hohe Breiten 7,7 min.
+        assert!(hoch > 5.0, "hohe Breiten: {hoch} min");
     }
 
     #[test]

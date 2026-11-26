@@ -12,14 +12,24 @@ export type Mond = {
  */
 kalender: string, 
 /**
- * Der wievielte Monat des Festjahrs (1 = der Monat mit dem kürzesten Tag).
+ * Der wievielte Monat des Festjahrs (1 = der Monat mit dem kürzesten Tag);
+ * zwischen den Wendekreisen keiner.
  */
-nummer: number, 
+nummer: number | null, 
 /**
- * Sprechender Name, etwa „2. Wintervollmond · Yule-Mond“ oder „Samhain“.
+ * Sprechender Name, etwa „2. Wintervollmond · Yule-Mond“ oder „Samhain“;
+ * zwischen den Wendekreisen nur „Mondmonat“.
  */
 name: string, 
 /**
- * Überlieferte Namen, der erste gehört neben den Namen.
+ * Überlieferte Namen, der erste gehört neben den Namen; zwischen den Wendekreisen keine.
  */
-namen: Array<Name>, zeitraum: Zeitraum, };
+namen: Array<Name> | null, zeitraum: Zeitraum, 
+/**
+ * Die Phase am Tag: „Neumond“, „zunehmend“, „erstes Viertel“, „Vollmond“, „letztes Viertel“, „abnehmend“.
+ */
+phase: string, 
+/**
+ * Warum Namen fehlen (zwischen den Wendekreisen).
+ */
+hinweis: string | null, };

@@ -1,0 +1,18 @@
+# Tageszeiten: die Dämmerungen als Tiefe der Sonne unter dem Horizont in Grad.
+# Aufgang und Untergang rechnet der Server mit Refraktion und halbem Sonnendurchmesser
+# (zusammen 0,833° auf Meereshöhe); sie stehen darum nicht hier.
+
+[[daemmerung]]
+kennung = "buergerlich"
+titel = "Bürgerliche Dämmerung"
+winkel = 6.0
+
+[[daemmerung]]
+kennung = "nautisch"
+titel = "Nautische Dämmerung"
+winkel = 12.0
+
+[[daemmerung]]
+kennung = "astronomisch"
+titel = "Astronomische Dämmerung"
+winkel = 18.0

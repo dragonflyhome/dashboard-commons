@@ -124,20 +124,26 @@
 	{/if}
 	{#if fristen.mond}
 		{@const m = fristen.mond}
-		{@const erster = m.namen[0]}
+		{@const namen = m.namen ?? []}
+		{@const erster = namen[0]}
 		<div class="mond" data-mond>
 			<p>
 				<b>Laufender Mond:</b>
 				{m.name}{#if erster}
 					· {nameKurz(erster)}{/if}
-				<span class="muted small">({m.nummer}. Monat im Festjahr, {m.kalender})</span>
-				<br />{@render monat(m.zeitraum)}
+				<span class="muted small"
+					>({m.nummer === null ? '' : `${String(m.nummer)}. Monat im Festjahr, `}{m.kalender})</span
+				>
+				<br /><span data-phase>{m.phase}</span> · {@render monat(m.zeitraum)}
 			</p>
-			{#if m.namen.length > 0}
+			{#if m.hinweis}
+				<p class="muted small">{m.hinweis}</p>
+			{/if}
+			{#if namen.length > 0}
 				<details>
 					<summary class="small">Überlieferte Namen und Quellen</summary>
 					<ul class="small">
-						{#each m.namen as n, i (i)}
+						{#each namen as n, i (i)}
 							<li>
 								<b>{n.name}</b> ({n.sprache}){#if n.bedeutung}: {n.bedeutung}{/if}
 								<span class="muted"

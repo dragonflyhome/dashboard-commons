@@ -10,6 +10,7 @@ import type { Kanban } from "./Kanban";
 import type { Kennzahlen } from "./Kennzahlen";
 import type { Orte } from "./Orte";
 import type { Plan } from "./Plan";
+import type { Standorte } from "./Standorte";
 import type { Zeitstrahl } from "./Zeitstrahl";
 
 /**
@@ -17,4 +18,4 @@ import type { Zeitstrahl } from "./Zeitstrahl";
  * (`GET /api/projekte/<slug>/daten/<name>`): genau das, was in
  * [`ProjektDaten`] für diese Datei steht. Welcher Typ es ist, sagt der Name.
  */
-export type DatenInhalt = Datei<Kennzahlen> | Datei<Ampel> | Datei<Fortschritt> | Datei<Zeitstrahl> | Datei<Gantt> | Datei<Kanban> | Datei<Fluss> | Datei<Fragen> | Datei<Orte> | Datei<Fristen> | Datei<Plan> | Record<string, unknown>;
+export type DatenInhalt = Datei<Kennzahlen> | Datei<Ampel> | Datei<Fortschritt> | Datei<Zeitstrahl> | Datei<Gantt> | Datei<Kanban> | Datei<Fluss> | Datei<Fragen> | Datei<Orte> | Datei<Fristen> | Datei<Plan> | Datei<Standorte> | Record<string, unknown>;

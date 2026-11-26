@@ -249,6 +249,8 @@ pub struct Inhalt {
     pub fragen: Vec<FragenDatei>,
     /// `daten/fristen.toml` je Projekt (Etappe B3): Ereignisse und Fristen.
     pub fristen: Vec<FristenDatei>,
+    /// Benannte Orte des Kalenders; der erste ist der Heimatort.
+    pub orte: crate::kalender::orte::Orte,
     pub speicher: AusDemSpeicher,
     /// Der Datenspeicher fehlt: `speicher` ist leer (keine Aufgaben, Arbeiten,
     /// Einstufungen); Notizen und Fragen aus den Dateien stehen trotzdem da.
@@ -282,6 +284,8 @@ pub struct AusDenDateien {
     pub projekte: Vec<ProjektKopf>,
     pub fragen: Vec<FragenDatei>,
     pub fristen: Vec<FristenDatei>,
+    /// Benannte Orte des Kalenders (`projects/kalender/daten/standorte.toml`).
+    pub orte: crate::kalender::orte::Orte,
     pub schwerpunkte: Schwerpunkte,
     pub gruppen: Vec<GruppeAnzeige>,
     pub hinweise: Vec<String>,
@@ -306,6 +310,7 @@ impl AusDenDateien {
         let mut aus = Self::default();
         // Ein leerer Bestand hieße sonst „alle weg“.
         aus.lesefehler.ordner = !b.ordner_lesbar;
+        aus.orte = crate::kalender::orte::Orte::aus_bestand(b);
         let (projekte, kaputte) = b.liste();
         for p in &projekte {
             aus.projekte.push(ProjektKopf {
@@ -389,6 +394,7 @@ impl Inhalt {
             projekte: dateien.projekte,
             fragen: dateien.fragen,
             fristen: dateien.fristen,
+            orte: dateien.orte,
             speicher,
             speicher_fehlt: false,
             schwerpunkte: dateien.schwerpunkte,
@@ -474,7 +480,10 @@ pub fn alle_eintraege(inhalt: &Inhalt) -> Vec<AnstehendEintrag> {
     for a in &inhalt.speicher.aufgaben {
         // Etappe B3: Eine bewegliche Frist hat ihr Datum, sobald ihr Ereignis
         // eines hat; bis dahin keine Frist (sie hebt nichts an), aber `frist_bezug`.
-        let bezug = a.frist_bezug.as_ref().map(|b| (b, crate::fristen::bezug_aufloesen(&inhalt.fristen, &a.projekt, b, crate::fristen::bezug_ab(a, heute))));
+        let bezug = a
+            .frist_bezug
+            .as_ref()
+            .map(|b| (b, crate::fristen::bezug_aufloesen(&inhalt.fristen, &inhalt.orte, &a.projekt, b, crate::fristen::bezug_ab(a, heute))));
         let frist = match &bezug {
             Some((_, (_, d))) => d.map(|d| d.format("%Y-%m-%d").to_string()),
             None => a.frist.clone(),
@@ -1050,6 +1059,7 @@ pub(crate) mod tests {
         .unwrap();
         Inhalt {
             heute: tag(HEUTE),
+            orte: Default::default(),
             projekte: vec![kopf("beispiel"), kopf("dashboard"), kopf("hallo")],
             fragen: vec![FragenDatei {
                 projekt: "beispiel".into(),

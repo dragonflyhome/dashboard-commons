@@ -50,6 +50,7 @@ pub const SEITEN: &[&str] = &[
     "entscheidungen",
     "fassungen",
     "einstellungen",
+    "kalender",
 ];
 
 /// Die Unterseiten von `/katalog` (Adresse nach `katalog/`). Etappe 3b-2

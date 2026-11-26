@@ -1,0 +1,33 @@
+# Quelle: NOAA Global Monitoring Laboratory, Solar Calculator, table.php, abgerufen 2026-11-26
+# Zeitangaben: Seite sagt "All times are in local time. Cells with light green color indicate when daylight saving time is in effect." Kopfzeile je Ort "Time Zone Offset: <IANA-Zone> <Standardversatz>": London Europe/London 0.0, Madrid Europe/Madrid 1.0, Sydney Australia/Sydney 11.0, Singapore Asia/Singapore 8.0, Reykjavik Atlantic/Reykjavik 0.0, Tromso Europe/Oslo 1.0. Sommerzeit ist eingerechnet (Zellen mit class='dst').
+# Sommerzeit-Zellen (dst) in dieser Liste: london 06-21 09-23; madrid 04-15 06-21 07-15 09-23 10-15; sydney 03-20 12-21; tromso 06-21 09-23; alle anderen ohne Sommerzeit.
+# Länge: lon im URL Ost positiv, West negativ (geprüft: Madrid lon=-3.7038 ergibt Mittag 13:22:28 MEZ am 20.03. = 12:22 UTC, passt nur zu West; Seite zeigt "Longitude -0.12780" für London). Die Seite nennt die Konvention nicht ausdrücklich.
+# Polar: Tromso 06-21 und 12-21 zeigt die Tabelle Aufgang und Untergang als "00:00" (Platzhalter fuer Mitternachtssonne bzw. Polarnacht, ohne Legende); unverändert übernommen. Reykjavik 06-21 Untergang 00:04 liegt nach Mitternacht.
+london;51.5074;-0.1278;2027-03-20;aufgang=06:04;mittag=12:08:10;untergang=18:13
+london;51.5074;-0.1278;2027-06-21;aufgang=04:43;mittag=13:02:11;untergang=21:22
+london;51.5074;-0.1278;2027-09-23;aufgang=06:48;mittag=12:53:10;untergang=18:57
+london;51.5074;-0.1278;2027-12-21;aufgang=08:04;mittag=11:58:13;untergang=15:53
+madrid;40.4168;-3.7038;2027-01-15;aufgang=08:36;mittag=13:23:58;untergang=18:13
+madrid;40.4168;-3.7038;2027-03-20;aufgang=07:19;mittag=13:22:28;untergang=19:26
+madrid;40.4168;-3.7038;2027-04-15;aufgang=07:37;mittag=14:15:01;untergang=20:53
+madrid;40.4168;-3.7038;2027-06-21;aufgang=06:45;mittag=14:16:29;untergang=21:48
+madrid;40.4168;-3.7038;2027-07-15;aufgang=06:57;mittag=14:20:45;untergang=21:44
+madrid;40.4168;-3.7038;2027-09-23;aufgang=08:03;mittag=14:07:28;untergang=20:11
+madrid;40.4168;-3.7038;2027-10-15;aufgang=08:25;mittag=14:00:44;untergang=19:35
+madrid;40.4168;-3.7038;2027-12-21;aufgang=08:34;mittag=13:12:32;untergang=17:51
+sydney;-33.8688;151.2093;2027-03-20;aufgang=06:58;mittag=13:02:56;untergang=19:07
+sydney;-33.8688;151.2093;2027-06-21;aufgang=07:00;mittag=11:56:44;untergang=16:54
+sydney;-33.8688;151.2093;2027-09-23;aufgang=05:44;mittag=11:47:58;untergang=17:52
+sydney;-33.8688;151.2093;2027-12-21;aufgang=05:41;mittag=12:52:40;untergang=20:05
+singapore;1.3521;103.8198;2027-03-20;aufgang=07:09;mittag=13:12:27;untergang=19:16
+singapore;1.3521;103.8198;2027-06-21;aufgang=07:00;mittag=13:06:19;untergang=19:12
+singapore;1.3521;103.8198;2027-09-23;aufgang=06:54;mittag=12:57:28;untergang=19:01
+singapore;1.3521;103.8198;2027-12-21;aufgang=07:01;mittag=13:02:17;untergang=19:04
+reykjavik;64.1466;-21.9426;2027-03-20;aufgang=07:29;mittag=13:35:24;untergang=19:43
+reykjavik;64.1466;-21.9426;2027-06-21;aufgang=02:55;mittag=13:29:27;untergang=00:04
+reykjavik;64.1466;-21.9426;2027-09-23;aufgang=07:13;mittag=13:20:24;untergang=19:26
+reykjavik;64.1466;-21.9426;2027-12-21;aufgang=11:22;mittag=13:25:30;untergang=15:29
+tromso;69.6492;18.9553;2027-03-20;aufgang=05:45;mittag=11:51:51;untergang=18:01
+tromso;69.6492;18.9553;2027-06-21;aufgang=00:00;mittag=12:45:50;untergang=00:00
+tromso;69.6492;18.9553;2027-09-23;aufgang=06:27;mittag=12:36:51;untergang=18:44
+tromso;69.6492;18.9553;2027-12-21;aufgang=00:00;mittag=11:41:52;untergang=00:00

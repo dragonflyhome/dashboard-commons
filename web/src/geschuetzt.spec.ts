@@ -24,7 +24,7 @@ describe('Geschützte Daten: Server und Oberfläche', () => {
 		expect(daten).toMatch(/\n\s*if angemeldet\.is_none\(\) \{\n[^}]*bitte_anmelden\(None\)/);
 		expect(daten).not.toMatch(/geschuetzt|GESCHUETZT/);
 		// Die Oberfläche fragt die persönlichen Dateien ohne Anmeldung gar nicht erst an.
-		expect([...GESCHUETZTE_DATEN].sort()).toEqual(['fragen', 'fristen']);
+		expect([...GESCHUETZTE_DATEN].sort()).toEqual(['fragen', 'fristen', 'standorte']);
 	});
 
 	it('die Adressen der Dateien passen zum Muster des Servers', () => {
