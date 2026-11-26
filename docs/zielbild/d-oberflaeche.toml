@@ -252,6 +252,8 @@ zeilen = [
 
 [[block]]
 punkte = [
+  "Bestätigte Namen der Farbreihe (deutsch; die englischen Kurzwörter werden in derselben Runde ersetzt): --hintergrund (heute --bg), --flaeche (--card), --papier, --vordergrund (--text), --vordergrund-leise (--muted), --linie (--line), --grundfarbe mit --grundfarbe-soft, --grundfarbe-text und --auf-grundfarbe (--accent, --accent-soft, --accent-text, --on-accent), --dreiklang-2 und --dreiklang-3 (neu), --fokus, --reihe-1 bis --reihe-10. Bedeutungstöne in den Schemata heißen --b-<bedeutung> mit -soft, -text und -auf, außerhalb der Schemata nur über die Klasse b-<bedeutung> und --ton, --ton-soft, --ton-text, --ton-auf.",
+  "Die Dreiklang-Partner bleiben von den Bedeutungstönen deutlich unterscheidbar (gemessener Farbabstand), damit eine Diagrammlinie nie wie „ok“ oder „problem“ aussieht.",
   "Jedes Schema belegt jede Rolle der Farbreihe und jede Bedeutung. Die Kontrastmessung je Schema bleibt die Schwelle, auch für die Farbreihe. Die Grundfarbe und ihre beiden Dreiklang-Partner liegen im Farbkreis gleich weit auseinander; ein Test misst den Abstand.",
   "Namen nennen die Rolle oder die Bedeutung, nie den Farbton. Kein alter Name bekommt eine neue Bedeutung, damit keine Seite still die Farbe wechselt.",
   "Eine Prüfregel lässt in var() nur Namen aus der einen Liste der Rollen zu und weist Farbwerte außerhalb der Schemata ab, außer gekennzeichnete externe Vorgaben. Tippfehler gehen so nie still durch.",
