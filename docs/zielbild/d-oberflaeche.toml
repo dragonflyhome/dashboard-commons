@@ -10,6 +10,18 @@ titel = "Kopfleiste (Fassung 3)"
 text = """Links Brotkrumen: das Symbol führt zur Startseite, das letzte Glied lädt die Seite neu und scrollt nach oben. Rechts PC-Symbol mit kleinem Echtzeit-Verlauf der Prozessorlast, Glocke mit Zahl der Meldungen (ersetzt das Band), Live-Punkt mit fünf Zuständen und Schloss. Das Menü oben entfällt; links eine Seitenleiste mit Anstehend, den Projekten (Unterseiten eingerückt darunter) und den Dashboard-Seiten, am Handy als Schublade. Ganzer Text: Entscheidung kopfleiste (Abschnitt Entscheidungen; Teile [fassung_2_schloss], [fassung_2_live_zustaende], [fassung_2_passkey_wege], [fassung_3])."""
 
 [[block]]
+titel = "Hülle als getippte Daten"
+text = """Der Bildschirmaufbau wird über Typen beschrieben und mit flexiblen Layout-Verfahren gezeichnet (Flexbox, Grid, logische Eigenschaften wie inline-start und inline-end), nicht über feste Positionen. So passt er sich Bildschirmbreite und Schreibrichtung an, und Aufbauten setzen an festen Anschlüssen an statt an Textstellen im Markup."""
+
+[[block]]
+punkte = [
+  "Ein Bereich der Hülle ist eine getippte Liste von Teilen, die das Layout der Reihe nach zeichnet. Erster Bereich: kopf.ende (KOPF_ENDE in web/src/lib/huelle.ts).",
+  "Schrittweise: Ein Bereich kommt erst dazu, wenn ein konkretes Teil ihn braucht; ein Feld (Rolle, Bedingung, Lader) erst, wenn Code es liest.",
+  "Teile von außen sind erlaubt, unter drei Bedingungen: Sie kommen nur über die von dashboard pruefe --bauliste erzeugte Liste und durchlaufen dieselbe Prüfung wie Projektseiten; sie werden nur für Angemeldete gezeichnet und nur in der geschützten Menge des Baus ausgeliefert; Teile des Kerns lassen sich weder verdecken noch entfernen oder umstellen, Teile von außen kommen nur hinzu, vor den Teilen des Kerns, sodass Schloss, Live-Punkt und Fassungshinweis am Rand bleiben. Ein Test sichert die Reihenfolge.",
+  "Einstellungen für Reihenfolge und Sichtbarkeit gibt es vorerst nicht: Das Bild bleibt fest und ruhig, und Teile mit sicherheitsrelevantem Zustand dürfen sich nicht ausblenden lassen.",
+]
+
+[[block]]
 titel = "Wie Projektseiten in die App kommen"
 beispiel = """// web/src/lib/projekte.generated.ts  (vom Baumeister geschrieben)
 export const seiten = {
