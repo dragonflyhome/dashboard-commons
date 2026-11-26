@@ -14,6 +14,9 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+0.28.0 - 2026-11-27
+-------------------
+
 Hinzugefügt
 - Kopfleiste: oben rechts der Mond in seiner Phase, Sonnenauf- und
   -untergang von heute und der Heimatort, als Link zur Kalenderseite; nur
