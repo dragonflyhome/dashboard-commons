@@ -31,6 +31,3 @@ export const KOPF_ENDE = [
 	{ id: 'live', teil: LiveBadge },
 	{ id: 'schloss', teil: Schloss }
 ] as const satisfies readonly HuellenTeil[];
-
-/** Die Kennungen der Teile am Ende der Kopfleiste. */
-export type KopfEndeId = (typeof KOPF_ENDE)[number]['id'];

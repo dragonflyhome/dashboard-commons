@@ -182,7 +182,7 @@
 			onblatt={() => aktualitaet.pruefen(nachziehen)}
 		/>
 	</div>
-	<!-- Rechts: die Teile aus KOPF_ENDE (huelle.ts), in der Reihenfolge der Liste: PC, Glocke, Live-Punkt, Schloss. -->
+	<!-- Rechts: die Teile aus KOPF_ENDE (huelle.ts), in der Reihenfolge der Liste. -->
 	<div class="rechts">
 		{#each KOPF_ENDE as t (t.id)}
 			<t.teil />
@@ -234,7 +234,7 @@
 		flex: 1 1 auto;
 		min-width: 0;
 	}
-	/* Rechts: PC, Glocke, Live-Punkt und Schloss, nie umbrechend. */
+	/* Rechts: die Teile aus KOPF_ENDE (huelle.ts), nie umbrechend. */
 	.rechts {
 		display: flex;
 		flex: none;
