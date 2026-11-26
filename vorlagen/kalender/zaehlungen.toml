@@ -1,0 +1,135 @@
+# Zählkalender (Kalender, Stufe 5): Maya, Hochland Guatemalas, Azteken und der
+# 13-Monde-Kalender, öffentlich. Jede Variante ist ein eingebauter Kalender mit
+# ihrer Kennung: Sie wird aktiv, wenn die Kennung in `kalender = [...]` einer
+# fristen.toml steht. Welche aktiv sind, bleibt privat.
+#
+# Die Rechenregeln stehen im Code (src/kalender/zaehlung.rs), hier nur Namen und
+# Bezugszahlen. `bezug` ist eine Julianische Tageszahl:
+#   maya, hochland: die Korrelation (Tag 13.0.0.0.0 4 Ajaw 8 Kumk'u),
+#   azteken-*:      der Tag 1 Coatl im Jahr 3 Calli (13.8.1521 julianisch),
+#   dreamspell:     der 26.7.1987 (Kin 34).
+# Namenslisten: `zeichen` 20 (je Eintrag zuerst der Name, dahinter Zweitnamen),
+# `monate` 18 und die Resttage (Maya: Wayeb, Azteken: Nemontemi) in der Reihe,
+# in der die Variante das Jahr zählt; beim 13-Monde-Kalender `zeichen` die 20
+# Siegel, `toene` 13, `wochentage` 7, `farben` 4.
+#
+# Feste einer Variante stehen als [[variante.fest]] wie in den anderen
+# Kalendern (kennung, titel, regel, namen), mit der Regel
+# `zaehlung = { variante = "<kennung>", zahl = 1–13, zeichen = "<erster Name>" }`.
+
+[[variante]]
+kennung = "maya-584283"
+titel = "Maya, Korrelation 584283"
+art = "maya"
+bezug = 584283
+stufe = "belegt"
+herkunft = "Maya · Lange Zählung, Tzolkin, Haab, Kalenderrunde · Korrelation 584283 (Goodman-Martinez-Thompson)"
+quelle = "Namen: heutige Schreibung nach dem Alphabet der Academia de Lenguas Mayas de Guatemala und Kettunen & Helmke 2005; Zweitnamen in der älteren Schreibung (Landa, Thompson, Coe)"
+zeichen = [
+  ["Imix", "Imix"], ["Ik'", "Ik"], ["Ak'b'al", "Akbal"], ["K'an", "Kan"], ["Chikchan", "Chicchan"],
+  ["Kimi", "Cimi"], ["Manik'", "Manik"], ["Lamat", "Lamat"], ["Muluk", "Muluc"], ["Ok", "Oc"],
+  ["Chuwen", "Chuen"], ["Eb'", "Eb"], ["B'en", "Ben"], ["Ix", "Ix"], ["Men", "Men"],
+  ["K'ib'", "Cib"], ["Kab'an", "Caban"], ["Etz'nab'", "Etznab"], ["Kawak", "Cauac"], ["Ajaw", "Ahau"],
+]
+monate = [
+  ["Pop", "Pop"], ["Wo'", "Uo"], ["Sip", "Zip"], ["Sotz'", "Zotz"], ["Sek", "Tzec"], ["Xul", "Xul"],
+  ["Yaxk'in", "Yaxkin"], ["Mol", "Mol"], ["Ch'en", "Chen"], ["Yax", "Yax"], ["Sak", "Zac"], ["Keh", "Ceh"],
+  ["Mak", "Mac"], ["K'ank'in", "Kankin"], ["Muwan", "Muan"], ["Pax", "Pax"], ["K'ayab", "Kayab"],
+  ["Kumk'u", "Cumku"], ["Wayeb", "Uayeb"],
+]
+
+[[variante]]
+kennung = "maya-584285"
+titel = "Maya, Korrelation 584285"
+art = "maya"
+bezug = 584285
+stufe = "belegt"
+herkunft = "Maya · Lange Zählung, Tzolkin, Haab, Kalenderrunde · Korrelation 584285 (Goodman-Martinez-Thompson, zwei Tage später)"
+quelle = "Namen: heutige Schreibung nach dem Alphabet der Academia de Lenguas Mayas de Guatemala und Kettunen & Helmke 2005; Zweitnamen in der älteren Schreibung (Landa, Thompson, Coe)"
+zeichen = [
+  ["Imix", "Imix"], ["Ik'", "Ik"], ["Ak'b'al", "Akbal"], ["K'an", "Kan"], ["Chikchan", "Chicchan"],
+  ["Kimi", "Cimi"], ["Manik'", "Manik"], ["Lamat", "Lamat"], ["Muluk", "Muluc"], ["Ok", "Oc"],
+  ["Chuwen", "Chuen"], ["Eb'", "Eb"], ["B'en", "Ben"], ["Ix", "Ix"], ["Men", "Men"],
+  ["K'ib'", "Cib"], ["Kab'an", "Caban"], ["Etz'nab'", "Etznab"], ["Kawak", "Cauac"], ["Ajaw", "Ahau"],
+]
+monate = [
+  ["Pop", "Pop"], ["Wo'", "Uo"], ["Sip", "Zip"], ["Sotz'", "Zotz"], ["Sek", "Tzec"], ["Xul", "Xul"],
+  ["Yaxk'in", "Yaxkin"], ["Mol", "Mol"], ["Ch'en", "Chen"], ["Yax", "Yax"], ["Sak", "Zac"], ["Keh", "Ceh"],
+  ["Mak", "Mac"], ["K'ank'in", "Kankin"], ["Muwan", "Muan"], ["Pax", "Pax"], ["K'ayab", "Kayab"],
+  ["Kumk'u", "Cumku"], ["Wayeb", "Uayeb"],
+]
+
+[[variante]]
+kennung = "hochland"
+titel = "Hochland Guatemalas (Cholq'ij)"
+art = "hochland"
+bezug = 584283
+stufe = "belegt"
+herkunft = "Hochland Guatemalas · Cholq'ij, ohne Unterbrechung geführt · Korrelation 584283 (Tedlock 1982; Bricker & Bricker 2011)"
+hinweis = "Im Hochland beginnt der Tag mit Sonnenuntergang; gezeigt wird das Zeichen des bürgerlichen Tags."
+quelle = "Namen: K'iche', Schreibung nach der Tabelle des Kulturministeriums Guatemalas (Ministerio de Cultura y Deportes)"
+zeichen = [
+  ["Imox"], ["Iq'"], ["Aq'ab'al"], ["K'at"], ["Kan"], ["Kame"], ["Kej"], ["Q'anil"], ["Toj"], ["Tz'i'"],
+  ["B'atz'"], ["E"], ["Aj"], ["I'x"], ["Tz'ikin"], ["Ajmaq"], ["No'j"], ["Tijax"], ["Kawoq"], ["Ajpu"],
+]
+
+[[variante.fest]]
+kennung = "waqxaqib-batz"
+titel = "Waqxaqib' B'atz' (8 B'atz')"
+regel = { zaehlung = { variante = "hochland", zahl = 8, zeichen = "B'atz'" } }
+namen = [
+  { name = "Waqxaqib' B'atz'", sprache = "K'iche'", quelle = "Tedlock, Time and the Highland Maya, 1982; Agencia Guatemalteca de Noticias zum 18.1.2025", bedeutung = "Acht B'atz', Tag der Tageshüter (Ajq'ij) und Beginn des Cholq'ij", stufe = "belegt" },
+]
+
+[[variante]]
+kennung = "azteken-caso"
+titel = "Azteken nach Caso 1967"
+art = "azteken-caso"
+bezug = 2276828
+stufe = "erschlossen"
+herkunft = "Azteken · Tonalpohualli, Xiuhpohualli · Caso 1967, fortlaufend ohne Schalttag, Bezugstag 1 Coatl im Jahr 3 Calli (13.8.1521 julianisch) · Jahresbeginn und Jahresträger erschlossen, mit einem verbreiteten Rechner abgeglichen"
+quelle = "Namen: Nahuatl in der Schreibung nach Caso, Los calendarios prehispánicos, 1967"
+zeichen = [
+  ["Cipactli"], ["Ehecatl"], ["Calli"], ["Cuetzpalin"], ["Coatl"], ["Miquiztli"], ["Mazatl"], ["Tochtli"], ["Atl"], ["Itzcuintli"],
+  ["Ozomatli"], ["Malinalli"], ["Acatl"], ["Ocelotl"], ["Cuauhtli"], ["Cozcacuauhtli"], ["Ollin"], ["Tecpatl"], ["Quiahuitl"], ["Xochitl"],
+]
+monate = [
+  ["Izcalli"], ["Atlcahualo"], ["Tlacaxipehualiztli"], ["Tozoztontli"], ["Huey Tozoztli"], ["Toxcatl"],
+  ["Etzalcualiztli"], ["Tecuilhuitontli"], ["Huey Tecuilhuitl"], ["Tlaxochimaco"], ["Xocotl Huetzi"], ["Ochpaniztli"],
+  ["Teotleco"], ["Tepeilhuitl"], ["Quecholli"], ["Panquetzaliztli"], ["Atemoztli"], ["Tititl"], ["Nemontemi"],
+]
+
+[[variante]]
+kennung = "azteken-tena"
+titel = "Azteken nach Tena 1987/2008"
+art = "azteken-tena"
+bezug = 2276828
+stufe = "erschlossen"
+herkunft = "Tena: Jahr am julianischen Kalender mit Schalttag; als gut ausgearbeitet bezeichnet, aber umstritten (Caso, Prem, Graulich und Šprajc lehnen einen Schalttag ab) · nach 1582 aus Tenas Regel fortgeschrieben (julianische Schaltregel)"
+quelle = "Namen: Nahuatl in der Schreibung nach Caso, Los calendarios prehispánicos, 1967"
+zeichen = [
+  ["Cipactli"], ["Ehecatl"], ["Calli"], ["Cuetzpalin"], ["Coatl"], ["Miquiztli"], ["Mazatl"], ["Tochtli"], ["Atl"], ["Itzcuintli"],
+  ["Ozomatli"], ["Malinalli"], ["Acatl"], ["Ocelotl"], ["Cuauhtli"], ["Cozcacuauhtli"], ["Ollin"], ["Tecpatl"], ["Quiahuitl"], ["Xochitl"],
+]
+monate = [
+  ["Atlcahualo"], ["Tlacaxipehualiztli"], ["Tozoztontli"], ["Huey Tozoztli"], ["Toxcatl"], ["Etzalcualiztli"],
+  ["Tecuilhuitontli"], ["Huey Tecuilhuitl"], ["Tlaxochimaco"], ["Xocotl Huetzi"], ["Ochpaniztli"], ["Teotleco"],
+  ["Tepeilhuitl"], ["Quecholli"], ["Panquetzaliztli"], ["Atemoztli"], ["Tititl"], ["Izcalli"], ["Nemontemi"],
+]
+
+[[variante]]
+kennung = "dreamspell"
+titel = "13-Monde-Kalender (Dreamspell)"
+art = "dreamspell"
+bezug = 2447003
+stufe = "neuzeitlich"
+herkunft = "13-Monde-Kalender (Dreamspell) · neuzeitlich, seit 1992; Zählung seit 1990/91 · Bezugstag 26.7.1987 = Kin 34"
+hinweis = "Neuzeitliche Umdeutung (Zählung seit 1990/91, Kalender seit 1992), die verbreitetste ihrer Art. Fachleute und die Tageshüter im Hochland erkennen sie nicht als Maya-Zählung an; ihr Abstand zur überlieferten Zählung wird mit jedem 29. Februar um einen Tag kleiner."
+quelle = "Namen englisch wie in den Quellen (Argüelles, Dreamspell 1990/91; Gemeinschaftsquellen); eine verbindliche deutsche Fassung gibt es nicht"
+zeichen = [
+  ["Dragon"], ["Wind"], ["Night"], ["Seed"], ["Serpent"], ["Worldbridger"], ["Hand"], ["Star"], ["Moon"], ["Dog"],
+  ["Monkey"], ["Human"], ["Skywalker"], ["Wizard"], ["Eagle"], ["Warrior"], ["Earth"], ["Mirror"], ["Storm"], ["Sun"],
+]
+toene = ["Magnetic", "Lunar", "Electric", "Self-Existing", "Overtone", "Rhythmic", "Resonant", "Galactic", "Solar", "Planetary", "Spectral", "Crystal", "Cosmic"]
+wochentage = ["Dali", "Seli", "Gamma", "Kali", "Alpha", "Limi", "Silio"]
+farben = ["Red", "White", "Blue", "Yellow"]

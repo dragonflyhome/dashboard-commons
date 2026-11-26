@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::kalender::zaehlung::Zaehlzeile;
 use crate::kalender::{Mond, Zeitraum};
 
 /// Ein benannter Ort für die Auswahl.
@@ -57,6 +58,8 @@ pub struct KalenderTag {
     pub hinweis: Option<String>,
     /// Die Gebetszeiten der ausgewählten Varianten (Stufe 4), je Variante eine Liste.
     pub gebete: Vec<Gebetsliste>,
+    /// Die aktiven Zählkalender (Stufe 5) in der Reihenfolge der Vorlage, unabhängig vom Ort; ohne aktive leer.
+    pub zaehlungen: Vec<Zaehlzeile>,
 }
 
 /// Die Gebetszeiten einer Variante an einem Tag.

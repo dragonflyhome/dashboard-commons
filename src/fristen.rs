@@ -555,6 +555,23 @@ abstand = "-3 Tage"
         assert_eq!((einkauf.frist.as_deref(), einkauf.ereignis.as_ref().unwrap().herkunft.as_deref()), (None, None), "hängt, ohne zu raten");
     }
 
+    /// Kalender, Stufe 5: Ist `hochland` aktiv, steht Waqxaqib' B'atz' in der Liste, nach dem
+    /// 18.1.2025 mit dem zweiten Vorkommen des Jahres; ein Ereignis mit `zaehlung` ebenso.
+    #[test]
+    fn zaehlkalender_in_der_fristenliste() {
+        let berlin = Katalog::berlin();
+        let text = "kalender = [\"hochland\"]\n\n[[ereignis]]\nkennung = \"tag\"\ntitel = \"Tag\"\nregel = { zaehlung = { variante = \"hochland\", zahl = 8, zeichen = \"B'atz'\" } }\n\n[[frist]]\nkennung = \"vor\"\ntitel = \"Vorbereiten\"\nereignis = \"tag\"\nabstand = \"-1 Tag\"\n";
+        let i = Inhalt { heute: tag("2025-01-19"), ..inhalt(Vec::new(), vec![datei("kal", text)], vec![kopf("kal", false)]) };
+        let l = fristenliste_mit(&berlin, &i, Some("kal"));
+        let fest = l.zeilen.iter().find(|z| z.id == "hochland.waqxaqib-batz").unwrap();
+        assert_eq!((fest.titel.as_str(), fest.frist.as_deref()), ("Waqxaqib' B'atz' (8 B'atz')", Some("2025-10-05")));
+        let vor = l.zeilen.iter().find(|z| z.id == "vor").unwrap();
+        assert_eq!(vor.frist.as_deref(), Some("2025-10-03"), "ein voller Tag vorher");
+        assert!(
+            vor.ereignis.as_ref().and_then(|e| e.herkunft.as_deref()).unwrap().starts_with("Eigene Regel · 8 B'atz' im 260-Tage-Zyklus der Zählung Hochland")
+        );
+    }
+
     /// Kalender, Stufe 2: Mondmonate mit Zeitraum, der laufende Mond auf der
     /// Projektseite und eine Zeile, wenn Osterregeln auf denselben Sonntag fallen.
     /// Gerechnet mit fester Ortszeit (Mitteleuropa), nicht der des Rechners.
@@ -681,6 +698,19 @@ abstand = "-3 Tage"
         let unbekannt = MIT_KALENDER.replace("\"chinesisch\"]", "\"geheimbund\"]");
         let satz = lesen(&unbekannt).unwrap_err();
         assert!(satz.contains("den es nicht gibt") && !satz.contains("geheimbund"), "{satz}");
+        // Zählkalender sind eingebaute Kalender wie die anderen; der Satz nennt sie mit.
+        assert_eq!(lesen(&MIT_KALENDER.replace("\"chinesisch\"]", "\"chinesisch\", \"hochland\", \"maya-584285\", \"dreamspell\"]")), Ok(()));
+        assert!(satz.contains("maya-584283, maya-584285, hochland, azteken-caso, azteken-tena, dreamspell"), "{satz}");
+        let zaehlung = |z: &str| MIT_KALENDER.replace("fest = \"chinesisch.neujahr\"", &format!("zaehlung = {{ {z} }}"));
+        assert_eq!(lesen(&zaehlung("variante = \"hochland\", zahl = 8, zeichen = \"B'atz'\"")), Ok(()));
+        for z in [
+            "variante = \"geheimbund\", zahl = 8, zeichen = \"B'atz'\"",
+            "variante = \"hochland\", zahl = 8, zeichen = \"Geheimbund\"",
+            "variante = \"hochland\", zahl = 77, zeichen = \"B'atz'\"",
+        ] {
+            let satz = lesen(&zaehlung(z)).unwrap_err();
+            assert!(satz.contains("passt die `regel` nicht") && !satz.contains("eheimbund") && !satz.contains("77") && !satz.contains("B'atz'"), "{satz}");
+        }
         let doppelt = MIT_KALENDER.replace("\"chinesisch\"]", "\"kirche\"]");
         assert!(lesen(&doppelt).unwrap_err().contains("zweimal"));
         let falsch = MIT_KALENDER.replace("fest = \"chinesisch.neujahr\"", "fest = \"neujahr\"");

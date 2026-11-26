@@ -25,7 +25,18 @@
 //!   `mondmonat = { enthaelt = "<wende oder gleiche>" }`, der Monat, der das Ereignis
 //!   enthält, oder `mondmonat = { vollmond = n }` (1–13), der Monat um den n-ten
 //!   Vollmond nach dem kürzesten Tag (ein Vollmond am Tag der Wende zählt nicht),
-//! - Verweis: `fest = "<kalender>.<fest>"`, nur an Ereignissen in `fristen.toml`.
+//! - Verweis: `fest = "<kalender>.<fest>"`, nur an Ereignissen in `fristen.toml`,
+//! - Zählkalender: `zaehlung = { variante = "<kennung>", zahl = 1–13, zeichen = "<name>" }`,
+//!   die Stellung im 260-Tage-Zyklus einer Zählung aus `zaehlungen.toml` ([`zaehlung`]);
+//!   `zeichen` ist der erste Name des Zeichens dieser Zählung. Sie trifft manchmal
+//!   zweimal im Jahr: [`Katalog::vorkommen`] liefert alle Tage eines Zeitraums,
+//!   [`Katalog::im_jahr`] nur den ersten des Jahres. Darum verweist eine Regel auf ein
+//!   solches Fest nur mit `fest`, nicht mit `nach` (Abstand, Wochentag, Mondphase rechneten
+//!   nur vom ersten Tag); einen Abstand trägt die Frist.
+//!
+//! Jede Zählung aus `vorlagen/kalender/zaehlungen.toml` ist zugleich ein eingebauter
+//! Kalender mit ihrer Kennung (aktiv über `kalender = [...]`); ihre Feste stehen dort
+//! als `[[variante.fest]]`.
 //!
 //! `nach` nennt in einer Kalenderdatei ein Fest desselben Kalenders (`ostern`)
 //! oder eines anderen (`kirche.ostern`); an einem Ereignis immer mit Kalender.
@@ -50,6 +61,7 @@ pub mod mond;
 pub mod orte;
 pub mod ortsliste;
 pub mod tag;
+pub mod zaehlung;
 pub mod zone;
 
 use std::collections::BTreeSet;
@@ -74,13 +86,18 @@ pub const LETZTES_JAHR: i32 = 2100;
 /// weiter weg gehört es als Abstand an die Frist.
 pub const TAGE_HOECHSTENS: i32 = 366;
 
-/// Die eingebauten Kalender (Dateiname, Inhalt).
-const EINGEBAUT: [(&str, &str); 4] = [
+/// Die eingebauten Kalender (Dateiname, Inhalt); die Datei der Zählungen erkennt
+/// [`Katalog::lesen`] am Namen [`ZAEHLUNGEN`].
+const EINGEBAUT: [(&str, &str); 5] = [
     ("vorlagen/kalender/kirche.toml", include_str!("../../vorlagen/kalender/kirche.toml")),
     ("vorlagen/kalender/orthodox.toml", include_str!("../../vorlagen/kalender/orthodox.toml")),
     ("vorlagen/kalender/chinesisch.toml", include_str!("../../vorlagen/kalender/chinesisch.toml")),
     ("vorlagen/kalender/jahreskreis.toml", include_str!("../../vorlagen/kalender/jahreskreis.toml")),
+    ("vorlagen/kalender/zaehlungen.toml", include_str!("../../vorlagen/kalender/zaehlungen.toml")),
 ];
+
+/// Endung des Dateinamens der Zählungen.
+const ZAEHLUNGEN: &str = "zaehlungen.toml";
 
 /// Eine Regel, wie sie in einer Kalenderdatei oder an einem Ereignis steht.
 /// Welche Felder zusammen gelten, prüft [`Regel::art`].
@@ -123,6 +140,21 @@ pub struct Regel {
     /// Ein Mondmonat, Neumond bis Neumond.
     #[serde(default)]
     pub mondmonat: Option<MondmonatRegel>,
+    /// Eine Stellung im 260-Tage-Zyklus eines Zählkalenders.
+    #[serde(default)]
+    pub zaehlung: Option<ZaehlRegel>,
+}
+
+/// Stellung im 260-Tage-Zyklus (Tzolkin, Cholq'ij, Tonalpohualli; im 13-Monde-Kalender Ton und Siegel).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct ZaehlRegel {
+    /// Kennung einer Zählung aus `vorlagen/kalender/zaehlungen.toml`.
+    pub variante: String,
+    /// 1–13.
+    pub zahl: u8,
+    /// Der erste Name des Zeichens in dieser Zählung.
+    pub zeichen: String,
 }
 
 /// Welcher Mondmonat: genau eines von beiden.
@@ -168,6 +200,7 @@ pub enum Art<'a> {
     MondmonatMit(Himmelstag),
     MondmonatVollmond(u8),
     Fest(&'a str),
+    Zaehlung(&'a ZaehlRegel),
 }
 
 impl Art<'_> {
@@ -187,7 +220,8 @@ const WOCHENTAGE: [(&str, Weekday); 7] = [
     ("sonntag", Weekday::Sun),
 ];
 
-const ARTEN: &str = "`monat` und `tag`; `nach` und `tage`; `wochentag` und `nach`; `ostern`; `kalender` mit `monat` und `tag`; `himmel`; `mondmonat`; `fest`";
+const ARTEN: &str =
+    "`monat` und `tag`; `nach` und `tage`; `wochentag` und `nach`; `ostern`; `kalender` mit `monat` und `tag`; `himmel`; `mondmonat`; `fest`; `zaehlung`";
 
 const SATZ_HIMMEL: &str = "Diesen Wert für `himmel` gibt es nicht. Erlaubt sind die Sonnentage `\"sonnenwende-dezember\"`, `\"gleiche-maerz\"`, `\"sonnenwende-juni\"`, `\"gleiche-september\"`, nach ihrer Rolle am Ort `\"wende-winter\"`, `\"gleiche-fruehling\"`, `\"wende-sommer\"`, `\"gleiche-herbst\"`, und die Mondphasen `\"neumond\"`, `\"erstes-viertel\"`, `\"vollmond\"`, `\"letztes-viertel\"`.";
 
@@ -207,6 +241,7 @@ impl Regel {
             ("himmel", self.himmel.is_some()),
             ("nummer", self.nummer.is_some()),
             ("mondmonat", self.mondmonat.is_some()),
+            ("zaehlung", self.zaehlung.is_some()),
         ]
         .into_iter()
         .filter_map(|(n, ja)| ja.then_some(n))
@@ -259,6 +294,14 @@ impl Regel {
                 (None, Some(_)) => Err("`vollmond` in `mondmonat` zählt die Vollmonde nach dem kürzesten Tag; erlaubt sind 1 bis 13.".into()),
                 _ => Err("`mondmonat` braucht genau eines: `enthaelt` (eine Wende oder Gleiche) oder `vollmond` (1 bis 13).".into()),
             };
+        }
+        if let Some(z) = &self.zaehlung {
+            nur("`zaehlung`", &["zaehlung"])?;
+            // Ohne Wert im Satz: Welche Zählung jemand nutzt, ist persönlich.
+            if !(1..=13).contains(&z.zahl) {
+                return Err("`zahl` in `zaehlung` ist die Zahl im 260-Tage-Zyklus; erlaubt sind 1 bis 13.".into());
+            }
+            return Ok(Art::Zaehlung(z));
         }
         if let Some(k) = &self.kalender {
             nur("`kalender`", &["kalender", "monat", "tag", "schaltmonat"])?;
@@ -451,6 +494,8 @@ pub enum Anzeige {
 #[derive(Debug, Clone)]
 pub struct Katalog {
     kalender: Arc<Vec<Kalender>>,
+    /// Die Zählkalender, in der Reihenfolge der Vorlage (jede auch in `kalender`).
+    zaehlungen: Arc<Vec<zaehlung::Zaehlvariante>>,
     ort: Ort,
 }
 
@@ -463,6 +508,9 @@ fn kurz_datum(d: NaiveDate) -> String {
 }
 
 /// Satz für eine Regel, die in keinem Jahr einen Tag ergibt.
+/// Satz für einen Verweis per `nach` auf eine Zählung (sie trifft manchmal zweimal im Jahr).
+const SATZ_NACH_ZAEHLUNG: &str = "Auf eine Zählung verweist ein Termin nur mit `fest`; einen Abstand trägt die Frist.";
+
 const SATZ_KOMMT_NIE_VOR: &str = "Diese Regel ergibt in keinem Jahr von 1912 bis 2100 einen Tag, etwa ein Schaltmonat, den es nie gibt, oder der 30. Tag eines Monats, der immer 29 Tage hat.";
 
 /// Satz für ein Fest nach den Jahreszeiten an einem Ort zwischen den Wendekreisen.
@@ -479,12 +527,12 @@ impl Katalog {
     /// `eingebaute_kalender_sind_gueltig`); schlägt das Lesen doch fehl, ist der Katalog leer.
     pub fn eingebaut() -> &'static Katalog {
         static K: OnceLock<Katalog> = OnceLock::new();
-        K.get_or_init(|| Katalog::lesen(&EINGEBAUT).unwrap_or(Katalog { kalender: Arc::default(), ort: Ort::windows() }))
+        K.get_or_init(|| Katalog::lesen(&EINGEBAUT).unwrap_or(Katalog { kalender: Arc::default(), zaehlungen: Arc::default(), ort: Ort::windows() }))
     }
 
     /// Dieselben Kalender, gerechnet für einen anderen Ort (geteilt, nicht kopiert).
     pub fn mit_ort(&self, ort: Ort) -> Katalog {
-        Katalog { kalender: Arc::clone(&self.kalender), ort }
+        Katalog { kalender: Arc::clone(&self.kalender), zaehlungen: Arc::clone(&self.zaehlungen), ort }
     }
 
     /// Der Ort, für den gerechnet wird.
@@ -559,17 +607,29 @@ impl Katalog {
     /// unabhängig von der Ortszeit des Rechners.
     #[cfg(test)]
     pub(crate) fn berlin() -> Katalog {
-        Self::lesen_fuer(&EINGEBAUT, Ort { halbkugel: mond::Halbkugel::Nord, zeit: mond::Zeit::Test(mond::mitteleuropa), lage: None })
-            .unwrap_or(Katalog { kalender: Arc::default(), ort: Ort::windows() })
+        Self::lesen_fuer(&EINGEBAUT, Ort { halbkugel: mond::Halbkugel::Nord, zeit: mond::Zeit::Test(mond::mitteleuropa), lage: None }).unwrap_or(Katalog {
+            kalender: Arc::default(),
+            zaehlungen: Arc::default(),
+            ort: Ort::windows(),
+        })
     }
 
     /// Wie [`Katalog::lesen`], für einen anderen Ort (Tests; mit Belegstufe 3 der Ort des Inhabers).
     pub fn lesen_fuer(dateien: &[(&str, &str)], ort: Ort) -> Result<Katalog, String> {
         let mut kalender = Vec::new();
+        let mut zaehlungen = Vec::new();
         for (name, text) in dateien {
+            if name.ends_with(ZAEHLUNGEN) {
+                // Jede Zählung ist auch ein Kalender mit ihren Festen; doppelte Kennungen weist `pruefen` ab.
+                for v in zaehlung::lesen(name, text)? {
+                    kalender.push(Kalender { kennung: v.kennung.clone(), titel: v.titel.clone(), fest: v.fest.clone(), jahreszeit: Vec::new() });
+                    zaehlungen.push(v);
+                }
+                continue;
+            }
             kalender.push(toml::from_str::<Kalender>(text).map_err(|e| format!("{name}: {}", e.message()))?);
         }
-        let k = Katalog { kalender: Arc::new(kalender), ort };
+        let k = Katalog { kalender: Arc::new(kalender), zaehlungen: Arc::new(zaehlungen), ort };
         k.pruefen()?;
         Ok(k)
     }
@@ -590,10 +650,14 @@ impl Katalog {
                 }
                 let wo = format!("Im Kalender „{}“, Fest „{}“: ", k.kennung, f.kennung);
                 f.regel.art().map_err(|e| format!("{wo}{e}"))?;
+                self.zaehlung_pruefen(&f.regel).map_err(|e| format!("{wo}{e}"))?;
                 for v in f.regel.verweise() {
                     if self.finden(Some(&k.kennung), v).is_none() {
                         return Err(format!("{wo}Das Fest „{v}“ gibt es nicht."));
                     }
+                }
+                if self.nach_zaehlung(Some(&k.kennung), &f.regel) {
+                    return Err(format!("{wo}{SATZ_NACH_ZAEHLUNG}"));
                 }
             }
             let mut nach = BTreeSet::new();
@@ -664,6 +728,7 @@ impl Katalog {
     /// den Verweis nicht, nur die bekannten Kalender.
     pub fn ereignis_regel_pruefen(&self, regel: &Regel) -> Result<(), String> {
         regel.art()?;
+        self.zaehlung_pruefen(regel)?;
         for v in regel.verweise() {
             if !v.contains('.') {
                 return Err("Am Ereignis nennt ein Verweis den Kalender mit, etwa `kirche.ostern` statt `ostern`.".into());
@@ -675,6 +740,9 @@ impl Katalog {
                     bekannt.join(", ")
                 ));
             }
+        }
+        if self.nach_zaehlung(None, regel) {
+            return Err(SATZ_NACH_ZAEHLUNG.into());
         }
         if !self.kommt_vor(None, regel) {
             return Err(SATZ_KOMMT_NIE_VOR.into());
@@ -718,7 +786,89 @@ impl Katalog {
             }
             Art::MondmonatMit(_) | Art::MondmonatVollmond(_) => self.ort.tag(mond::anfang(self.mondmonat(regel, jahr)?)),
             Art::Fest(v) => bezug(v),
+            Art::Zaehlung(_) => {
+                self.vorkommen(im, regel, NaiveDate::from_ymd_opt(jahr, 1, 1)?, NaiveDate::from_ymd_opt(jahr, 12, 31)?).first().map(|(d, _)| *d)
+            }
         }
+    }
+
+    /// Die Zählung einer Regel mit `zaehlung` und der Index ihres Zeichens.
+    fn zaehlung_von(&self, z: &ZaehlRegel) -> Option<(&zaehlung::Zaehlvariante, usize)> {
+        let v = self.zaehlungen.iter().find(|v| v.kennung == z.variante)?;
+        Some((v, v.zeichen_index(&z.zeichen)?))
+    }
+
+    /// Nennt eine Regel mit `zaehlung` eine bekannte Zählung und eines ihrer Zeichen?
+    /// Der Satz nennt nur die erlaubten Werte der öffentlichen Vorlage.
+    pub fn zaehlung_pruefen(&self, regel: &Regel) -> Result<(), String> {
+        match &regel.zaehlung {
+            Some(z) if self.zaehlung_von(z).is_none() => {
+                let bekannt: Vec<&str> = self.zaehlungen.iter().map(|v| v.kennung.as_str()).collect();
+                Err(format!(
+                    "In `zaehlung` nennt `variante` keine bekannte Zählung oder `zeichen` kein Zeichen dieser Zählung. Bekannte Zählungen: {}; als `zeichen` gilt der erste Name je Zeichen in vorlagen/kalender/zaehlungen.toml.",
+                    bekannt.join(", ")
+                ))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Nennt `nach` ein Fest, das (über `fest` aufgelöst) eine Zählung ist? Davon rechneten
+    /// Abstand, Wochentag und Mondphase nur vom ersten Vorkommen im Jahr.
+    fn nach_zaehlung(&self, im: Option<&str>, regel: &Regel) -> bool {
+        regel
+            .nach
+            .as_deref()
+            .and_then(|v| self.finden(im, v))
+            .is_some_and(|(k, f)| matches!(self.aufgeloest(Some(&k.kennung), &f.regel).art(), Ok(Art::Zaehlung(_))))
+    }
+
+    /// Die Regel, die rechnet: Verweisen (`fest`) gefolgt.
+    fn aufgeloest<'a>(&'a self, im: Option<&'a str>, regel: &'a Regel) -> &'a Regel {
+        let (mut im, mut r) = (im, regel);
+        for _ in 0..=TIEFE_HOECHSTENS {
+            let Ok(Art::Fest(v)) = r.art() else { break };
+            let Some((k, f)) = self.finden(im, v) else { break };
+            (im, r) = (Some(k.kennung.as_str()), &f.regel);
+        }
+        r
+    }
+
+    /// Alle Tage einer Regel von `von` bis `bis` (beide eingeschlossen), je mit dem Jahr, zu
+    /// dem das Vorkommen gehört (für die Herkunft). Eine Zählung trifft manchmal zweimal im
+    /// Jahr; bei Tena gilt von zwei gleichnamigen Tagen nur der erste. Wie alle Feste nur 1912–2100.
+    pub fn vorkommen(&self, im: Option<&str>, regel: &Regel, von: NaiveDate, bis: NaiveDate) -> Vec<(NaiveDate, i32)> {
+        if let Ok(Art::Zaehlung(z)) = self.aufgeloest(im, regel).art() {
+            let Some((v, zeichen)) = self.zaehlung_von(z) else { return Vec::new() };
+            let soll = Some((i64::from(z.zahl), zeichen));
+            let jahre = ERSTES_JAHR..=LETZTES_JAHR;
+            return von
+                .iter_days()
+                .take_while(|d| *d <= bis)
+                .filter(|d| jahre.contains(&d.year()))
+                .filter(|d| {
+                    let j = zaehlung::jdn(*d);
+                    v.stellung260(j) == soll && v.stellung260(j - 1) != soll
+                })
+                .map(|d| (d, d.year()))
+                .collect();
+        }
+        let mut aus: Vec<(NaiveDate, i32)> = Vec::new();
+        // Das Fest eines Jahres liegt höchstens ein Jahr neben ihm.
+        for j in von.year() - 1..=bis.year() + 1 {
+            if let Some(d) = self.im_jahr(im, regel, j).filter(|d| (von..=bis).contains(d))
+                && !aus.iter().any(|(x, _)| *x == d)
+            {
+                aus.push((d, j));
+            }
+        }
+        aus.sort();
+        aus
+    }
+
+    /// Die Zeilen der aktiven Zählungen am Tag `d`, in der Reihenfolge der Vorlage.
+    pub fn zaehlzeilen(&self, aktive: &[String], d: NaiveDate) -> Vec<zaehlung::Zaehlzeile> {
+        self.zaehlungen.iter().filter(|v| aktive.contains(&v.kennung)).map(|v| v.zeile(zaehlung::jdn(d))).collect()
     }
 
     /// Das Sonnenereignis eines Sonnentags am Rechenort: Eine Rolle (`wende-winter` …)
@@ -873,7 +1023,14 @@ impl Katalog {
         // 12. Monat im Januar J+1) neben J, und seine Tage steigen mit J. Das erste
         // passende ist also das früheste; manche Regeln fehlen in vielen Jahren
         // (29.2., 30. Tag eines kurzen Monats, ein bestimmter Schaltmonat).
-        let mitte = Abstand { zahl: -abstand.zahl, einheit: abstand.einheit }.von(heute)?.year();
+        let mitte_tag = Abstand { zahl: -abstand.zahl, einheit: abstand.einheit }.von(heute)?;
+        if matches!(self.aufgeloest(im, regel).art(), Ok(Art::Zaehlung(_))) {
+            // Mehrere Vorkommen im Jahr: alle ab knapp vor der Mitte; in 400 Tagen liegt mindestens eines danach.
+            let von = mitte_tag.checked_sub_signed(Duration::days(7))?;
+            let (v, j) = self.vorkommen(im, regel, von, von + Duration::days(400)).into_iter().find(|(v, _)| abstand.von(*v).is_some_and(|f| f >= heute))?;
+            return Some((v, self.herkunft(im, regel, j)));
+        }
+        let mitte = mitte_tag.year();
         let (v, j) = (mitte.saturating_sub(3).max(ERSTES_JAHR)..=LETZTES_JAHR)
             .filter_map(|j| Some((self.im_jahr(im, regel, j)?, j)))
             .find(|(v, _)| abstand.von(*v).is_some_and(|f| f >= heute))?;
@@ -943,6 +1100,10 @@ impl Katalog {
                 }
             }
             Ok(Art::Fest(v)) => bezug(v),
+            Ok(Art::Zaehlung(z)) => {
+                let titel = self.zaehlungen.iter().find(|v| v.kennung == z.variante).map_or(z.variante.as_str(), |v| v.titel.as_str());
+                format!("{} {} im 260-Tage-Zyklus der Zählung {titel}", z.zahl, z.zeichen)
+            }
             Err(e) => e,
         }
     }
@@ -1001,7 +1162,106 @@ mod tests {
         let k = Katalog::lesen(&EINGEBAUT).unwrap();
         assert_eq!(k.kalender(), Katalog::eingebaut().kalender());
         let namen: Vec<&str> = k.kalender().iter().map(|k| k.kennung.as_str()).collect();
-        assert_eq!(namen, ["kirche", "orthodox", "chinesisch", "jahreskreis"]);
+        assert_eq!(
+            namen,
+            ["kirche", "orthodox", "chinesisch", "jahreskreis", "maya-584283", "maya-584285", "hochland", "azteken-caso", "azteken-tena", "dreamspell"]
+        );
+        // Eine Zählung darf mit keinem Festkalender zusammenfallen.
+        let gleich = "kennung = \"hochland\"\ntitel = \"Fest\"\n";
+        let fehler = Katalog::lesen(&[("k.toml", gleich), EINGEBAUT[4]]).unwrap_err();
+        assert!(fehler.contains("„hochland“") && fehler.contains("doppelte"), "{fehler}");
+    }
+
+    fn zaehlregel(variante: &str, zahl: u8, zeichen: &str) -> Regel {
+        Regel { zaehlung: Some(ZaehlRegel { variante: variante.into(), zahl, zeichen: zeichen.into() }), ..Default::default() }
+    }
+
+    /// Feste aus Zählungen: 8 B'atz' trifft 2025 zweimal; die nächste Frist nach dem 18.1.2025
+    /// ist der 5.10.2025; über `fest` wie direkt; Tena zählt von zwei gleichnamigen Tagen nur den ersten.
+    #[test]
+    fn feste_aus_zaehlungen() {
+        let k = berlin();
+        let batz = zaehlregel("hochland", 8, "B'atz'");
+        let alle = |r: &Regel, von: &str, bis: &str| k.vorkommen(None, r, tag(von), tag(bis)).into_iter().map(|(d, _)| d.to_string()).collect::<Vec<_>>();
+        assert_eq!(alle(&batz, "2025-01-01", "2025-12-31"), ["2025-01-18", "2025-10-05"]);
+        assert_eq!(alle(&batz, "2025-01-01", "2026-12-31"), ["2025-01-18", "2025-10-05", "2026-06-22"]);
+        let fest = Regel { fest: Some("hochland.waqxaqib-batz".into()), ..Default::default() };
+        assert_eq!(alle(&fest, "2025-01-01", "2025-12-31"), ["2025-01-18", "2025-10-05"]);
+        assert_eq!(k.im_jahr(None, &fest, 2025), Some(tag("2025-01-18")));
+        let null = Abstand { zahl: 0, einheit: Einheit::Tag };
+        let n = |r: &Regel, heute: &str| k.naechstes(None, r, null, tag(heute)).map(|(d, _)| d.to_string());
+        assert_eq!(n(&batz, "2025-01-18").as_deref(), Some("2025-01-18"));
+        assert_eq!(n(&batz, "2025-01-19").as_deref(), Some("2025-10-05"));
+        assert_eq!(n(&fest, "2025-10-06").as_deref(), Some("2026-06-22"));
+        // Eine Frist vierzehn volle Tage vor dem Fest (am 3.1.) rückt erst nach ihrem Ende weiter.
+        let vorher = Abstand { zahl: -14, einheit: Einheit::Tag };
+        assert_eq!(k.naechstes(None, &batz, vorher, tag("2025-01-03")).map(|(d, _)| d.to_string()).as_deref(), Some("2025-01-18"));
+        assert_eq!(k.naechstes(None, &batz, vorher, tag("2025-01-04")).map(|(d, _)| d.to_string()).as_deref(), Some("2025-10-05"));
+        let (_, h) = k.naechstes(None, &fest, null, tag("2025-01-19")).unwrap();
+        assert!(h.starts_with("Hochland Guatemalas (Cholq'ij) · Waqxaqib' B'atz' (8 B'atz') · 8 B'atz' im 260-Tage-Zyklus"), "{h}");
+        assert!(h.contains("überliefert: Waqxaqib' B'atz' (K'iche', Tedlock"), "{h}");
+        // Nur 1912–2100, wie alle Feste.
+        assert!(k.vorkommen(None, &batz, tag("2101-01-01"), tag("2101-12-31")).is_empty());
+        // Tena: Am Biquinto (12.2.1913 julianisch = 25.2.1913) wiederholt sich der Name des Vortags.
+        let vortag = zaehlung::tena(zaehlung::jdn(tag("1913-02-24")), 2_276_828);
+        assert_eq!((vortag.zahl, vortag.zeichen), {
+            let t = zaehlung::tena(zaehlung::jdn(tag("1913-02-25")), 2_276_828);
+            (t.zahl, t.zeichen)
+        });
+        let zeichen = [
+            "Cipactli",
+            "Ehecatl",
+            "Calli",
+            "Cuetzpalin",
+            "Coatl",
+            "Miquiztli",
+            "Mazatl",
+            "Tochtli",
+            "Atl",
+            "Itzcuintli",
+            "Ozomatli",
+            "Malinalli",
+            "Acatl",
+            "Ocelotl",
+            "Cuauhtli",
+            "Cozcacuauhtli",
+            "Ollin",
+            "Tecpatl",
+            "Quiahuitl",
+            "Xochitl",
+        ];
+        let r = zaehlregel("azteken-tena", u8::try_from(vortag.zahl).unwrap(), zeichen[vortag.zeichen]);
+        assert_eq!(alle(&r, "1913-02-20", "1913-03-01"), ["1913-02-24"]);
+        // Dreamspell: Ton und Siegel.
+        assert_eq!(alle(&zaehlregel("dreamspell", 1, "Human"), "2026-11-01", "2026-11-30"), ["2026-11-26"]);
+    }
+
+    /// Prüfsätze zu `zaehlung` nennen weder Variante noch Zahl noch Zeichen.
+    #[test]
+    fn zaehlung_pruefen() {
+        let k = berlin();
+        for (r, wort) in [
+            (zaehlregel("spuerhund-zaehlung", 8, "B'atz'"), "keine bekannte Zählung"),
+            (zaehlregel("hochland", 8, "Spuerhund"), "kein Zeichen"),
+            (zaehlregel("hochland", 99, "B'atz'"), "1 bis 13"),
+            (Regel { tage: Some(3), ..zaehlregel("hochland", 8, "B'atz'") }, "hat kein `tage`"),
+        ] {
+            let satz = k.ereignis_regel_pruefen(&r).unwrap_err();
+            assert!(satz.contains(wort), "{satz}");
+            assert!(!satz.contains("spuerhund") && !satz.contains("Spuerhund") && !satz.contains("99") && !satz.contains("B'atz'"), "{satz}");
+        }
+        assert!(k.ereignis_regel_pruefen(&zaehlregel("hochland", 8, "B'atz'")).is_ok());
+        assert!(k.ereignis_regel_pruefen(&zaehlregel("maya-584285", 13, "Ajaw")).is_ok());
+        // `nach` auf eine Zählung verlöre das zweite Vorkommen im Jahr: abgelehnt, am Ereignis und in einer Kalenderdatei.
+        let batz = || Some("hochland.waqxaqib-batz".to_string());
+        for r in [Regel { nach: batz(), tage: Some(3), ..Default::default() }, Regel { nach: batz(), wochentag: Some("montag".into()), ..Default::default() }] {
+            assert_eq!(k.ereignis_regel_pruefen(&r).unwrap_err(), SATZ_NACH_ZAEHLUNG);
+        }
+        assert!(k.ereignis_regel_pruefen(&Regel { nach: Some("kirche.ostern".into()), tage: Some(3), ..Default::default() }).is_ok());
+        let datei =
+            "kennung = \"probe\"\ntitel = \"Probe\"\n[[fest]]\nkennung = \"a\"\ntitel = \"A\"\nregel = { nach = \"hochland.waqxaqib-batz\", tage = 3 }\n";
+        let fehler = Katalog::lesen(&[("probe.toml", datei), EINGEBAUT[4]]).unwrap_err();
+        assert!(fehler.ends_with(SATZ_NACH_ZAEHLUNG), "{fehler}");
     }
 
     fn berlin() -> Katalog {

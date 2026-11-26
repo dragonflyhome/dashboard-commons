@@ -14,6 +14,35 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Zählkalender auf der Kalenderseite (Abschnitt „Zählungen“): Maya mit
+  den Korrelationen 584283 und 584285 (Lange Zählung, Tzolkin, Haab,
+  Kalenderrunde), die Zählung im Hochland Guatemalas mit den K'iche'-Namen,
+  die Azteken nach Caso 1967 und nach Tena 1987/2008 und der neuzeitliche
+  13-Monde-Kalender, je mit Herkunft und Stufe. Namen und Bezugszahlen als
+  Daten in vorlagen/kalender/zaehlungen.toml; jede Zählung wird wie ein
+  eingebauter Kalender über kalender = [...] eingeschaltet.
+- Neue Regel zaehlung für Feste und Ereignisse nach dem 260-Tage-Zyklus,
+  auch mit zwei Terminen im Jahr; dazu das Fest Waqxaqib' B'atz' unter der
+  Zählung des Hochlands.
+
+Geändert
+- Die Auswahl der Gebetszeiten merkt sich ungesendete Klicks je Ort.
+- Der Satz zum Zählbeginn der Langen Zählung sagt laienverständlich, wie
+  der Tag in den Maya-Inschriften steht.
+
+Behoben
+- Eine Regel, die mit nach (Abstand, Wochentag, Mondphase) auf ein Fest
+  einer Zählung verweist, wird abgelehnt, statt still nur vom ersten Tag
+  des Jahres zu rechnen; auf eine Zählung verweist ein Termin mit fest.
+- Am Tag außerhalb der Zeit und an „0.0 Hunab Ku“ behält der
+  13-Monde-Kalender seine Einordnung als neuzeitliche Umdeutung; der
+  Sondername steht nur noch in der Stellung.
+- Die Herkunft einer Gebetszeit nennt die Regel der Hochbreite nur noch,
+  wenn sie an diesem Tag greift.
+- Nach einem Fehlschlag beim Speichern der Gebetszeiten bleibt der
+  Tastaturfokus am Schalter.
+
 0.26.0 - 2026-11-26
 -------------------
 
