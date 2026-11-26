@@ -64,6 +64,20 @@ pub fn lesen(kopf: &HeaderMap) -> Option<String> {
     lesen_als(SICHER, kopf)
 }
 
+/// Steht ein Cookie mit genau dem eigenen Namen da (gleich welcher Wert)? Fremde
+/// Namen, die ihn nur enthalten (etwa `dashboard_layout`), zählen nicht.
+pub fn vorhanden(kopf: &HeaderMap) -> bool {
+    vorhanden_als(SICHER, kopf)
+}
+
+fn vorhanden_als(sicher: bool, kopf: &HeaderMap) -> bool {
+    kopf.get_all(header::COOKIE)
+        .iter()
+        .filter_map(|w| w.to_str().ok())
+        .flat_map(|t| t.split(';'))
+        .any(|teil| teil.trim().split_once('=').is_some_and(|(n, _)| n == name(sicher)))
+}
+
 fn lesen_als(sicher: bool, kopf: &HeaderMap) -> Option<String> {
     let eigener = name(sicher);
     let mut gefunden: Option<&str> = None;
@@ -131,6 +145,15 @@ mod tests {
             assert_eq!(l(&[format!("{n}=a<b")]), None);
             assert_eq!(l(&[format!("{n}=")]), None);
             assert_eq!(l(&[]), None);
+        }
+    }
+
+    #[test]
+    fn vorhanden_nur_mit_genauem_namen() {
+        for (sicher, n) in [(true, "__Host-dashboard"), (false, "dashboard")] {
+            assert!(vorhanden_als(sicher, &kopf(&[&format!("x=1; {n}=kaputt<")])), "{n}");
+            assert!(!vorhanden_als(sicher, &kopf(&[&format!("{n}_layout=1; mein{n}=2")])), "{n}: fremde Namen");
+            assert!(!vorhanden_als(sicher, &kopf(&[])));
         }
     }
 
