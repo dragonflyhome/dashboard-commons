@@ -10,6 +10,7 @@ import type {
 	KalenderFeste,
 	KalenderOrt,
 	KalenderOrte,
+	KalenderStaedte,
 	KalenderTag,
 	KalenderZonen
 } from '$vertrag';
@@ -100,10 +101,31 @@ function json(body: unknown): Response {
 	});
 }
 
+// Erfundene Stadt mit erfundenen Koordinaten.
+const STAEDTE: KalenderStaedte = {
+	treffer: [
+		{
+			name: 'Nebelfurt',
+			land: 'ZZ',
+			region: 'Nordmark',
+			breite: 12.5,
+			laenge: -33.75,
+			zeitzone: 'America/Sao_Paulo'
+		}
+	],
+	quelle: 'GeoNames (geonames.org), CC BY 4.0',
+	hinweis: null
+};
+
 /** Ein gefälschtes fetch, das je Pfad antwortet und jeden Aufruf mitschreibt. */
-function server(tag: KalenderTag = TAG): ReturnType<typeof vi.fn> {
+function server(
+	tag: KalenderTag = TAG,
+	staedte: KalenderStaedte = STAEDTE
+): ReturnType<typeof vi.fn> {
 	let orte = ORTE;
 	const f = vi.fn((pfad: string, init?: RequestInit) => {
+		if (pfad === '/api/kalender/staedte' && init?.method === 'POST')
+			return Promise.resolve(json(staedte));
 		if (pfad === '/api/kalender/standorte' && init?.method === 'POST') {
 			orte = { orte: [...ORTE.orte, NEU] };
 			return Promise.resolve(json(NEU));
@@ -223,7 +245,11 @@ describe('Seite /kalender', () => {
 		const knopf = screen.getByRole('button', { name: 'Ort merken' }).closest('form');
 		if (knopf === null) throw new Error('Merken-Formular fehlt');
 		await fireEvent.submit(knopf);
-		expect(await screen.findByText('Gemerkt als „Hafen“.')).toBeInTheDocument();
+		const gemerkt = await screen.findByText('Gemerkt als „Hafen“.');
+		expect(gemerkt).toHaveAttribute('role', 'status');
+		await vi.waitFor(() => {
+			expect(document.activeElement).toBe(gemerkt);
+		});
 
 		expect(gespeichert()).toHaveLength(1);
 		const rumpf = JSON.parse((gespeichert()[0]?.[1] as RequestInit).body as string) as Record<
@@ -243,5 +269,49 @@ describe('Seite /kalender', () => {
 		});
 		expect(localStorage.length).toBe(0);
 		expect(sessionStorage.length).toBe(0);
+	});
+
+	it('„Stadt suchen“ schickt den Suchtext im Rumpf, zeigt die Quelle und füllt Breite, Länge und Zone', async () => {
+		const f = server();
+		render(Page);
+		await screen.findByText('04:43');
+		expect(screen.queryByText(/Städteliste:/)).toBeNull();
+		await fireEvent.input(screen.getByLabelText('Stadt suchen'), {
+			target: { value: '  Nebelf  ' }
+		});
+		await fireEvent.keyDown(screen.getByLabelText('Stadt suchen'), { key: 'Enter' });
+		const stadt = await screen.findByRole('button', { name: 'Nebelfurt, Nordmark (ZZ)' });
+		expect(screen.getByText('Städteliste: GeoNames (geonames.org), CC BY 4.0')).toBeInTheDocument();
+
+		const post = f.mock.calls.find((c) => String(c[0]) === '/api/kalender/staedte');
+		if (post === undefined) throw new Error('kein POST');
+		const init = post[1] as RequestInit;
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual({ anfrage: 'Nebelf', hoechstens: 10 });
+		for (const [p] of f.mock.calls as [string][]) expect(p).not.toMatch(/Nebelf/);
+		// Enter im Suchfeld schickt „Anderer Ort“ nicht ab.
+		expect(f.mock.calls.some((c) => String(c[0]).startsWith('/api/kalender/abfrage'))).toBe(false);
+
+		await fireEvent.click(stadt);
+		expect(screen.getByLabelText(/Breite/)).toHaveValue(12.5);
+		expect(screen.getByLabelText(/Länge/)).toHaveValue(-33.75);
+		expect(screen.getByLabelText(/Zeitzone/)).toHaveValue('America/Sao_Paulo');
+		expect(document.activeElement).toBe(screen.getByLabelText(/Breite/));
+		expect(screen.queryByText(/Städteliste:/)).toBeNull();
+		expect(localStorage.length).toBe(0);
+		expect(sessionStorage.length).toBe(0);
+	});
+
+	it('ohne Städteliste steht ein Satz da, keine Namensnennung', async () => {
+		const satz = 'Die Städteliste ist noch nicht eingerichtet; Breite und Länge gehen immer.';
+		server(TAG, { treffer: [], quelle: STAEDTE.quelle, hinweis: satz });
+		render(Page);
+		await screen.findByText('04:43');
+		await fireEvent.input(screen.getByLabelText('Stadt suchen'), {
+			target: { value: 'Nebelfurt' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: 'Suchen' }));
+		expect(await screen.findByText(satz)).toBeInTheDocument();
+		expect(screen.queryByText(/Städteliste:/)).toBeNull();
 	});
 });

@@ -22,10 +22,11 @@ use crate::kalender::mond::{Lage, Ort};
 use crate::kalender::orte::{Benannt, Orte, ort_satz};
 use crate::kalender::tag::{self, Sonnenzeit};
 use crate::kalender::{Anzeige, Katalog, Regel};
+use crate::vertrag::daten::{Datei, datei_lesen};
 use crate::vertrag::kalender::{
     KalenderAbfrage, KalenderAbfrageAntwort, KalenderFest, KalenderFeste, KalenderMerken, KalenderOrt, KalenderOrte, KalenderTag, KalenderZonen, Tageszeile,
 };
-use crate::vertrag::standorte::versatz_nach_laenge;
+use crate::vertrag::standorte::{Standorte, standorte_eindeutig, versatz_nach_laenge};
 
 /// Höchstens so viele Tage umfasst ein Zeitraum für Feste.
 pub const TAGE_HOECHSTENS: i64 = 400;
@@ -34,8 +35,14 @@ pub const TAGE_HOECHSTENS: i64 = 400;
 pub const SATZ_OHNE_ORT: &str =
     "Es ist noch kein Ort eingetragen. Darum gibt es keine Tageszeiten, und die Feste gelten für die Nordhalbkugel in der Ortszeit von Windows.";
 
+/// Die Jahre, für die die Kalender-Schnittstelle rechnet (ΔT des Rechenkerns von 1800 bis 2150).
+const JAHRE: std::ops::RangeInclusive<i32> = 1800..=2150;
+
 fn datum(text: &str, name: &str) -> Result<NaiveDate, AppError> {
-    NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| AppError::unlesbar(format!("„{name}“ ist ein Datum JJJJ-MM-TT, etwa 2027-06-21.")))
+    NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .ok()
+        .filter(|d| JAHRE.contains(&d.year()))
+        .ok_or_else(|| AppError::unlesbar(format!("„{name}“ ist ein Datum JJJJ-MM-TT zwischen 1800 und 2150, etwa 2027-06-21.")))
 }
 
 fn text(d: NaiveDate) -> String {
@@ -54,8 +61,7 @@ fn aktive(inhalt: &Inhalt) -> Vec<String> {
 }
 
 /// Die Tageszeiten am Tag `d` als Zeilen; `wo`: „ · Ort X · Zone“.
-fn zeilen(ort: &Ort, lage: Lage, d: NaiveDate, wo: &str) -> (Vec<Tageszeile>, Option<String>) {
-    let z = tag::rechnen(d, lage);
+fn zeilen(ort: &Ort, z: &tag::Tageszeiten, d: NaiveDate, wo: &str) -> (Vec<Tageszeile>, Option<String>) {
     let zeile = |kennung: &str, name: String, s: Sonnenzeit, nicht: [&str; 2], herkunft: String| {
         let (zeit, text) = match s {
             Sonnenzeit::Um(t) => (tag::uhrzeit(ort, t, d), None),
@@ -103,11 +109,8 @@ fn zeitart(ort: &Ort, d: NaiveDate) -> String {
 /// Der Tag an einem Ort; `titel` und `wo` (Herkunftsteil) beschreiben ihn ohne Zahlen.
 fn tag_antwort(katalog: &Katalog, aktive: &[String], d: NaiveDate, titel: Option<String>, wo: &str) -> KalenderTag {
     let ort = katalog.ort().clone();
-    let (zeiten, taglaenge) = match ort.lage {
-        Some(lage) => {
-            let (z, l) = zeilen(&ort, lage, d, wo);
-            (z, l)
-        }
+    let (zeiten, taglaenge) = match tag::am_tag(d, &ort) {
+        Some(z) => zeilen(&ort, &z, d, wo),
         None => (Vec::new(), None),
     };
     KalenderTag {
@@ -159,7 +162,7 @@ fn feste_antwort(katalog: &Katalog, aktive: &[String], von: NaiveDate, bis: Naiv
 
 fn zeitraum(von: Option<String>, bis: Option<String>, ab: NaiveDate) -> Result<(NaiveDate, NaiveDate), AppError> {
     let von = von.map(|v| datum(&v, "von")).transpose()?.unwrap_or(ab);
-    let bis = bis.map(|b| datum(&b, "bis")).transpose()?.unwrap_or(von + Duration::days(30));
+    let bis = bis.map(|b| datum(&b, "bis")).transpose()?.unwrap_or(von.checked_add_signed(Duration::days(30)).unwrap_or(von));
     if bis < von || (bis - von).num_days() > TAGE_HOECHSTENS {
         return Err(AppError::unlesbar(format!("„bis“ liegt nach „von“, höchstens {TAGE_HOECHSTENS} Tage später.")));
     }
@@ -229,28 +232,51 @@ pub async fn merken(State(state): State<AppState>, kopf: HeaderMap, angemeldet: 
         if m.zeitzone.as_deref().is_some_and(|z| crate::kalender::zone::zone(z).is_none()) {
             return Err(AppError::unlesbar("Diese Zeitzone kennt der Server nicht. Gemeint ist ein Name der IANA-Liste, etwa Europe/Berlin."));
         }
-        let orte = Orte::aus_bestand(&state.inhalt.bestand());
-        let kennung = (1..).map(|n| format!("ort-{n}")).find(|k| orte.finden(k).is_none()).unwrap_or_default();
-        let datei = state.inhalt.ordner().join(crate::kalender::orte::PROJEKT).join("daten").join("standorte.toml");
-        let alt = match std::fs::read_to_string(&datei) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => KOPF_STANDORTE.to_string(),
+        // Lesen, Kennung wählen und Schreiben am Stück: Zwei Aufrufe kurz hintereinander
+        // (Doppelklick) bekämen sonst dieselbe Kennung.
+        static SPERRE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _sperre = SPERRE.lock().await;
+        let projekt = state.inhalt.ordner().join(crate::kalender::orte::PROJEKT);
+        if !projekt.join("projekt.toml").is_file() {
+            return Err(AppError::unlesbar("Das Projekt kalender fehlt im Inhalt. Orte lassen sich erst merken, wenn es angelegt ist."));
+        }
+        let datei = projekt.join("daten").join("standorte.toml");
+        let name = "projects/kalender/daten/standorte.toml";
+        // Die Kennungen aus der Datei, wie sie jetzt auf der Platte steht (nicht aus dem Zwischenstand).
+        let (alt, vorhanden) = match std::fs::read_to_string(&datei) {
+            Ok(t) => match datei_lesen::<Standorte>(name, &t) {
+                Ok(Datei::Ganz(s)) => (t, s.standort.into_iter().map(|s| s.kennung).collect::<Vec<_>>()),
+                Ok(Datei::Teile { .. }) => return Err(AppError::unlesbar("Die Datei der Orte ist in Teile gegliedert; dorthin merkt der Server keinen Ort.")),
+                Err(_) => return Err(AppError::unlesbar("Die Datei der Orte hat einen Fehler. Erst ihn beheben (die Prüfung nennt ihn), dann den Ort merken.")),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (KOPF_STANDORTE.to_string(), Vec::new()),
             Err(_) => return Err(AppError::intern("Die Datei der Orte ließ sich nicht lesen.")),
         };
+        let vorlage: Vec<String> = crate::kalender::orte::vorlage().map(|v| v.alle().into_iter().map(|s| s.kennung.clone()).collect()).unwrap_or_default();
+        let kennung = (1..).map(|n| format!("ort-{n}")).find(|k| !vorhanden.contains(k) && !vorlage.contains(k)).unwrap_or_default();
         let zone = m.zeitzone.as_deref().map(|z| format!("zeitzone = {}\n", toml::Value::String(z.to_string()))).unwrap_or_default();
         let neu = format!(
-            "{}\n[[standort]]\nkennung = \"{kennung}\"\ntitel = {}\nbreite = {:.1}\nlaenge = {:.1}\nherkunft = \"hand\"\n{zone}",
+            "{}\n\n[[standort]]\nkennung = \"{kennung}\"\ntitel = {}\nbreite = {:.1}\nlaenge = {:.1}\nherkunft = \"hand\"\n{zone}",
             alt.trim_end(),
             toml::Value::String(titel.to_string()),
             runden(m.breite),
             runden(m.laenge)
         );
-        // Neben der Datei schreiben und umbenennen: Der Inhalt liest nie eine halbe Datei.
-        let tmp = datei.with_extension("toml.neu");
-        std::fs::create_dir_all(datei.parent().unwrap_or(&datei))
-            .and_then(|()| std::fs::write(&tmp, neu))
-            .and_then(|()| std::fs::rename(&tmp, &datei))
-            .map_err(|_| AppError::intern("Der Ort ließ sich nicht speichern."))?;
+        // Der neue Text muss lesbar und eindeutig sein, bevor er die alte Datei ersetzt.
+        let gut = datei_lesen::<Standorte>(name, &neu).and_then(|d| standorte_eindeutig(&d, name, &neu)).is_ok();
+        if !gut {
+            return Err(AppError::intern("Der Ort ließ sich nicht sauber anfügen; die Datei bleibt, wie sie war."));
+        }
+        // Neben der Datei schreiben (eindeutiger Name) und umbenennen: Der Inhalt liest nie eine halbe Datei.
+        let tmp = datei.with_file_name(format!("standorte.toml.{}-{}.neu", std::process::id(), chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()));
+        let geschrieben = std::fs::create_dir_all(datei.parent().unwrap_or(&datei)).and_then(|()| std::fs::write(&tmp, neu)).and_then(|()| std::fs::rename(&tmp, &datei));
+        if geschrieben.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(AppError::intern("Der Dienst darf die Datei der Orte nicht schreiben, oder sie ist gerade belegt. Der Ort ist nicht gemerkt."));
+        }
+        // Gleich abgleichen, damit der nächste Aufruf den neuen Ort schon sieht.
+        let inhalt = state.inhalt.clone();
+        let _ = tokio::task::spawn_blocking(move || inhalt.abgleichen()).await;
         let zeitart = m.zeitzone.clone().unwrap_or_else(|| "fester Versatz, Näherung nach der Länge".into());
         Ok::<_, AppError>(Json(KalenderOrt { kennung, titel: titel.to_string(), zeitart, heimat: false }))
     }
@@ -586,6 +612,169 @@ mod tests {
         let (_, v) = schicke(&app, get("/api/kalender/standorte")).await;
         let kennungen: Vec<&str> = v["orte"].as_array().unwrap().iter().filter_map(|o| o["kennung"].as_str()).collect();
         assert_eq!(kennungen, ["mitte", "ort-1", "ort-2"], "{v}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Dateien neben der `standorte.toml`, die auf `.neu` enden (liegengebliebene Zwischendateien).
+    fn zwischendateien(wurzel: &Path) -> Vec<std::ffi::OsString> {
+        let ordner = wurzel.join("projects/kalender/daten");
+        std::fs::read_dir(ordner).map(|r| r.flatten().map(|e| e.file_name()).filter(|n| n.to_string_lossy().ends_with(".neu")).collect()).unwrap_or_default()
+    }
+
+    const HEIMAT: &str = "[[standort]]\nkennung = \"zuhause\"\ntitel = \"Zuhause\"\nbreite = 47.3\nlaenge = 73.9\nherkunft = \"hand\"\nzeitzone = \"Asia/Almaty\"\nheimat = true\n";
+
+    /// M2: Zwei Merk-Aufrufe ohne Abgleich dazwischen (Speicher im Beobachter-Modus wie
+    /// im Dienst, gleichzeitig und nach einer Änderung an der Datei, die der Speicher
+    /// noch nicht kennt): eindeutige Kennungen aus der Datei, die Datei bleibt lesbar,
+    /// der Heimatort bleibt, keine Zwischendatei.
+    #[tokio::test]
+    async fn ort_merken_ohne_abgleich() {
+        let wurzel = inhalt("merken-beobachter");
+        let datei = standorte_datei(&wurzel);
+        std::fs::write(&datei, HEIMAT).unwrap();
+        let mut state = AppState::fuer_tests(&wurzel);
+        state.inhalt = Arc::new(crate::inhalt::store::ContentStore::laden(
+            wurzel.join("projects"),
+            wurzel.join("data").join("pc.toml"),
+            wurzel.join("data").join("schwerpunkte.toml"),
+            crate::inhalt::store::Abgleich::Beobachter,
+        ));
+        let app = router_angemeldet(state);
+        let merken = |titel: &str| post_an("/api/kalender/standorte", serde_json::json!({"titel": titel, "breite": 10.0, "laenge": 20.0}));
+        let ((s1, v1), (s2, v2)) = tokio::join!(schicke(&app, merken("Eins")), schicke(&app, merken("Zwei")));
+        assert_eq!((s1, s2), (StatusCode::OK, StatusCode::OK), "{v1} {v2}");
+        let mut neu = [v1["kennung"].as_str().unwrap().to_string(), v2["kennung"].as_str().unwrap().to_string()];
+        neu.sort();
+        assert_eq!(neu, ["ort-1", "ort-2"]);
+        // Von Hand angefügt, der Speicher weiß davon nichts: Die nächste Kennung kommt aus der Datei.
+        let text = std::fs::read_to_string(&datei).unwrap();
+        let drei = "\n[[standort]]\nkennung = \"ort-3\"\ntitel = \"Drei\"\nbreite = 1.0\nlaenge = 2.0\nherkunft = \"hand\"\n";
+        std::fs::write(&datei, format!("{text}{drei}")).unwrap();
+        let (s, v) = schicke(&app, merken("Vier")).await;
+        assert_eq!((s, v["kennung"].as_str()), (StatusCode::OK, Some("ort-4")), "{v}");
+        let text = std::fs::read_to_string(&datei).unwrap();
+        let name = "projects/kalender/daten/standorte.toml";
+        let gelesen = crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>(name, &text).unwrap();
+        crate::vertrag::standorte::standorte_eindeutig(&gelesen, name, &text).unwrap();
+        assert!(text.starts_with(HEIMAT), "{text}");
+        // Nach dem Merken abgeglichen: der Heimatort und alle vier.
+        let (_, v) = schicke(&app, get("/api/kalender/standorte")).await;
+        let orte: Vec<(&str, bool)> = v["orte"].as_array().unwrap().iter().map(|o| (o["kennung"].as_str().unwrap(), o["heimat"].as_bool().unwrap())).collect();
+        assert_eq!(orte[0], ("zuhause", true), "{v}");
+        for k in ["ort-1", "ort-2", "ort-3", "ort-4"] {
+            assert!(orte.contains(&(k, false)), "{k}: {v}");
+        }
+        assert_eq!(zwischendateien(&wurzel), Vec::<std::ffi::OsString>::new());
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// M2: Eine kaputte Datei, eine Datei in Teilen und ein fehlendes Projekt `kalender`
+    /// werden mit einem Satz (422) abgewiesen; die Datei bleibt, keine Zwischendatei.
+    #[tokio::test]
+    async fn ort_merken_lehnt_ab() {
+        let koerper = serde_json::json!({"titel": "Ferienhaus", "breite": 47.3449, "laenge": 73.8551});
+        let teile = HEIMAT.replace("[[standort]]", "[[teil.privat.standort]]");
+        for (fall, text, wort) in [("kaputt", "[[standort]]\nkennung = \n", "Fehler"), ("teile", teile.as_str(), "Teile")] {
+            let wurzel = inhalt(&format!("merken-{fall}"));
+            let datei = standorte_datei(&wurzel);
+            std::fs::write(&datei, text).unwrap();
+            let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+            let (s, v) = schicke(&app, post_an("/api/kalender/standorte", koerper.clone())).await;
+            assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v.to_string().contains(wort), "{fall}: {s} {v}");
+            ohne_zahlen(fall, &v.to_string());
+            assert_eq!(std::fs::read_to_string(&datei).unwrap(), text, "{fall}: Datei unverändert");
+            assert!(zwischendateien(&wurzel).is_empty(), "{fall}: {:?}", zwischendateien(&wurzel));
+            let _ = std::fs::remove_dir_all(&wurzel);
+        }
+        // Ohne Projekt `kalender`: keine Datei, die nie gelesen würde.
+        let wurzel = inhalt("merken-ohne-projekt");
+        std::fs::remove_dir_all(wurzel.join("projects/kalender")).unwrap();
+        let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+        let (s, v) = schicke(&app, post_an("/api/kalender/standorte", koerper)).await;
+        assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v.to_string().contains("Projekt kalender"), "{s} {v}");
+        assert!(!wurzel.join("projects/kalender").exists(), "kein Ordner angelegt");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Aufgang, wahrer Mittag und Untergang aus einer Tagesantwort.
+    fn drei(tag: &Value) -> [String; 3] {
+        ["aufgang", "mittag", "untergang"].map(|k| {
+            let z = tag["zeiten"].as_array().unwrap().iter().find(|z| z["kennung"] == k).unwrap_or_else(|| panic!("{k}: {tag}"));
+            z["zeit"].as_str().unwrap_or_else(|| panic!("{k}: {z}")).to_string()
+        })
+    }
+
+    /// M1 über die Schnittstelle: Apia und Kiritimati zeigen am 21.6.2027 den Sonnentag
+    /// mit Mittag am 21.6. (ohne „(am …)“), Aufgang davor, Untergang danach; benannt
+    /// (`GET /api/kalender/tag`) und abgefragt (`POST /api/kalender/abfrage`).
+    /// Reykjavík: Untergang nach Mitternacht mit „(am 22.6.)“.
+    #[tokio::test]
+    async fn tageszeiten_nahe_der_datumsgrenze() {
+        let wurzel = inhalt("datumsgrenze");
+        let orte = [("apia", -13.8, -171.8, "Pacific/Apia"), ("kiritimati", 1.9, -157.5, "Pacific/Kiritimati")];
+        let mut text = STANDORTE.to_string();
+        for (k, b, l, z) in orte {
+            text.push_str(&format!(
+                "\n[[standort]]\nkennung = \"{k}\"\ntitel = \"{k}\"\nbreite = {b:.1}\nlaenge = {l:.1}\nherkunft = \"stadt\"\nzeitzone = \"{z}\"\n"
+            ));
+        }
+        std::fs::write(standorte_datei(&wurzel), text).unwrap();
+        let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+        for (k, b, l, z) in orte {
+            let (s, benannt) = schicke(&app, get(&format!("/api/kalender/tag?datum=2027-06-21&ort={k}"))).await;
+            assert_eq!(s, StatusCode::OK, "{benannt}");
+            let (s, frei) = schicke(&app, post(serde_json::json!({"breite": b, "laenge": l, "zeitzone": z, "datum": "2027-06-21"}))).await;
+            assert_eq!(s, StatusCode::OK, "{frei}");
+            for (wie, tag) in [("benannt", &benannt), ("abgefragt", &frei["tag"])] {
+                let [auf, mittag, unter] = drei(tag);
+                assert!([&auf, &mittag, &unter].iter().all(|t| t.len() == 5) && auf < mittag && mittag < unter, "{k} {wie}: {auf} {mittag} {unter}");
+                assert!(mittag.starts_with("12:"), "{k} {wie}: {mittag}");
+                assert_eq!(tag["datum"], "2027-06-21");
+            }
+        }
+        let (_, rey) =
+            schicke(&app, post(serde_json::json!({"breite": 64.1466, "laenge": -21.9426, "zeitzone": "Atlantic/Reykjavik", "datum": "2027-06-21"}))).await;
+        let [auf, mittag, unter] = drei(&rey["tag"]);
+        assert!(auf.len() == 5 && mittag.starts_with("13:") && unter.starts_with("00:0") && unter.ends_with(" (am 22.6.)"), "{auf} {mittag} {unter}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// S4: Jahre außerhalb 1800–2150 (riesig, negativ, 2200) geben 422 mit Satz und
+    /// keinen Absturz; die Ränder selbst gehen.
+    #[tokio::test]
+    async fn jahre_begrenzt() {
+        let wurzel = inhalt("jahre");
+        let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+        let falsch = ["+262142-01-01", "%2B262142-12-31", "262142-12-31", "-1000-01-01", "2200-01-01", "1799-12-31", "2151-01-01"];
+        for d in falsch {
+            for pfad in [
+                format!("/api/kalender/feste?von={d}"),
+                format!("/api/kalender/feste?von=2027-01-01&bis={d}"),
+                format!("/api/kalender/tag?datum={d}"),
+                format!("/api/kalender/tag?datum={d}&ort=ort-2"),
+            ] {
+                let (s, v) = schicke(&app, get(&pfad)).await;
+                assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v.to_string().contains("zwischen 1800 und 2150"), "{pfad}: {s} {v}");
+            }
+        }
+        for d in ["+262142-01-01", "-1000-01-01", "2200-01-01"] {
+            for feld in ["datum", "von", "bis"] {
+                let (s, v) = schicke(&app, post(serde_json::json!({"breite": 1.0, "laenge": 2.0, feld: d}))).await;
+                assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v.to_string().contains(feld), "{feld}={d}: {s} {v}");
+            }
+        }
+        // Die Ränder: 1800-01-01 und 2150-12-31 (dann bis 30 Tage danach, schon 2151).
+        for pfad in [
+            "/api/kalender/tag?datum=1800-01-01",
+            "/api/kalender/tag?datum=2150-12-31",
+            "/api/kalender/feste?von=2150-12-31",
+            "/api/kalender/feste?von=1800-01-01",
+        ] {
+            let (s, v) = schicke(&app, get(pfad)).await;
+            assert_eq!(s, StatusCode::OK, "{pfad}: {v}");
+        }
+        let (s, v) = schicke(&app, post(serde_json::json!({"breite": 1.0, "laenge": 2.0, "datum": "2150-12-31"}))).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 

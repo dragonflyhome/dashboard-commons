@@ -105,6 +105,8 @@ fn alle_dateien(cfg: &Config) -> Result<BTreeMap<String, String>, Vec<String>> {
         crate::vertrag::kalender::KalenderAbfrageAntwort,
         crate::vertrag::kalender::KalenderZonen,
         crate::vertrag::kalender::KalenderMerken,
+        crate::vertrag::kalender::KalenderStaedteAnfrage,
+        crate::vertrag::kalender::KalenderStaedte,
         Block,
         Projekt,
         Status,

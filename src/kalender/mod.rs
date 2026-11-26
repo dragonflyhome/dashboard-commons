@@ -10,11 +10,14 @@
 //!   Bezug (der Bezugstag selbst zählt nicht),
 //! - Ostersonntag: `ostern = "westlich"`, `"orthodox"` (julianische Rechnung,
 //!   als heutiges Datum) oder `"astronomisch"` (erster Sonntag nach dem ersten
-//!   Vollmond nach der Gleiche im März, alles nach dem tatsächlichen Himmel),
+//!   Vollmond nach der Gleiche im März, alles nach dem tatsächlichen Himmel) oder
+//!   `"gleiche-fruehling"` (ebenso, nach der Frühlingsgleiche des Orts: im Süden im September),
 //! - chinesischer Kalender: `kalender = "chinesisch"`, `monat`, `tag`, wahlweise
 //!   `schaltmonat = true` (Tage nach Pekinger Zeit),
 //! - Sonnentag: `himmel = "sonnenwende-dezember"`, `"gleiche-maerz"`,
 //!   `"sonnenwende-juni"` oder `"gleiche-september"` (der Tag des Ereignisses in Ortszeit),
+//!   oder nach der Rolle am Ort `"wende-winter"`, `"gleiche-fruehling"`, `"wende-sommer"`,
+//!   `"gleiche-herbst"` (auf der Südhalbkugel die andere Jahreshälfte),
 //! - Mondphase: `himmel = "neumond"`, `"erstes-viertel"`, `"vollmond"` oder
 //!   `"letztes-viertel"` mit `nach` und wahlweise `nummer` (1–13, Vorgabe 1):
 //!   die n-te solche Phase nach dem Tag des Bezugs (am Tag selbst zählt nicht),
@@ -101,7 +104,7 @@ pub struct Regel {
     /// `montag` … `sonntag`: der erste solche Tag nach dem Bezug.
     #[serde(default)]
     pub wochentag: Option<String>,
-    /// `westlich`, `orthodox` oder `astronomisch`.
+    /// `westlich`, `orthodox`, `astronomisch` oder `gleiche-fruehling`.
     #[serde(default)]
     pub ostern: Option<String>,
     /// Ein anderer Kalender; heute nur `chinesisch`.
@@ -250,7 +253,7 @@ impl Regel {
             return match (&m.enthaelt, m.vollmond) {
                 (Some(e), None) => Himmelstag::aus(e)
                     .map(Art::MondmonatMit)
-                    .ok_or_else(|| "In `mondmonat` nennt `enthaelt` eine Wende oder Gleiche: `\"sonnenwende-dezember\"`, `\"gleiche-maerz\"`, `\"sonnenwende-juni\"` oder `\"gleiche-september\"`.".into()),
+                    .ok_or_else(|| "In `mondmonat` nennt `enthaelt` eine Wende oder Gleiche: `\"sonnenwende-dezember\"`, `\"gleiche-maerz\"`, `\"sonnenwende-juni\"`, `\"gleiche-september\"` oder nach der Rolle am Ort `\"wende-winter\"`, `\"gleiche-fruehling\"`, `\"wende-sommer\"`, `\"gleiche-herbst\"`.".into()),
                 (None, Some(n)) if (1..=13).contains(&n) => Ok(Art::MondmonatVollmond(n)),
                 (None, Some(_)) => Err("`vollmond` in `mondmonat` zählt die Vollmonde nach dem kürzesten Tag; erlaubt sind 1 bis 13.".into()),
                 _ => Err("`mondmonat` braucht genau eines: `enthaelt` (eine Wende oder Gleiche) oder `vollmond` (1 bis 13).".into()),
@@ -462,7 +465,7 @@ fn kurz_datum(d: NaiveDate) -> String {
 const SATZ_KOMMT_NIE_VOR: &str = "Diese Regel ergibt in keinem Jahr von 1912 bis 2100 einen Tag, etwa ein Schaltmonat, den es nie gibt, oder der 30. Tag eines Monats, der immer 29 Tage hat.";
 
 /// Satz für ein Fest nach den Jahreszeiten an einem Ort zwischen den Wendekreisen.
-pub const SATZ_WENDEKREIS: &str = "Gilt an diesem Ort nicht: Er liegt zwischen den Wendekreisen; dort folgen die Jahreszeiten dem Regen, nicht der Sonne. Feste und Monate eines Kalenders nach den Jahreszeiten gibt es dort nicht; Sonnentage und Mondphasen gehen als eigene Regel mit `himmel`.";
+pub const SATZ_WENDEKREIS: &str = "Gilt an diesem Ort nicht: Er liegt zwischen den Wendekreisen; dort folgen die Jahreszeiten dem Regen, nicht der Sonne. Feste und Monate eines Kalenders nach den Jahreszeiten gibt es dort nicht, nur die Sonnentage und den Mond.";
 
 /// Hinweis zum Mond an einem Ort zwischen den Wendekreisen (Laientext, ohne Zahlen).
 pub const HINWEIS_WENDEKREIS: &str = "Dieser Ort liegt nahe am Äquator, zwischen den Wendekreisen. Dort sind die Tage das ganze Jahr fast gleich lang, und die Jahreszeiten richten sich nach Regen und Trockenheit, nicht nach der Sonne. Darum stehen hier nur die Sonnentage und die Mondphasen, ohne Fest- und Monatsnamen.";
@@ -507,13 +510,19 @@ impl Katalog {
 
     /// „Längster Tag · 16 h 47 min“, wenn `d` am Ort (mit Lage) der Tag der Sommersonnenwende ist.
     pub fn laengster_tag(&self, d: NaiveDate) -> Option<String> {
-        let lage = self.ort.lage?;
+        self.ort.lage?;
         let sommer = match self.ort.halbkugel {
             mond::Halbkugel::Nord => Sonnenereignis::SonnenwendeJuni,
             mond::Halbkugel::Sued => Sonnenereignis::SonnenwendeDezember,
         };
-        (self.ort.tag(sommer.zeitpunkt(d.year())?)? == d)
-            .then(|| format!("Längster Tag · {}", tag::rechnen(d, lage).taglaenge().map_or("keine Angabe".into(), tag::dauer_text)))
+        (self.ort.tag(sommer.zeitpunkt(d.year())?)? == d).then(|| {
+            let z = tag::am_tag(d, &self.ort);
+            let wert = match z.as_ref().map(|z| (z.aufgang, z.untergang)) {
+                Some((tag::Sonnenzeit::BleibtDarueber, tag::Sonnenzeit::BleibtDarueber)) => "Sonne geht nicht unter".to_string(),
+                _ => z.and_then(|z| z.taglaenge()).map_or("keine Angabe".into(), tag::dauer_text),
+            };
+            format!("Längster Tag · {wert}")
+        })
     }
 
     /// Ein Satz, wenn der Ort zwischen den Wendekreisen liegt und die Regel
@@ -1627,5 +1636,20 @@ regel = { nach = "kirche.ostern", tage = -3 }
         assert!(l.starts_with("Längster Tag · 16 h 3"), "{l}");
         assert_eq!(london.laengster_tag(tag("2027-06-20")), None);
         assert_eq!(berlin().laengster_tag(tag("2027-06-21")), None, "ohne Lage keine Taglänge");
+    }
+
+    /// S2: Im Polargebiet heißt der längste Tag „Sonne geht nicht unter“, nicht „24 h 0 min“.
+    /// M1: Apia (Süden, Zone +13) rechnet den Tag der Wende über den Sonnentag mit Mittag an diesem Tag.
+    #[test]
+    fn laengster_tag_polar_und_datumsgrenze() {
+        let tromsoe = an(69.6492, 18.9553, "Europe/Oslo");
+        assert_eq!(tromsoe.laengster_tag(tag("2027-06-21")).as_deref(), Some("Längster Tag · Sonne geht nicht unter"));
+        let apia = an(-13.8, -171.8, "Pacific/Apia");
+        let tage: Vec<NaiveDate> = tag("2027-12-19").iter_days().take(6).filter(|d| apia.laengster_tag(*d).is_some()).collect();
+        assert_eq!(tage.len(), 1, "{tage:?}");
+        let l = apia.laengster_tag(tage[0]).unwrap();
+        let z = tag::am_tag(tage[0], apia.ort()).unwrap();
+        assert_eq!(l, format!("Längster Tag · {}", tag::dauer_text(z.taglaenge().unwrap())));
+        assert!(l.starts_with("Längster Tag · 12 h") || l.starts_with("Längster Tag · 13 h"), "{l}");
     }
 }

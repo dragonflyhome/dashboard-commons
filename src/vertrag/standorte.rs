@@ -69,7 +69,7 @@ pub fn versatz_lesen(text: &str) -> Option<i32> {
         _ => return None,
     };
     let (h, m) = rest.split_once(':')?;
-    if h.len() != 2 || m.len() != 2 {
+    if h.len() != 2 || m.len() != 2 || !h.bytes().chain(m.bytes()).all(|b| b.is_ascii_digit()) {
         return None;
     }
     let (h, m): (i32, i32) = (h.parse().ok()?, m.parse().ok()?);

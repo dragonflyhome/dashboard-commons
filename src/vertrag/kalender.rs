@@ -129,3 +129,37 @@ pub struct KalenderMerken {
     #[serde(default)]
     pub zeitzone: Option<String>,
 }
+
+/// Rumpf von `POST /api/kalender/staedte`: Suche in der Städteliste. Die Anfrage
+/// wird weder protokolliert noch gespeichert.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct KalenderStaedteAnfrage {
+    pub anfrage: String,
+    /// Höchstens so viele Treffer, 1 bis 20 (Vorgabe 10).
+    #[serde(default)]
+    pub hoechstens: Option<u32>,
+}
+
+/// Eine öffentliche Stadt aus der Städteliste (GeoNames).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderStadt {
+    pub name: String,
+    /// Ländercode aus zwei Buchstaben.
+    pub land: String,
+    pub region: String,
+    pub breite: f64,
+    pub laenge: f64,
+    /// IANA-Zeitzone, etwa „Europe/Berlin“.
+    pub zeitzone: String,
+}
+
+/// Antwort auf `POST /api/kalender/staedte`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderStaedte {
+    pub treffer: Vec<KalenderStadt>,
+    /// Namensnennung der Liste, „GeoNames (geonames.org), CC BY 4.0“.
+    pub quelle: String,
+    /// Ein Satz, wenn die Liste fehlt oder nicht benutzt wird.
+    pub hinweis: Option<String>,
+}

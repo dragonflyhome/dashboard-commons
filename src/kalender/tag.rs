@@ -108,7 +108,7 @@ impl Tageszeiten {
     pub fn taglaenge(&self) -> Option<f64> {
         match (self.aufgang, self.untergang) {
             (Sonnenzeit::Um(a), Sonnenzeit::Um(u)) => Some((u - a).clamp(0.0, 1.0)),
-            (Sonnenzeit::BleibtDarueber, _) | (_, Sonnenzeit::BleibtDarueber) => Some(1.0),
+            (Sonnenzeit::BleibtDarueber, Sonnenzeit::BleibtDarueber) => Some(1.0),
             (Sonnenzeit::BleibtDarunter, Sonnenzeit::BleibtDarunter) => Some(0.0),
             _ => None,
         }
@@ -126,10 +126,25 @@ pub fn rechnen(d: NaiveDate, lage: Lage) -> Tageszeiten {
     }
 }
 
+/// Die Tageszeiten des Kalendertags `d` am Ort: der Sonnentag, dessen wahrer
+/// Mittag in Ortszeit auf `d` fällt (Aufgang davor, Untergang danach, auch über
+/// Mitternacht). So stimmt der Tag auch, wo die Zone weit von der Länge abweicht
+/// (Apia, Kiritimati). `None` ohne Lage oder wenn es den Tag am Ort nicht gibt.
+pub fn am_tag(d: NaiveDate, ort: &Ort) -> Option<Tageszeiten> {
+    let lage = ort.lage?;
+    [d, d.pred_opt()?, d.succ_opt()?].into_iter().find(|c| ort.tag(mittag(*c, lage)) == Some(d)).map(|c| rechnen(c, lage))
+}
+
 /// Eine Dauer in Tagen als „16 h 47 min“ (auf die Minute gerundet).
 pub fn dauer_text(tage: f64) -> String {
     let min = (tage * 1440.0).round() as i64;
     format!("{} h {} min", min / 60, min % 60)
+}
+
+/// „+05:30“ aus Sekunden.
+fn versatz_text(sekunden: i32) -> String {
+    let (z, s) = (if sekunden < 0 { '-' } else { '+' }, sekunden.unsigned_abs());
+    format!("{z}{:02}:{:02}", s / 3600, s % 3600 / 60)
 }
 
 /// Uhrzeit am Ort als „HH:MM“ (auf die Minute gerundet), mit dem Datum dahinter,
@@ -137,10 +152,13 @@ pub fn dauer_text(tage: f64) -> String {
 pub fn uhrzeit(ort: &Ort, t: f64, d: NaiveDate) -> Option<String> {
     let z = ort.ortszeit(t + 30.0 / 86400.0)?;
     let mut uhr = z.format("%H:%M").to_string();
-    // An Tagen mit Umstellung steht das Kürzel der Zone dahinter (etwa „CEST“).
-    let umstellung = ort.beginn(d).zip(d.succ_opt().and_then(|n| ort.beginn_ab(n))).is_some_and(|(a, b)| ort.kuerzel(a) != ort.kuerzel(b - 1e-4));
-    if let Some(k) = ort.kuerzel(t).filter(|_| umstellung) {
-        uhr = format!("{uhr} {k}");
+    // An Tagen mit Umstellung (der Versatz wechselt) steht die Zeitbezeichnung dahinter:
+    // das Kürzel der Zone (etwa „CEST“), bleibt es gleich (Moskau 2014: MSK), der Versatz.
+    if let Some((a, b)) = ort.beginn(d).zip(d.succ_opt().and_then(|n| ort.beginn_ab(n))).filter(|(a, b)| ort.versatz(*a) != ort.versatz(b - 1e-4)) {
+        uhr = match ort.kuerzel(t).filter(|_| ort.kuerzel(a) != ort.kuerzel(b - 1e-4)) {
+            Some(k) => format!("{uhr} {k}"),
+            None => format!("{uhr} {}", versatz_text(ort.versatz(t))),
+        };
     }
     Some(if z.date() == d { uhr } else { format!("{uhr} (am {})", z.format("%-d.%-m.")) })
 }
@@ -320,10 +338,14 @@ mod tests {
             pruefe("bürgerlich Beginn", r.daemmerung[0].1, f["buergerlich_beginn"]);
             pruefe("bürgerlich Ende", r.daemmerung[0].2, f["buergerlich_ende"]);
             if s[0] == "Reykjavik" && s[1] == "2027-06-21" {
-                // 00:03 ist der Untergang des Vorabends (20.6.); der dieses Abends liegt am 22.6.
+                // 00:03 ist der Untergang des Vorabends (20.6.). Der Kalendertag 21.6. zeigt den
+                // Sonnentag, dessen wahrer Mittag auf den 21.6. fällt; sein Untergang folgt am 22.6.
                 let vorabend = rechnen(d.pred_opt().unwrap(), lage);
                 pruefe("Untergang des Vorabends", vorabend.untergang, f["untergang"]);
-                assert!(ortssekunden(&ort, um(r.untergang), d) > 86400, "{zeile}: Untergang erst nach Mitternacht");
+                let am = am_tag(d, &ort).unwrap();
+                assert_eq!((ort.tag(am.mittag), &am), (Some(d), &r), "{zeile}: Sonnentag mit Mittag am 21.6.");
+                let unter = uhrzeit(&ort, um(am.untergang), d).unwrap();
+                assert!(unter.ends_with(" (am 22.6.)"), "{zeile}: Untergang {unter}");
             } else {
                 pruefe("Untergang", r.untergang, f["untergang"]);
             }
@@ -390,6 +412,87 @@ mod tests {
             let (erst, dann) = (erwartet.0.as_bytes()[0] as char, erwartet.1.as_bytes()[0] as char);
             let mitte = folge.trim_start_matches(erst).trim_end_matches(dann);
             assert!(mitte.len() <= 1 && mitte.chars().all(|c| c == 'H' || c == 'K'), "{von}: {folge}");
+        }
+    }
+
+    fn in_zone(breite: f64, laenge: f64, zone: &str) -> Ort {
+        Ort::an(Lage { breite, laenge }, Zeit::Zone(crate::kalender::zone::zone(zone).unwrap()))
+    }
+
+    /// Aufgang, Mittag und Untergang des Kalendertags `d` als Text.
+    fn drei(ort: &Ort, d: NaiveDate) -> [String; 3] {
+        let z = am_tag(d, ort).unwrap();
+        [um(z.aufgang), z.mittag, um(z.untergang)].map(|t| uhrzeit(ort, t, d).unwrap())
+    }
+
+    /// M1: Ein Kalendertag zeigt den Sonnentag, dessen wahrer Mittag in Ortszeit auf
+    /// ihn fällt, auch wo die Zone weit vor der Länge liegt (Apia +13, Kiritimati +14).
+    /// Reykjavík bleibt, wie es war: Untergang nach Mitternacht mit „(am 22.6.)“.
+    #[test]
+    fn sonnentag_nach_dem_mittag() {
+        let d = tag("2027-06-21");
+        for (name, ort) in [("Apia", in_zone(-13.8, -171.8, "Pacific/Apia")), ("Kiritimati", in_zone(1.9, -157.5, "Pacific/Kiritimati"))] {
+            let lage = ort.lage.unwrap();
+            // Der Sonnentag des mittleren Ortsdatums hätte seinen Mittag am 22.6.
+            assert_eq!(ort.tag(rechnen(d, lage).mittag), d.succ_opt(), "{name}");
+            let z = am_tag(d, &ort).unwrap();
+            assert_eq!(ort.tag(z.mittag), Some(d), "{name}");
+            assert!(um(z.aufgang) < z.mittag && z.mittag < um(z.untergang), "{name}: {z:?}");
+            let [auf, mittag, unter] = drei(&ort, d);
+            // Alle drei am 21.6. selbst: „HH:MM“ ohne „(am …)“, in der Reihenfolge des Tags.
+            assert!([&auf, &mittag, &unter].iter().all(|t| t.len() == 5) && auf < mittag && mittag < unter, "{name}: {auf} {mittag} {unter}");
+            assert!(mittag.starts_with("12:"), "{name}: Mittag {mittag}");
+        }
+        let rey = in_zone(64.1466, -21.9426, "Atlantic/Reykjavik");
+        assert_eq!(am_tag(d, &rey).unwrap(), rechnen(d, rey.lage.unwrap()));
+        // NOAA: 02:55, 13:29:27, 00:04; der Mittag liegt hier rund 15 s später und rundet auf 13:30.
+        assert_eq!(drei(&rey, d), ["02:55", "13:30", "00:04 (am 22.6.)"]);
+        // Ohne Lage keine Tageszeiten.
+        assert_eq!(am_tag(d, &Ort::windows()), None);
+    }
+
+    /// S2/Hinweis: Taglänge nur, wenn beide Enden bekannt sind; ein Grenztag mit nur
+    /// einer Zeit (Aufgang, dann „geht nicht unter“) oder „keine Zeit“ gibt keine Angabe.
+    #[test]
+    fn taglaenge_an_grenztagen() {
+        use Sonnenzeit::{BleibtDarueber as Oben, BleibtDarunter as Unten, Keine, Um};
+        let mit = |aufgang, untergang| Tageszeiten { aufgang, mittag: 0.0, untergang, daemmerung: Vec::new() }.taglaenge();
+        assert_eq!(mit(Um(0.25), Oben), None);
+        assert_eq!(mit(Oben, Um(0.75)), None);
+        assert_eq!(mit(Keine, Um(0.75)), None);
+        assert_eq!(mit(Um(0.25), Keine), None);
+        assert_eq!(mit(Oben, Oben), Some(1.0));
+        assert_eq!(mit(Unten, Unten), Some(0.0));
+        assert_eq!(mit(Um(0.25), Um(0.75)), Some(0.5));
+        // Tromsø im Mai: der Grenztag mit Aufgang, aber ohne Untergang.
+        let tromsoe = Lage { breite: 69.6492, laenge: 18.9553 };
+        let grenz = tag("2027-05-12").iter_days().take(14).map(|d| rechnen(d, tromsoe)).find(|r| matches!((r.aufgang, r.untergang), (Um(_), Oben)));
+        assert_eq!(grenz.expect("Grenztag im Mai").taglaenge(), None);
+    }
+
+    /// S3: Ein Umstellungstag wird am Versatz erkannt. Moskau 26.10.2014 (MSK +4 → MSK +3,
+    /// um 2 Uhr): gleiches Kürzel, darum der Versatz hinter der Zeit; Vor- und Folgetag ohne.
+    /// Berlin an den Umstellungstagen 2027 mit „CEST“/„CET“, an gewöhnlichen Tagen ohne.
+    #[test]
+    fn umstellungstag_am_versatz() {
+        let moskau = in_zone(55.7558, 37.6173, "Europe/Moscow");
+        let d = tag("2014-10-26");
+        for t in drei(&moskau, d) {
+            assert!(t.ends_with(" +03:00") && t.len() == 12, "{t}");
+        }
+        // 0:30 Ortszeit (20:30 Weltzeit am Vortag) liegt vor der Umstellung: alter Versatz.
+        assert_eq!(uhrzeit(&moskau, tag_zahl(tag("2014-10-25")) + 20.5 / 24.0, d).as_deref(), Some("00:30 +04:00"));
+        for n in ["2014-10-25", "2014-10-27"] {
+            assert!(drei(&moskau, tag(n)).iter().all(|t| t.len() == 5), "{n}: {:?}", drei(&moskau, tag(n)));
+        }
+        let berlin = in_zone(52.52, 13.405, "Europe/Berlin");
+        for (n, k) in [("2027-03-28", "CEST"), ("2027-10-31", "CET")] {
+            assert!(drei(&berlin, tag(n)).iter().all(|t| t.ends_with(&format!(" {k}"))), "{n}: {:?}", drei(&berlin, tag(n)));
+        }
+        // 0:30 Weltzeit am 28.3.2027 ist 1:30 Winterzeit, vor der Umstellung um 2 Uhr.
+        assert_eq!(uhrzeit(&berlin, tag_zahl(tag("2027-03-28")) + 0.5 / 24.0, tag("2027-03-28")).as_deref(), Some("01:30 CET"));
+        for n in ["2027-03-27", "2027-03-29", "2027-06-21", "2027-10-30", "2027-11-01"] {
+            assert!(drei(&berlin, tag(n)).iter().all(|t| t.len() == 5), "{n}: {:?}", drei(&berlin, tag(n)));
         }
     }
 }

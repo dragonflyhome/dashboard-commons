@@ -31,7 +31,7 @@ tage: number | null,
  */
 wochentag: string | null, 
 /**
- * `westlich`, `orthodox` oder `astronomisch`.
+ * `westlich`, `orthodox`, `astronomisch` oder `gleiche-fruehling`.
  */
 ostern: string | null, 
 /**

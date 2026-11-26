@@ -9,9 +9,11 @@
 	 * `POST /api/kalender/abfrage` (und, nur auf Klick auf „Ort merken“, von
 	 * `POST /api/kalender/standorte`), nie in die Adresse, nie in den
 	 * Speicher des Browsers und nie in die Konsole. Ungemerkt leben sie nur im
-	 * Zustand dieser Seite und sind weg, sobald man sie verlässt.
+	 * Zustand dieser Seite und sind weg, sobald man sie verlässt. Die
+	 * Städtesuche schickt den Suchtext ebenso nur im Rumpf von
+	 * `POST /api/kalender/staedte`.
 	 */
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { Abschnitt, Absatz, Auswahl, Hinweis, Knopf } from '$katalog';
 	import { API, fehlerText, getJson, readError } from '#lib/api/client.ts';
@@ -28,6 +30,9 @@
 		KalenderMerken,
 		KalenderOrt,
 		KalenderOrte,
+		KalenderStadt,
+		KalenderStaedte,
+		KalenderStaedteAnfrage,
 		KalenderTag,
 		KalenderZonen,
 		Zeitraum
@@ -58,7 +63,43 @@
 	// „Ort merken“: Titel und Rückmeldung.
 	let merkTitel = $state('');
 	let gemerkt = $state<string | null>(null);
+	let gemerktFeld = $state<HTMLElement | null>(null);
 	let zonen = $state<KalenderZonen | null>(null);
+
+	// „Stadt suchen“: Suchtext und Antwort, nur hier im Speicher.
+	let suchtext = $state('');
+	let staedte = $state<KalenderStaedte | null>(null);
+	let breiteFeld = $state<HTMLInputElement | null>(null);
+	let suchNr = 0;
+
+	async function stadtSuchen(): Promise<void> {
+		const anfrage = suchtext.trim();
+		if (anfrage === '') return;
+		const nr = ++suchNr;
+		const koerper: KalenderStaedteAnfrage = { anfrage, hoechstens: 10 };
+		try {
+			const a = await senden<KalenderStaedte>(`${API}/kalender/staedte`, koerper);
+			if (nr === suchNr) staedte = a;
+		} catch (e) {
+			if (nr === suchNr) fehler = fehlerText(e);
+		}
+	}
+
+	/** Enter im Suchfeld sucht, statt das Formular „Anderer Ort“ abzuschicken. */
+	function suchTaste(e: KeyboardEvent): void {
+		if (e.key !== 'Enter') return;
+		e.preventDefault();
+		void stadtSuchen();
+	}
+
+	/** Übernimmt die Stadt in Breite, Länge und Zeitzone; rechnen erst auf Knopfdruck. */
+	function stadtWaehlen(s: KalenderStadt): void {
+		breite = s.breite;
+		laenge = s.laenge;
+		zeitzone = s.zeitzone;
+		staedte = null;
+		breiteFeld?.focus();
+	}
 
 	const optionen = $derived(
 		(orte ?? []).map((o) => ({ wert: o.kennung, text: o.heimat ? `${o.titel} (Heimat)` : o.titel }))
@@ -161,6 +202,9 @@
 			await orteLaden(neu.kennung);
 			gemerkt = neu.titel;
 			fehler = null;
+			// Das Merken-Formular ist weg; der Fokus geht auf die Rückmeldung.
+			await tick();
+			gemerktFeld?.focus();
 		} catch (err) {
 			fehler = fehlerText(err);
 		}
@@ -205,9 +249,53 @@
 	<form class="anders" onsubmit={abschicken} autocomplete="off">
 		<fieldset>
 			<legend>Anderer Ort</legend>
+			<div class="suche">
+				<label class="feld">
+					Stadt suchen
+					<input
+						type="search"
+						bind:value={suchtext}
+						onkeydown={suchTaste}
+						maxlength="100"
+						spellcheck="false"
+					/>
+				</label>
+				<Knopf onclick={() => void stadtSuchen()}>Suchen</Knopf>
+			</div>
+			<div role="status" data-staedte>
+				{#if staedte !== null}
+					{#if staedte.hinweis}
+						<p class="muted small">{staedte.hinweis}</p>
+					{:else if staedte.treffer.length === 0}
+						<p class="muted small">Keine Stadt gefunden.</p>
+					{:else}
+						<ul class="plain treffer">
+							{#each staedte.treffer as s, i (i)}
+								<li>
+									<Knopf
+										art="leise"
+										onclick={() => {
+											stadtWaehlen(s);
+										}}>{s.name}{s.region ? `, ${s.region}` : ''} ({s.land})</Knopf
+									>
+								</li>
+							{/each}
+						</ul>
+						<p class="muted small" data-quelle>Städteliste: {staedte.quelle}</p>
+					{/if}
+				{/if}
+			</div>
 			<label class="feld">
 				Breite (Grad, Norden positiv)
-				<input type="number" bind:value={breite} min="-90" max="90" step="any" required />
+				<input
+					type="number"
+					bind:value={breite}
+					bind:this={breiteFeld}
+					min="-90"
+					max="90"
+					step="any"
+					required
+				/>
 			</label>
 			<label class="feld">
 				Länge (Grad, Osten positiv)
@@ -256,9 +344,9 @@
 			<Knopf type="submit">Ort merken</Knopf>
 		</form>
 	{/if}
-	{#if gemerkt !== null}
-		<p data-gemerkt>Gemerkt als „{gemerkt}“.</p>
-	{/if}
+	<p role="status" data-gemerkt tabindex="-1" class:leer={gemerkt === null} bind:this={gemerktFeld}>
+		{#if gemerkt !== null}Gemerkt als „{gemerkt}“.{/if}
+	</p>
 	{#if zonen !== null}
 		<p class="muted small" data-tzdb>Zeitzonen-Daten {zonen.tzdb}</p>
 	{/if}
@@ -371,6 +459,22 @@
 		flex-wrap: wrap;
 		align-items: end;
 		gap: 0.5rem;
+	}
+	.suche {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: end;
+		gap: 0.5rem;
+	}
+	.treffer {
+		display: grid;
+		justify-items: start;
+		gap: 0.15rem;
+		margin: 0.3rem 0;
+	}
+	/* Die Statuszeile bleibt im Baum, damit Vorlese-Programme die Rückmeldung ansagen. */
+	.leer {
+		margin: 0;
 	}
 	.knoepfe {
 		display: flex;

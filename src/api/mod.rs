@@ -30,6 +30,7 @@ pub mod projekte;
 pub mod pruefung;
 pub mod schluessel;
 pub mod sitzungen;
+pub mod staedte;
 pub mod stand;
 pub mod system_seiten;
 pub mod vertrag;
@@ -121,6 +122,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/kalender/tag", get(kalender::tag))
         .route("/api/kalender/feste", get(kalender::feste))
         .route("/api/kalender/abfrage", post(kalender::abfrage_post))
+        .route("/api/kalender/staedte", post(staedte::suchen))
         .route("/api/events", get(events::sse))
         // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).
         .route("/api/events/frei", get(events::sse_frei))
