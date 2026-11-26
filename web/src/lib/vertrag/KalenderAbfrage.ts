@@ -15,4 +15,8 @@ von: string | null, bis: string | null, breite: number, laenge: number,
 /**
  * IANA-Zeitzone; ohne sie ein fester Versatz nach der Länge (Näherung).
  */
-zeitzone: string | null, };
+zeitzone: string | null, 
+/**
+ * Varianten der Gebetszeiten nur für diese Antwort (nichts wird gespeichert).
+ */
+gebete: Array<string> | null, };

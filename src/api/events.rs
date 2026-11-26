@@ -826,6 +826,18 @@ pub fn fingerabdruck(wurzel: &Path, tief: bool) -> u64 {
     h.finish()
 }
 
+/// Meldet, was ein Handler nach dem Schreiben selbst abgeglichen hat, wie der
+/// Beobachter es täte: das Ereignis je Pfad und den Hinweis an den
+/// Git-Zwischenspeicher. Der Beobachter sieht die Änderung danach nicht mehr.
+pub fn abgeglichen_melden(state: &AppState, a: &crate::inhalt::store::Aenderungen) {
+    for path in &a.pfade {
+        emit(&state.events, path);
+    }
+    if a.pfade.iter().any(|p| p.starts_with("projects/")) {
+        state.git.projekte_geaendert();
+    }
+}
+
 fn emit(tx: &Sender, path: &str) {
     let area = if path.starts_with("data/") { "data" } else { "projects" };
     debug!("Änderung: {path}");

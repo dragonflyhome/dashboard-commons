@@ -44,6 +44,7 @@
 //! Später (nicht in Belegstufe 2): Orte und Südhalbkugel aus dem Ort, Tages- und
 //! Gebetszeiten, Zählkalender. Neue Arten kommen als weiterer Schlüssel dazu.
 
+pub mod gebete;
 pub mod himmel;
 pub mod mond;
 pub mod orte;

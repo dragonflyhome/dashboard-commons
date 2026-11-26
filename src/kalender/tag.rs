@@ -131,8 +131,16 @@ pub fn rechnen(d: NaiveDate, lage: Lage) -> Tageszeiten {
 /// Mitternacht). So stimmt der Tag auch, wo die Zone weit von der Länge abweicht
 /// (Apia, Kiritimati). `None` ohne Lage oder wenn es den Tag am Ort nicht gibt.
 pub fn am_tag(d: NaiveDate, ort: &Ort) -> Option<Tageszeiten> {
+    Some(rechnen(sonnentag(d, ort)?, ort.lage?))
+}
+
+/// Der Sonnentag (mittlere Ortszeit) zum Kalendertag `d` am Ort: der, dessen wahrer
+/// Mittag in Ortszeit auf `d` fällt. `None` ohne Lage oder wenn es den Tag am Ort nicht gibt.
+// shortcut: Einen Kalendertag, den es zweimal gibt (Kwajalein 1969), sieht diese Suche
+// nur einmal; aufrüsten, wenn doppelte Tage angezeigt werden sollen.
+pub fn sonnentag(d: NaiveDate, ort: &Ort) -> Option<NaiveDate> {
     let lage = ort.lage?;
-    [d, d.pred_opt()?, d.succ_opt()?].into_iter().find(|c| ort.tag(mittag(*c, lage)) == Some(d)).map(|c| rechnen(c, lage))
+    [d, d.pred_opt()?, d.succ_opt()?].into_iter().find(|c| ort.tag(mittag(*c, lage)) == Some(d))
 }
 
 /// Eine Dauer in Tagen als „16 h 47 min“ (auf die Minute gerundet).

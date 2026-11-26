@@ -454,7 +454,20 @@ Tageszeiten. Aufgang und Untergang mit Refraktion und halbem Sonnendurchmesser (
 
 Schnittstelle, nur angemeldet. GET /api/kalender/standorte (Kennung, Titel, Zeitart), GET /api/kalender/zonen (IANA-Namen und Fassung), GET /api/kalender/tag?datum=&ort=, GET /api/kalender/feste?von=&bis=&ort= (höchstens 400 Tage); in der Adresse stehen nur Kennungen. Für einen anderen Ort POST /api/kalender/abfrage mit breite, laenge und wahlweise zeitzone im Rumpf; gerechnet wird gerundet auf 0,1°, ohne Zone mit einem Versatz nach der Länge (als Näherung gekennzeichnet), nichts wird gespeichert oder protokolliert. POST /api/kalender/standorte mit titel, breite, laenge und zeitzone merkt einen Ort unter einer neutralen Kennung (ort-1, ort-2 …) in der privaten Datei; festschreiben tut ihn wie alles im Inhalt ein Chat.
 
-Veröffentlichung. Vor jeder Fassung zieht der Dashboard-Chat die Zeitzonen-Daten mit cargo update -p jiff-tzdb nach (eigener Commit), damit neue Regeln der Länder mitkommen.'''
+Veröffentlichung. Vor jeder Fassung zieht der Dashboard-Chat die Zeitzonen-Daten mit cargo update -p jiff-tzdb nach (eigener Commit), damit neue Regeln der Länder mitkommen.
+
+Städteliste. Die Liste der Städte ab etwa 15 000 Einwohnern von GeoNames (CC BY 4.0) liegt nur im privaten Inhalt unter projects/kalender/staedte/. scripts/Staedte-Umwandeln.ps1 macht aus der heruntergeladenen Datei die gekürzte Liste und die Kopfdatei mit Quelle, Abrufdatum, Lizenz und Prüfsummen; ohne Liste nimmt die Seite Breite und Länge.'''
+
+[[block]]
+titel = 'Gebetszeiten (Kalender, Stufe 4)'
+text = '''
+Kurz für dich (Inhaber): Auf der Seite Kalender stehen für jeden Ort die Gebetszeiten in den Varianten, die du dort einschaltest: fünf Zeiten oder drei zusammengelegte, nach der Weltliga (MWL) oder nach Nordamerika (ISNA), mit Asr früh und spät. Was du einschaltest, bleibt privat.
+
+Rechnung. Fadschr und Ischa bei der Tiefe der Sonne nach der Methode (MWL 18°/17°, ISNA 15°/15°), Sonnenaufgang und Maghrib wie die Tageszeiten, Dhuhr ist der wahre Mittag plus eine Minute, Asr aus der Schattenlänge (früh einfach, spät doppelt). Bezug ist adhan-js (MIT); abgeglichen mit dessen Testwerten und dem Dienst AlAdhan. Wo es nachts nicht dunkel genug wird, oder wenn die Schranke näher an der Nacht liegt, gilt die Siebtel-Regel (ein Siebtel der Nacht vor dem Aufgang bzw. nach dem Untergang); die Zeile sagt das. Im Polargebiet steht „keine Zeit“, nie eine erfundene.
+
+Daten. Rechenweisen und Varianten stehen öffentlich in vorlagen/kalender/gebete.toml (methode mit Winkeln und Zuschlägen, variante mit zeiten aus dem festen Wortschatz fajr, sunrise, dhuhr, asr-shafi, asr-hanafi, maghrib, isha; umfasst nennt zusammengelegte Bestandteile). Die Auswahl je Ort steht privat in projects/kalender/daten/gebete.toml; sie schreibt nur der Server über die Seite. Sie erscheint nie in Fristen, Anstehend, Meldungen, Protokoll oder Fehlersätzen.
+
+Schnittstelle, nur angemeldet. GET /api/kalender/gebete (Varianten und Auswahl), POST /api/kalender/gebete mit ort und varianten (leer entfernt die Auswahl), GET /api/kalender/tag liefert die Zeilen der ausgewählten Varianten, POST /api/kalender/abfrage nimmt gebete für einen nachgeschlagenen Ort und vergisst sie.'''
 
 [[block]]
 titel = 'So fängst du an'

@@ -335,6 +335,10 @@ pub fn berechnen(b: &Berechnet, quellen: &Quellen, heute: NaiveDate) -> Result<S
     if stamm == "standorte" {
         return Err(("quelle", "Aus `standorte.toml` rechnet der Server nichts; die Orte sind persönlich.".to_string()));
     }
+    // Ebenso die Auswahl der Gebetszeiten: Schon eine Anzahl verriete etwas.
+    if stamm == "gebete" {
+        return Err(("quelle", "Aus `gebete.toml` rechnet der Server nichts; die Auswahl ist persönlich.".to_string()));
+    }
     let tabelle = match quellen.get(stamm) {
         None => return Err(("quelle", format!("Die Quelle „{q}“ gibt es nicht: in `daten/` liegt keine Datei `{stamm}.toml`."))),
         Some(None) => {

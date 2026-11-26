@@ -1130,6 +1130,8 @@ pub struct ProjektDaten {
     pub plan: Option<Datei<super::plan::Plan>>,
     /// `daten/standorte.toml` (Kalender, Stufe 3), ohne Koordinaten.
     pub standorte: Option<Datei<super::standorte::Standorte>>,
+    /// `daten/gebete.toml` (Kalender, Stufe 4), ohne die Auswahl.
+    pub gebete: Option<Datei<super::gebete::Gebete>>,
     /// `daten/eigen-<name>.toml` unter dem Schlüssel `<name>`, als JSON durchgereicht.
     #[ts(type = "Record<string, unknown>")]
     pub eigen: BTreeMap<String, serde_json::Value>,
@@ -1153,6 +1155,7 @@ pub enum DatenInhalt {
     Fristen(Datei<super::fristen::Fristen>),
     Plan(Datei<super::plan::Plan>),
     Standorte(Datei<super::standorte::Standorte>),
+    Gebete(Datei<super::gebete::Gebete>),
     /// `eigen-<name>.toml`, als JSON durchgereicht.
     Eigen(#[ts(type = "Record<string, unknown>")] serde_json::Value),
 }
@@ -1180,6 +1183,7 @@ impl ProjektDaten {
             "fristen" => DatenInhalt::Fristen(self.fristen.take()?),
             "plan" => DatenInhalt::Plan(self.plan.take()?),
             "standorte" => DatenInhalt::Standorte(self.standorte.take()?),
+            "gebete" => DatenInhalt::Gebete(self.gebete.take()?),
             _ => DatenInhalt::Eigen(self.eigen.remove(name.strip_prefix("eigen-")?)?),
         })
     }
@@ -1199,7 +1203,7 @@ impl ProjektDaten {
 }
 
 /// Die Dateinamen, die in `daten/` stehen dürfen (ohne `eigen-<name>.toml`).
-pub const DATEIEN: [&str; 12] = [
+pub const DATEIEN: [&str; 13] = [
     Kennzahlen::DATEI,
     Ampel::DATEI,
     Fortschritt::DATEI,
@@ -1212,6 +1216,7 @@ pub const DATEIEN: [&str; 12] = [
     super::fristen::Fristen::DATEI,
     super::plan::Plan::DATEI,
     super::standorte::Standorte::DATEI,
+    super::gebete::Gebete::DATEI,
 ];
 
 fn einsetzen<T: Baustein>(feld: &mut Option<Datei<T>>, datei: &str, text: &str) -> Result<(), LeseFehler> {
@@ -1285,6 +1290,14 @@ impl ProjektDaten {
                 einsetzen(&mut self.standorte, datei, text).map_err(super::standorte::ohne_werte)?;
                 match &self.standorte {
                     Some(s) => super::standorte::standorte_eindeutig(s, datei, text),
+                    None => Ok(()),
+                }
+            }
+            "gebete" => {
+                // Wie bei den Orten: Ein Lesefehler von TOML zitierte die Zeile, also die Auswahl.
+                einsetzen(&mut self.gebete, datei, text).map_err(super::gebete::ohne_werte)?;
+                match &self.gebete {
+                    Some(g) => super::gebete::gebete_eindeutig(g, datei, text),
                     None => Ok(()),
                 }
             }

@@ -1,0 +1,76 @@
+# Gebetszeiten (Kalender, Stufe 4): Rechenweisen und Varianten, öffentlich.
+# Welche Varianten jemand an einem Ort sieht, steht privat in daten/gebete.toml
+# des Projekts kalender. Winkel in Grad unter dem Horizont, Zuschläge in Minuten.
+# Bezug der Methoden: adhan-js (MIT), src/CalculationMethod.ts, Commit d2993d5.
+
+[[methode]]
+kennung = "mwl"
+titel = "Muslimische Weltliga (MWL)"
+fajr_winkel = 18.0
+isha_winkel = 17.0
+zuschlaege = { dhuhr = 1 }
+quelle = "adhan-js, CalculationMethod.MuslimWorldLeague"
+
+[[methode]]
+kennung = "isna"
+titel = "Nordamerika (ISNA)"
+fajr_winkel = 15.0
+isha_winkel = 15.0
+zuschlaege = { dhuhr = 1 }
+quelle = "adhan-js, CalculationMethod.NorthAmerica"
+
+# Fünf Zeiten; Asr früh (Schafiiten, Malikiten, Hanbaliten) und spät (Hanafiten) nebeneinander.
+
+[[variante]]
+kennung = "fuenf-mwl"
+titel = "Fünf Zeiten, MWL"
+methode = "mwl"
+hochbreite = "siebtel"
+zeiten = [
+  { name = "Fadschr", regel = "fajr" },
+  { name = "Sonnenaufgang", regel = "sunrise" },
+  { name = "Dhuhr", regel = "dhuhr" },
+  { name = "Asr früh", regel = "asr-shafi" },
+  { name = "Asr spät", regel = "asr-hanafi" },
+  { name = "Maghrib", regel = "maghrib" },
+  { name = "Ischa", regel = "isha" },
+]
+
+[[variante]]
+kennung = "fuenf-isna"
+titel = "Fünf Zeiten, ISNA"
+methode = "isna"
+hochbreite = "siebtel"
+zeiten = [
+  { name = "Fadschr", regel = "fajr" },
+  { name = "Sonnenaufgang", regel = "sunrise" },
+  { name = "Dhuhr", regel = "dhuhr" },
+  { name = "Asr früh", regel = "asr-shafi" },
+  { name = "Asr spät", regel = "asr-hanafi" },
+  { name = "Maghrib", regel = "maghrib" },
+  { name = "Ischa", regel = "isha" },
+]
+
+# Drei Zeiten mit zusammengelegten Gebeten; `umfasst` nennt die Bestandteile.
+
+[[variante]]
+kennung = "drei-mwl"
+titel = "Drei Zeiten, MWL"
+methode = "mwl"
+hochbreite = "siebtel"
+zeiten = [
+  { name = "Morgen", regel = "fajr" },
+  { name = "Mittag und Nachmittag", regel = "dhuhr", umfasst = ["asr-shafi"] },
+  { name = "Abend und Nacht", regel = "maghrib", umfasst = ["isha"] },
+]
+
+[[variante]]
+kennung = "drei-isna"
+titel = "Drei Zeiten, ISNA"
+methode = "isna"
+hochbreite = "siebtel"
+zeiten = [
+  { name = "Morgen", regel = "fajr" },
+  { name = "Mittag und Nachmittag", regel = "dhuhr", umfasst = ["asr-shafi"] },
+  { name = "Abend und Nacht", regel = "maghrib", umfasst = ["isha"] },
+]

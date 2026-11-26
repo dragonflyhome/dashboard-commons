@@ -35,6 +35,7 @@ pub mod bote;
 pub mod daten;
 pub mod fassungen;
 pub mod fristen;
+pub mod gebete;
 pub mod gruppen;
 pub mod kalender;
 pub mod lesen;

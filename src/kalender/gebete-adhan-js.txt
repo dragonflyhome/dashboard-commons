@@ -1,0 +1,13 @@
+# Quelle: adhan-js (MIT-Lizenz),github.com/batoulapps/adhan-js, Datei test/adhan.test.ts,
+#   Commit d2993d56fac7d8a06abba4837347bd3fc9cbd188 (Zweig develop), abgerufen 2026-11-26, gelesen, nicht ausgeführt.
+# Ausgabe von adhan-js, nicht unabhängig: Die Werte stehen als erwartete Ausgabe in den Tests von adhan-js.
+# Zeiten wörtlich wie im Test (moment, Format h:mm A, in der genannten Zone); Rundung dort Rounding.Nearest.
+# Hochbreite: adhan-js-Standard MiddleOfTheNight = mitte-der-nacht, SeventhOfTheNight = siebtel, TwilightAngle = winkel.
+# Nicht übernommen: Raleigh 1.12.2015 mit Nutzer-Zuschlägen von je +10 min (die Vorlage kennt nur Zuschläge der Methode).
+# Isha vor Maghrib (Edinburgh, mitte-der-nacht, 1:14 AM) liegt am Folgetag.
+# fall;breite;laenge;datum;zone;methode;asr;hochbreite;fajr;sunrise;dhuhr;asr;maghrib;isha
+raleigh-isna-hanafi;35.775;-78.6336;2015-07-12;America/New_York;isna;asr-hanafi;mitte-der-nacht;4:42 AM;6:08 AM;1:21 PM;6:22 PM;8:32 PM;9:57 PM
+raleigh-mwl-shafi;35.775;-78.6336;2015-12-01;America/New_York;mwl;asr-shafi;mitte-der-nacht;5:35 AM;7:06 AM;12:05 PM;2:42 PM;5:01 PM;6:26 PM
+edinburgh-mitte;55.983226;-3.216649;2020-06-15;Europe/London;mwl;asr-shafi;mitte-der-nacht;1:14 AM;4:26 AM;1:14 PM;5:46 PM;10:01 PM;1:14 AM
+edinburgh-siebtel;55.983226;-3.216649;2020-06-15;Europe/London;mwl;asr-shafi;siebtel;3:31 AM;4:26 AM;1:14 PM;5:46 PM;10:01 PM;10:56 PM
+edinburgh-winkel;55.983226;-3.216649;2020-06-15;Europe/London;mwl;asr-shafi;winkel;2:31 AM;4:26 AM;1:14 PM;5:46 PM;10:01 PM;11:50 PM

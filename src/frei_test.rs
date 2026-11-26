@@ -27,7 +27,7 @@ use crate::sicherheit::oeffentlich;
 
 /// Die Spürhunde: erfundene Texte, die nie frei hinausgehen dürfen.
 // Kalender, Stufe 1: Festtitel und Herkunft (welche Kalender jemand nutzt, ist persönlich).
-const SPUERHUNDE: [&str; 17] = [
+const SPUERHUNDE: [&str; 19] = [
     "julianischer",
     // Zweig teilschritte (T4): Titel und Besitzer eines Schritts.
     "SPUERHUND-SCHRITT",
@@ -48,6 +48,10 @@ const SPUERHUNDE: [&str; 17] = [
     "SPUERHUND-MELDETEXT",
     // Kalender, Stufe 3: Titel eines privaten Orts (`daten/standorte.toml`).
     "SPUERHUND-STANDORT",
+    // Kalender, Stufe 4: die Auswahl der Gebetszeiten (`daten/gebete.toml`) und der
+    // Zeitname der Probevariante, die es nur in Tests gibt (`vertrag::gebete::vorlage`).
+    "spuerhund-gebet",
+    "SPUERHUND-GEBET",
 ];
 
 /// Die Quellen, aus denen der Router gebaut wird.
@@ -214,6 +218,14 @@ summary = \"x\"
         "[[standort]]\nkennung = \"zuhause\"\ntitel = \"SPUERHUND-STANDORT\"\nbreite = 47.3\nlaenge = 73.9\nherkunft = \"hand\"\nzeitzone = \"Asia/Almaty\"\n",
     )
     .unwrap();
+    // Kalender, Stufe 4: eine Auswahl der Gebetszeiten mit der Probevariante, im
+    // Projekt `kalender` (dort liest der Server sie) und hier (Daten-Weg).
+    let gebete = "[[auswahl]]\nort = \"mitte\"\nvarianten = [\"spuerhund-gebet\"]\n";
+    std::fs::write(p.join("daten").join("gebete.toml"), gebete).unwrap();
+    let k = ordner.join("projects").join(crate::kalender::orte::PROJEKT);
+    std::fs::create_dir_all(k.join("daten")).unwrap();
+    std::fs::write(k.join("projekt.toml"), "schema = 3\ntitle = \"Kalender\"\nstatus = \"aktiv\"\nsummary = \"x\"\n").unwrap();
+    std::fs::write(k.join("daten").join("gebete.toml"), gebete).unwrap();
     ordner
 }
 
@@ -308,6 +320,8 @@ async fn waechter_jeder_weg_oeffentlich_oder_401() {
         ("/api/projects", "SPUERHUND-STATUS"),
         ("/api/projekte/spuer/daten/fristen", "SPUERHUND-FRIST"),
         ("/api/projekte/spuer/daten/standorte", "SPUERHUND-STANDORT"),
+        ("/api/kalender/gebete", "spuerhund-gebet"),
+        ("/api/kalender/tag", "SPUERHUND-GEBET"),
         ("/api/projekte/spuer/daten/fristen", "SPUERHUND-EREIGNIS"),
         ("/api/projects/spuer", "SPUERHUND-EREIGNIS"),
         ("/api/fristen", "SPUERHUND-FRIST"),
@@ -320,7 +334,7 @@ async fn waechter_jeder_weg_oeffentlich_oder_401() {
 
     let werte = [
         ("{slug}", vec!["spuer".to_string(), "gibt-es-nicht".to_string()]),
-        ("{name}", ["fragen", "fristen", "orte", "kanban", "standorte"].map(String::from).to_vec()),
+        ("{name}", ["fragen", "fristen", "orte", "kanban", "standorte", "gebete"].map(String::from).to_vec()),
         ("{id}", vec![ids[0].clone(), ids[2].clone()]),
         ("{nr}", vec!["2".to_string()]),
         ("{file}", vec!["vorschau.html".to_string()]),
@@ -580,7 +594,7 @@ async fn prozent_im_pfad_kein_umweg() {
     let state = AppState::fuer_tests(&ordner);
     let frei = router(state.clone());
     let an = router_angemeldet(state.clone());
-    const DATEIEN: [&str; 5] = ["fragen", "fristen", "orte", "kanban", "standorte"];
+    const DATEIEN: [&str; 6] = ["fragen", "fristen", "orte", "kanban", "standorte", "gebete"];
     let namen: Vec<String> = DATEIEN.map(String::from).to_vec();
     let werte = [
         ("{slug}", vec!["spuer".to_string()]),
