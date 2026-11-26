@@ -16,10 +16,7 @@
 	import { Schublade } from '$katalog';
 	import Brotkrumen from '#lib/components/kopf/Brotkrumen.svelte';
 	import Seitenleiste from '#lib/components/kopf/Seitenleiste.svelte';
-	import PcSymbol from '#lib/components/kopf/PcSymbol.svelte';
-	import Glocke from '#lib/components/kopf/Glocke.svelte';
-	import LiveBadge from '#lib/components/LiveBadge.svelte';
-	import Schloss from '#lib/components/Schloss.svelte';
+	import { KOPF_ENDE } from '#lib/huelle.ts';
 	import { themaAnwenden, themaLesen } from '#lib/thema.ts';
 	import FassungWache from '#lib/components/FassungWache.svelte';
 	import FassungFuss from '#lib/components/FassungFuss.svelte';
@@ -185,12 +182,11 @@
 			onblatt={() => aktualitaet.pruefen(nachziehen)}
 		/>
 	</div>
-	<!-- Rechts, in dieser Reihenfolge: PC, Glocke, Live-Punkt, Schloss. -->
+	<!-- Rechts: die Teile aus KOPF_ENDE (huelle.ts), in der Reihenfolge der Liste: PC, Glocke, Live-Punkt, Schloss. -->
 	<div class="rechts">
-		<PcSymbol />
-		<Glocke />
-		<LiveBadge />
-		<Schloss />
+		{#each KOPF_ENDE as t (t.id)}
+			<t.teil />
+		{/each}
 	</div>
 </header>
 
