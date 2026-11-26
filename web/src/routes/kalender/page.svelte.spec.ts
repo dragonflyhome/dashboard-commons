@@ -137,7 +137,7 @@ const STAEDTE: KalenderStaedte = {
 	treffer: [
 		{
 			name: 'Nebelfurt',
-			land: 'ZZ',
+			land: 'XQ',
 			region: 'Nordmark',
 			breite: 12.5,
 			laenge: -33.75,
@@ -200,7 +200,8 @@ const TAG_GEBETE: KalenderTag = {
 /** Ein gefälschtes fetch, das je Pfad antwortet und jeden Aufruf mitschreibt. */
 function server(
 	tag: KalenderTag = TAG,
-	staedte: KalenderStaedte = STAEDTE
+	staedte: KalenderStaedte = STAEDTE,
+	antwort: KalenderAbfrageAntwort = ANTWORT
 ): ReturnType<typeof vi.fn> {
 	let orte = ORTE;
 	const f = vi.fn((pfad: string, init?: RequestInit) => {
@@ -222,7 +223,7 @@ function server(
 		if (pfad.startsWith('/api/kalender/tag')) return Promise.resolve(json(tag));
 		if (pfad.startsWith('/api/kalender/feste')) return Promise.resolve(json(FESTE));
 		if (pfad.startsWith('/api/kalender/abfrage') && init?.method === 'POST')
-			return Promise.resolve(json(ANTWORT));
+			return Promise.resolve(json(antwort));
 		return Promise.resolve(new Response('{}', { status: 404 }));
 	});
 	vi.stubGlobal('fetch', f);
@@ -369,7 +370,7 @@ describe('Seite /kalender', () => {
 			target: { value: '  Nebelf  ' }
 		});
 		await fireEvent.keyDown(screen.getByLabelText('Stadt suchen'), { key: 'Enter' });
-		const stadt = await screen.findByRole('button', { name: 'Nebelfurt, Nordmark (ZZ)' });
+		const stadt = await screen.findByRole('button', { name: 'Nebelfurt (XQ)' });
 		expect(screen.getByText('Städteliste: GeoNames (geonames.org), CC BY 4.0')).toBeInTheDocument();
 
 		const post = f.mock.calls.find((c) => String(c[0]) === '/api/kalender/staedte');
@@ -389,6 +390,98 @@ describe('Seite /kalender', () => {
 		expect(screen.getByText(/Städteliste:/)).toBeInTheDocument();
 		expect(localStorage.length).toBe(0);
 		expect(sessionStorage.length).toBe(0);
+	});
+
+	// Gleichnamige Orte eines Lands (Koordinaten gerundet aus der Städteliste; Zwilling erfunden).
+	const stadt = (name: string, land: string, breite: number, laenge: number) => ({
+		name,
+		land,
+		region: '05',
+		breite,
+		laenge,
+		zeitzone: 'Europe/Berlin'
+	});
+	const GLEICHNAMIG: KalenderStaedte = {
+		treffer: [
+			stadt('Frankfurt', 'DE', 50.11, 8.68),
+			stadt('Frankfurt', 'DE', 52.34, 14.55),
+			stadt('Frankfurt', 'US', 38.2, -84.87),
+			stadt('Zwilling', 'DE', 48.13, 11.58),
+			stadt('Zwilling', 'DE', 48.14, -9.9),
+			stadt('Nebelfurt', 'XQ', -12.5, 1)
+		],
+		quelle: 'GeoNames (geonames.org), CC BY 4.0',
+		hinweis: null
+	};
+
+	async function suchen(text: string): Promise<void> {
+		await fireEvent.input(screen.getByLabelText('Stadt suchen'), { target: { value: text } });
+		await fireEvent.keyDown(screen.getByLabelText('Stadt suchen'), { key: 'Enter' });
+	}
+
+	it('Städtesuche: Landname statt Code, gleichnamige Orte eines Lands mit Breite (und Länge)', async () => {
+		server(TAG, GLEICHNAMIG);
+		render(Page);
+		await screen.findByText('04:43');
+		await suchen('Frankfurt');
+		const namen = (await screen.findAllByRole('button', { name: /\(/ })).map((b) =>
+			b.textContent?.trim()
+		);
+		expect(namen).toEqual([
+			'Frankfurt (Deutschland, 50,1° N)',
+			'Frankfurt (Deutschland, 52,3° N)',
+			'Frankfurt (Vereinigte Staaten)',
+			'Zwilling (Deutschland, 48,1° N, 11,6° O)',
+			'Zwilling (Deutschland, 48,1° N, 9,9° W)',
+			// Unbekannter Code: der Code selbst, nie leere Klammern.
+			'Nebelfurt (XQ)'
+		]);
+	});
+
+	it('Städtesuche ohne Intl.DisplayNames (alte Engine): der Ländercode bleibt stehen', async () => {
+		server(TAG, GLEICHNAMIG);
+		vi.stubGlobal('Intl', { ...Intl, DisplayNames: undefined });
+		render(Page);
+		await screen.findByText('04:43');
+		await suchen('Frankfurt');
+		expect(
+			await screen.findByRole('button', { name: 'Frankfurt (DE, 50,1° N)' })
+		).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Frankfurt (US)' })).toBeInTheDocument();
+	});
+
+	it('Nach dem Rechnen steht der Name der gewählten Stadt statt „Abgefragter Ort“, nur in der Anzeige', async () => {
+		const antwort = { ...ANTWORT, tag: { ...TAG, ort: 'Abgefragter Ort', hinweis: null } };
+		const f = server(TAG, GLEICHNAMIG, antwort);
+		render(Page);
+		await screen.findByText('04:43');
+		await suchen('Frankfurt');
+		await fireEvent.click(
+			await screen.findByRole('button', { name: 'Frankfurt (Deutschland, 52,3° N)' })
+		);
+		const form = screen.getByRole('group', { name: 'Anderer Ort' }).closest('form');
+		if (form === null) throw new Error('Formular fehlt');
+		await fireEvent.submit(form);
+		expect(
+			await screen.findByText(/^Frankfurt \(Deutschland, 52,3° N\) · Uhrzeiten in/)
+		).toBeInTheDocument();
+		expect(screen.queryByText(/Abgefragter Ort/)).toBeNull();
+		// Der Name geht nirgends an den Server: weder in eine Adresse noch in einen Rumpf.
+		const abfragen = f.mock.calls.filter((c) => String(c[0]) === '/api/kalender/abfrage');
+		expect(abfragen.length).toBeGreaterThan(0);
+		for (const [p, init] of f.mock.calls as [string, RequestInit | undefined][]) {
+			expect(p).not.toMatch(/Deutschland/);
+			if (String(p) !== '/api/kalender/staedte')
+				expect(String(init?.body ?? '')).not.toMatch(/Frankfurt|Deutschland/);
+		}
+		expect(localStorage.length).toBe(0);
+		expect(sessionStorage.length).toBe(0);
+
+		// Von Hand geänderte Breite: das ist nicht mehr die Stadt, also wieder „Abgefragter Ort“.
+		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.4' } });
+		await fireEvent.submit(form);
+		expect(await screen.findByText(/^Abgefragter Ort · Uhrzeiten in/)).toBeInTheDocument();
+		expect(screen.queryByText(/Frankfurt \(Deutschland/)).toBeNull();
 	});
 
 	it('Gebetszeiten: Varianten nebeneinander mit Hinweis und Herkunft; ein Schalter speichert am benannten Ort', async () => {
