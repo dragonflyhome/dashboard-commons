@@ -114,7 +114,7 @@ pub const SATZ_TAG_FEHLT: &str = "Diesen Tag gibt es an diesem Ort nicht: Die Uh
 
 /// Fehlen in einer Liste der Gebetszeiten Zeiten (Polargebiet), ein Satz ohne Zahlen.
 pub const SATZ_GEBETE_POLAR: &str =
-    "An diesem Tag fehlen hier Zeiten, weil die Sonne nicht auf- oder untergeht oder die Nacht sich nicht bestimmen lässt. Erfundene Zeiten gibt es nicht.";
+    "An diesem Tag fehlen hier Zeiten, weil die Sonne dafür nicht hoch oder nicht tief genug steht. Erfundene Zeiten gibt es nicht.";
 
 /// Die gespeicherte Auswahl lässt sich nicht lesen.
 const SATZ_GEBETE_DATEI: &str =
@@ -810,11 +810,31 @@ mod tests {
 
     const HEIMAT: &str = "[[standort]]\nkennung = \"zuhause\"\ntitel = \"Zuhause\"\nbreite = 47.3\nlaenge = 73.9\nherkunft = \"hand\"\nzeitzone = \"Asia/Almaty\"\nheimat = true\n";
 
-    /// M2: Zwei Merk-Aufrufe ohne Abgleich dazwischen (Speicher im Beobachter-Modus wie
-    /// im Dienst, gleichzeitig und nach einer Änderung an der Datei, die der Speicher
-    /// noch nicht kennt): eindeutige Kennungen aus der Datei, die Datei bleibt lesbar,
-    /// der Heimatort bleibt, keine Zwischendatei.
-    #[tokio::test]
+    /// Schickt alle Anfragen zugleich, jede in einer eigenen Aufgabe (auf einer
+    /// mehrfädigen Laufzeit also wirklich nebeneinander), und gibt die Antworten.
+    async fn zugleich(app: &Router, anfragen: Vec<Request<Body>>) -> Vec<(StatusCode, Value)> {
+        let aufgaben: Vec<_> = anfragen
+            .into_iter()
+            .map(|r| {
+                let app = app.clone();
+                tokio::spawn(async move { schicke(&app, r).await })
+            })
+            .collect();
+        let mut aus = Vec::new();
+        for a in aufgaben {
+            aus.push(a.await.unwrap());
+        }
+        aus
+    }
+
+    /// M2 und Sperre des Schreibwegs: Merk-Aufrufe ohne Abgleich dazwischen (Speicher im
+    /// Beobachter-Modus wie im Dienst), sechs gleichzeitig auf mehreren Fäden und einer nach
+    /// einer Änderung an der Datei, die der Speicher noch nicht kennt: eindeutige Kennungen
+    /// aus der Datei, die Datei bleibt lesbar, der Heimatort bleibt, keine Zwischendatei.
+    /// Dann sechs Auswahlen der Gebetszeiten gleichzeitig: jede genau einmal in der Datei.
+    /// Grenze: Ob sich die Aufrufe wirklich überlappen, hängt vom Planer ab; ohne Sperre
+    /// fiel der Test in Probeläufen jedes Mal, sicher ist das aber nicht.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn ort_merken_ohne_abgleich() {
         let wurzel = inhalt("merken-beobachter");
         let datei = standorte_datei(&wurzel);
@@ -828,28 +848,49 @@ mod tests {
         ));
         let app = router_angemeldet(state);
         let merken = |titel: &str| post_an("/api/kalender/standorte", serde_json::json!({"titel": titel, "breite": 10.0, "laenge": 20.0}));
-        let ((s1, v1), (s2, v2)) = tokio::join!(schicke(&app, merken("Eins")), schicke(&app, merken("Zwei")));
-        assert_eq!((s1, s2), (StatusCode::OK, StatusCode::OK), "{v1} {v2}");
-        let mut neu = [v1["kennung"].as_str().unwrap().to_string(), v2["kennung"].as_str().unwrap().to_string()];
+        let antworten = zugleich(&app, (1..=6).map(|n| merken(&format!("Ort {n}"))).collect()).await;
+        let mut neu: Vec<String> = antworten
+            .iter()
+            .map(|(s, v)| {
+                assert_eq!(*s, StatusCode::OK, "{v}");
+                v["kennung"].as_str().unwrap().to_string()
+            })
+            .collect();
         neu.sort();
-        assert_eq!(neu, ["ort-1", "ort-2"]);
+        assert_eq!(neu, ["ort-1", "ort-2", "ort-3", "ort-4", "ort-5", "ort-6"]);
         // Von Hand angefügt, der Speicher weiß davon nichts: Die nächste Kennung kommt aus der Datei.
         let text = std::fs::read_to_string(&datei).unwrap();
-        let drei = "\n[[standort]]\nkennung = \"ort-3\"\ntitel = \"Drei\"\nbreite = 1.0\nlaenge = 2.0\nherkunft = \"hand\"\n";
-        std::fs::write(&datei, format!("{text}{drei}")).unwrap();
-        let (s, v) = schicke(&app, merken("Vier")).await;
-        assert_eq!((s, v["kennung"].as_str()), (StatusCode::OK, Some("ort-4")), "{v}");
+        let sieben = "\n[[standort]]\nkennung = \"ort-7\"\ntitel = \"Sieben\"\nbreite = 1.0\nlaenge = 2.0\nherkunft = \"hand\"\n";
+        std::fs::write(&datei, format!("{text}{sieben}")).unwrap();
+        let (s, v) = schicke(&app, merken("Acht")).await;
+        assert_eq!((s, v["kennung"].as_str()), (StatusCode::OK, Some("ort-8")), "{v}");
         let text = std::fs::read_to_string(&datei).unwrap();
         let name = "projects/kalender/daten/standorte.toml";
         let gelesen = crate::vertrag::daten::datei_lesen::<crate::vertrag::standorte::Standorte>(name, &text).unwrap();
         crate::vertrag::standorte::standorte_eindeutig(&gelesen, name, &text).unwrap();
         assert!(text.starts_with(HEIMAT), "{text}");
-        // Nach dem Merken abgeglichen: der Heimatort und alle vier.
+        // Nach dem Merken abgeglichen: der Heimatort und alle acht.
         let (_, v) = schicke(&app, get("/api/kalender/standorte")).await;
         let orte: Vec<(&str, bool)> = v["orte"].as_array().unwrap().iter().map(|o| (o["kennung"].as_str().unwrap(), o["heimat"].as_bool().unwrap())).collect();
         assert_eq!(orte[0], ("zuhause", true), "{v}");
-        for k in ["ort-1", "ort-2", "ort-3", "ort-4"] {
-            assert!(orte.contains(&(k, false)), "{k}: {v}");
+        for n in 1..=8 {
+            assert!(orte.contains(&(format!("ort-{n}").as_str(), false)), "ort-{n}: {v}");
+        }
+        assert_eq!(zwischendateien(&wurzel), Vec::<std::ffi::OsString>::new());
+
+        // Sechs Auswahlen der Gebetszeiten zugleich, je ein Ort: Keine geht verloren.
+        let orte = ["zuhause", "ort-1", "ort-2", "ort-3", "ort-4", "ort-5"];
+        let antworten =
+            zugleich(&app, orte.iter().map(|o| post_an("/api/kalender/gebete", serde_json::json!({"ort": o, "varianten": ["fuenf-mwl"]}))).collect()).await;
+        for (s, v) in &antworten {
+            assert_eq!(*s, StatusCode::OK, "{v}");
+        }
+        let text = std::fs::read_to_string(gebete_datei(&wurzel)).unwrap();
+        let name = "projects/kalender/daten/gebete.toml";
+        let gelesen = crate::vertrag::daten::datei_lesen::<crate::vertrag::gebete::Gebete>(name, &text).unwrap();
+        crate::vertrag::gebete::gebete_eindeutig(&gelesen, name, &text).unwrap();
+        for o in orte {
+            assert_eq!(text.matches(&format!("ort = \"{o}\"\n")).count(), 1, "{o}: {text}");
         }
         assert_eq!(zwischendateien(&wurzel), Vec::<std::ffi::OsString>::new());
         let _ = std::fs::remove_dir_all(&wurzel);
@@ -1054,6 +1095,30 @@ mod tests {
         String::from_utf8_lossy(&aus).into_owned()
     }
 
+    /// Der Text des Ereigniskanals ohne die Zeitstempel `at`: Jede `data:`-Zeile als
+    /// JSON gelesen und `at` auf jeder Ebene entfernt, sonst träfe eine Uhrzeit wie
+    /// die einer Probezeit zufällig den Zeitstempel. Andere Zeilen bleiben, wie sie sind.
+    fn kanal_ohne_zeitstempel(kanal: &str) -> String {
+        fn weg(v: &mut Value) {
+            match v {
+                Value::Object(m) => {
+                    m.remove("at");
+                    m.values_mut().for_each(weg);
+                }
+                Value::Array(a) => a.iter_mut().for_each(weg),
+                _ => {}
+            }
+        }
+        let zeile = |l: &str| match l.strip_prefix("data:").map(|d| serde_json::from_str::<Value>(d.trim())) {
+            Some(Ok(mut v)) => {
+                weg(&mut v);
+                format!("data: {v}")
+            }
+            _ => l.to_string(),
+        };
+        kanal.lines().map(zeile).collect::<Vec<_>>().join("\n")
+    }
+
     /// Datenschutz über alle Wege (Abschnitt 9, Nachtrag 9): Mit einer privaten
     /// `standorte.toml` und Ereignissen mit `ort` steht keine Ziffernfolge der
     /// privaten Lagen (Punkt, Komma, ganzzahlig), kein Versatz und keine Tageszeit
@@ -1165,6 +1230,8 @@ mod tests {
         assert!(fristen_text.contains("Ort Zuhause · Asia/Almaty") && fristen_text.contains("Ort Zweiter Ort · fester Versatz"), "{fristen_text}");
         let kanal = kanal.await.unwrap();
         assert!(kanal.contains("anmeldung"), "Kanal nicht gelesen: {kanal}");
+        let kanal = kanal_ohne_zeitstempel(&kanal);
+        assert!(kanal.contains("anmeldung") && !kanal.contains("\"at\""), "{kanal}");
         ohne_zahlen_und_zone("Ereigniskanal", &kanal);
         ohne_tageszeiten("Ereigniskanal", &kanal, true);
 
@@ -1532,6 +1599,8 @@ mod tests {
         }
         let kanal = kanal.await.unwrap();
         assert!(kanal.contains("anmeldung"), "Kanal nicht gelesen: {kanal}");
+        let kanal = kanal_ohne_zeitstempel(&kanal);
+        assert!(kanal.contains("anmeldung") && kanal.contains("gebete.toml") && !kanal.contains("\"at\""), "{kanal}");
         ohne("Ereigniskanal", &kanal, true);
 
         // `dashboard pruefe`: gültig, mit unbekanntem Ort und mit kaputten Dateien; dazu

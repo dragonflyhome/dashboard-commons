@@ -35,6 +35,8 @@ Behoben
   zeigt einen Satz statt einer leeren Liste.
 - Eine Datei der Orte mit doppelter Kennung führt beim Merken zu einem Satz
   statt zu einem Serverfehler.
+- In der Herkunft der Feste auf der Kalenderseite steht der Kalendername
+  nur noch einmal.
 
 0.25.0 - 2026-11-26
 -------------------

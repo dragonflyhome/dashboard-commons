@@ -325,11 +325,13 @@ mod tests {
     }
 
     /// AlAdhan-Dienst, teilweise unabhängig (gleiches Verfahren), 21.6.2027, MWL und ISNA, Asr
-    /// Standard, Hochbreite ANGLE_BASED = `winkel` (gebete-aladhan-2027.txt). AlAdhan weist beim
-    /// Dhuhr keinen Zuschlag aus und liegt in allen 14 Zeilen eine Minute vor unserem Dhuhr mit
-    /// +1 min: Verglichen wird darum unser Dhuhr ohne den Zuschlag der Methode.
+    /// Standard, Hochbreite je Zeile (gebete-aladhan-2027.txt): 14 abgerufene Zeilen mit
+    /// ANGLE_BASED = `winkel`, dazu Kairo MWL und ISNA mit `siebtel`, aus den abgerufenen
+    /// Kairo-Zeilen hergeleitet (bei MWL greift die Schranke). AlAdhan weist beim Dhuhr keinen
+    /// Zuschlag aus und liegt in allen Zeilen eine Minute vor unserem Dhuhr mit +1 min:
+    /// Verglichen wird darum unser Dhuhr ohne den Zuschlag der Methode.
     /// Gemessen, größte Abweichung je Fall (MWL/ISNA): London 1/1 (Maghrib eine Minute später),
-    /// Paris, Moskau, Sydney, Kapstadt, Mekka, Kairo je 0/0 min.
+    /// Paris, Moskau, Sydney, Kapstadt, Mekka, Kairo je 0/0 min, Kairo Siebtel 0/0 min.
     #[test]
     fn gegen_aladhan_2027() {
         let d = tag("2027-06-21");
@@ -337,11 +339,15 @@ mod tests {
         for zeile in ALADHAN.lines().filter(|z| !z.starts_with('#') && !z.trim().is_empty()) {
             let s: Vec<&str> = zeile.split('|').map(str::trim).collect();
             let o = ort(s[1].parse().unwrap(), s[2].parse().unwrap(), s[3].split_whitespace().next().unwrap());
-            let fall = format!("{} {}", s[0], s[4]);
+            let regel = s[11].split(',').next().unwrap();
+            let fall = format!("{} {} {regel}", s[0], s[4]);
             let methode = s[4].to_lowercase();
-            let (a, zeilen) = vergleiche(&fall, &o, d, &probe(&methode, "asr-shafi", "winkel"), &s[5..11], 1);
+            let (a, zeilen) = vergleiche(&fall, &o, d, &probe(&methode, "asr-shafi", regel), &s[5..11], 1);
             groesste.push((fall.clone(), a));
-            if fall == "Paris MWL" {
+            if fall == "Kairo MWL siebtel" {
+                assert_eq!((zeilen[0].hochbreite, zeilen[5].hochbreite), (Some(Hochbreite::Schranke), Some(Hochbreite::Schranke)), "{fall}");
+            }
+            if fall == "Paris MWL winkel" {
                 let isha = tag::uhrzeit(&o, zeilen[5].zeit.unwrap(), d).unwrap();
                 assert!(isha.ends_with(" (am 22.6.)"), "{fall}: Ischa {isha}");
             }
@@ -350,7 +356,7 @@ mod tests {
             let wert = |r: &str| asr.iter().find(|x| x.0 == r).and_then(|x| x.1.clone()).unwrap();
             assert!(wert("asr-shafi") < wert("asr-hanafi"), "{fall}: {asr:?}");
         }
-        assert!(groesste.len() == 14 && groesste.iter().all(|x| x.1 <= 1), "größte Abweichung je Fall in min: {groesste:?}");
+        assert!(groesste.len() == 16 && groesste.iter().all(|x| x.1 <= 1), "größte Abweichung je Fall in min: {groesste:?}");
     }
 
     fn hochbreite(z: &[(String, Option<String>, Option<Hochbreite>)], r: &str) -> Option<Hochbreite> {

@@ -75,10 +75,17 @@
 	// Gebetszeiten: Varianten und gespeicherte Auswahl; beim anderen Ort nur hier im Speicher.
 	let gebete = $state<KalenderGebete | null>(null);
 	let freiGebete = $state<string[]>([]);
-	/** Zählt jeden Speicherversuch, damit die Schalter nach einem Fehler den gespeicherten Stand zeigen. */
+	/** Zählt Fehlschläge beim Speichern, damit die Schalter danach den gespeicherten Stand zeigen. */
 	let gebeteStand = $state(0);
+	/** Der gewünschte, noch nicht bestätigte Stand: Klicks während des Speicherns gehen nicht verloren. */
+	let wunsch = $state<{ ort: string; varianten: string[] } | null>(null);
+	let speichertGebete = false;
 	const gewaehlt = $derived(
-		frei !== null ? freiGebete : (gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
+		frei !== null
+			? freiGebete
+			: wunsch?.ort === ort
+				? wunsch.varianten
+				: (gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
 	);
 
 	// „Stadt suchen“: Suchtext und Antwort, nur hier im Speicher.
@@ -210,19 +217,38 @@
 			freiGebete = neu;
 			return;
 		}
-		await gebeteSpeichern(ort, neu);
+		wunsch = { ort, varianten: neu };
+		// Läuft schon ein Speichern, schickt die Schleife danach den neuesten Wunsch.
+		if (speichertGebete) return;
+		speichertGebete = true;
+		try {
+			while (wunsch !== null) {
+				const w: { ort: string; varianten: string[] } = wunsch;
+				if (!(await gebeteSpeichern(w.ort, w.varianten))) {
+					wunsch = null;
+					break;
+				}
+				if (wunsch === w) wunsch = null;
+			}
+		} finally {
+			speichertGebete = false;
+		}
 	}
 
-	async function gebeteSpeichern(o: string, varianten: string[]): Promise<void> {
+	/** Speichert die Auswahl eines Orts; `false`, wenn es nicht ging (der Satz steht dann auf der Seite). */
+	async function gebeteSpeichern(o: string, varianten: string[]): Promise<boolean> {
 		const koerper: KalenderGebeteSpeichern = { ort: o, varianten };
 		try {
 			gebete = await senden<KalenderGebete>(`${API}/kalender/gebete`, koerper);
 			fehler = null;
-			await laden(datum, ort, null);
+			// Mit dem Stand von jetzt: Ist inzwischen ein anderer Ort abgefragt, bleibt er.
+			await laden(datum, ort, frei, [...freiGebete]);
+			return true;
 		} catch (e) {
 			fehler = fehlerText(e);
+			gebeteStand++;
+			return false;
 		}
-		gebeteStand++;
 	}
 
 	function abschicken(e: SubmitEvent): void {
@@ -528,7 +554,8 @@
 						<span class="was">
 							{f.titel}
 							{#if f.zeitraum}{@render monat(f.zeitraum)}{/if}
-							<span class="muted small">{f.kalender} · {f.herkunft}</span>
+							<!-- Die Herkunft beginnt schon mit dem Namen des Kalenders. -->
+							<span class="muted small">{f.herkunft}</span>
 						</span>
 					</li>
 				{/each}

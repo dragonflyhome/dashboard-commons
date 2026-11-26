@@ -18,23 +18,44 @@
 .PARAMETER Quelle
     Pfad zur heruntergeladenen cities15000.zip oder cities15000.txt.
 .PARAMETER Inhalt
-    Wurzel des privaten Inhalts (Standard: dev\dashboard-inhalt im Benutzerprofil).
+    Wurzel des privaten Inhalts. Standard: DASHBOARD_INHALT, sonst der
+    Nachbarordner dashboard-inhalt des Code-Repos. Das Projekt kalender muss
+    darin schon bestehen (projects\kalender\projekt.toml).
 .PARAMETER Abgerufen
     Tag des Herunterladens (JJJJ-MM-TT), Standard heute.
+.PARAMETER Adresse
+    Woher die Eingabe stammt, für `quelle` im Kopf. Standard: bei einer ZIP-Datei
+    die Download-Adresse von GeoNames, bei einer Textdatei ihr Dateiname (GeoNames
+    veröffentlicht nur die ZIP-Datei).
+.PARAMETER Sha256
+    Die Prüfsumme, die der Download nennt; weicht die der Eingabe ab, wird nichts
+    geschrieben.
 #>
 param(
     [Parameter(Mandatory)][string]$Quelle,
-    [string]$Inhalt = (Join-Path $env:USERPROFILE 'dev\dashboard-inhalt'),
+    [string]$Inhalt,
     [string]$Abgerufen = (Get-Date -Format 'yyyy-MM-dd'),
-    [string]$Adresse = 'https://download.geonames.org/export/dump/cities15000.zip'
+    [string]$Adresse,
+    [string]$Sha256
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Laufzeit.ps1')
 $uhr = UhrStart
 
+$repo = Split-Path -Parent $PSScriptRoot
+if (-not $Inhalt) { $Inhalt = if ($env:DASHBOARD_INHALT) { $env:DASHBOARD_INHALT } else { Join-Path (Split-Path -Parent $repo) 'dashboard-inhalt' } }
+if (-not (Test-Path -LiteralPath (Join-Path $Inhalt 'projects\kalender\projekt.toml') -PathType Leaf)) {
+    throw "Im Inhalt $Inhalt gibt es kein Projekt kalender (projects\kalender\projekt.toml fehlt); nichts geschrieben."
+}
+$istZip = $Quelle -like '*.zip'
+if (-not $Adresse) { $Adresse = if ($istZip) { 'https://download.geonames.org/export/dump/cities15000.zip' } else { "lokale Datei $(Split-Path -Leaf $Quelle)" } }
+
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Quelle).Hash.ToLowerInvariant()
+if ($Sha256 -and $hash -ne $Sha256.Trim().ToLowerInvariant()) {
+    throw "Die Prüfsumme der Eingabe ($hash) weicht von -Sha256 ab; nichts geschrieben."
+}
 # Der Text der Liste: aus der ZIP-Datei der einzige .txt-Eintrag, sonst die Datei selbst.
-if ($Quelle -like '*.zip') {
+if ($istZip) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($Quelle)
     try {
@@ -63,7 +84,7 @@ $liste = Join-Path $ziel 'staedte.tsv'
 [IO.File]::WriteAllText($liste, $aus.ToString(), [Text.UTF8Encoding]::new($false))
 $hashListe = (Get-FileHash -Algorithm SHA256 -LiteralPath $liste).Hash.ToLowerInvariant()
 $kopf = @"
-quelle = "$Adresse"
+quelle = "$($Adresse.Replace('\', '\\').Replace('"', '\"'))"
 abgerufen = $Abgerufen
 lizenz = "CC BY 4.0"
 sha256 = "$hash"

@@ -72,7 +72,8 @@ const FESTE: KalenderFeste = {
 			datum: '2026-06-21',
 			titel: 'Litha',
 			kalender: 'Jahreskreis',
-			herkunft: 'Sommersonnenwende',
+			// Wie vom Server: Die Herkunft beginnt mit dem Namen des Kalenders.
+			herkunft: 'Jahreskreis · Sommersonnenwende',
 			zeitraum: null
 		}
 	],
@@ -216,6 +217,7 @@ describe('Seite /kalender', () => {
 		expect(screen.getByText('Namen sind nicht überall belegt.')).toBeInTheDocument();
 		expect(screen.getByText('Litha')).toBeInTheDocument();
 		expect(screen.getByText('Jahreskreis · Sommersonnenwende')).toBeInTheDocument();
+		expect(screen.queryByText(/Jahreskreis · Jahreskreis/)).toBeNull();
 		// Der Heimatort (vom Server zuerst geliefert) ist vorgewählt.
 		const pfade = f.mock.calls.map((c) => String(c[0]));
 		expect(pfade.some((p) => p.startsWith('/api/kalender/tag?') && p.includes('ort=zuhause'))).toBe(
@@ -393,6 +395,51 @@ describe('Seite /kalender', () => {
 			expect(gespeichert()).toContainEqual({ ort: 'alt', varianten: [] });
 		});
 		expect(localStorage.length).toBe(0);
+	});
+
+	it('Gebetszeiten: zwei Klicks vor der ersten Antwort gehen beide in die Auswahl', async () => {
+		const offen: (() => void)[] = [];
+		const sonst = server(TAG_GEBETE) as unknown as (
+			p: string,
+			i?: RequestInit
+		) => Promise<Response>;
+		// Wie server(), nur hält es jede Antwort auf das Speichern zurück, bis der Test sie freigibt.
+		const f = vi.fn((pfad: string, init?: RequestInit): Promise<Response> => {
+			if (pfad === '/api/kalender/gebete' && init?.method === 'POST') {
+				const k = JSON.parse(init.body as string) as { ort: string; varianten: string[] };
+				const antwort = { ...GEBETE, auswahl: [{ ...k, fehlt: false }] };
+				return new Promise<Response>((r) => {
+					offen.push(() => {
+						r(json(antwort));
+					});
+				});
+			}
+			return sonst(pfad, init);
+		});
+		vi.stubGlobal('fetch', f);
+		const gespeichert = () =>
+			f.mock.calls
+				.filter(([p, init]) => p === '/api/kalender/gebete' && init?.method === 'POST')
+				.map(([, init]) => JSON.parse(init?.body as string) as unknown);
+		render(Page);
+		await screen.findByText('22:41');
+		const drei = screen.getByRole('switch', { name: 'Drei Zeiten, ISNA' });
+		const fuenf = screen.getByRole('switch', { name: 'Fünf Zeiten, MWL' });
+		await fireEvent.click(drei);
+		await fireEvent.click(fuenf);
+		// Der zweite Klick wartet auf die erste Antwort und baut auf dem ersten auf.
+		expect(gespeichert()).toEqual([{ ort: 'zuhause', varianten: ['fuenf-mwl', 'drei-isna'] }]);
+		offen.shift()?.();
+		await vi.waitFor(() => {
+			expect(gespeichert()).toHaveLength(2);
+		});
+		expect(gespeichert()[1]).toEqual({ ort: 'zuhause', varianten: ['drei-isna'] });
+		offen.shift()?.();
+		await vi.waitFor(() => {
+			expect(fuenf).toHaveAttribute('aria-checked', 'false');
+			expect(drei).toHaveAttribute('aria-checked', 'true');
+		});
+		expect(gespeichert()).toHaveLength(2);
 	});
 
 	it('Gebetszeiten beim anderen Ort: die Auswahl geht nur in der Abfrage mit, nichts wird gespeichert', async () => {
