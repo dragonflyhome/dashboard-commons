@@ -31,6 +31,21 @@ Behoben
 - Die Beschreibungen der Sätze für eine Regel ohne Vorkommen und für einen
   Verweis per nach auf eine Zählung standen vertauscht im Code.
 
+0.27.2 - 2026-11-26
+-------------------
+
+Geändert
+- Pflege ohne sichtbare Änderung.
+
+0.27.1 - 2026-11-26
+-------------------
+
+Behoben
+- Außerhalb von Windows: Das Cookie mit dem Ausweis heißt dashboard und
+  trägt kein Secure, damit die Anmeldung auch in Safari hält.
+- Ein fremdes Cookie, dessen Name den des Ausweises nur enthält (etwa ein
+  anderes Programm auf localhost), gilt nicht mehr als ungültiger Ausweis.
+
 0.27.0 - 2026-11-26
 -------------------
 

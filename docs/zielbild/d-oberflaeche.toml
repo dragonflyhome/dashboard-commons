@@ -10,6 +10,18 @@ titel = "Kopfleiste (Fassung 3)"
 text = """Links Brotkrumen: das Symbol führt zur Startseite, das letzte Glied lädt die Seite neu und scrollt nach oben. Rechts PC-Symbol mit kleinem Echtzeit-Verlauf der Prozessorlast, Glocke mit Zahl der Meldungen (ersetzt das Band), Live-Punkt mit fünf Zuständen und Schloss. Das Menü oben entfällt; links eine Seitenleiste mit Anstehend, den Projekten (Unterseiten eingerückt darunter) und den Dashboard-Seiten, am Handy als Schublade. Ganzer Text: Entscheidung kopfleiste (Abschnitt Entscheidungen; Teile [fassung_2_schloss], [fassung_2_live_zustaende], [fassung_2_passkey_wege], [fassung_3])."""
 
 [[block]]
+titel = "Hülle als getippte Daten"
+text = """Der Bildschirmaufbau wird über Typen beschrieben und mit flexiblen Layout-Verfahren gezeichnet (Flexbox, Grid, logische Eigenschaften wie inline-start und inline-end), nicht über feste Positionen. So passt er sich Bildschirmbreite und Schreibrichtung an, und Aufbauten setzen an festen Anschlüssen an statt an Textstellen im Markup."""
+
+[[block]]
+punkte = [
+  "Ein Bereich der Hülle ist eine getippte Liste von Teilen, die das Layout der Reihe nach zeichnet. Erster Bereich: kopf.ende (KOPF_ENDE in web/src/lib/huelle.ts).",
+  "Schrittweise: Ein Bereich kommt erst dazu, wenn ein konkretes Teil ihn braucht; ein Feld (Rolle, Bedingung, Lader) erst, wenn Code es liest.",
+  "Teile von außen sind erlaubt, unter drei Bedingungen: Sie kommen nur über die von dashboard pruefe --bauliste erzeugte Liste und durchlaufen dieselbe Prüfung wie Projektseiten; sie werden nur für Angemeldete gezeichnet und nur in der geschützten Menge des Baus ausgeliefert; Teile des Kerns lassen sich weder verdecken noch entfernen oder umstellen, Teile von außen kommen nur hinzu, vor den Teilen des Kerns, sodass Schloss, Live-Punkt und Fassungshinweis am Rand bleiben. Ein Test sichert die Reihenfolge.",
+  "Einstellungen für Reihenfolge und Sichtbarkeit gibt es vorerst nicht: Das Bild bleibt fest und ruhig, und Teile mit sicherheitsrelevantem Zustand dürfen sich nicht ausblenden lassen.",
+]
+
+[[block]]
 titel = "Wie Projektseiten in die App kommen"
 beispiel = """// web/src/lib/projekte.generated.ts  (vom Baumeister geschrieben)
 export const seiten = {
@@ -217,12 +229,36 @@ Ergebnis der Probe: alle Grenzen eingehalten, Vendor-Import für 3a freigegeben;
 [[block]]
 titel = "Token und Katalog"
 punkte = [
-  "Token in web/src/lib/katalog/token.css. Vorhanden (in app.css): Flächen und Text (--bg, --card, --text, --muted, --line, --shadow, --radius), Akzent, Bedeutungsfarben (--ok, --warn, --bad, --plan, --done, --info), Schrift (--font, --mono). Fehlt und kommt dazu: Abstände (--abstand-1 bis --abstand-6), Schriftstufen (--fs-*), Rundungen, Fokus- und Hover-Farben, Dauer und Kurven für Bewegung, Breiten (360 px, Mitte, 1180 px), eine Palette für Kategorien (--kat-1 bis --kat-10, etwa für Ordnerfarben). Schriften: nur die des Systems.",
+  "Token in web/src/lib/katalog/token.css. Vorhanden (in app.css): Flächen und Text (--bg, --card, --text, --muted, --line, --shadow, --radius), Akzent, Bedeutungsfarben (--ok, --warn, --bad, --plan, --done, --info), Schrift (--font, --mono). Fehlt und kommt dazu: Abstände (--abstand-1 bis --abstand-6), Schriftstufen (--fs-*), Rundungen, Fokus- und Hover-Farben, Dauer und Kurven für Bewegung, Breiten (360 px, Mitte, 1180 px), eine Palette für Kategorien (--reihe-1 bis --reihe-10, etwa für Ordnerfarben). Schriften: nur die des Systems.",
   "Eine Farbsprache statt zwei: Die Klassen st-* und c-* meinen dasselbe; sie werden zu den sechs Bedeutungen (ok, laeuft, wartet, problem, info, neutral).",
   "Grundteile als Komponenten: Karte, Knopf, Pille, Hinweis, Leer- und Fehlerzustand sind bisher nur CSS-Klassen; sie werden Komponenten im Katalog, gebaut auf dem Toolkit.",
   "Katalog web/src/lib/katalog/ (Import $katalog): Text-Bausteine (Abschnitt, Absatz, Text, Liste, Tabelle, Hinweis, Zitat, Reiter, Bild), Daten-Bausteine (Kennzahlen, Ampel, Fortschritt, Zeitstrahl, Gantt, Fluss, Fragen; auf Projektseiten nur für Inhalt, nie für Stand), die vier Teile der Projektseite (Stand, Aufgabenliste, Plan, Zeitleiste), Grundteile (Karte, Pille, Knopf).",
   "Seite /katalog: jeder Baustein in jedem Zustand, hell und dunkel, 360 px und 1280 px. Hier misst der Prüfer.",
   "Hell/dunkel folgt dem System, mit Schalter. Ab 360 px Breite nutzbar. Tastatur, sichtbarer Fokus, Kontrast mindestens 4,5 : 1, Bewegung aus bei prefers-reduced-motion, jeder Bild-Baustein hat eine Textfassung.",
+]
+
+[[block]]
+titel = "Farben: Bedeutung, Farbreihe, externe Vorgabe"
+text = """Projektseiten und Bauteile nennen nie eine Farbe: keinen Farbwert, keinen Farbnamen und kein Token, das einen bestimmten Farbton meint. Farbwerte stehen nur dort, wo die Farbschemata festgelegt sind (web/src/app.css). Jede Farbe auf dem Bildschirm gehört zu genau einer von drei Klassen."""
+
+[[block]]
+[block.tabelle]
+spalten = ["Klasse", "Wofür", "Wie genannt"]
+zeilen = [
+  ["Bedeutung", "alles, was einen Zustand aus dem Vertrag zeigt, auch Zustände der Oberfläche (nahe Frist: wartet, Antwort angekommen: ok, ungültige Eingabe: problem)", "Klasse b-<bedeutung> (oder Eigenschaft bedeutung eines Katalog-Bausteins), gemalt mit --ton, --ton-soft, --ton-text"],
+  ["Farbreihe des Schemas", "Farben ohne Bedeutung: Flächen, Text, Linien, Fokus, Auswahl, Diagrammreihen, Kategorien", "benannte Rollen der Farbordnung: Hintergrund, Fläche, Vordergrund, Vordergrund leise, Linie, Grundfarbe mit ihren beiden Dreiklang-Partnern, Fokus, nummerierte Reihen für Kategorien"],
+  ["Externe Vorgabe", "Farben, die von außen festgelegt sind, etwa der Himmel in einem Bild oder die Farbe eines fremden Logos", "nur als eigene Eigenschaft --extern-<name> mit Kennzeichnung extern und Herkunft am Ort der Festlegung; nie für Text oder Bedeutung"],
+]
+
+[[block]]
+punkte = [
+  "Bestätigte Namen der Farbreihe (deutsch; die englischen Kurzwörter werden in derselben Runde ersetzt): --hintergrund (heute --bg), --flaeche (--card), --papier, --vordergrund (--text), --vordergrund-leise (--muted), --linie (--line), --grundfarbe mit --grundfarbe-soft, --grundfarbe-text und --auf-grundfarbe (--accent, --accent-soft, --accent-text, --on-accent), --dreiklang-2 und --dreiklang-3 (neu), --fokus, --reihe-1 bis --reihe-10. Bedeutungstöne in den Schemata heißen --b-<bedeutung> mit -soft, -text und -auf, außerhalb der Schemata nur über die Klasse b-<bedeutung> und --ton, --ton-soft, --ton-text, --ton-auf.",
+  "Die Dreiklang-Partner bleiben von den Bedeutungstönen deutlich unterscheidbar (gemessener Farbabstand), damit eine Diagrammlinie nie wie „ok“ oder „problem“ aussieht.",
+  "Jedes Schema belegt jede Rolle der Farbreihe und jede Bedeutung. Die Kontrastmessung je Schema bleibt die Schwelle, auch für die Farbreihe. Die Grundfarbe und ihre beiden Dreiklang-Partner liegen im Farbkreis gleich weit auseinander; ein Test misst den Abstand.",
+  "Namen nennen die Rolle oder die Bedeutung, nie den Farbton. Kein alter Name bekommt eine neue Bedeutung, damit keine Seite still die Farbe wechselt.",
+  "Eine Prüfregel lässt in var() nur Namen aus der einen Liste der Rollen zu und weist Farbwerte außerhalb der Schemata ab, außer gekennzeichnete externe Vorgaben. Tippfehler gehen so nie still durch.",
+  "Umstellung ohne stilles Verlieren: Alte Namen bleiben als Verweise, solange der Prüfer sie irgendwo meldet (auch in letzten grünen Fassungen); in der Übergangszeit meldet er sie als Hinweis mit Datei und Zeile, danach weist er sie ab, erst dann verschwinden die Verweise.",
+  "Bilder und Website-Entwürfe (assets/) sind von der Regel ausgenommen; sie sind selbst externe Vorgabe.",
 ]
 
 [[block]]
