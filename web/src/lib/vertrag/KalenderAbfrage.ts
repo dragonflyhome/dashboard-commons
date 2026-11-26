@@ -19,4 +19,8 @@ zeitzone: string | null,
 /**
  * Varianten der Gebetszeiten nur für diese Antwort (nichts wird gespeichert).
  */
-gebete: Array<string> | null, };
+gebete: Array<string> | null, 
+/**
+ * Auch das Festjahr des Jahreskreises (Stufe 6) für diesen Ort.
+ */
+jahr: boolean | null, };

@@ -4,8 +4,8 @@
 	 * Wurzel (Startseite), dann je Ebene ein Glied, zuletzt das Blatt (die
 	 * aktuelle Seite). Das Blatt ist ein Knopf: Er prüft mit dem Server, ob die
 	 * Daten aktuell sind, zieht nach, was fehlt (ohne neue Browserseite), und
-	 * scrollt nach oben (`aktualitaet.svelte.ts`). Am Handy (unter 37,5 rem)
-	 * stehen die mittleren Glieder als „…“ da; Vorlese-Programme hören sie
+	 * scrollt nach oben (`aktualitaet.svelte.ts`). Bis 48 rem (Handy, Tablet
+	 * im Hochformat) stehen die mittleren Glieder als „…“ da; Vorlese-Programme hören sie
 	 * trotzdem, Symbol und Blatt bleiben.
 	 *
 	 * Als Edge-App ohne Adressleiste ist das Blatt die einzige Ortsangabe;
@@ -173,7 +173,7 @@
 	.mitte a:hover {
 		color: var(--text);
 	}
-	/* „…“ nur am Handy. */
+	/* „…“ nur am Handy und auf Tablets im Hochformat (bis 48rem, siehe unten). */
 	.auslassung {
 		display: none;
 		color: var(--muted);
@@ -213,7 +213,10 @@
 		font-weight: 400;
 		color: var(--ok-text);
 	}
-	@media (max-width: 37.5rem) {
+	/* Bis 48rem: Bei 640 px brauchen Symbol, zwei Glieder und Blatt 241 px, neben der
+	   rechten Gruppe bleiben nur rund 190 px; in einer Gruppe (drei Glieder, je mindestens
+	   4.25rem) reicht es bis 768 px nicht (Edge-Probe kopfleiste-3, Gruppen-Unterseite). */
+	@media (max-width: 48rem) {
 		/* Der Weg steht für Vorlese-Programme im „…“; die Links selbst fehlen,
 		   damit die Tastatur nicht auf Unsichtbares springt. */
 		.mitte {

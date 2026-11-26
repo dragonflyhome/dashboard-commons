@@ -75,6 +75,7 @@ use ts_rs::TS;
 
 use crate::vertrag::daten::ist_kennung;
 use crate::vertrag::fristen::Abstand;
+use crate::vertrag::kalender::{KalenderJahr, KalenderJahrMonat, KalenderSpanne, KalenderZeitpunkt};
 use mond::{Himmelstag, Ort, Phase, Sonnenereignis};
 
 /// Das erste und das letzte Jahr, für das gerechnet wird.
@@ -507,10 +508,10 @@ fn kurz_datum(d: NaiveDate) -> String {
     d.format("%-d.%-m.%Y").to_string()
 }
 
-/// Satz für eine Regel, die in keinem Jahr einen Tag ergibt.
 /// Satz für einen Verweis per `nach` auf eine Zählung (sie trifft manchmal zweimal im Jahr).
 const SATZ_NACH_ZAEHLUNG: &str = "Auf eine Zählung verweist ein Termin nur mit `fest`; einen Abstand trägt die Frist.";
 
+/// Satz für eine Regel, die in keinem Jahr einen Tag ergibt.
 const SATZ_KOMMT_NIE_VOR: &str = "Diese Regel ergibt in keinem Jahr von 1912 bis 2100 einen Tag, etwa ein Schaltmonat, den es nie gibt, oder der 30. Tag eines Monats, der immer 29 Tage hat.";
 
 /// Satz für ein Fest nach den Jahreszeiten an einem Ort zwischen den Wendekreisen.
@@ -518,6 +519,12 @@ pub const SATZ_WENDEKREIS: &str = "Gilt an diesem Ort nicht: Er liegt zwischen d
 
 /// Hinweis zum Mond an einem Ort zwischen den Wendekreisen (Laientext, ohne Zahlen).
 pub const HINWEIS_WENDEKREIS: &str = "Dieser Ort liegt nahe am Äquator, zwischen den Wendekreisen. Dort sind die Tage das ganze Jahr fast gleich lang, und die Jahreszeiten richten sich nach Regen und Trockenheit, nicht nach der Sonne. Darum stehen hier nur die Sonnentage und die Mondphasen, ohne Fest- und Monatsnamen.";
+
+/// Namen der Sonnentage nach ihrer Rolle, in der Reihenfolge von [`Himmelstag::ROLLEN`].
+const ROLLEN_NAMEN: [&str; 4] = ["Wintersonnenwende", "Frühlings-Tagundnachtgleiche", "Sommersonnenwende", "Herbst-Tagundnachtgleiche"];
+
+/// Ein Festjahr, das nicht ganz in den Jahren liegt, für die gerechnet wird (ohne Zahlen).
+pub const SATZ_FESTJAHR_RAND: &str = "Für dieses Festjahr gibt es keine Übersicht: Es reicht über die Jahre hinaus, für die der Kalender rechnet.";
 
 /// Höchstens so tief folgt die Rechnung Verweisen (Kreise weist die Prüfung vorher ab).
 const TIEFE_HOECHSTENS: usize = 16;
@@ -927,6 +934,11 @@ impl Katalog {
     /// Der laufende Mondmonat am Tag `heute` in einem Kalender mit Jahreszeiten:
     /// Nummer im Festjahr, sprechender Name, überlieferte Namen und Zeitraum.
     pub fn mond(&self, kalender: &str, heute: NaiveDate) -> Option<Mond> {
+        self.mond_mit(kalender, heute).map(|(m, _)| m)
+    }
+
+    /// Wie [`Katalog::mond`], dazu das Wort seiner Jahreszeit (zwischen den Wendekreisen keines).
+    fn mond_mit(&self, kalender: &str, heute: NaiveDate) -> Option<(Mond, Option<String>)> {
         let kal = self.kalender.iter().find(|k| k.kennung == kalender && !k.jahreszeit.is_empty())?;
         let jahr = heute.year();
         if !(ERSTES_JAHR..=LETZTES_JAHR).contains(&jahr) {
@@ -941,15 +953,9 @@ impl Katalog {
         };
         if self.ort.tropen() {
             let hinweis = Some(HINWEIS_WENDEKREIS.to_string());
-            return Some(Mond {
-                kalender: kal.titel.clone(),
-                nummer: None,
-                name: "Mondmonat".into(),
-                namen: None,
-                zeitraum,
-                phase: self.phase_am(m, heute),
-                hinweis,
-            });
+            let m =
+                Mond { kalender: kal.titel.clone(), nummer: None, name: "Mondmonat".into(), namen: None, zeitraum, phase: self.phase_am(m, heute), hinweis };
+            return Some((m, None));
         }
         // Die Monate, mit denen die Jahreszeiten beginnen, um das laufende Jahr.
         let mut anker: Vec<(i32, &Jahreszeit, &Fest)> = Vec::new();
@@ -990,7 +996,7 @@ impl Katalog {
         // Das Festjahr beginnt mit dem Monat, der den kürzesten Tag enthält.
         let anfang_jahr = |y: i32| self.ort.kuerzester_tag(y).map(mond::monat_bei);
         let erster = (jahr - 1..=jahr + 1).rev().filter_map(anfang_jahr).find(|a| *a <= m)?;
-        Some(Mond {
+        let mond = Mond {
             kalender: kal.titel.clone(),
             nummer: Some(u8::try_from(m - erster + 1).ok()?),
             name,
@@ -998,11 +1004,78 @@ impl Katalog {
             zeitraum,
             phase: self.phase_am(m, heute),
             hinweis: None,
+        };
+        Some((mond, Some(jz.vollmond.clone())))
+    }
+
+    /// Das Festjahr eines Kalenders mit Jahreszeiten, das den Tag `heute` enthält:
+    /// vom Monat mit dem kürzesten Tag (nach der Halbkugel) bis vor den nächsten solchen,
+    /// je Monat wie [`Katalog::mond`] an seinem ersten Tag, dazu die vier Sonnentage und
+    /// die Viertel des Monds in dieser Spanne (Zeit in Ortszeit). Zwischen den
+    /// Wendekreisen dieselbe Spanne ohne Monate; liegt sie nicht ganz in den Jahren, für
+    /// die gerechnet wird, ohne Listen. `None` ohne einen solchen Kalender.
+    pub fn festjahr(&self, kalender: &str, heute: NaiveDate) -> Option<KalenderJahr> {
+        self.kalender.iter().find(|k| k.kennung == kalender && !k.jahreszeit.is_empty())?;
+        let ort = &self.ort;
+        let anfang_jahr = |y: i32| ort.kuerzester_tag(y).map(mond::monat_bei);
+        let m = ort.monat_ab_tag(heute);
+        let jahr = heute.year();
+        let erster = (jahr - 1..=jahr + 1).rev().filter_map(anfang_jahr).find(|a| *a <= m)?;
+        let naechster = (jahr..=jahr + 2).filter_map(anfang_jahr).find(|a| *a > erster)?;
+        let (von, bis) = (mond::anfang(erster), mond::anfang(naechster));
+        let (erster_tag, ende_tag) = (ort.tag(von)?, ort.tag(bis)?);
+        let zeitraum = KalenderSpanne { anfang: tag_text(erster_tag), ende: tag_text(ende_tag) };
+        let jahre = ERSTES_JAHR..=LETZTES_JAHR;
+        if !(jahre.contains(&erster_tag.year()) && jahre.contains(&ende_tag.pred_opt()?.year())) {
+            let hinweis = Some(SATZ_FESTJAHR_RAND.to_string());
+            return Some(KalenderJahr { zeitraum, monate: Vec::new(), sonnentage: Vec::new(), viertel: Vec::new(), naechste_vollmonde: Vec::new(), hinweis });
+        }
+        let zeitpunkt = |kennung: &str, name: &str, t: f64| -> Option<KalenderZeitpunkt> {
+            let z = ort.ortszeit(t)?;
+            Some(KalenderZeitpunkt { kennung: kennung.into(), name: name.into(), datum: tag_text(z.date()), zeit: z.format("%H:%M").to_string() })
+        };
+        let tropen = ort.tropen();
+        let mut sonnentage: Vec<(f64, KalenderZeitpunkt)> = Vec::new();
+        for ((rolle, s), wort) in Himmelstag::ROLLEN.iter().zip(ROLLEN_NAMEN) {
+            let ereignis = Himmelstag::Rolle(*s).am(ort.halbkugel);
+            let name = if tropen { ereignis.name() } else { wort };
+            for t in (jahr - 1..=jahr + 1).filter_map(|y| ereignis.zeitpunkt(y)).filter(|t| (von..bis).contains(t)) {
+                sonnentage.push((t, zeitpunkt(rolle, name, t)?));
+            }
+        }
+        sonnentage.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut viertel = Vec::new();
+        let mut monate = Vec::new();
+        for k in erster..naechster {
+            for (kennung, p) in Phase::ALLE {
+                let t = if p == Phase::Neumond { mond::anfang(k) } else { himmel::phase_ab(p.grad(), mond::anfang(k)) };
+                viertel.push(zeitpunkt(kennung, p.name(), t)?);
+            }
+            if !tropen {
+                let (m, jahreszeit) = self.mond_mit(kalender, ort.tag(mond::anfang(k))?)?;
+                monate.push(KalenderJahrMonat { nummer: m.nummer?, name: m.name, namen: m.namen.unwrap_or_default(), jahreszeit, zeitraum: m.zeitraum });
+            }
+        }
+        // Drei Vollmonde ab dem Beginn des Tags, nicht nur die der Spanne (am Ende des Festjahrs).
+        let mut naechste_vollmonde = Vec::new();
+        let mut t = ort.beginn_ab(heute)?;
+        for _ in 0..3 {
+            t = himmel::phase_ab(Phase::Vollmond.grad(), t);
+            naechste_vollmonde.push(zeitpunkt("vollmond", Phase::Vollmond.name(), t)?);
+            t += 1.0;
+        }
+        Some(KalenderJahr {
+            zeitraum,
+            monate,
+            sonnentage: sonnentage.into_iter().map(|(_, z)| z).collect(),
+            viertel,
+            naechste_vollmonde,
+            hinweis: tropen.then(|| HINWEIS_WENDEKREIS.to_string()),
         })
     }
 
     /// Die Phase des Mondmonats `m` am Tag `heute` in Ortszeit.
-    fn phase_am(&self, m: i32, heute: NaiveDate) -> String {
+    pub(crate) fn phase_am(&self, m: i32, heute: NaiveDate) -> String {
         let neu = mond::anfang(m);
         let tag = |grad: f64| self.ort.tag(himmel::phase_ab(grad, neu));
         for (grad, name) in [(0.0, "Neumond"), (90.0, "erstes Viertel"), (180.0, "Vollmond"), (270.0, "letztes Viertel")] {
@@ -1912,5 +1985,150 @@ regel = { nach = "kirche.ostern", tage = -3 }
         let z = tag::am_tag(tage[0], apia.ort()).unwrap();
         assert_eq!(l, format!("Längster Tag · {}", tag::dauer_text(z.taglaenge().unwrap())));
         assert!(l.starts_with("Längster Tag · 12 h") || l.starts_with("Längster Tag · 13 h"), "{l}");
+    }
+
+    // ----- Stufe 6: Festjahr -----
+
+    /// Die Monate lückenlos: Nummern 1 bis n, jeder endet, wo der nächste beginnt, der erste und
+    /// der letzte an den Grenzen der Spanne; je Monat vier Viertel, der Vollmond im Monat.
+    fn lueckenlos(j: &KalenderJahr) {
+        for (i, m) in j.monate.iter().enumerate() {
+            assert_eq!(usize::from(m.nummer), i + 1, "{m:?}");
+            let ende = j.monate.get(i + 1).map_or(&j.zeitraum.ende, |n| &n.zeitraum.anfang);
+            assert_eq!(&m.zeitraum.ende, ende, "{m:?}");
+            assert_eq!(j.viertel[4 * i + 2].datum, m.zeitraum.vollmond, "{m:?}");
+        }
+        assert_eq!(j.monate.first().map(|m| &m.zeitraum.anfang), Some(&j.zeitraum.anfang));
+        assert_eq!(j.viertel.first().map(|v| (v.kennung.as_str(), &v.datum)), Some(("neumond", &j.zeitraum.anfang)));
+        assert_eq!(j.sonnentage.len(), 4, "{:?}", j.sonnentage);
+    }
+
+    /// Festjahr 2027 (Berlin) gegen das Beispieljahr aus S2: zwölf Monate vom Yule-Mond bis vor den
+    /// nächsten, mit Namen, Grenzen und Jahreszeit; die vier Sonnentage mit Zeit in Ortszeit. Jeder
+    /// Tag des Festjahrs gibt dasselbe, der Tag davor das alte.
+    #[test]
+    fn festjahr_2027() {
+        let k = berlin();
+        let j = k.festjahr("jahreskreis", tag("2027-06-21")).unwrap();
+        lueckenlos(&j);
+        assert_eq!((j.zeitraum.anfang.as_str(), j.zeitraum.ende.as_str(), j.hinweis.as_deref()), ("2026-12-09", "2027-11-28", None));
+        let monate: Vec<(&str, &str, Option<&str>)> = j.monate.iter().map(|m| (m.zeitraum.anfang.as_str(), m.name.as_str(), m.jahreszeit.as_deref())).collect();
+        assert_eq!(
+            monate,
+            [
+                ("2026-12-09", "2. Wintervollmond · Yule-Mond", Some("Wintervollmond")),
+                ("2027-01-07", "Imbolc", Some("Frühlingsvollmond")),
+                ("2027-02-06", "1. Frühlingsvollmond", Some("Frühlingsvollmond")),
+                ("2027-03-08", "2. Frühlingsvollmond · Ostara-Mond", Some("Frühlingsvollmond")),
+                ("2027-04-07", "Beltane", Some("Sommervollmond")),
+                ("2027-05-06", "1. Sommervollmond", Some("Sommervollmond")),
+                ("2027-06-04", "2. Sommervollmond · Litha-Mond", Some("Sommervollmond")),
+                ("2027-07-04", "Lughnassad (Lammas)", Some("Herbstvollmond")),
+                ("2027-08-02", "1. Herbstvollmond", Some("Herbstvollmond")),
+                ("2027-08-31", "2. Herbstvollmond · Mabon-Mond", Some("Herbstvollmond")),
+                ("2027-09-30", "Samhain", Some("Wintervollmond")),
+                ("2027-10-29", "1. Wintervollmond", Some("Wintervollmond")),
+            ]
+        );
+        assert_eq!(j.monate[0].namen[0].name, "Giuli");
+        let sonne: Vec<(&str, &str, &str)> = j.sonnentage.iter().map(|s| (s.kennung.as_str(), s.name.as_str(), s.datum.as_str())).collect();
+        assert_eq!(
+            sonne,
+            [
+                ("wende-winter", "Wintersonnenwende", "2026-12-21"),
+                ("gleiche-fruehling", "Frühlings-Tagundnachtgleiche", "2027-03-20"),
+                ("wende-sommer", "Sommersonnenwende", "2027-06-21"),
+                ("gleiche-herbst", "Herbst-Tagundnachtgleiche", "2027-09-23"),
+            ]
+        );
+        assert_eq!(j.sonnentage[1].zeit, "21:24");
+        assert_eq!(j.viertel.len(), 48);
+        // Dasselbe Festjahr am ersten und letzten Tag; nur die nächsten Vollmonde hängen am Tag.
+        let ohne_naechste = |mut x: KalenderJahr| {
+            x.naechste_vollmonde.clear();
+            x
+        };
+        assert_eq!(k.festjahr("jahreskreis", tag("2026-12-09")).map(ohne_naechste), Some(ohne_naechste(j.clone())));
+        assert_eq!(k.festjahr("jahreskreis", tag("2027-11-27")).map(ohne_naechste), Some(ohne_naechste(j)));
+        assert_eq!(k.festjahr("jahreskreis", tag("2026-12-08")).unwrap().zeitraum.ende, "2026-12-09");
+        assert!(k.festjahr("kirche", tag("2027-06-21")).is_none(), "ohne Jahreszeiten kein Festjahr");
+    }
+
+    /// S1: Auch am Ende des Festjahrs drei nächste Vollmonde ab dem Tag (der Tag selbst
+    /// zählt mit), nach der Zeit, im Abstand eines Mondmonats; die in der Spanne sind
+    /// dieselben wie in `viertel`. Am Rand 2100 leer wie die anderen Listen.
+    #[test]
+    fn festjahr_drei_naechste_vollmonde() {
+        let k = berlin();
+        for heute in ["2027-06-21", "2027-11-20", "2027-12-10", "2027-12-20", "2028-12-10", "2028-12-20"] {
+            let j = k.festjahr("jahreskreis", tag(heute)).unwrap();
+            let v = &j.naechste_vollmonde;
+            assert_eq!(v.len(), 3, "{heute}: {v:?}");
+            assert!(v.iter().all(|x| x.kennung == "vollmond" && x.name == "Vollmond"), "{heute}: {v:?}");
+            assert!(v[0].datum.as_str() >= heute && v[0].datum.as_str() < tag_text(tag(heute) + Duration::days(31)).as_str(), "{heute}: {v:?}");
+            for p in v.windows(2) {
+                let abstand = (tag(&p[1].datum) - tag(&p[0].datum)).num_days();
+                assert!((29..=30).contains(&abstand), "{heute}: {v:?}");
+            }
+            for x in v.iter().filter(|x| x.datum < j.zeitraum.ende) {
+                // Gleicher Tag; die Minute kann je nach Startpunkt der Suche um eins abweichen.
+                assert!(j.viertel.iter().any(|v| v.kennung == "vollmond" && v.datum == x.datum), "{heute}: {x:?}");
+            }
+        }
+        // Der Vollmond am Tag selbst zählt (19.6.2027).
+        assert_eq!(k.festjahr("jahreskreis", tag("2027-06-19")).unwrap().naechste_vollmonde[0].datum, "2027-06-19");
+        // Die letzte Woche des Festjahrs 2026/27: kein Vollmond mehr in der Spanne, trotzdem drei.
+        let ende = k.festjahr("jahreskreis", tag("2027-11-20")).unwrap();
+        assert!(ende.naechste_vollmonde.iter().all(|x| x.datum >= ende.zeitraum.ende), "{:?}", ende.naechste_vollmonde);
+        assert!(k.festjahr("jahreskreis", tag("2100-12-30")).unwrap().naechste_vollmonde.is_empty());
+    }
+
+    /// Der Winter 2027/28 hat drei Monde: 13 Monate, der dritte Wintervollmond vor Imbolc.
+    #[test]
+    fn festjahr_mit_dreizehn_monden() {
+        let j = berlin().festjahr("jahreskreis", tag("2028-01-01")).unwrap();
+        lueckenlos(&j);
+        let namen: Vec<&str> = j.monate.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(namen.len(), 13, "{namen:?}");
+        assert_eq!(namen[..3], ["2. Wintervollmond · Yule-Mond", "3. Wintervollmond", "Imbolc"]);
+        assert_eq!(j.zeitraum.anfang, "2027-11-28");
+        assert_eq!(j.viertel.len(), 52);
+    }
+
+    /// Sydney: Das Festjahr beginnt im Juni mit Yule; der Winter liegt im Juni und Juli.
+    #[test]
+    fn festjahr_suedhalbkugel() {
+        let j = an(-33.87, 151.21, "Australia/Sydney").festjahr("jahreskreis", tag("2027-07-15")).unwrap();
+        lueckenlos(&j);
+        assert!(j.zeitraum.anfang.starts_with("2027-06") || j.zeitraum.anfang.starts_with("2027-05"), "{:?}", j.zeitraum);
+        assert_eq!((j.sonnentage[0].kennung.as_str(), j.sonnentage[0].datum.as_str()), ("wende-winter", "2027-06-22"));
+        assert_eq!((j.sonnentage[2].kennung.as_str(), j.sonnentage[2].datum.as_str()), ("wende-sommer", "2027-12-22"));
+        assert!(j.monate[0].name.contains("Yule-Mond") && j.monate[0].jahreszeit.as_deref() == Some("Wintervollmond"), "{:?}", j.monate[0]);
+    }
+
+    /// Zwischen den Wendekreisen: dieselbe Spanne, keine Monate, Sonnentage ohne Rollennamen, der Hinweis.
+    #[test]
+    fn festjahr_zwischen_den_wendekreisen() {
+        let j = an(1.35, 103.82, "Asia/Singapore").festjahr("jahreskreis", tag("2027-06-21")).unwrap();
+        assert!(j.monate.is_empty());
+        assert_eq!(j.hinweis.as_deref(), Some(HINWEIS_WENDEKREIS));
+        assert_eq!(j.sonnentage.iter().map(|s| s.name.as_str()).collect::<Vec<_>>()[0], "Sonnenwende im Dezember");
+        assert_eq!(j.sonnentage.len(), 4);
+        assert!(j.viertel.len() == 48 || j.viertel.len() == 52, "{}", j.viertel.len());
+        assert!(j.zeitraum.anfang.starts_with("2026-12") || j.zeitraum.anfang.starts_with("2026-11"), "{:?}", j.zeitraum);
+    }
+
+    /// Rand 2100: Das Festjahr 2100 hat Monate; das nächste reicht ins Jahr 2101 und bleibt leer, mit Satz ohne Zahlen.
+    #[test]
+    fn festjahr_am_rand() {
+        let k = berlin();
+        let j = k.festjahr("jahreskreis", tag("2100-06-01")).unwrap();
+        lueckenlos(&j);
+        assert!(j.monate.len() >= 12 && j.hinweis.is_none());
+        let rand = k.festjahr("jahreskreis", tag("2100-12-30")).unwrap();
+        assert!(rand.monate.is_empty() && rand.sonnentage.is_empty() && rand.viertel.is_empty(), "{rand:?}");
+        assert_eq!(rand.hinweis.as_deref(), Some(SATZ_FESTJAHR_RAND));
+        assert!(rand.zeitraum.ende.starts_with("2101"), "{:?}", rand.zeitraum);
+        assert!(!SATZ_FESTJAHR_RAND.chars().any(|c| c.is_ascii_digit()));
     }
 }

@@ -19,15 +19,16 @@ use crate::anstehend::Inhalt;
 use crate::app::AppState;
 use crate::fehler::AppError;
 use crate::kalender::gebete::{Hochbreite, Variante};
-use crate::kalender::mond::{Lage, Ort};
+use crate::kalender::himmel;
+use crate::kalender::mond::{self, Halbkugel, Lage, Ort};
 use crate::kalender::orte::{Benannt, Orte, ort_satz};
 use crate::kalender::tag::{self, Sonnenzeit};
 use crate::kalender::{Anzeige, Katalog, Regel};
-use crate::vertrag::daten::DatenInhalt;
+use crate::vertrag::daten::{Datei, DatenInhalt, datei_lesen};
 use crate::vertrag::gebete::{Gebete, GebeteAuswahl, gebete_eindeutig};
 use crate::vertrag::kalender::{
     GebeteOrtAuswahl, GebeteVariante, Gebetsliste, Gebetszeile, KalenderAbfrage, KalenderAbfrageAntwort, KalenderFest, KalenderFeste, KalenderGebete,
-    KalenderGebeteSpeichern, KalenderMerken, KalenderOrt, KalenderOrte, KalenderTag, KalenderZonen, Tageszeile,
+    KalenderGebeteSpeichern, KalenderHeimat, KalenderJahr, KalenderKopf, KalenderMerken, KalenderOrt, KalenderOrte, KalenderTag, KalenderZonen, Tageszeile,
 };
 use crate::vertrag::standorte::{Standorte, standorte_eindeutig, versatz_nach_laenge};
 
@@ -294,14 +295,19 @@ pub async fn orte(State(state): State<AppState>, angemeldet: Option<Extension<An
     if angemeldet.is_none() {
         return super::anmeldung::bitte_anmelden(None);
     }
-    let orte = Orte::aus_bestand(&state.inhalt.bestand());
+    Json(orte_antwort(&state.inhalt.bestand())).into_response()
+}
+
+/// Die benannten Orte, der Heimatort zuerst; nur Kennung, Titel und Zeitart.
+fn orte_antwort(b: &crate::inhalt::store::Bestand) -> KalenderOrte {
+    let orte = Orte::aus_bestand(b);
     let liste = orte
         .alle()
         .iter()
         .enumerate()
         .map(|(i, b)| KalenderOrt { kennung: b.kennung.clone(), titel: b.titel.clone(), zeitart: b.ort.zeit.art(), heimat: i == 0 })
         .collect();
-    Json(KalenderOrte { orte: liste }).into_response()
+    KalenderOrte { orte: liste }
 }
 
 /// `GET /api/kalender/zonen`: die Namen der Zeitzonen und die Fassung der Datenbank.
@@ -387,7 +393,7 @@ pub async fn gebete_speichern(State(state): State<AppState>, kopf: HeaderMap, an
                     None if !varianten.is_empty() => liste.push(GebeteAuswahl { ort, varianten }),
                     None => {}
                 }
-                Ok((gebete_text(&liste), ()))
+                Ok((Some(gebete_text(&liste)), ()))
             },
             gebete_eindeutig,
         )
@@ -449,7 +455,7 @@ pub async fn merken(State(state): State<AppState>, kopf: HeaderMap, angemeldet: 
                     runden(m.breite),
                     runden(m.laenge)
                 );
-                Ok((neu, kennung))
+                Ok((Some(neu), kennung))
             },
             standorte_eindeutig,
         )
@@ -546,7 +552,178 @@ pub async fn abfrage_post(State(state): State<AppState>, kopf: HeaderMap, angeme
             naeherung,
             tag: tag_antwort(&k, &aktiv, d, titel.clone(), &wo, &varianten_von(&gebete)),
             feste: feste_antwort(&k, &aktiv, von, bis, titel, &wo),
+            jahr: if a.jahr == Some(true) { Some(jahr_antwort(&k, d)?) } else { None },
         }))
+    }
+    .await
+    .into_response()
+}
+
+// ----- Stufe 6: Kopfleiste, Heimatort, Jahreskreis -----
+
+/// Der Kalender, dessen Festjahr der Jahreskreis auf der Seite zeigt.
+const JAHRESKREIS: &str = "jahreskreis";
+
+/// Heimatort ist nur ein eigener Ort oder der Standardort (ohne Werte).
+pub const SATZ_HEIMAT_NICHT: &str = "Heimatort kann nur ein eigener Ort oder der Standardort sein.";
+
+/// Der Satz der Kopfleiste, wenn Auf- oder Untergang ohne Uhrzeit bleibt (`auf`, `unter`:
+/// die Zeit wird gezeigt). Fehlt nur eine Zeit (Übergangstag zu Polartag oder -nacht),
+/// spricht er von ihr, damit er der sichtbaren Zeit nicht widerspricht: „geht nicht auf“
+/// nur bei `BleibtDarunter`, „geht nicht unter“ nur bei `BleibtDarueber`; alles andere
+/// (auch der Aufgang `BleibtDarueber` am Tag nach dem Polartag) heißt „keine Zeit“.
+/// Fehlen beide, zählt der Aufgang.
+fn kopf_satz(roh: Option<(Sonnenzeit, Sonnenzeit)>, auf: bool, unter: bool) -> Option<&'static str> {
+    let (a, u) = roh.unzip();
+    match (auf, unter) {
+        (true, true) => None,
+        (false, true) if a == Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
+        (false, true) => Some("Für den Aufgang gibt es heute hier keine Zeit."),
+        (true, false) if u == Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
+        (true, false) => Some("Für den Untergang gibt es heute hier keine Zeit."),
+        (false, false) => match a {
+            Some(Sonnenzeit::BleibtDarunter) => Some("Die Sonne geht heute nicht auf."),
+            Some(Sonnenzeit::BleibtDarueber) => Some("Die Sonne geht heute nicht unter."),
+            _ => Some("Heute gibt es hier keine Zeit für Auf- und Untergang."),
+        },
+    }
+}
+
+/// Der Himmel von heute am Ort `ort` für die Kopfleiste: Auf- und Untergang am Tag
+/// `heute` (fehlt einer, ein Satz ohne Zahlen), die Mondphase zum Zeitpunkt `jetzt_t`
+/// (Weltzeit, [`mond::aus_weltzeit`]) und der Tag des nächsten Vollmonds ab Beginn von heute.
+pub fn kopf_antwort(ort: &Benannt, heute: NaiveDate, jetzt_t: f64) -> KalenderKopf {
+    let o = &ort.ort;
+    let z = tag::am_tag(heute, o);
+    let um = |s: Sonnenzeit| match s {
+        Sonnenzeit::Um(t) => tag::uhrzeit(o, t, heute),
+        _ => None,
+    };
+    let (aufgang, untergang) = z.as_ref().map_or((None, None), |z| (um(z.aufgang), um(z.untergang)));
+    let satz = kopf_satz(z.as_ref().map(|z| (z.aufgang, z.untergang)), aufgang.is_some(), untergang.is_some());
+    let beginn = o.beginn_ab(heute).unwrap_or_else(|| mond::tag_zahl(heute));
+    KalenderKopf {
+        ort: ort.titel.clone(),
+        aufgang,
+        untergang,
+        text: satz.map(str::to_string),
+        phase_grad: himmel::mondphase(jetzt_t).round() % 360.0,
+        phase: Katalog::eingebaut().mit_ort(o.clone()).phase_am(o.monat_ab_tag(heute), heute),
+        sued: o.halbkugel == Halbkugel::Sued,
+        naechster_vollmond: o.tag(himmel::phase_ab(180.0, beginn)).map(text).unwrap_or_default(),
+    }
+}
+
+/// `GET /api/kalender/kopf`: Mond, Sonne und Ort von heute am Heimatort (ohne `inhalt_sammeln`).
+pub async fn kopf(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    let orte = Orte::aus_bestand(&state.inhalt.bestand());
+    match orte.heimat() {
+        Some(h) => {
+            let jetzt = mond::aus_weltzeit(chrono::Utc::now().naive_utc());
+            Json(kopf_antwort(h, crate::vertrag::abgeleitet::heute(), jetzt)).into_response()
+        }
+        None => AppError::nicht_gefunden(SATZ_OHNE_ORT).into_response(),
+    }
+}
+
+/// Das Festjahr des Jahreskreises am Ort des Katalogs, das den Tag `d` enthält.
+fn jahr_antwort(k: &Katalog, d: NaiveDate) -> Result<KalenderJahr, AppError> {
+    k.festjahr(JAHRESKREIS, d).ok_or_else(|| AppError::unlesbar("Für diesen Tag lässt sich kein Festjahr rechnen."))
+}
+
+/// `GET /api/kalender/jahr?ort=&datum=`: das Festjahr am benannten Ort (sonst am Heimatort),
+/// ohne `datum` für heute; ohne `inhalt_sammeln`, unabhängig von den aktiven Kalendern.
+pub async fn jahr(State(state): State<AppState>, uri: Uri, angemeldet: Option<Extension<Angemeldet>>) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    async {
+        let d = angegeben(abfrage(&uri, "datum")).map(|t| datum(&t, "datum")).transpose()?.unwrap_or_else(crate::vertrag::abgeleitet::heute);
+        let orte = Orte::aus_bestand(&state.inhalt.bestand());
+        let (k, _) = benannt(&orte, &uri)?;
+        Ok::<_, AppError>(Json(jahr_antwort(&k, d)?))
+    }
+    .await
+    .into_response()
+}
+
+/// Der Text der privaten `standorte.toml` mit `heimat = true` genau beim Ort `ziel`
+/// (`None`: bei keinem). Er entsteht aus dem alten Text, nicht aus der Struktur: Zeilen
+/// `heimat = …` in den `[[standort]]`-Blöcken fallen weg, hinter der Zeile
+/// `kennung = "<ziel>"` kommt `heimat = true`; alles andere bleibt Byte für Byte.
+/// Eine andere Form (andere Tabellen, Inline-Tabellen, die Kennung anders geschrieben)
+/// gibt `None`, ebenso ein Ergebnis, das nicht genau diesen Heimatort trägt.
+fn heimat_text(alt: &str, ziel: Option<&str>) -> Option<String> {
+    let kennung = ziel.map(|z| format!("kennung = {}", toml::Value::String(z.to_string())));
+    let mut neu = String::with_capacity(alt.len() + 16);
+    let (mut im_block, mut gesetzt) = (false, 0);
+    for zeile in alt.split_inclusive('\n') {
+        let t = zeile.trim();
+        if t.starts_with('[') {
+            if t != "[[standort]]" {
+                return None;
+            }
+            im_block = true;
+        } else if im_block && t.strip_prefix("heimat").is_some_and(|r| r.trim_start().starts_with('=')) {
+            continue;
+        }
+        neu.push_str(zeile);
+        if im_block && kennung.as_deref() == Some(t) {
+            let ende = if zeile.ends_with("\r\n") { "\r\n" } else { "\n" };
+            if !zeile.ends_with('\n') {
+                neu.push_str(ende);
+            }
+            neu.push_str("heimat = true");
+            neu.push_str(ende);
+            gesetzt += 1;
+        }
+    }
+    let Ok(Datei::Ganz(g)) = datei_lesen::<Standorte>("standorte.toml", &neu) else { return None };
+    let heimat: Vec<&str> = g.standort.iter().filter(|s| s.heimat).map(|s| s.kennung.as_str()).collect();
+    (gesetzt == usize::from(ziel.is_some()) && heimat == ziel.into_iter().collect::<Vec<_>>()).then_some(neu)
+}
+
+/// `POST /api/kalender/heimat`: ein eigener Ort oder der Standardort wird Heimatort. Ist er
+/// es schon, oder fehlt bei Wahl des Standardorts die private Datei, bleibt alles, wie es ist.
+pub async fn heimat(State(state): State<AppState>, kopf: HeaderMap, angemeldet: Option<Extension<Angemeldet>>, koerper: Bytes) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
+    }
+    async {
+        json_kopf_pruefen(&kopf)?;
+        let h: KalenderHeimat =
+            serde_json::from_slice(&koerper).map_err(|_| AppError::unlesbar("Der Inhalt ist kein passendes JSON. Erwartet wird etwa {\"ort\": \"zuhause\"}."))?;
+        let standard = crate::kalender::orte::vorlage().and_then(|v| v.alle().first().map(|s| s.kennung.clone()));
+        let saetze = super::schreiben::Saetze {
+            ohne_projekt: "Das Projekt kalender fehlt im Inhalt. Ein Heimatort lässt sich erst wählen, wenn es angelegt ist.",
+            alt_fehlerhaft: "Der Heimatort ließ sich nicht wählen; die Datei der Orte hat einen Fehler, den die Prüfung meldet, oder eine Form, die der Server nicht umschreibt. Es bleibt beim bisherigen Heimatort.",
+            neu_fehlerhaft: "Der Heimatort ließ sich nicht sauber setzen; es bleibt beim bisherigen.",
+            nicht_geschrieben: "Der Dienst darf die Datei der Orte nicht schreiben, oder sie ist gerade belegt. Es bleibt beim bisherigen Heimatort.",
+        };
+        super::schreiben::privat_schreiben::<Standorte, ()>(
+            &state,
+            "standorte",
+            &saetze,
+            |alt| {
+                let privat = alt.as_ref().is_some_and(|(_, s)| s.standort.iter().any(|x| x.kennung == h.ort));
+                let ziel = if privat {
+                    Some(h.ort.as_str())
+                } else if standard.as_deref() == Some(h.ort.as_str()) {
+                    None
+                } else {
+                    return Err(AppError::unlesbar(SATZ_HEIMAT_NICHT));
+                };
+                let Some((text, _)) = alt else { return Ok((None, ())) };
+                let neu = heimat_text(text, ziel).ok_or_else(|| AppError::unlesbar(saetze.alt_fehlerhaft))?;
+                Ok(((neu != text).then_some(neu), ()))
+            },
+            standorte_eindeutig,
+        )
+        .await?;
+        Ok::<_, AppError>(Json(orte_antwort(&state.inhalt.bestand())))
     }
     .await
     .into_response()
@@ -1230,6 +1407,9 @@ mod tests {
             "/api/fristen",
             "/api/anstehend",
             "/api/pruefung/kalender",
+            "/api/kalender/kopf",
+            "/api/kalender/jahr",
+            "/api/kalender/jahr?ort=zuhause",
         ];
         for pfad in wege {
             let (s, v) = schicke(&frei, get(pfad)).await;
@@ -1239,6 +1419,7 @@ mod tests {
         for (pfad, j) in [
             ("/api/kalender/abfrage", serde_json::json!({"breite": 47.3, "laenge": 73.9})),
             ("/api/kalender/standorte", serde_json::json!({"titel": "X", "breite": 47.3, "laenge": 73.9})),
+            ("/api/kalender/heimat", serde_json::json!({"ort": "zuhause"})),
         ] {
             let (s, v) = schicke(&frei, post_an(pfad, j)).await;
             assert_eq!(s, StatusCode::UNAUTHORIZED, "{pfad}");
@@ -1276,6 +1457,12 @@ mod tests {
         assert!(fristen_text.contains("Ort Zuhause · Asia/Almaty") && fristen_text.contains("Ort Zweiter Ort · fester Versatz"), "{fristen_text}");
         // Angemeldet steht das Ereignis der Zählung in den Fristen (sonst prüfte der Rest nichts).
         assert!(fristen_text.contains("260-Tage-Zyklus der Zählung Hochland"), "{fristen_text}");
+        // Stufe 6: Kopfleiste und Festjahr angemeldet mit Titel und Zeiten, ohne Zahl der Lage und ohne Zone.
+        for pfad in ["/api/kalender/kopf", "/api/kalender/jahr", "/api/kalender/jahr?ort=ort-2"] {
+            let (s, v) = schicke(&app, get(pfad)).await;
+            assert_eq!(s, StatusCode::OK, "{pfad}: {v}");
+            ohne_zahlen_und_zone(pfad, &v.to_string());
+        }
         let kanal = kanal.await.unwrap();
         assert!(kanal.contains("anmeldung"), "Kanal nicht gelesen: {kanal}");
         let kanal = kanal_ohne_zeitstempel(&kanal);
@@ -1733,6 +1920,224 @@ mod tests {
         // Das Protokoll (sicher nur allein im Prozess, siehe `abfrage_hinterlaesst_nichts`).
         let protokoll = String::from_utf8(mitschrift.0.lock().unwrap().clone()).unwrap();
         ohne("Protokoll", &protokoll, true);
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    // ----- Stufe 6: Kopfleiste, Heimatort, Jahreskreis -----
+
+    fn d(t: &str) -> chrono::NaiveDate {
+        chrono::NaiveDate::parse_from_str(t, "%Y-%m-%d").unwrap()
+    }
+
+    fn mittag_utc(t: &str) -> f64 {
+        crate::kalender::mond::aus_weltzeit(d(t).and_hms_opt(12, 0, 0).unwrap())
+    }
+
+    fn benannt_an(kennung: &str, breite: f64, laenge: f64, zone: &str) -> crate::kalender::orte::Benannt {
+        let zeit = crate::kalender::mond::Zeit::Zone(crate::kalender::zone::zone(zone).unwrap());
+        crate::kalender::orte::Benannt {
+            kennung: kennung.into(),
+            titel: kennung.into(),
+            ort: crate::kalender::mond::Ort::an(crate::kalender::mond::Lage { breite, laenge }, zeit),
+            oeffentlich: false,
+        }
+    }
+
+    /// Die Kopfleiste rechnet wie der Tag: Auf- und Untergang am Standardort gleich den
+    /// Zeilen von GET tag; am Tag des Vollmonds (19.6.2027) ist er der nächste und das
+    /// Phasenwort „Vollmond“, die Phase in Grad nahe 180; am Tag danach der nächste im Juli.
+    /// Tromsø am 21.12.: Polarnacht, ein Satz statt der Zeiten. Sydney: gespiegelt.
+    #[test]
+    fn kopf_antwort_fachlich() {
+        let orte = crate::kalender::orte::Orte::aus(None, crate::kalender::orte::vorlage().as_ref());
+        let mitte = orte.heimat().unwrap();
+        for tag in ["2027-03-20", "2027-06-21", "2027-12-21"] {
+            let k = super::kopf_antwort(mitte, d(tag), mittag_utc(tag));
+            let t = super::tag_antwort(&orte.katalog(), &[], d(tag), Some(mitte.titel.clone()), "", &[]);
+            let zeile = |kennung: &str| t.zeiten.iter().find(|z| z.kennung == kennung).and_then(|z| z.zeit.clone());
+            assert_eq!((k.aufgang.clone(), k.untergang.clone(), k.text.clone()), (zeile("aufgang"), zeile("untergang"), None), "{tag}");
+            assert_eq!(k.ort, "Mitte Deutschlands (Mühlhausen/Thüringen)");
+            assert!(!k.sued);
+        }
+        let k = super::kopf_antwort(mitte, d("2027-06-19"), mittag_utc("2027-06-19"));
+        assert_eq!((k.naechster_vollmond.as_str(), k.phase.as_str()), ("2027-06-19", "Vollmond"), "{k:?}");
+        assert!((170.0..=190.0).contains(&k.phase_grad) && k.phase_grad.fract() == 0.0, "{k:?}");
+        let k = super::kopf_antwort(mitte, d("2027-06-20"), mittag_utc("2027-06-20"));
+        assert_eq!((k.naechster_vollmond.as_str(), k.phase.as_str()), ("2027-07-18", "abnehmend"), "{k:?}");
+        let tromsoe = benannt_an("tromsoe", 69.6, 19.0, "Europe/Oslo");
+        let k = super::kopf_antwort(&tromsoe, d("2027-12-21"), mittag_utc("2027-12-21"));
+        assert_eq!((k.aufgang, k.untergang, k.text.as_deref()), (None, None, Some("Die Sonne geht heute nicht auf.")));
+        let k = super::kopf_antwort(&tromsoe, d("2027-06-21"), mittag_utc("2027-06-21"));
+        assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."));
+        assert!(super::kopf_antwort(&benannt_an("sydney", -33.9, 151.2, "Australia/Sydney"), d("2027-06-21"), mittag_utc("2027-06-21")).sued);
+    }
+
+    /// S5: Tromsø an den Übergangstagen 2027 (Mai in den Polartag, Juli hinaus; vgl.
+    /// `tag::polartag_grenzen_tromsoe`): Fehlt nur eine Zeit, spricht der Satz von der
+    /// fehlenden Seite, nie „geht nicht unter“ neben einem Untergang.
+    #[test]
+    fn kopf_satz_an_uebergangstagen() {
+        let tromsoe = benannt_an("tromsoe", 69.6492, 18.9553, "Europe/Oslo");
+        let tage = |von: &str| d(von).iter_days().take(14).map(|t| (t, super::kopf_antwort(&tromsoe, t, mittag_utc(&t.to_string())))).collect::<Vec<_>>();
+        let mai = tage("2027-05-12");
+        let (t, k) = mai.iter().find(|(_, k)| k.aufgang.is_some() && k.untergang.is_none()).expect("Übergangstag im Mai");
+        assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."), "{t}: {k:?}");
+        let juli = tage("2027-07-18");
+        let (t, k) = juli.iter().find(|(_, k)| k.aufgang.is_none() && k.untergang.is_some()).expect("Übergangstag im Juli");
+        assert!(matches!(k.text.as_deref(), Some("Die Sonne geht heute nicht auf." | "Für den Aufgang gibt es heute hier keine Zeit.")), "{t}: {k:?}");
+        // Kein Tag der beiden Folgen widerspricht sich: ein Satz zum Untergang nur ohne Untergang, zum Aufgang nur ohne Aufgang.
+        for (t, k) in mai.iter().chain(&juli) {
+            let satz = k.text.as_deref().unwrap_or("");
+            assert_eq!(k.text.is_none(), k.aufgang.is_some() && k.untergang.is_some(), "{t}: {k:?}");
+            assert!(!(satz.contains("unter") && k.untergang.is_some()) && !(satz.contains("nicht auf") && k.aufgang.is_some()), "{t}: {k:?}");
+        }
+    }
+
+    /// Abnahme S6 Runde 2, A2: Die Seite ohne Zeit bestimmt den Satz direkt. Am Tag nach dem
+    /// Polartag (Aufgang `BleibtDarueber`, Untergang mit Zeit) heißt es nicht „geht nicht auf“,
+    /// spiegelbildlich beim Untergang `BleibtDarunter` nicht „geht nicht unter“.
+    #[test]
+    fn kopf_satz_je_seite() {
+        use super::{Sonnenzeit::*, kopf_satz};
+        let auf_keine = Some("Für den Aufgang gibt es heute hier keine Zeit.");
+        let unter_keine = Some("Für den Untergang gibt es heute hier keine Zeit.");
+        assert_eq!(kopf_satz(Some((BleibtDarueber, Um(0.5))), false, true), auf_keine);
+        assert_eq!(kopf_satz(Some((Keine, Um(0.5))), false, true), auf_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), Um(0.6))), false, true), auf_keine, "Zeit ohne Uhrzeit am Tag");
+        assert_eq!(kopf_satz(Some((BleibtDarunter, Um(0.5))), false, true), Some("Die Sonne geht heute nicht auf."));
+        assert_eq!(kopf_satz(Some((Um(0.5), BleibtDarunter)), true, false), unter_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), Keine)), true, false), unter_keine);
+        assert_eq!(kopf_satz(Some((Um(0.5), BleibtDarueber)), true, false), Some("Die Sonne geht heute nicht unter."));
+        assert_eq!(kopf_satz(Some((BleibtDarunter, BleibtDarunter)), false, false), Some("Die Sonne geht heute nicht auf."));
+        assert_eq!(kopf_satz(Some((BleibtDarueber, BleibtDarueber)), false, false), Some("Die Sonne geht heute nicht unter."));
+        assert_eq!(kopf_satz(None, false, false), Some("Heute gibt es hier keine Zeit für Auf- und Untergang."));
+        assert_eq!(kopf_satz(Some((Um(0.5), Um(0.6))), true, true), None);
+    }
+
+    /// `GET /api/kalender/kopf`: nur angemeldet; Form; der Heimatort mit Titel, ohne Zahl und Zone.
+    #[tokio::test]
+    async fn kopf_schnittstelle() {
+        let wurzel = inhalt("kopf");
+        let state = AppState::fuer_tests(&wurzel);
+        let (s, v) = schicke(&router(state.clone()), get("/api/kalender/kopf")).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+        ohne_zahlen_und_zone("kopf ohne Anmeldung", &v.to_string());
+        let (s, v) = schicke(&router_angemeldet(state), get("/api/kalender/kopf")).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        let felder: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(felder, ["ort", "aufgang", "untergang", "text", "phase_grad", "phase", "sued", "naechster_vollmond"]);
+        assert_eq!((v["ort"].as_str(), v["sued"].as_bool()), (Some("Zuhause"), Some(false)));
+        assert!(v["aufgang"].as_str().is_some_and(|a| a.len() == 5) && v["naechster_vollmond"].as_str().is_some_and(|t| t.len() == 10), "{v}");
+        ohne_zahlen_und_zone("kopf", &v.to_string());
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// `GET /api/kalender/jahr` und der Zweig in `POST /api/kalender/abfrage`: nur angemeldet,
+    /// am Heimatort mit Monaten, zwischen den Wendekreisen ohne, falsches Datum 422, ohne Koordinaten.
+    #[tokio::test]
+    async fn jahr_schnittstelle() {
+        let wurzel = inhalt("jahr");
+        let state = AppState::fuer_tests(&wurzel);
+        assert_eq!(schicke(&router(state.clone()), get("/api/kalender/jahr")).await.0, StatusCode::UNAUTHORIZED);
+        let app = router_angemeldet(state);
+        let (s, v) = schicke(&app, get("/api/kalender/jahr?datum=2027-06-21")).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert!(v["monate"].as_array().is_some_and(|m| m.len() >= 12) && v["sonnentage"].as_array().unwrap().len() == 4, "{v}");
+        ohne_zahlen_und_zone("jahr", &v.to_string());
+        let (_, tropen) = schicke(&app, get("/api/kalender/jahr?datum=2027-06-21&ort=ort-3")).await;
+        assert!(tropen["monate"].as_array().unwrap().is_empty() && tropen["hinweis"].as_str().is_some_and(|h| h.contains("Wendekreisen")), "{tropen}");
+        let (_, sued) = schicke(&app, get("/api/kalender/jahr?datum=2027-07-15&ort=ort-2")).await;
+        assert_eq!(sued["sonnentage"][0]["kennung"], "wende-winter");
+        assert!(sued["sonnentage"][0]["datum"].as_str().unwrap().starts_with("2027-06"), "{sued}");
+        let (s, _) = schicke(&app, get("/api/kalender/jahr?datum=2200-01-01")).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(schicke(&app, get("/api/kalender/jahr?ort=mars")).await.0, StatusCode::NOT_FOUND);
+        let (s, a) =
+            schicke(&app, post(serde_json::json!({"breite": -33.9, "laenge": 151.2, "zeitzone": "Australia/Sydney", "datum": "2027-07-15", "jahr": true})))
+                .await;
+        assert_eq!(s, StatusCode::OK, "{a}");
+        assert_eq!(a["jahr"]["sonnentage"][0]["kennung"], "wende-winter");
+        let (_, ohne) = schicke(&app, post(serde_json::json!({"breite": 1.0, "laenge": 2.0}))).await;
+        assert_eq!(ohne["jahr"], Value::Null);
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Eine von Hand geschriebene Datei mit Kommentaren und `heimat = false`.
+    const HANDSCHRIFT: &str = "# Meine Orte\r\n\r\n[[standort]]\r\nkennung = \"zuhause\"   \r\ntitel = \"Zuhause\" # Wohnung\r\nbreite = 47.3\r\nlaenge = 73.9\r\nherkunft = \"hand\"\r\nzeitzone = \"Asia/Almaty\"\r\nheimat = true\r\n\r\n# Der zweite\r\n[[standort]]\r\nkennung = \"ort-2\"\r\nheimat = false\r\ntitel = \"Zweiter Ort\"\r\nbreite = -38.6\r\nlaenge = -62.4\r\nherkunft = \"hand\"\r\nversatz = \"-03:00\"\r\n";
+
+    /// Der neue Text aus dem alten: alle Zeilen außer `heimat` bleiben Byte für Byte, höchstens ein `heimat`.
+    #[test]
+    fn heimat_text_aus_dem_alten() {
+        let ohne_heimat = |t: &str| t.split_inclusive('\n').filter(|z| !z.trim_start().starts_with("heimat")).collect::<String>();
+        let neu = super::heimat_text(HANDSCHRIFT, Some("ort-2")).unwrap();
+        assert_eq!(ohne_heimat(&neu), ohne_heimat(HANDSCHRIFT));
+        assert_eq!(neu.matches("heimat").count(), 1, "{neu}");
+        assert!(neu.contains("kennung = \"ort-2\"\r\nheimat = true\r\ntitel = \"Zweiter Ort\""), "{neu}");
+        let keiner = super::heimat_text(HANDSCHRIFT, None).unwrap();
+        assert_eq!(keiner, ohne_heimat(HANDSCHRIFT));
+        // Leerzeichen hinter der Kennung bleiben; eine Kennung ohne Zeilenende am Schluss bekommt eins.
+        let zuhause = super::heimat_text(HANDSCHRIFT, Some("zuhause")).unwrap();
+        let soll = "kennung = \"zuhause\"   \r\nheimat = true\r\ntitel";
+        assert!(zuhause.contains(soll) && zuhause.matches("heimat").count() == 1, "{zuhause}");
+        let ohne_ende = "[[standort]]\nkennung = \"a\"\ntitel = \"A\"\nbreite = 1.0\nlaenge = 2.0\nherkunft = \"hand\"\nversatz = \"+01:00\"\n[[standort]]\ntitel = \"B\"\nbreite = 1.0\nlaenge = 2.0\nherkunft = \"hand\"\nversatz = \"+01:00\"\nkennung = \"b\"";
+        assert!(super::heimat_text(ohne_ende, Some("b")).is_some_and(|t| t.ends_with("kennung = \"b\"\nheimat = true\n")));
+        // Andere Formen: Inline-Tabellen, Teile, eine fremde Tabelle.
+        for fremd in [
+            "standort = [{ kennung = \"a\", titel = \"A\", breite = 1.0, laenge = 2.0, herkunft = \"hand\", versatz = \"+01:00\" }]\n",
+            "[[teil.privat.standort]]\nkennung = \"a\"\n",
+            "[[standort]]\nkennung = \"a\"\n[standort.x]\n",
+        ] {
+            assert!(super::heimat_text(fremd, Some("a")).is_none(), "{fremd}");
+        }
+    }
+
+    /// `POST /api/kalender/heimat`: privat → privat, privat → Standardort, schon Heimat (nichts
+    /// geschrieben), unbekannter Ort (422 ohne Werte), ohne Datei und Standardort (keine Datei),
+    /// ohne Anmeldung 401, ohne Projekt der Satz wie bei „Ort merken“.
+    #[tokio::test]
+    async fn heimat_waehlen() {
+        let wurzel = inhalt("heimat");
+        let datei = standorte_datei(&wurzel);
+        std::fs::write(&datei, HANDSCHRIFT).unwrap();
+        let state = AppState::fuer_tests(&wurzel);
+        let (frei, app) = (router(state.clone()), router_angemeldet(state));
+        let waehlen = |ort: &str| post_an("/api/kalender/heimat", serde_json::json!({ "ort": ort }));
+        assert_eq!(schicke(&frei, waehlen("ort-2")).await.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(std::fs::read_to_string(&datei).unwrap(), HANDSCHRIFT);
+        let heimat = |v: &Value| v["orte"][0]["kennung"].as_str().map(str::to_string);
+        // Privat → privat.
+        let (s, v) = schicke(&app, waehlen("ort-2")).await;
+        assert_eq!((s, heimat(&v)), (StatusCode::OK, Some("ort-2".into())), "{v}");
+        let text = std::fs::read_to_string(&datei).unwrap();
+        assert_eq!(text.matches("heimat").count(), 1, "{text}");
+        for zeile in HANDSCHRIFT.split_inclusive('\n').filter(|z| !z.starts_with("heimat")) {
+            assert!(text.contains(zeile), "{zeile:?} fehlt: {text}");
+        }
+        ohne_zahlen("Antwort auf heimat", &v.to_string());
+        // Schon Heimat: 200, Datei unverändert.
+        let (s, _) = schicke(&app, waehlen("ort-2")).await;
+        assert_eq!((s, std::fs::read_to_string(&datei).unwrap()), (StatusCode::OK, text));
+        // Privat → Standardort: kein `heimat` mehr, der Standardort steht zuerst.
+        let (s, v) = schicke(&app, waehlen("mitte")).await;
+        assert_eq!((s, heimat(&v)), (StatusCode::OK, Some("mitte".into())), "{v}");
+        assert!(!std::fs::read_to_string(&datei).unwrap().contains("heimat"));
+        // Unbekannter Ort: 422, Satz ohne Werte, Datei bleibt.
+        let vorher = std::fs::read_to_string(&datei).unwrap();
+        let (s, v) = schicke(&app, waehlen("mars")).await;
+        assert_eq!((s, v["fehler"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some(super::SATZ_HEIMAT_NICHT)), "{v}");
+        assert_eq!(std::fs::read_to_string(&datei).unwrap(), vorher);
+        assert!(zwischendateien(&wurzel).is_empty());
+        // Ohne private Datei und Standardort: 200, keine Datei; ein anderer Ort: 422.
+        std::fs::remove_file(&datei).unwrap();
+        assert_eq!(schicke(&app, waehlen("mitte")).await.0, StatusCode::OK);
+        assert_eq!(schicke(&app, waehlen("zuhause")).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(!datei.exists(), "keine Datei angelegt");
+        let _ = std::fs::remove_dir_all(&wurzel);
+        // Ohne Projekt `kalender`.
+        let wurzel = inhalt("heimat-ohne-projekt");
+        std::fs::remove_dir_all(wurzel.join("projects/kalender")).unwrap();
+        let (s, v) = schicke(&router_angemeldet(AppState::fuer_tests(&wurzel)), waehlen("mitte")).await;
+        assert!(s == StatusCode::UNPROCESSABLE_ENTITY && v.to_string().contains("Projekt kalender"), "{s} {v}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 }

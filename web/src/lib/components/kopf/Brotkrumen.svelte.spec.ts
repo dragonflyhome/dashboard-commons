@@ -51,7 +51,7 @@ describe('Brotkrumen (Kopfleiste, Fassung 3)', () => {
 		// Sichtbar nur „…“, für Vorlese-Programme der ganze Weg.
 		expect(auslassung?.querySelector('[aria-hidden="true"]')).toHaveTextContent('…');
 		expect(auslassung?.querySelector('.nur-vorlesen')).toHaveTextContent('Projekte');
-		// Die Glieder sind da (die Regel für 37,5 rem blendet sie nur sichtbar aus).
+		// Die Glieder sind da (die Regel bis 48 rem blendet sie nur sichtbar aus).
 		expect(screen.getByRole('link', { name: 'Projekte' })).toBeInTheDocument();
 	});
 

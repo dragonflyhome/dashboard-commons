@@ -8,7 +8,7 @@
 //! - Der kürzeste Tag (Wintersonnenwende) hängt von der Halbkugel ab; sie folgt
 //!   aus der Breite des Orts ([`Ort::an`]), ohne Lage gilt der Norden.
 
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, Offset, TimeZone};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, Offset, TimeZone, Timelike};
 
 use super::himmel;
 
@@ -212,6 +212,11 @@ pub fn weltzeit(t: f64) -> Option<NaiveDateTime> {
     Some(d.and_hms_opt(0, 0, 0)? + Duration::seconds(((t - tag) * 86400.0).round() as i64))
 }
 
+/// Ein Zeitpunkt in Weltzeit als Zahl des Rechenkerns (Gegenstück zu [`weltzeit`]): Tag plus Sekunden seit Mitternacht.
+pub fn aus_weltzeit(utc: NaiveDateTime) -> f64 {
+    tag_zahl(utc.date()) + f64::from(utc.time().num_seconds_from_midnight()) / 86400.0
+}
+
 fn windows_versatz(utc: NaiveDateTime) -> i32 {
     chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()
 }
@@ -375,5 +380,15 @@ mod tests {
         assert_eq!(an(0.0).halbkugel, Halbkugel::Nord);
         assert_eq!(an(-0.1).halbkugel, Halbkugel::Sued);
         assert!(!Ort::windows().tropen(), "ohne Lage keine Tropen");
+    }
+
+    /// Weltzeit als Zahl: Mitternacht ist der Tag selbst, Mittag ein halber Tag mehr; hin und zurück gleich.
+    #[test]
+    fn aus_weltzeit_und_zurueck() {
+        let mitternacht = NaiveDate::from_ymd_opt(2027, 6, 21).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        assert_eq!(aus_weltzeit(mitternacht), tag_zahl(mitternacht.date()));
+        assert_eq!(aus_weltzeit(mitternacht + Duration::hours(12)), tag_zahl(mitternacht.date()) + 0.5);
+        let z = NaiveDate::from_ymd_opt(2100, 12, 31).unwrap().and_hms_opt(23, 59, 59).unwrap();
+        assert_eq!(weltzeit(aus_weltzeit(z)), Some(z));
     }
 }

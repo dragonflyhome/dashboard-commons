@@ -13,6 +13,7 @@
  * Eigenschaften. Weitere Felder kommen erst dazu, wenn Code sie liest.
  */
 import type { Component } from 'svelte';
+import Himmel from '#lib/components/kopf/Himmel.svelte';
 import PcSymbol from '#lib/components/kopf/PcSymbol.svelte';
 import Glocke from '#lib/components/kopf/Glocke.svelte';
 import LiveBadge from '#lib/components/LiveBadge.svelte';
@@ -26,6 +27,7 @@ export interface HuellenTeil {
 
 /** Die Teile am Ende der Kopfleiste, in der Reihenfolge, in der sie stehen. */
 export const KOPF_ENDE = [
+	{ id: 'himmel', teil: Himmel },
 	{ id: 'pc', teil: PcSymbol },
 	{ id: 'glocke', teil: Glocke },
 	{ id: 'live', teil: LiveBadge },

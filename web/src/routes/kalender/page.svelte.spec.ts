@@ -3,7 +3,7 @@
  * Koordinaten eines anderen Orts gehen nur im Rumpf eines POST, nie in die
  * Adresse.
  */
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
 	KalenderAbfrageAntwort,
@@ -18,6 +18,7 @@ import type {
 
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 const { default: Page } = await import('./+page.svelte');
+const { JAHR } = await import('#lib/textfassung.beispiele.ts');
 
 const ORTE: KalenderOrte = {
 	orte: [
@@ -111,7 +112,8 @@ const ANTWORT: KalenderAbfrageAntwort = {
 	laenge: 13.4,
 	naeherung: true,
 	tag: { ...TAG, ort: null, hinweis: null },
-	feste: FESTE
+	feste: FESTE,
+	jahr: JAHR
 };
 
 const ZONEN: KalenderZonen = { zonen: ['America/Sao_Paulo', 'Europe/Berlin'], tzdb: '2025b' };
@@ -202,6 +204,12 @@ function server(
 ): ReturnType<typeof vi.fn> {
 	let orte = ORTE;
 	const f = vi.fn((pfad: string, init?: RequestInit) => {
+		if (pfad === '/api/kalender/heimat' && init?.method === 'POST') {
+			const { ort } = JSON.parse(init.body as string) as { ort: string };
+			orte = { orte: orte.orte.map((o) => ({ ...o, heimat: o.kennung === ort })) };
+			return Promise.resolve(json(orte));
+		}
+		if (pfad.startsWith('/api/kalender/jahr')) return Promise.resolve(json(JAHR));
 		if (pfad === '/api/kalender/gebete') return Promise.resolve(json(GEBETE));
 		if (pfad === '/api/kalender/staedte' && init?.method === 'POST')
 			return Promise.resolve(json(staedte));
@@ -581,6 +589,93 @@ describe('Seite /kalender', () => {
 		});
 		expect(document.activeElement).toBe(fuenf);
 		expect(fuenf.isConnected).toBe(true);
+	});
+
+	it('Stufe 6: „Als Heimatort“ nur am Ort, der es nicht ist; danach steht „(Heimat)“ dort und der Knopf ist weg', async () => {
+		const f = server();
+		render(Page);
+		await screen.findByText('04:43');
+		expect(screen.queryByRole('button', { name: 'Als Heimatort' })).toBeNull();
+		const ortWahl = screen.getByRole('combobox', { name: 'Ort Zuhause (Heimat)' });
+		ortWahl.focus();
+		await fireEvent.keyDown(ortWahl, { key: 'ArrowDown' });
+		const huette = await screen.findByRole('option', { name: 'Hütte' });
+		await fireEvent.pointerDown(huette, { pointerType: 'mouse' });
+		await fireEvent.pointerUp(huette, { pointerType: 'mouse' });
+		await fireEvent.click(huette);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Als Heimatort' }));
+		// Die Hütte bleibt gewählt und heißt jetzt „(Heimat)“; der Knopf ist weg.
+		expect(await screen.findByRole('combobox', { name: 'Ort Hütte (Heimat)' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Als Heimatort' })).toBeNull();
+		const post = f.mock.calls.find((c) => String(c[0]) === '/api/kalender/heimat');
+		expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({ ort: 'hütte' });
+		// Der Fokus fällt nicht auf body: Er steht wie bei „Ort merken“ auf der Rückmeldung.
+		const meldung = await screen.findByText('Heimatort ist jetzt „Hütte“.');
+		expect(meldung).toHaveAttribute('role', 'status');
+		expect(meldung).toHaveAttribute('tabindex', '-1');
+		expect(document.activeElement).toBe(meldung);
+	});
+
+	it('Stufe 6: ein geleertes Datumsfeld lässt den Jahreskreis beim geladenen Tag (kein Zeiger mit NaN)', async () => {
+		server();
+		const { container } = render(Page);
+		const abschnitt = (await screen.findByRole('heading', { name: 'Das Jahr' })).closest('section');
+		if (abschnitt === null) throw new Error('Abschnitt fehlt');
+		const feld = container.querySelector<HTMLInputElement>('input[type="date"]');
+		if (feld === null) throw new Error('Datumsfeld fehlt');
+		await fireEvent.input(feld, { target: { value: '' } });
+		expect(feld.value).toBe('');
+		const bild = within(abschnitt).getByRole('img');
+		const zeiger = bild.querySelector('path.zeiger')?.getAttribute('d') ?? '';
+		expect(zeiger).toMatch(/^M [\d.-]+ [\d.-]+ L [\d.-]+ [\d.-]+$/);
+		expect(zeiger).not.toContain('NaN');
+		// Der Name nennt den geladenen Tag (21.6.2026), nicht „am “.
+		expect(bild.getAttribute('aria-label')).toMatch(/, am .*2026$/);
+	});
+
+	it('Stufe 6: „Das Jahr“ mit Kreis (role=img, Name), Liste der Monate, Sonnentage, nächste Vollmonde und Textfassung', async () => {
+		const f = server();
+		const { container } = render(Page);
+		const abschnitt = (await screen.findByRole('heading', { name: 'Das Jahr' })).closest('section');
+		if (abschnitt === null) throw new Error('Abschnitt fehlt');
+		const bild = within(abschnitt).getByRole('img');
+		expect(bild.getAttribute('aria-label')).toMatch(/^Jahreskreis 2026\/27, 12 Mondmonate, am /);
+		expect(bild.getAttribute('viewBox')).toBe('0 0 400 400');
+		expect(bild.querySelectorAll('path.monat')).toHaveLength(12);
+		expect(bild.querySelectorAll('circle.voll')).toHaveLength(12);
+		expect(bild.querySelectorAll('path.marke')).toHaveLength(4);
+		expect(bild.querySelectorAll('path.zeit')).toHaveLength(4);
+		expect(bild.querySelectorAll('path.zeiger')).toHaveLength(1);
+		const listen = [...abschnitt.querySelectorAll('ol')];
+		expect(listen.map((l) => l.children.length).slice(0, 2)).toEqual([12, 4]);
+		const [monate, sonne] = listen;
+		if (monate === undefined || sonne === undefined) throw new Error('Listen fehlen');
+		expect(within(monate).getByText(/2\. Wintervollmond · Yule-Mond/)).toBeInTheDocument();
+		expect(within(sonne).getByText('Wintersonnenwende')).toBeInTheDocument();
+		const text = container.querySelector('[data-textfassung] table');
+		expect(text?.querySelector('caption')?.textContent).toBe('Jahreskreis 2026/27 als Text');
+		expect(text?.querySelectorAll('tbody tr').length).toBeGreaterThanOrEqual(16);
+		// Der Ort geht nur als Kennung in die Adresse, wie bei Tag und Festen.
+		const pfad = f.mock.calls
+			.map((c) => String(c[0]))
+			.find((p) => p.startsWith('/api/kalender/jahr'));
+		expect(pfad).toMatch(/^\/api\/kalender\/jahr\?datum=\d{4}-\d{2}-\d{2}&ort=zuhause$/);
+	});
+
+	it('Stufe 6: beim anderen Ort kommt das Jahr aus derselben Abfrage (jahr = true im Rumpf)', async () => {
+		const f = server();
+		render(Page);
+		await screen.findByText('04:43');
+		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.52' } });
+		await fireEvent.input(screen.getByLabelText(/Länge/), { target: { value: '13.405' } });
+		const form = screen.getByRole('group', { name: 'Anderer Ort' }).closest('form');
+		if (form === null) throw new Error('Formular fehlt');
+		await fireEvent.submit(form);
+		await screen.findByText(/Gerechnet für Breite/);
+		const post = f.mock.calls.find((c) => String(c[0]) === '/api/kalender/abfrage');
+		expect(JSON.parse((post?.[1] as RequestInit).body as string)).toMatchObject({ jahr: true });
+		expect(screen.getByRole('heading', { name: 'Das Jahr' })).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Als Heimatort' })).toBeNull();
 	});
 
 	it('ohne Städteliste steht ein Satz da, die Namensnennung bleibt', async () => {

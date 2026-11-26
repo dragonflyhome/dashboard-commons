@@ -56,6 +56,7 @@ describe('/katalog (Etappe 3a-3)', () => {
 				'Dichtestreifen',
 				'Zeitachse',
 				'Plan',
+				'Jahreskreis',
 				'Stand',
 				'Stand (Teil der Projektseite)',
 				'Frage',

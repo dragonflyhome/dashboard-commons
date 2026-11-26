@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { KOPF_ENDE } from './huelle.ts';
+import Himmel from '#lib/components/kopf/Himmel.svelte';
 import PcSymbol from '#lib/components/kopf/PcSymbol.svelte';
 import Glocke from '#lib/components/kopf/Glocke.svelte';
 import LiveBadge from '#lib/components/LiveBadge.svelte';
 import Schloss from '#lib/components/Schloss.svelte';
 
 describe('KOPF_ENDE, die Teile am Ende der Kopfleiste', () => {
-	it('die Kennungen stehen in dieser Reihenfolge: pc, glocke, live, schloss', () => {
-		expect(KOPF_ENDE.map((t) => t.id)).toEqual(['pc', 'glocke', 'live', 'schloss']);
+	it('die Kennungen stehen in dieser Reihenfolge: himmel, pc, glocke, live, schloss', () => {
+		expect(KOPF_ENDE.map((t) => t.id)).toEqual(['himmel', 'pc', 'glocke', 'live', 'schloss']);
 	});
 
-	it('jede Kennung trägt ihre Komponente: PcSymbol, Glocke, LiveBadge, Schloss', () => {
-		expect(KOPF_ENDE.map((t) => t.teil)).toEqual([PcSymbol, Glocke, LiveBadge, Schloss]);
+	it('jede Kennung trägt ihre Komponente: Himmel, PcSymbol, Glocke, LiveBadge, Schloss', () => {
+		expect(KOPF_ENDE.map((t) => t.teil)).toEqual([Himmel, PcSymbol, Glocke, LiveBadge, Schloss]);
 	});
 
 	it('keine Kennung kommt zweimal vor', () => {

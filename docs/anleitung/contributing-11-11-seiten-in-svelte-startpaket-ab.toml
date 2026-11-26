@@ -484,6 +484,20 @@ Feste. Die Regel zaehlung nennt die Stellung im 260-Tage-Zyklus (Tzolkin, Cholq'
 Schnittstelle, nur angemeldet. GET /api/kalender/tag und POST /api/kalender/abfrage liefern zaehlungen: je aktive Zählung kennung, titel, stellung (die Teile mit „ · “ verbunden, etwa „13.0.14.2.8 · 9 Lamat · 1 Mak · Kalenderrunde 17048“), teile, herkunft, stufe und hinweis (der feste Satz der Zählung oder der Satz zum Zählbeginn; „Tag außerhalb der Zeit“ und „0.0 Hunab Ku“ stehen nur in stellung, der Hinweis behält die Einordnung). Ohne aktive Zählung ist die Liste leer.'''
 
 [[block]]
+titel = 'Himmel in der Kopfleiste und Jahreskreis (Kalender, Stufe 6)'
+text = '''
+Kurz für dich (Inhaber): Oben rechts stehen jetzt der Mond in seiner heutigen Phase, Sonnenauf- und -untergang von heute und dein Heimatort; ein Klick führt zur Kalenderseite. Dort machst du mit „Als Heimatort“ einen deiner Orte (oder wieder den Standardort) zum Heimatort, und unter „Das Jahr“ steht das ganze Festjahr als Kreis: Jahreszeiten, Mondmonate mit Namen, Vollmonde und die vier Sonnentage, daneben dieselben Angaben als Liste. Ohne Anmeldung ist oben nichts davon zu sehen.
+
+Kopfleiste. Der Baustein kopf/Himmel.svelte ist der erste Eintrag der Liste KOPF_ENDE (web/src/lib/huelle.ts) und in sich geschlossen: Er bekommt nichts vom Layout, lädt selbst und zeigt sich nur, wenn GET /api/kalender/kopf mit 200 antwortet; ohne Anmeldung, bei fremdem Konto, Fehler oder ohne Netz zeichnet er nichts. Er lädt beim Start, beim Tageswechsel (auch nach der Rückkehr in die Seite), bei einer Änderung im Projekt kalender, nach verpassten Ereignissen und beim Anmelden ohne Neuladen; beim Abmelden ist er sofort leer, im Browser wird nichts gespeichert. Name und Titel des Links tragen den ganzen Satz, etwa „Mond: abnehmend. Sonne heute 07:53 bis 16:18. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zum Kalender“. Am Handy zeigt er nur das Mondsymbol, mittelbreit Symbol und Zeiten mit gekürztem Ort, breit den ganzen Ort. Heute ist der Tag nach der Uhr des PCs; für einen Heimatort in einer fernen Zeitzone gilt bis Mitternacht des PCs der Tag des PCs.
+
+Heimatort. POST /api/kalender/heimat mit ort setzt heimat = true in der privaten standorte.toml, und zwar im Text selbst: alle Zeilen heimat = … in den [[standort]]-Blöcken fallen weg, hinter kennung = "<gewählt>" kommt heimat = true; Kommentare, Koordinaten und alles andere bleiben Byte für Byte. Der Standardort wird Heimatort, indem heimat bei allen eigenen Orten wegfällt. Erlaubt sind nur eigene Orte und der Standardort; ist der Ort schon Heimat, wird nichts geschrieben. Eine Datei in anderer Form (Inline-Tabellen, Teile, die Kennung anders geschrieben) bleibt unverändert, mit dem Satz für eine fehlerhafte Datei.
+
+Jahreskreis. Das Festjahr läuft vom Mondmonat mit dem kürzesten Tag (auf der Südhalbkugel im Juni) bis vor den nächsten solchen und hat 12 oder 13 Monate; jeder heißt wie der laufende Mond, dazu das Wort seiner Jahreszeit. Dazu kommen die vier Wenden und Gleichen mit Uhrzeit in Ortszeit und alle Viertel des Monds. Gerechnet wird mit dem Jahreskreis, auch wenn er nicht eingeschaltet ist. Zwischen den Wendekreisen gibt es dieselbe Spanne ohne Monate, mit dem Satz zum Äquator; reicht ein Festjahr über 1912 bis 2100 hinaus, bleibt es leer, mit einem Satz. Der Kreis beginnt oben mit der Wende im Winter; schmal stehen im Ring nur die Monatsnummern. Seine Textfassung baut jahreskreisText; ein Beispiel steht im Katalog.
+
+Schnittstelle, nur angemeldet. GET /api/kalender/kopf liefert ort (Titel), aufgang, untergang, text (Satz ohne Zahlen, etwa in der Polarnacht), phase_grad (ganze Grad, 0 Neumond, 180 Vollmond), phase (Wort wie beim laufenden Mond), sued und naechster_vollmond (heute eingeschlossen); nie Koordinaten oder eine Zone als Zahl. GET /api/kalender/jahr?ort=&datum= (ohne Datum heute) liefert zeitraum, monate, sonnentage, viertel und hinweis; für einen anderen Ort POST /api/kalender/abfrage mit jahr = true. POST /api/kalender/heimat antwortet mit der Liste der Orte.'''
+
+
+[[block]]
 titel = 'So fängst du an'
 nummeriert = true
 punkte = [

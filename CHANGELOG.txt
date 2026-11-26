@@ -14,6 +14,41 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Kopfleiste: oben rechts der Mond in seiner Phase, Sonnenauf- und
+  -untergang von heute und der Heimatort, als Link zur Kalenderseite; nur
+  angemeldet, am Handy nur das Mondsymbol.
+- Kalenderseite: Knopf „Als Heimatort“ für eigene Orte und den Standardort;
+  die Datei der Orte behält dabei Kommentare und Koordinaten unverändert.
+- Kalenderseite: Abschnitt „Das Jahr“ mit dem Festjahr des Jahreskreises als
+  Kreis und Liste (Jahreszeiten, Mondmonate, Vollmonde, Sonnentage), auch für
+  einen nachgeschlagenen Ort; ein Beispiel im Katalog.
+- Schnittstellen GET /api/kalender/kopf, GET /api/kalender/jahr und
+  POST /api/kalender/heimat, alle nur angemeldet; POST /api/kalender/abfrage
+  nimmt jahr = true.
+
+Behoben
+- Die Beschreibungen der Sätze für eine Regel ohne Vorkommen und für einen
+  Verweis per nach auf eine Zählung standen vertauscht im Code.
+- Kopfleiste: Bei Tablet-Breite rollt die Leiste nicht mehr seitlich und
+  die Brotkrumen behalten ihren Platz; unter 1024 px zeigt der Himmel nur das
+  Mondsymbol, sein Name nennt Zeiten und Ort weiter.
+- Kopfleiste: Auf Unterseiten eines Projekts, auch in einer Gruppe,
+  überlappen die Brotkrumen bei Tablet-Breite nicht mehr die Teile rechts;
+  bis 768 px stehen die mittleren Glieder als „…“ (vorgelesen wird der
+  ganze Weg).
+- Kopfleiste: Der Neumond hat einen Rand und bleibt so sichtbar.
+- Kopfleiste: Am Übergangstag zu Polartag oder Polarnacht passt der Satz zur
+  angezeigten Zeit, und der vorgelesene Name nennt diese Zeit; am Tag nach
+  dem Polartag heißt es nicht mehr, die Sonne gehe nicht auf.
+- Kalenderseite: „Das Jahr“ nennt auch am Ende des Festjahrs drei nächste
+  Vollmonde.
+- Kalenderseite: Ein geleertes Datumsfeld lässt den Jahreskreis beim
+  geladenen Tag statt eines kaputten Zeigers.
+- Kalenderseite: Nach „Als Heimatort“ steht der Fokus auf der Rückmeldung
+  „Heimatort ist jetzt …“, und sie nennt den Ort, der gesetzt
+  wurde, auch wenn währenddessen ein anderer gewählt wird.
+
 0.27.2 - 2026-11-26
 -------------------
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::kalender::zaehlung::Zaehlzeile;
-use crate::kalender::{Mond, Zeitraum};
+use crate::kalender::{Mond, Name, Zeitraum};
 
 /// Ein benannter Ort für die Auswahl.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -168,6 +168,9 @@ pub struct KalenderAbfrage {
     /// Varianten der Gebetszeiten nur für diese Antwort (nichts wird gespeichert).
     #[serde(default)]
     pub gebete: Option<Vec<String>>,
+    /// Auch das Festjahr des Jahreskreises (Stufe 6) für diesen Ort.
+    #[serde(default)]
+    pub jahr: Option<bool>,
 }
 
 /// Antwort auf eine freie Abfrage, mit den gerundeten Koordinaten, für die gerechnet wurde.
@@ -179,6 +182,8 @@ pub struct KalenderAbfrageAntwort {
     pub naeherung: bool,
     pub tag: KalenderTag,
     pub feste: KalenderFeste,
+    /// Nur mit `jahr = true` in der Abfrage.
+    pub jahr: Option<KalenderJahr>,
 }
 
 /// `GET /api/kalender/zonen`: die IANA-Zonen zur Auswahl und die Fassung der Datenbank.
@@ -231,5 +236,82 @@ pub struct KalenderStaedte {
     /// Namensnennung der Liste, „GeoNames (geonames.org), CC BY 4.0“.
     pub quelle: String,
     /// Ein Satz, wenn die Liste fehlt oder nicht benutzt wird.
+    pub hinweis: Option<String>,
+}
+
+/// `GET /api/kalender/kopf` (Stufe 6): der Himmel von heute am Heimatort für die
+/// Kopfleiste, nur angemeldet. Ohne Koordinaten und ohne Zone als Zahl.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderKopf {
+    /// Titel des Heimatorts.
+    pub ort: String,
+    /// Sonnenaufgang heute „HH:MM“ in der Zeitart des Orts; fehlt er, steht `text` da.
+    pub aufgang: Option<String>,
+    pub untergang: Option<String>,
+    /// Ein Satz ohne Zahlen, wenn eine Zeit fehlt (Polarnacht, Polartag).
+    pub text: Option<String>,
+    /// Mondphase jetzt in ganzen Grad: 0 Neumond, 90 erstes Viertel, 180 Vollmond, 270 letztes Viertel.
+    pub phase_grad: f64,
+    /// Das Wort der Phase heute, wie beim laufenden Mond, etwa „abnehmend“.
+    pub phase: String,
+    /// Südhalbkugel: Das Bild des Monds steht gespiegelt.
+    pub sued: bool,
+    /// Tag des nächsten Vollmonds (JJJJ-MM-TT, Ortszeit), heute eingeschlossen.
+    pub naechster_vollmond: String,
+}
+
+/// Rumpf von `POST /api/kalender/heimat`: welcher Ort Heimatort ist (ein eigener oder der Standardort).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct KalenderHeimat {
+    pub ort: String,
+}
+
+/// Erster Tag eines Festjahrs und erster Tag des nächsten (JJJJ-MM-TT, Ortszeit).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderSpanne {
+    pub anfang: String,
+    pub ende: String,
+}
+
+/// Ein Mondmonat im Festjahr.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderJahrMonat {
+    /// 1 = der Monat mit dem kürzesten Tag.
+    pub nummer: u8,
+    /// Sprechender Name wie beim laufenden Mond, etwa „2. Wintervollmond · Yule-Mond“.
+    pub name: String,
+    pub namen: Vec<Name>,
+    /// Das Wort der Jahreszeit, etwa „Wintervollmond“.
+    pub jahreszeit: Option<String>,
+    pub zeitraum: Zeitraum,
+}
+
+/// Ein Himmelsereignis im Festjahr: ein Sonnentag oder eine der vier Mondphasen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderZeitpunkt {
+    /// Rolle des Sonnentags am Ort (`wende-winter`, `gleiche-fruehling`, `wende-sommer`,
+    /// `gleiche-herbst`) oder die Phase (`neumond`, `erstes-viertel`, `vollmond`, `letztes-viertel`).
+    pub kennung: String,
+    pub name: String,
+    pub datum: String,
+    /// „HH:MM“ in Ortszeit.
+    pub zeit: String,
+}
+
+/// `GET /api/kalender/jahr` (Stufe 6): das Festjahr des Jahreskreises am Ort, das den Tag enthält.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+pub struct KalenderJahr {
+    pub zeitraum: KalenderSpanne,
+    /// 12 oder 13 Mondmonate; leer zwischen den Wendekreisen und außerhalb der Jahre, für die gerechnet wird.
+    pub monate: Vec<KalenderJahrMonat>,
+    /// Die vier Wenden und Gleichen in der Spanne, nach der Zeit.
+    pub sonnentage: Vec<KalenderZeitpunkt>,
+    /// Neumond, erstes Viertel, Vollmond, letztes Viertel in der Spanne, nach der Zeit.
+    pub viertel: Vec<KalenderZeitpunkt>,
+    /// Die nächsten drei Vollmonde ab dem Beginn des Tags, auch über das Ende der Spanne
+    /// hinaus; leer außerhalb der Jahre, für die gerechnet wird.
+    pub naechste_vollmonde: Vec<KalenderZeitpunkt>,
+    /// Ein Satz ohne Zahlen, wenn Monate fehlen.
     pub hinweis: Option<String>,
 }

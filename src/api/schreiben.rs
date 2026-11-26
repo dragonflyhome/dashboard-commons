@@ -1,5 +1,5 @@
 //! Gemeinsamer Schreibweg für die privaten Dateien des Kalenders, die der Server
-//! selbst schreibt (Ort merken, Auswahl der Gebetszeiten): eine Sperre je Datei,
+//! selbst schreibt (Ort merken, Auswahl der Gebetszeiten, Heimatort): eine Sperre je Datei,
 //! Prüfung des Projekts und des alten Stands, der neue Text geprüft, bevor er über
 //! eine eindeutige Zwischendatei die alte ersetzt, Aufräumen im Fehlerfall und
 //! Abgleich des Inhalts danach. Die Sätze bitten nie um Handarbeit an Dateien.
@@ -33,12 +33,12 @@ fn sperre(stamm: &str) -> Arc<tokio::sync::Mutex<()>> {
 
 /// Schreibt `projects/kalender/daten/<stamm>.toml` neu. `neu` bekommt den alten
 /// Inhalt (`None` ohne Datei) und liefert den neuen Text samt Ergebnis für den
-/// Aufrufer; `pruefen` prüft den neuen Text über das Lesen hinaus (etwa eindeutige Kennungen).
+/// Aufrufer (ohne Text bleibt alles, wie es ist: nichts geschrieben, kein Abgleich); `pruefen` prüft den neuen Text über das Lesen hinaus (etwa eindeutige Kennungen).
 pub async fn privat_schreiben<T: Baustein, R>(
     state: &AppState,
     stamm: &str,
     saetze: &Saetze,
-    neu: impl FnOnce(Option<(&str, T)>) -> Result<(String, R), AppError>,
+    neu: impl FnOnce(Option<(&str, T)>) -> Result<(Option<String>, R), AppError>,
     pruefen: impl Fn(&Datei<T>, &str, &str) -> Result<(), LeseFehler>,
 ) -> Result<R, AppError> {
     let sperre = sperre(stamm);
@@ -64,6 +64,7 @@ pub async fn privat_schreiben<T: Baustein, R>(
         },
         None => neu(None)?,
     };
+    let Some(text) = text else { return Ok(ergebnis) };
     let gut = datei_lesen::<T>(&name, &text).and_then(|d| pruefen(&d, &name, &text)).is_ok();
     if !gut {
         return Err(AppError::intern(saetze.neu_fehlerhaft));

@@ -125,6 +125,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/kalender/abfrage", post(kalender::abfrage_post))
         // Kalender, Stufe 4: die Auswahl der Gebetszeiten je Ort (privat).
         .route("/api/kalender/gebete", get(kalender::gebete).post(kalender::gebete_speichern))
+        // Kalender, Stufe 6: Himmel der Kopfleiste, Heimatort, Festjahr (alle nur angemeldet).
+        .route("/api/kalender/kopf", get(kalender::kopf))
+        .route("/api/kalender/heimat", post(kalender::heimat))
+        .route("/api/kalender/jahr", get(kalender::jahr))
         .route("/api/kalender/staedte", post(staedte::suchen))
         .route("/api/events", get(events::sse))
         // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).

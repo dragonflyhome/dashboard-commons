@@ -16,6 +16,9 @@ import type {
 	Belegung,
 	FlowData,
 	GanttData,
+	KalenderJahr,
+	KalenderJahrMonat,
+	KalenderZeitpunkt,
 	KpiItem,
 	PcMesswert,
 	ProgressRow,
@@ -24,6 +27,7 @@ import type {
 } from '$vertrag';
 import type { Spalte, Zeile } from './katalog/grund/typen.ts';
 import { wort } from './bedeutung.ts';
+import { fmtDate } from './format.ts';
 import type { FortschrittBalken } from './daten.ts';
 import { EPOCH_DAYS, fmtDuration } from './timescale.ts';
 import { datumAusZahl } from './zeit/achse.ts';
@@ -262,6 +266,58 @@ export function pcKurveText(werte: readonly PcMesswert[]): Textfassung {
 	};
 }
 
+/** Kalender, Stufe 6: der laufende Monat des Festjahrs am Tag `tag` (JJJJ-MM-TT); sonst `null`. */
+export function laufenderMonat(jahr: KalenderJahr, tag: string): KalenderJahrMonat | null {
+	return jahr.monate.find((m) => m.zeitraum.anfang <= tag && tag < m.zeitraum.ende) ?? null;
+}
+
+/** Die nächsten Vollmonde des Servers (drei ab dem Tag), die in der Spanne dieses Festjahrs liegen: sie bekommen im Kreis einen Ring. */
+export function vollmondeImKreis(jahr: KalenderJahr): KalenderZeitpunkt[] {
+	return jahr.naechste_vollmonde.filter((v) => v.datum < jahr.zeitraum.ende);
+}
+
+/** „2026/27“ aus der Spanne des Festjahrs (das Ende ist der erste Tag des nächsten). */
+export function festjahrName(jahr: KalenderJahr): string {
+	const von = jahr.zeitraum.anfang.slice(0, 4);
+	const bis = String(
+		Number(jahr.zeitraum.ende.slice(0, 4)) - (jahr.zeitraum.ende.slice(5) === '01-01' ? 1 : 0)
+	);
+	return von === bis ? von : `${von}/${bis.slice(2)}`;
+}
+
+/**
+ * Jahreskreis (Kalender, Stufe 6): je Mondmonat Nummer, Name, Zeitraum, Vollmond und
+ * Jahreszeit, dazu die vier Sonnentage mit Zeit und die nächsten drei Vollmonde.
+ */
+export function jahreskreisText(jahr: KalenderJahr, tag: string): Textfassung {
+	const laufend = laufenderMonat(jahr, tag);
+	const monate: Zeile[] = jahr.monate.map((m) => ({
+		was: `Monat ${String(m.nummer)}: ${m.name}${m === laufend ? ' (laufend)' : ''}`,
+		wann: `${fmtDate(m.zeitraum.anfang)} bis ${fmtDate(m.zeitraum.ende)}`,
+		dazu: `Vollmond ${fmtDate(m.zeitraum.vollmond)}${m.jahreszeit ? `, ${m.jahreszeit}` : ''}`
+	}));
+	const sonne: Zeile[] = jahr.sonnentage.map((s) => ({
+		was: s.name,
+		wann: `${fmtDate(s.datum)}, ${s.zeit} Uhr`,
+		dazu: 'Sonnentag'
+	}));
+	const voll: Zeile[] = jahr.naechste_vollmonde.map((v) => ({
+		was: 'Nächster Vollmond',
+		wann: `${fmtDate(v.datum)}, ${v.zeit} Uhr`,
+		dazu: v.datum < jahr.zeitraum.ende ? 'Ring im Bild' : 'nach diesem Festjahr'
+	}));
+	return {
+		titel: `Jahreskreis ${festjahrName(jahr)} als Text`,
+		spalten: [
+			{ schluessel: 'was', titel: 'Was' },
+			{ schluessel: 'wann', titel: 'Wann' },
+			{ schluessel: 'dazu', titel: 'Dazu' }
+		],
+		zeilen: [...monate, ...sonne, ...voll],
+		leer: jahr.hinweis ?? 'Für dieses Jahr gibt es keine Übersicht.'
+	};
+}
+
 /** Alle Fassungen nach Namen (für die Liste unten und den Test). */
 export const FASSUNGEN = {
 	ganttText,
@@ -271,7 +327,8 @@ export const FASSUNGEN = {
 	fortschrittText,
 	kennzahlenText,
 	flussText,
-	pcKurveText
+	pcKurveText,
+	jahreskreisText
 } as const;
 
 // ----- Die Liste -----
@@ -295,6 +352,11 @@ export const BILD_BAUSTEINE: Readonly<Record<string, BildBaustein>> = {
 			'Liste (ul/li) mit Datum, Titel und Art je Ereignis; Linie und Punkte schmücken nur, Zahlen stehen als Text'
 	},
 	'lib/components/pc/Ring.svelte': { name: 'Ring', ort: 'selbst', funktion: 'ringText' },
+	'lib/components/kalender/Jahreskreis.svelte': {
+		name: 'Jahreskreis',
+		ort: 'selbst',
+		funktion: 'jahreskreisText'
+	},
 	'lib/components/pc/Sparkline.svelte': { name: 'Kurve', ort: 'selbst', funktion: 'sparkText' },
 	'lib/components/blocks/Progress.svelte': {
 		name: 'Fortschritt',
@@ -336,6 +398,9 @@ export const KEINE_BILDER: Readonly<Record<string, string>> = {
 	'lib/components/kopf/Glocke.svelte':
 		'Zeichen einer Glocke; die Zahl steht im Namen des Knopfs, die Meldungen als Liste',
 	'lib/katalog/grund/Schublade.svelte': 'Zeichen ☰ und ×; der Knopf hat einen Namen',
+	// Kalender, Stufe 6
+	'lib/components/kopf/Himmel.svelte':
+		'Zeichen des Monds in seiner Phase; Phase, Sonnenzeiten und Ort stehen im Namen und Titel des Links',
 	'lib/katalog/Minilinie.svelte':
 		'Kleines Symbol der letzten Minute; den Wert nennt der Link (Name und Titel), der ganze Verlauf mit Textfassung steht auf /pc'
 };
