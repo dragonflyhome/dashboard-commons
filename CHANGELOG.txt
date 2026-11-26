@@ -37,14 +37,24 @@ Hinzugefügt
   mit Hinweis.
 - Am Tag der Sommersonnenwende steht die Taglänge („Längster Tag“).
 - Im Jahreskreis der erste Donnerstag nach Ostara.
-- Lader für eine private Städteliste (GeoNames), noch ohne Anbindung.
+- Städtesuche auf der Kalenderseite aus einer privaten Städteliste
+  (GeoNames, CC BY 4.0) mit Prüfsumme; ohne Liste nur Breite und Länge.
 
 Geändert
-- Bruch: Mond.nummer ist zwischen den Wendekreisen null; Mond hat hinweis.
+- Bruch: Mond.nummer und Mond.namen können null sein; Mond hat phase und
+  hinweis.
 - Der Tag in Ortszeit beginnt auch an Tagen mit Zeitumstellung zur
   richtigen Zeit (auch wo um Mitternacht umgestellt wird).
 - Rechenkern Teil 2 (Sonnenstand am Ort) aus calendrical_calculations; die
   Suche nach dem Sonnenstand bricht bei 30 Sekunden statt 30 Tagen ab.
+
+Behoben
+- Tageszeiten stehen auch in Zonen weit ab der Länge (nahe der
+  Datumsgrenze) am richtigen Kalendertag.
+- „Ort merken“ zweimal kurz hintereinander legt zwei Orte an, statt die
+  Datei der Orte unlesbar zu machen.
+- Sehr große oder kleine Jahreszahlen in der Kalender-Schnittstelle werden
+  abgewiesen, statt den Dienst abbrechen zu lassen.
 
 0.24.0 - 2026-11-25
 -------------------
