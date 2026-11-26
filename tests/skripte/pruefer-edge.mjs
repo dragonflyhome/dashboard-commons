@@ -1379,7 +1379,7 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite, gruppenseite = 
           messen(`${t} ${art}`, `Brotkrumen ${k.krumenBreite} px (brauchen ${k.krumenNoetig} px), Himmel ${k.himmel?.breite} px, rechts ${k.rechtsBreite} px, seitlich ${k.seitlich} px`);
           pruefe(JSON.stringify(ist) === JSON.stringify(soll), `${t}: Brotkrumen der ${art} ${kurz ? "mit „…“" : "vollständig"}`, JSON.stringify(k.krumen));
           pruefe(k.ueber.length === 0 && k.seitlich <= 0, `${t}: ${art} ohne Überlappung, ohne seitliches Scrollen`, k.ueber.join(", "));
-          pruefe(k.krumenNoetig <= k.krumenBreite + 1, `${t}: ${art}: die Brotkrumen passen in ihren Platz`, `${k.krumenNoetig} > ${k.krumenBreite}`);
+          pruefe(k.krumenNoetig <= k.krumenBreite + 1, `${t}: ${art}: die Brotkrumen passen in ihren Platz`, `brauchen ${k.krumenNoetig} px, Platz ${k.krumenBreite} px`);
           if (breite >= 1024 && !seite.gruppe) {
             pruefe(k.festAktuell.length === 1 && k.festAktuell[0] === seite.blatt, `${t}: in der Leiste ist die Unterseite markiert (eingerückt unter dem Projekt)`, JSON.stringify(k.festAktuell));
           }
