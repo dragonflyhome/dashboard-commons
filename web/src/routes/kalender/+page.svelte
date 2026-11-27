@@ -368,17 +368,30 @@
 	/**
 	 * „Frankfurt (Deutschland)“; gibt es unter `alle` einen gleichnamigen Ort im selben Land,
 	 * dazu die gerundete Breite, und lautet auch die gleich, die Länge. Verglichen wird der
-	 * angezeigte Text, damit zwei Knöpfe nie gleich heißen. Ohne Land keine leeren Klammern.
+	 * angezeigte Text, damit zwei Knöpfe fast nie gleich heißen. Ohne Land keine leeren Klammern.
 	 */
 	function stadtText(s: KalenderStadt, alle: KalenderStadt[]): string {
 		const nachBreite = (t: KalenderStadt): string =>
 			`${grad(Math.abs(t.breite))} ${t.breite < 0 ? 'S' : 'N'}`;
-		const gleich = alle.filter((t) => t !== s && t.name === s.name && t.land === s.land);
+		const gleich = alle.filter(
+			(t) => t !== s && t.name === s.name && t.land.trim() === s.land.trim()
+		);
 		const teile = [landName(s.land.trim())].filter((x) => x !== '');
 		if (gleich.length > 0) teile.push(nachBreite(s));
 		if (gleich.some((t) => nachBreite(t) === nachBreite(s)))
 			teile.push(`${grad(Math.abs(s.laenge))} ${s.laenge < 0 ? 'W' : 'O'}`);
 		return teile.length === 0 ? s.name : `${s.name} (${teile.join(', ')})`;
+	}
+	/**
+	 * Herkunft für die Anzeige: Der Server nennt den anderen Ort „ · <tag.ort> · “; ist der Name
+	 * der gewählten Stadt bekannt, steht er dort wie in der Kopfzeile. Nur Anzeige.
+	 */
+	function herkunftZeigen(herkunft: string): string {
+		const name = gerechnet?.name ?? null;
+		const platzhalter = tag?.ort ?? null;
+		if (name === null || platzhalter === null) return herkunft;
+		// Als Funktion, damit ein „$“ im Namen kein Ersetzungsmuster wird.
+		return herkunft.replaceAll(` · ${platzhalter} · `, () => ` · ${name} · `);
 	}
 	const ortTitel = $derived(orte?.find((o) => o.kennung === ort)?.titel ?? 'meinem Ort');
 </script>
@@ -540,7 +553,7 @@
 						<span class="wann"><b>{z.zeit ?? z.text ?? ''}</b></span>
 						<span class="was">
 							{z.name}
-							<span class="muted small">{z.herkunft}</span>
+							<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 						</span>
 					</li>
 				{/each}
@@ -598,7 +611,7 @@
 											{#if z.umfasst.length > 0}<span class="small">mit {z.umfasst.join(', ')}</span
 												>{/if}
 											{#if z.hinweis}<span class="small" data-hochbreite>{z.hinweis}</span>{/if}
-											<span class="muted small">{z.herkunft}</span>
+											<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 										</span>
 									</li>
 								{/each}
@@ -650,7 +663,7 @@
 								<span class="muted small">({z.stufe})</span>{/if}</span
 						>
 						{#if z.hinweis}<span class="small">{z.hinweis}</span>{/if}
-						<span class="muted small">{z.herkunft}</span>
+						<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 					</span>
 				</li>
 			{/each}
@@ -677,7 +690,7 @@
 							{f.titel}
 							{#if f.zeitraum}{@render monat(f.zeitraum)}{/if}
 							<!-- Die Herkunft beginnt schon mit dem Namen des Kalenders. -->
-							<span class="muted small">{f.herkunft}</span>
+							<span class="muted small">{herkunftZeigen(f.herkunft)}</span>
 						</span>
 					</li>
 				{/each}

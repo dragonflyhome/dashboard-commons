@@ -465,7 +465,21 @@ describe('Seite /kalender', () => {
 	});
 
 	it('Nach dem Rechnen steht der Name der gewählten Stadt statt „Abgefragter Ort“, nur in der Anzeige', async () => {
-		const antwort = { ...ANTWORT, tag: { ...TAG, ort: 'Abgefragter Ort', hinweis: null } };
+		// Wie der Server für einen abgefragten Ort: „ · Abgefragter Ort · <Zone>“ in jeder Herkunft
+		// (src/api/kalender.rs), in Tageszeiten, Gebeten und Festen.
+		const abgefragt = <T>(x: T): T =>
+			JSON.parse(JSON.stringify(x).replaceAll('Ort Zuhause', 'Abgefragter Ort')) as T;
+		const antwort: KalenderAbfrageAntwort = {
+			...ANTWORT,
+			tag: abgefragt({ ...TAG_GEBETE, ort: 'Abgefragter Ort', hinweis: null }),
+			feste: {
+				...FESTE,
+				feste: FESTE.feste.map((x) => ({
+					...x,
+					herkunft: `${x.herkunft} · Abgefragter Ort · Europe/Berlin`
+				}))
+			}
+		};
 		const f = server(TAG, GLEICHNAMIG, antwort);
 		render(Page);
 		await screen.findByText('04:43');
@@ -480,6 +494,15 @@ describe('Seite /kalender', () => {
 			await screen.findByText(/^Frankfurt \(Deutschland, 52,3° N\) · Uhrzeiten in/)
 		).toBeInTheDocument();
 		expect(screen.queryByText(/Abgefragter Ort/)).toBeNull();
+		// Derselbe Name in den Herkunftszeilen von Tageszeiten, Gebeten und Festen.
+		const name = 'Frankfurt (Deutschland, 52,3° N)';
+		expect(screen.getByText(`Refraktion 0,833° · ${name} · Europe/Berlin`)).toBeInTheDocument();
+		expect(
+			screen.getByText(`MWL 17° · Siebtel-Regel · ${name} · Europe/Berlin`)
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(`Jahreskreis · Sommersonnenwende · ${name} · Europe/Berlin`)
+		).toBeInTheDocument();
 		// Der Name geht nirgends an den Server: weder in eine Adresse noch in einen Rumpf.
 		const abfragen = f.mock.calls.filter((c) => String(c[0]) === '/api/kalender/abfrage');
 		expect(abfragen.length).toBeGreaterThan(0);
@@ -493,6 +516,17 @@ describe('Seite /kalender', () => {
 
 		// Von Hand geänderte Breite: das ist nicht mehr die Stadt, also wieder „Abgefragter Ort“.
 		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.4' } });
+		await fireEvent.submit(form);
+		expect(await screen.findByText(/^Abgefragter Ort · Uhrzeiten in/)).toBeInTheDocument();
+		expect(screen.queryByText(/Frankfurt \(Deutschland/)).toBeNull();
+
+		// „Zurück“ vergisst die Stadt: dieselben Werte von Hand ergeben „Abgefragter Ort“.
+		await fireEvent.click(screen.getByRole('button', { name: /^Zurück zu/ }));
+		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.34' } });
+		await fireEvent.input(screen.getByLabelText(/Länge/), { target: { value: '14.55' } });
+		await fireEvent.input(screen.getByLabelText(/Zeitzone/), {
+			target: { value: 'Europe/Berlin' }
+		});
 		await fireEvent.submit(form);
 		expect(await screen.findByText(/^Abgefragter Ort · Uhrzeiten in/)).toBeInTheDocument();
 		expect(screen.queryByText(/Frankfurt \(Deutschland/)).toBeNull();

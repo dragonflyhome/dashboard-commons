@@ -600,6 +600,10 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 				if (name === undefined) throw new Error(`.${klasse} ohne fill: light-dark(var(…), var(…))`);
 				return name;
 			};
+			// light-dark() folgt color-scheme; ohne „light dark“ in :root nähme es immer die helle Seite.
+			expect(block(CSS, /^:root,\s*\[data-thema-vorschau\]\s*\{/m)).toMatch(
+				/color-scheme:\s*light dark;/
+			);
 			const licht = fuellung('hell');
 			const schatten = fuellung('dunkel');
 			expect(leuchtdichte(farbe(wert(licht), t))).toBeGreaterThan(
