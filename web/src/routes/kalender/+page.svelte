@@ -20,6 +20,10 @@
 	 * Zählungen (Stufe 5): die aktiven Zählkalender des Tags in der Reihenfolge der
 	 * Vorlage, unabhängig vom Ort; eingeschaltet über `kalender = [...]` einer fristen.toml.
 	 *
+	 * Städtesuche: Treffer mit Landnamen (`Intl.DisplayNames`, sonst der Ländercode), gleichnamige
+	 * Orte eines Lands mit gerundeter Breite. Der Name der gewählten Stadt steht nach dem Rechnen
+	 * statt „Abgefragter Ort“ in der Anzeige; er geht nie an den Server und wird nicht gespeichert.
+	 *
 	 * Stufe 6: Der gewählte Ort wird auf Knopfdruck Heimatort (`POST /api/kalender/heimat`);
 	 * „Das Jahr“ zeigt das Festjahr des Jahreskreises am Ort als Kreis und Liste.
 	 */
@@ -73,9 +77,16 @@
 	let laenge = $state<number | null>(null);
 	let zeitzone = $state('');
 	let frei = $state<{ breite: number; laenge: number; zeitzone: string | null } | null>(null);
-	let gerechnet = $state<Pick<KalenderAbfrageAntwort, 'breite' | 'laenge' | 'naeherung'> | null>(
+	/** Die zuletzt gewählte Stadt (Anzeigename und Werte) und der Name zum abgeschickten Ort. */
+	let stadt = $state<{ text: string; breite: number; laenge: number; zeitzone: string } | null>(
 		null
 	);
+	let freiName = $state<string | null>(null);
+	/** Was zum anderen Ort gerechnet wurde; `name` nur für die Anzeige, nie im Rumpf. */
+	let gerechnet = $state<
+		| (Pick<KalenderAbfrageAntwort, 'breite' | 'laenge' | 'naeherung'> & { name: string | null })
+		| null
+	>(null);
 
 	// „Ort merken“ und „Als Heimatort“: Titel und Rückmeldung (ein ganzer Satz).
 	let merkTitel = $state('');
@@ -125,7 +136,8 @@
 	}
 
 	/** Übernimmt die Stadt in Breite, Länge und Zeitzone; rechnen erst auf Knopfdruck. */
-	function stadtWaehlen(s: KalenderStadt): void {
+	function stadtWaehlen(s: KalenderStadt, alle: KalenderStadt[]): void {
+		stadt = { text: stadtText(s, alle), breite: s.breite, laenge: s.laenge, zeitzone: s.zeitzone };
 		breite = s.breite;
 		laenge = s.laenge;
 		zeitzone = s.zeitzone;
@@ -196,6 +208,7 @@
 				jahr = j;
 				gerechnet = null;
 			} else {
+				const name = freiName;
 				const koerper: KalenderAbfrage = {
 					datum: d,
 					von: heute,
@@ -211,7 +224,7 @@
 				tag = a.tag;
 				feste = a.feste;
 				jahr = a.jahr;
-				gerechnet = { breite: a.breite, laenge: a.laenge, naeherung: a.naeherung };
+				gerechnet = { breite: a.breite, laenge: a.laenge, naeherung: a.naeherung, name };
 			}
 			fehler = null;
 		} catch (e) {
@@ -267,6 +280,14 @@
 		if (breite === null || laenge === null) return;
 		const zone = zeitzone.trim();
 		frei = { breite, laenge, zeitzone: zone === '' ? null : zone };
+		// Der Name gilt nur, solange die Felder noch genau die gewählte Stadt zeigen.
+		freiName =
+			stadt !== null &&
+			stadt.breite === breite &&
+			stadt.laenge === laenge &&
+			stadt.zeitzone === zone
+				? stadt.text
+				: null;
 		gemerkt = null;
 	}
 
@@ -293,6 +314,8 @@
 	/** Zurück zum benannten Ort; der andere Ort ist danach vergessen. */
 	function vergessen(): void {
 		frei = null;
+		freiName = null;
+		stadt = null;
 		breite = null;
 		laenge = null;
 		zeitzone = '';
@@ -323,6 +346,53 @@
 	const gewaehltOrt = $derived(orte?.find((o) => o.kennung === ort) ?? null);
 
 	const grad = (n: number): string => `${n.toFixed(1).replace('.', ',')}°`;
+
+	/** Landname auf Deutsch; ohne `Intl.DisplayNames` oder bei unbekanntem Code der Code selbst. */
+	const landNamen = (() => {
+		try {
+			return new Intl.DisplayNames(['de'], { type: 'region', fallback: 'none' });
+		} catch {
+			return null;
+		}
+	})();
+	function landName(code: string): string {
+		try {
+			// `of` gibt ohne Namen undefined; ein leerer Name zählt ebenso als keiner.
+			const name = landNamen?.of(code) ?? '';
+			return name === '' ? code : name;
+		} catch {
+			return code;
+		}
+	}
+
+	/**
+	 * „Frankfurt (Deutschland)“; gibt es unter `alle` einen gleichnamigen Ort im selben Land,
+	 * dazu die gerundete Breite, und lautet auch die gleich, die Länge. Verglichen wird der
+	 * angezeigte Text, damit zwei Knöpfe fast nie gleich heißen. Ohne Land keine leeren Klammern.
+	 */
+	function stadtText(s: KalenderStadt, alle: KalenderStadt[]): string {
+		const nachBreite = (t: KalenderStadt): string =>
+			`${grad(Math.abs(t.breite))} ${t.breite < 0 ? 'S' : 'N'}`;
+		const gleich = alle.filter(
+			(t) => t !== s && t.name === s.name && t.land.trim() === s.land.trim()
+		);
+		const teile = [landName(s.land.trim())].filter((x) => x !== '');
+		if (gleich.length > 0) teile.push(nachBreite(s));
+		if (gleich.some((t) => nachBreite(t) === nachBreite(s)))
+			teile.push(`${grad(Math.abs(s.laenge))} ${s.laenge < 0 ? 'W' : 'O'}`);
+		return teile.length === 0 ? s.name : `${s.name} (${teile.join(', ')})`;
+	}
+	/**
+	 * Herkunft für die Anzeige: Der Server nennt den anderen Ort „ · <tag.ort> · “; ist der Name
+	 * der gewählten Stadt bekannt, steht er dort wie in der Kopfzeile. Nur Anzeige.
+	 */
+	function herkunftZeigen(herkunft: string): string {
+		const name = gerechnet?.name ?? null;
+		const platzhalter = tag?.ort ?? null;
+		if (name === null || platzhalter === null) return herkunft;
+		// Als Funktion, damit ein „$“ im Namen kein Ersetzungsmuster wird.
+		return herkunft.replaceAll(` · ${platzhalter} · `, () => ` · ${name} · `);
+	}
 	const ortTitel = $derived(orte?.find((o) => o.kennung === ort)?.titel ?? 'meinem Ort');
 </script>
 
@@ -381,8 +451,8 @@
 									<Knopf
 										art="leise"
 										onclick={() => {
-											stadtWaehlen(s);
-										}}>{s.name}{s.region ? `, ${s.region}` : ''} ({s.land})</Knopf
+											stadtWaehlen(s, staedte?.treffer ?? []);
+										}}>{stadtText(s, staedte.treffer)}</Knopf
 									>
 								</li>
 							{/each}
@@ -473,8 +543,8 @@
 			<Hinweis>{tag.hinweis}</Hinweis>
 		{/if}
 		<p class="muted small">
-			{#if tag.ort}{tag.ort} ·
-			{/if}Uhrzeiten in {tag.zeitart}
+			<!-- Das Leerzeichen ausdrücklich: Svelte kürzt Leerraum am Ende eines Blocks. -->
+			{#if tag.ort}{`${gerechnet?.name ?? tag.ort} · `}{/if}Uhrzeiten in {tag.zeitart}
 		</p>
 		{#if tag.zeiten.length > 0}
 			<ul class="plain zeilen">
@@ -483,7 +553,7 @@
 						<span class="wann"><b>{z.zeit ?? z.text ?? ''}</b></span>
 						<span class="was">
 							{z.name}
-							<span class="muted small">{z.herkunft}</span>
+							<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 						</span>
 					</li>
 				{/each}
@@ -541,7 +611,7 @@
 											{#if z.umfasst.length > 0}<span class="small">mit {z.umfasst.join(', ')}</span
 												>{/if}
 											{#if z.hinweis}<span class="small" data-hochbreite>{z.hinweis}</span>{/if}
-											<span class="muted small">{z.herkunft}</span>
+											<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 										</span>
 									</li>
 								{/each}
@@ -593,7 +663,7 @@
 								<span class="muted small">({z.stufe})</span>{/if}</span
 						>
 						{#if z.hinweis}<span class="small">{z.hinweis}</span>{/if}
-						<span class="muted small">{z.herkunft}</span>
+						<span class="muted small">{herkunftZeigen(z.herkunft)}</span>
 					</span>
 				</li>
 			{/each}
@@ -620,7 +690,7 @@
 							{f.titel}
 							{#if f.zeitraum}{@render monat(f.zeitraum)}{/if}
 							<!-- Die Herkunft beginnt schon mit dem Namen des Kalenders. -->
-							<span class="muted small">{f.herkunft}</span>
+							<span class="muted small">{herkunftZeigen(f.herkunft)}</span>
 						</span>
 					</li>
 				{/each}

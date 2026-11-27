@@ -588,6 +588,31 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 		for (const s of stellen) expect(text).toContain(s);
 	});
 
+	it.each(THEMEN)(
+		'%s: im Mondsymbol ist der beleuchtete Teil heller als der Schatten, über 3:1',
+		(_thema, t, grundthema) => {
+			const himmel = quelle('lib', 'components', 'kopf', 'Himmel.svelte');
+			const fuellung = (klasse: string): string => {
+				const m = new RegExp(
+					`\\.${klasse}\\s*\\{[^}]*fill:\\s*light-dark\\(var\\((--[\\w-]+)\\),\\s*var\\((--[\\w-]+)\\)\\)`
+				).exec(himmel);
+				const name = m?.[grundthema === 'hell' ? 1 : 2];
+				if (name === undefined) throw new Error(`.${klasse} ohne fill: light-dark(var(…), var(…))`);
+				return name;
+			};
+			// light-dark() folgt color-scheme; ohne „light dark“ in :root nähme es immer die helle Seite.
+			expect(block(CSS, /^:root,\s*\[data-thema-vorschau\]\s*\{/m)).toMatch(
+				/color-scheme:\s*light dark;/
+			);
+			const licht = fuellung('hell');
+			const schatten = fuellung('dunkel');
+			expect(leuchtdichte(farbe(wert(licht), t))).toBeGreaterThan(
+				leuchtdichte(farbe(wert(schatten), t))
+			);
+			expect(kontrast(t, licht, schatten)).toBeGreaterThanOrEqual(3);
+		}
+	);
+
 	it('Töne tragen keinen Text: nie color: var(--ok) und Co., dafür gibt es --…-text', () => {
 		const ton =
 			/(?<![\w-])color\s*[:=]\s*["'{]*\s*var\(--(?:ton|ok|warn|bad|info|done|plan)\s*[,)]/;

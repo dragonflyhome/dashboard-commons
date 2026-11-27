@@ -39,6 +39,7 @@
 				d={mond.d}
 				transform={mond.spiegeln !== k.sued ? 'scale(-1 1)' : undefined}
 			/>
+			<circle class="rand" r="9" />
 		</svg>
 		{#if zeiten}
 			<span class="zeiten" aria-hidden="true"
@@ -77,14 +78,20 @@
 	svg {
 		flex: none;
 	}
-	/* Der Rand hält auch den Neumond sichtbar (gegen --card und --accent-soft über 3:1). */
+	/* Der beleuchtete Teil ist in beiden Themen heller als der Schatten (über 3:1,
+	   kontrast.spec.ts): hell --card auf --text, dunkel --text auf --line. light-dark()
+	   folgt color-scheme, das app.css für System und Wahl „Hell“/„Dunkel“ setzt. */
 	.dunkel {
-		fill: var(--line);
-		stroke: var(--muted);
-		stroke-width: 1;
+		fill: light-dark(var(--text), var(--line));
 	}
 	.hell {
-		fill: var(--text);
+		fill: light-dark(var(--card), var(--text));
+	}
+	/* Der Rand obenauf hält Neu- und Vollmond sichtbar (--muted gegen --card und --accent-soft über 3:1). */
+	.rand {
+		fill: none;
+		stroke: var(--muted);
+		stroke-width: 1;
 	}
 	/* Den Ortsnamen erst breit ganz, sonst gekürzt (der volle steht im Namen des Links). */
 	.ort {
