@@ -133,6 +133,8 @@
 			<circle class="mitte" cx={M} cy={M} r={R.mitte} />
 			<text class="jahr" x={M} y={M}>{festjahrName(jahr)}</text>
 		</svg>
+		<!-- Innen und außen folgen verschiedenen Zählungen; ohne den Satz liest man „Imbolc“ im „Winter“ als Fehler. -->
+		<p class="muted small" data-legende>Innen die Viertel der Sonne, außen die Mondmonate.</p>
 	</div>
 	<div class="liste">
 		{#if jahr.hinweis}<p class="muted small">{jahr.hinweis}</p>{/if}

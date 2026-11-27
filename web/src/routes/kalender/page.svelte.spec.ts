@@ -408,7 +408,14 @@ describe('Seite /kalender', () => {
 			stadt('Frankfurt', 'US', 38.2, -84.87),
 			stadt('Zwilling', 'DE', 48.13, 11.58),
 			stadt('Zwilling', 'DE', 48.14, -9.9),
-			stadt('Nebelfurt', 'XQ', -12.5, 1)
+			// Gleiche angezeigte Breite trotz anderer Rundung (Süden und ,x5): dann auch die Länge.
+			stadt('Kap', 'ZA', -34.25, 18.4),
+			stadt('Kap', 'ZA', -34.31, 19.1),
+			stadt('Rand', 'DE', 48.05, 7.1),
+			stadt('Rand', 'DE', 48, 7.9),
+			stadt('Nebelfurt', 'XQ', -12.5, 1),
+			// Ohne Land: der Name allein, keine leeren Klammern.
+			stadt('Leerland', '', 1, 1)
 		],
 		quelle: 'GeoNames (geonames.org), CC BY 4.0',
 		hinweis: null
@@ -424,8 +431,9 @@ describe('Seite /kalender', () => {
 		render(Page);
 		await screen.findByText('04:43');
 		await suchen('Frankfurt');
-		const namen = (await screen.findAllByRole('button', { name: /\(/ })).map((b) =>
-			b.textContent?.trim()
+		await screen.findByRole('button', { name: /^Leerland/ });
+		const namen = [...document.querySelectorAll('.treffer button')].map((b) =>
+			b.textContent.trim()
 		);
 		expect(namen).toEqual([
 			'Frankfurt (Deutschland, 50,1° N)',
@@ -433,9 +441,15 @@ describe('Seite /kalender', () => {
 			'Frankfurt (Vereinigte Staaten)',
 			'Zwilling (Deutschland, 48,1° N, 11,6° O)',
 			'Zwilling (Deutschland, 48,1° N, 9,9° W)',
+			'Kap (Südafrika, 34,3° S, 18,4° O)',
+			'Kap (Südafrika, 34,3° S, 19,1° O)',
+			'Rand (Deutschland, 48,0° N, 7,1° O)',
+			'Rand (Deutschland, 48,0° N, 7,9° O)',
 			// Unbekannter Code: der Code selbst, nie leere Klammern.
-			'Nebelfurt (XQ)'
+			'Nebelfurt (XQ)',
+			'Leerland'
 		]);
+		expect(new Set(namen).size).toBe(namen.length);
 	});
 
 	it('Städtesuche ohne Intl.DisplayNames (alte Engine): der Ländercode bleibt stehen', async () => {
@@ -471,8 +485,8 @@ describe('Seite /kalender', () => {
 		expect(abfragen.length).toBeGreaterThan(0);
 		for (const [p, init] of f.mock.calls as [string, RequestInit | undefined][]) {
 			expect(p).not.toMatch(/Deutschland/);
-			if (String(p) !== '/api/kalender/staedte')
-				expect(String(init?.body ?? '')).not.toMatch(/Frankfurt|Deutschland/);
+			const rumpf = typeof init?.body === 'string' ? init.body : '';
+			if (p !== '/api/kalender/staedte') expect(rumpf).not.toMatch(/Frankfurt|Deutschland/);
 		}
 		expect(localStorage.length).toBe(0);
 		expect(sessionStorage.length).toBe(0);

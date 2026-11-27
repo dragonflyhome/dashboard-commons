@@ -19,10 +19,15 @@ Geändert
   Orte eines Lands mit ihrer Breite, und nach dem Rechnen steht der Name
   der gewählten Stadt statt „Abgefragter Ort“ (nur angezeigt, nie
   gespeichert oder gesendet).
+- Kalenderseite: Unter dem Jahreskreis erklärt ein Satz, dass innen die
+  Viertel der Sonne und außen die Mondmonate stehen.
 
 Behoben
 - Kalenderseite: Zwischen Ort und „Uhrzeiten in …“ steht wieder ein
   Leerzeichen.
+- Kopfleiste: Im hellen Thema ist der beleuchtete Teil des Mondsymbols hell
+  und der Schatten dunkel; vorher sah ein fast voller Mond wie ein Neumond
+  aus.
 
 0.28.0 - 2026-11-27
 -------------------

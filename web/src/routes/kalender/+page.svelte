@@ -357,7 +357,9 @@
 	})();
 	function landName(code: string): string {
 		try {
-			return landNamen?.of(code) || code;
+			// `of` gibt ohne Namen undefined; ein leerer Name zählt ebenso als keiner.
+			const name = landNamen?.of(code) ?? '';
+			return name === '' ? code : name;
 		} catch {
 			return code;
 		}
@@ -365,16 +367,18 @@
 
 	/**
 	 * „Frankfurt (Deutschland)“; gibt es unter `alle` einen gleichnamigen Ort im selben Land,
-	 * dazu die gerundete Breite, und ist auch die gleich, die Länge.
+	 * dazu die gerundete Breite, und lautet auch die gleich, die Länge. Verglichen wird der
+	 * angezeigte Text, damit zwei Knöpfe nie gleich heißen. Ohne Land keine leeren Klammern.
 	 */
 	function stadtText(s: KalenderStadt, alle: KalenderStadt[]): string {
-		const zehntel = (n: number): number => Math.round(n * 10);
+		const nachBreite = (t: KalenderStadt): string =>
+			`${grad(Math.abs(t.breite))} ${t.breite < 0 ? 'S' : 'N'}`;
 		const gleich = alle.filter((t) => t !== s && t.name === s.name && t.land === s.land);
-		const teile = [landName(s.land)];
-		if (gleich.length > 0) teile.push(`${grad(Math.abs(s.breite))} ${s.breite < 0 ? 'S' : 'N'}`);
-		if (gleich.some((t) => zehntel(t.breite) === zehntel(s.breite)))
+		const teile = [landName(s.land.trim())].filter((x) => x !== '');
+		if (gleich.length > 0) teile.push(nachBreite(s));
+		if (gleich.some((t) => nachBreite(t) === nachBreite(s)))
 			teile.push(`${grad(Math.abs(s.laenge))} ${s.laenge < 0 ? 'W' : 'O'}`);
-		return `${s.name} (${teile.join(', ')})`;
+		return teile.length === 0 ? s.name : `${s.name} (${teile.join(', ')})`;
 	}
 	const ortTitel = $derived(orte?.find((o) => o.kennung === ort)?.titel ?? 'meinem Ort');
 </script>
@@ -527,7 +531,7 @@
 		{/if}
 		<p class="muted small">
 			<!-- Das Leerzeichen ausdrücklich: Svelte kürzt Leerraum am Ende eines Blocks. -->
-			{#if tag.ort}{gerechnet?.name ?? tag.ort} ·{' '}{/if}Uhrzeiten in {tag.zeitart}
+			{#if tag.ort}{`${gerechnet?.name ?? tag.ort} · `}{/if}Uhrzeiten in {tag.zeitart}
 		</p>
 		{#if tag.zeiten.length > 0}
 			<ul class="plain zeilen">

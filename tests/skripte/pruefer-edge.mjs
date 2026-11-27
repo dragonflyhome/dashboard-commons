@@ -796,7 +796,26 @@ function KOPFLEISTE_3() {
           ortSichtbar: sichtbar(himmel.querySelector(".ort")),
           zeitenSichtbar: sichtbar(himmel.querySelector(".zeiten")),
           breite: Math.round(himmel.getBoundingClientRect().width),
-          rand: getComputedStyle(himmel.querySelector("svg .dunkel")).stroke,
+          rand: getComputedStyle(himmel.querySelector("svg .rand")).stroke,
+          // B1 (Browserblick 0.28.0): Füllungen und beleuchteter Anteil der Scheibe (Raster in der Scheibe).
+          fuellungHell: getComputedStyle(himmel.querySelector("svg .hell")).fill,
+          fuellungSchatten: getComputedStyle(himmel.querySelector("svg .dunkel")).fill,
+          anteilHell: (() => {
+            const pfad = himmel.querySelector("svg .hell");
+            const svg = himmel.querySelector("svg");
+            let innen = 0;
+            let licht = 0;
+            for (let x = -8.875; x < 9; x += 0.25)
+              for (let y = -8.875; y < 9; y += 0.25) {
+                if (x * x + y * y > 81) continue;
+                innen++;
+                const p = svg.createSVGPoint();
+                p.x = x;
+                p.y = y;
+                if (pfad.isPointInFill(p)) licht++;
+              }
+            return innen === 0 ? null : licht / innen;
+          })(),
         }
       : null,
     rechtsBreite: Math.round(kopf?.querySelector(".rechts")?.getBoundingClientRect().width ?? 0),
@@ -1197,6 +1216,11 @@ async function bisWahr(cdp, f, ms = 4000) {
  * als Teil einer Gruppe (drei mittlere Glieder, Abnahme S6 Runde 2 A1), sonst `null`.
  */
 async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite, gruppenseite = null) {
+  // Die Phase des Monds von heute, gegen die der beleuchtete Anteil im Symbol geprüft wird.
+  const phaseGrad = await cdp.rufe(async () => {
+    const a = await fetch("/api/kalender/kopf", { headers: { accept: "application/json" } });
+    return a.ok ? (await a.json()).phase_grad : null;
+  });
   const wer = mitAnmeldung ? "angemeldet" : "ohne Anmeldung";
   console.log(`\n== Kopfleiste, Fassung 3 (${wer}) ==`);
   for (const thema of ["light", "dark"]) {
@@ -1222,7 +1246,19 @@ async function kopfleiste3Pruefen(cdp, mitAnmeldung, unterseite, gruppenseite = 
         const h = k.himmel;
         pruefe(h !== null && h.ortVoll !== "" && (h.name ?? "").includes(`Ort: ${h.ortVoll}. Zum Kalender`) && /^Mond: /.test(h.name ?? ""), `${t}: Himmel mit vollem Namen samt Ort`, JSON.stringify(h));
         pruefe(h !== null && h.ortSichtbar === breite >= 1024 && h.zeitenSichtbar === breite >= 1024, `${t}: Himmel zeigt ${breite >= 1024 ? "Zeiten und Ort" : "nur das Symbol (Schublade)"}`, JSON.stringify(h));
-        pruefe(h !== null && h.rand !== "none" && h.rand !== "", `${t}: die dunkle Mondscheibe hat einen Rand`, h?.rand ?? "");
+        pruefe(h !== null && h.rand !== "none" && h.rand !== "", `${t}: die Mondscheibe hat einen Rand`, h?.rand ?? "");
+        if (h !== null && phaseGrad !== null) {
+          const lum = (rgb) => {
+            const [r, g, b] = (rgb.match(/[\d.]+/g) ?? []).slice(0, 3).map((v) => Number(v) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const [lh, ls] = [lum(h.fuellungHell), lum(h.fuellungSchatten)];
+          const kontrast = (Math.max(lh, ls) + 0.05) / (Math.min(lh, ls) + 0.05);
+          const soll = (1 - Math.cos((phaseGrad * Math.PI) / 180)) / 2;
+          messen(`${t} Mond`, `Phase ${phaseGrad}°, beleuchtet ${Math.round((h.anteilHell ?? 0) * 100)} % (soll ${Math.round(soll * 100)} %), Licht ${h.fuellungHell}, Schatten ${h.fuellungSchatten}, Kontrast ${kontrast.toFixed(2)}:1`);
+          pruefe(lh > ls && kontrast >= 3, `${t}: der beleuchtete Teil des Monds ist heller als der Schatten (mindestens 3:1)`, `${h.fuellungHell} / ${h.fuellungSchatten}, ${kontrast.toFixed(2)}:1`);
+          pruefe(h.anteilHell !== null && Math.abs(h.anteilHell - soll) < 0.08 && (soll > 0.5) === (h.anteilHell > 0.5), `${t}: die hellere Fläche ist ${soll > 0.5 ? "die größere" : "die kleinere"} (Phase ${phaseGrad}°)`, `${h.anteilHell} statt ${soll}`);
+        }
         const kanal = mitAnmeldung ? "/api/events" : "/api/events/frei";
         pruefe(JSON.stringify(k.quellen) === JSON.stringify([kanal]), `${t}: genau eine EventSource (${kanal})`, JSON.stringify(k.quellen));
         pruefe(k.blatt?.text === "Anstehend" && k.blatt.aktuell === "page" && k.krumen.length === 2, `${t}: Brotkrumen Symbol › Anstehend, das Blatt ist die aktuelle Seite`, JSON.stringify(k.krumen));
