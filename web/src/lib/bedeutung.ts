@@ -20,9 +20,9 @@ export type BedeutungKlasse = `b-${Bedeutung}`;
 
 /**
  * Die eine Klasse je Bedeutung für Punkte, Lampen, Balken und Ringe (app.css).
- * Sie setzt den Ton `--ton`: ok grün (`--ok`), läuft Türkis (`--info`),
- * wartet gelb (`--warn`), Problem rot (`--bad`), Hinweis blau (`--done`),
- * neutral grau (`--plan`). Wer malt, nimmt `var(--ton, …)`.
+ * Sie setzt den Ton `--ton`: ok grün (`--b-ok`), läuft Türkis (`--b-laeuft`),
+ * wartet gelb (`--b-wartet`), Problem rot (`--b-problem`), Hinweis blau (`--b-info`),
+ * neutral grau (`--b-neutral`), dazu `--ton-soft` und `--ton-text`. Wer malt, nimmt `var(--ton, …)`.
  */
 export function klasse(b: Bedeutung): BedeutungKlasse {
 	return `b-${b}`;

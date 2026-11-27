@@ -14,81 +14,109 @@
 [data-thema-vorschau] {
 	color-scheme: light dark;
 
-	/* Flächen und Text */
-	--bg: #f4f6fb;
-	--card: #ffffff;
-	--text: #1a2233;
-	--muted: #5b6577;
-	--line: #dde3ee;
+	/* Farbreihe: Flächen und Text */
+	--hintergrund: #f4f6fb;
+	--flaeche: #ffffff;
+	--vordergrund: #1a2233;
+	--vordergrund-leise: #5b6577;
+	--linie: #dde3ee;
 	/* Weiße Fläche in beiden Themen: Bilder mit Transparenz, Rahmen der Vorschau. */
 	--papier: #ffffff;
-	--code-bg: color-mix(in srgb, var(--line) 60%, transparent);
+	--code-bg: color-mix(in srgb, var(--linie) 60%, transparent);
 	/* Abgedunkelter Hintergrund hinter Großansichten (Dialog, Schublade). */
-	--overlay: color-mix(in srgb, var(--bg) 88%, transparent);
+	--overlay: color-mix(in srgb, var(--hintergrund) 88%, transparent);
 
-	/* Akzent (Links, Knöpfe, aktiver Menüpunkt, Fokus) */
-	--accent: #2563eb;
-	--accent-soft: #dbe7ff;
-	/* Text auf Flächen in --accent (Knöpfe, aktiver Menüpunkt): 5,17:1. */
-	--on-accent: #ffffff;
-	/* Fokusrahmen: voll deckend, weil 60 % Akzent nur 2,5:1 hatte (WCAG verlangt 3:1). */
-	--fokus: var(--accent);
-	/* Akzent als Text auf --accent-soft (Schild „neue Form“): --accent hat
-	   dort hell nur 4,16:1, dieses Blau 5,39:1. */
-	--accent-text: #1d4ed8;
+	/* Grundfarbe (Links, Knöpfe, aktiver Menüpunkt, Fokus) */
+	--grundfarbe: #2563eb;
+	--grundfarbe-soft: #dbe7ff;
+	/* Text auf Flächen in --grundfarbe (Knöpfe, aktiver Menüpunkt): 5,17:1. */
+	--auf-grundfarbe: #ffffff;
+	/* Fokusrahmen: voll deckend, weil 60 % Grundfarbe nur 2,5:1 hatte (WCAG verlangt 3:1). */
+	--fokus: var(--grundfarbe);
+	/* Grundfarbe als Text auf --grundfarbe-soft (Schild „neue Form“): --grundfarbe
+	   hat dort hell nur 4,16:1, dieses Blau 5,39:1. */
+	--grundfarbe-text: #1d4ed8;
 
-	/* Bedeutungen als Ton für Punkte, Balken, Ringe und Ränder (Teile der
+	/* Bedeutungstöne für Punkte, Balken, Ringe und Ränder (Teile der
 	   Oberfläche, ab 3:1). Gemessen gegen jede Fläche, auf der sie stehen:
-	   --card, --bg, die eigene Fläche --…-soft (Punkt in der Marke) und
-	   --accent-soft (Punkt im gewählten Eintrag der Seitenleiste); die
-	   dunkelste davon ist hell --accent-soft (kontrast.spec.ts, „Bedeutungen
-	   in Gebrauch“). Töne tragen keinen Text; dafür gibt es --…-text.
-	   Prüfbericht: --ok, --warn, --info und --plan hell dunkler, bei
-	   gleichem Farbton (vorher auf --accent-soft 2,06–2,96:1, --plan auf
-	   --card 2,56:1). Nicht heller machen. */
-	/* #149443 statt #16a34a: auf --accent-soft 3,16:1 (vorher 2,65:1). */
-	--ok: #149443;
-	/* #c46b06 statt #d27306 (3a+: statt #d97706): auf --accent-soft 3,10:1
-	   (vorher 2,73:1), auf --bg 3,56:1. Steht auch fest in static/logo.svg. */
-	--warn: #c46b06;
-	/* Text auf Flächen in --warn (Zähler „offene Aufgaben“): 4,80:1 hell, 11,1:1 dunkel.
-	   Darum --warn nicht noch dunkler machen. */
-	--on-warn: #1a1300;
-	--bad: #dc2626;
+	   --flaeche, --hintergrund, die eigene Fläche --b-…-soft (Punkt in der
+	   Marke) und --grundfarbe-soft (Punkt im gewählten Eintrag der
+	   Seitenleiste); die dunkelste davon ist hell --grundfarbe-soft
+	   (kontrast.spec.ts, „Bedeutungen in Gebrauch“). Töne tragen keinen Text;
+	   dafür gibt es --b-…-text. Prüfbericht: ok, wartet, laeuft und neutral
+	   hell dunkler, bei gleichem Farbton (vorher auf --grundfarbe-soft
+	   2,06–2,96:1, neutral auf --flaeche 2,56:1). Nicht heller machen. */
+	/* #149443 statt #16a34a: auf --grundfarbe-soft 3,16:1 (vorher 2,65:1). */
+	--b-ok: #149443;
+	/* #088dad statt #0891b2: auf --grundfarbe-soft 3,11:1 (vorher 2,96:1). */
+	--b-laeuft: #088dad;
+	/* #c46b06 statt #d27306 (3a+: statt #d97706): auf --grundfarbe-soft 3,10:1
+	   (vorher 2,73:1), auf --hintergrund 3,56:1. Steht auch fest in static/logo.svg. */
+	--b-wartet: #c46b06;
+	/* Text auf Flächen in --b-wartet (Zähler „offene Aufgaben“): 4,80:1 hell,
+	   11,1:1 dunkel. Darum --b-wartet nicht noch dunkler machen. */
+	--b-wartet-auf: #1a1300;
+	--b-problem: #dc2626;
+	--b-info: #2563eb;
 	/* Grau für „neutral“: leise, steht immer neben einem Wort.
-	   #6f839f statt #94a3b8: auf --card 3,87:1 (vorher 2,56:1), auf
-	   --accent-soft 3,11:1 (vorher 2,06:1). */
-	--plan: #6f839f;
-	--done: #2563eb;
-	/* #088dad statt #0891b2: auf --accent-soft 3,11:1 (vorher 2,96:1). */
-	--info: #088dad;
+	   #6f839f statt #94a3b8: auf --flaeche 3,87:1 (vorher 2,56:1), auf
+	   --grundfarbe-soft 3,11:1 (vorher 2,06:1). */
+	--b-neutral: #6f839f;
 
-	/* Bedeutungen als Text (ab 4,5:1 auf --card und auf der eigenen Fläche).
+	/* Bedeutungen als Text (ab 4,5:1 auf --flaeche und auf der eigenen Fläche).
 	   Hell dunkler als der Ton, weil Grün, Gelb und Türkis auf Weiß nur
-	   etwa 3:1 haben. */
-	--ok-text: #166534;
-	/* 3a+: #a74d08 statt #b45309: auf --warn-soft 5,03:1 statt 4,52:1 ohne
+	   etwa 3:1 haben. Für info und neutral gibt es keinen eigenen Textton
+	   (.b-info und .b-neutral setzen --ton-text aus der Farbreihe). */
+	--b-ok-text: #166534;
+	--b-laeuft-text: #0e7490;
+	/* 3a+: #a74d08 statt #b45309: auf --b-wartet-soft 5,03:1 statt 4,52:1 ohne
 	   Spielraum (Schwelle Text 4,5:1). */
-	--warn-text: #a74d08;
-	--bad-text: #b91c1c;
-	--info-text: #0e7490;
+	--b-wartet-text: #a74d08;
+	--b-problem-text: #b91c1c;
 
-	/* Bedeutungen als ruhige Fläche (Hinweiskästen, markierte Zeilen) */
-	--ok-soft: color-mix(in srgb, var(--ok) 12%, var(--card));
-	--warn-soft: color-mix(in srgb, var(--warn) 10%, var(--card));
-	--bad-soft: color-mix(in srgb, var(--bad) 10%, var(--card));
-	--info-soft: color-mix(in srgb, var(--info) 10%, var(--card));
-	/* Etappe 3a-3: auch „Hinweis“ (--done) und „neutral“ (--plan) als Fläche,
-	   damit jede Bedeutung eine ruhige Fläche hat (.b-… setzt --ton-soft). */
-	--done-soft: color-mix(in srgb, var(--done) 10%, var(--card));
-	--plan-soft: color-mix(in srgb, var(--plan) 14%, var(--card));
+	/* Bedeutungen als ruhige Fläche (Hinweiskästen, markierte Zeilen); jede
+	   Bedeutung hat eine (.b-… setzt --ton-soft). */
+	--b-ok-soft: color-mix(in srgb, var(--b-ok) 12%, var(--flaeche));
+	--b-laeuft-soft: color-mix(in srgb, var(--b-laeuft) 10%, var(--flaeche));
+	--b-wartet-soft: color-mix(in srgb, var(--b-wartet) 10%, var(--flaeche));
+	--b-problem-soft: color-mix(in srgb, var(--b-problem) 10%, var(--flaeche));
+	--b-info-soft: color-mix(in srgb, var(--b-info) 10%, var(--flaeche));
+	--b-neutral-soft: color-mix(in srgb, var(--b-neutral) 14%, var(--flaeche));
+
+	/* shortcut: Verweis für Seiten mit alten Namen, löschen in Schritt 6 erst wenn pruefe --alle samt grünen Kopien null meldet */
+	--bg: var(--hintergrund);
+	--card: var(--flaeche);
+	--text: var(--vordergrund);
+	--muted: var(--vordergrund-leise);
+	--line: var(--linie);
+	--accent: var(--grundfarbe);
+	--accent-soft: var(--grundfarbe-soft);
+	--accent-text: var(--grundfarbe-text);
+	--on-accent: var(--auf-grundfarbe);
+	--ok: var(--b-ok);
+	--info: var(--b-laeuft);
+	--warn: var(--b-wartet);
+	--bad: var(--b-problem);
+	--done: var(--b-info);
+	--plan: var(--b-neutral);
+	--on-warn: var(--b-wartet-auf);
+	--ok-text: var(--b-ok-text);
+	--info-text: var(--b-laeuft-text);
+	--warn-text: var(--b-wartet-text);
+	--bad-text: var(--b-problem-text);
+	--ok-soft: var(--b-ok-soft);
+	--info-soft: var(--b-laeuft-soft);
+	--warn-soft: var(--b-wartet-soft);
+	--bad-soft: var(--b-problem-soft);
+	--done-soft: var(--b-info-soft);
+	--plan-soft: var(--b-neutral-soft);
 
 	/* Reihen für Anteile (Ordner auf /pc, Konfetti): mittlere Töne, die auf
 	   hellen und dunklen Karten tragen; darum in beiden Themen gleich.
-	   Schwelle Grafik 3:1 auf --bg und --card in beiden Themen
+	   Schwelle Grafik 3:1 auf --hintergrund und --flaeche in beiden Themen
 	   (kontrast.spec.ts). 3a+ angepasst, mit wenig Spielraum: --reihe-1
-	   dunkel auf --card 3,10:1, --reihe-3 hell auf --bg 3,10:1, --reihe-7 hell
-	   auf --bg 3,14:1. Diese drei nicht heller (3, 7) oder dunkler (1) machen. */
+	   dunkel auf --flaeche 3,10:1, --reihe-3 hell auf --hintergrund 3,10:1,
+	   --reihe-7 hell auf --hintergrund 3,14:1. Diese drei nicht heller (3, 7) oder dunkler (1) machen. */
 	--reihe-1: #437463;
 	--reihe-2: #4a78c2;
 	--reihe-3: #b28516;
@@ -104,16 +132,16 @@
 	--shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 8px 24px -16px rgb(16 24 40 / 0.25);
 	--shadow-hover:
 		0 1px 2px rgb(16 24 40 / 0.06),
-		0 14px 30px -16px color-mix(in srgb, var(--accent) 50%, transparent);
+		0 14px 30px -16px color-mix(in srgb, var(--grundfarbe) 50%, transparent);
 	--shadow-gross: 0 10px 30px rgb(16 24 40 / 0.12);
 	/* Leuchten unter einem Bild, das sich vergrößern lässt. */
-	--shadow-bild: 0 8px 24px -12px color-mix(in srgb, var(--accent) 60%, transparent);
-	/* Schmaler Ring in Akzentfarbe (Symbol-Zeichen „hier“). */
-	--ring-akzent: 0 0 0 0.125rem var(--accent);
+	--shadow-bild: 0 8px 24px -12px color-mix(in srgb, var(--grundfarbe) 60%, transparent);
+	/* Schmaler Ring in der Grundfarbe (Symbol-Zeichen „hier“). */
+	--ring-akzent: 0 0 0 0.125rem var(--grundfarbe);
 	/* Hof um eine Lampe in ihrer eigenen Textfarbe (currentColor). */
 	--ring-hof: 0 0 0 6px color-mix(in srgb, currentColor 10%, transparent);
 	/* Pulsieren des Live-Punkts: Anfang und Ende. */
-	--puls: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent);
+	--puls: 0 0 0 0 color-mix(in srgb, var(--b-ok) 55%, transparent);
 	--puls-weit: 0 0 0 9px transparent;
 
 	/* Schrift */
@@ -162,33 +190,33 @@
    verlangt das und prüft alle vier Fälle. */
 @media (prefers-color-scheme: dark) {
 	:root:not([data-theme='hell']) {
-		--bg: #0f1420;
-		--card: #171e2e;
-		--text: #e6ebf5;
-		--muted: #97a3b8;
-		--line: #28324a;
-		--accent: #7aa2ff;
-		--accent-soft: #1d2a4a;
+		--hintergrund: #0f1420;
+		--flaeche: #171e2e;
+		--vordergrund: #e6ebf5;
+		--vordergrund-leise: #97a3b8;
+		--linie: #28324a;
+		--grundfarbe: #7aa2ff;
+		--grundfarbe-soft: #1d2a4a;
 		/* Weiß auf dem hellen Blau hatte nur 2,49:1; dunkler Text hat 7,40:1
 		   (WCAG AA verlangt 4,5:1). Das Blau selbst bleibt, weil es als Link-
-		   und Linienfarbe auf --card 6,69:1 hat. */
-		--on-accent: #0f1420;
-		--accent-text: #7aa2ff;
-		--ok: #34d399;
-		--warn: #fbbf24;
-		--bad: #f87171;
-		/* Prüfbericht: #697991 statt #64748b (gleicher Farbton, heller);
-		   auf --plan-soft 3,21:1 statt 3,02:1, auf --accent-soft 3,20:1 statt 2,98:1. */
-		--plan: #697991;
-		--done: #7aa2ff;
-		--info: #22d3ee;
+		   und Linienfarbe auf --flaeche 6,69:1 hat. */
+		--auf-grundfarbe: #0f1420;
+		--grundfarbe-text: #7aa2ff;
+		--b-ok: #34d399;
+		--b-laeuft: #22d3ee;
+		--b-wartet: #fbbf24;
+		--b-problem: #f87171;
+		--b-info: #7aa2ff;
+		/* Prüfbericht: #697991 statt #64748b (gleicher Farbton, heller); auf
+		   --b-neutral-soft 3,21:1 statt 3,02:1, auf --grundfarbe-soft 3,20:1 statt 2,98:1. */
+		--b-neutral: #697991;
 		/* Im Dunkeln tragen die Töne selbst als Text. */
-		--ok-text: #34d399;
-		--warn-text: #fbbf24;
-		/* Prüfbericht: etwas heller als --bad (#f98181 statt #f87171),
+		--b-ok-text: #34d399;
+		--b-laeuft-text: #22d3ee;
+		--b-wartet-text: #fbbf24;
+		/* Prüfbericht: etwas heller als --b-problem (#f98181 statt #f87171),
 		   weil BackupCard den Satz mit Deckkraft 0,8 zeigt: 4,75:1 statt 4,29:1. */
-		--bad-text: #f98181;
-		--info-text: #22d3ee;
+		--b-problem-text: #f98181;
 		--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -18px rgb(0 0 0 / 0.8);
 	}
 }
@@ -201,25 +229,25 @@
 :root[data-theme='dunkel'],
 [data-thema-vorschau='dunkel'] {
 	color-scheme: dark;
-	--bg: #0f1420;
-	--card: #171e2e;
-	--text: #e6ebf5;
-	--muted: #97a3b8;
-	--line: #28324a;
-	--accent: #7aa2ff;
-	--accent-soft: #1d2a4a;
-	--on-accent: #0f1420;
-	--accent-text: #7aa2ff;
-	--ok: #34d399;
-	--warn: #fbbf24;
-	--bad: #f87171;
-	--plan: #697991;
-	--done: #7aa2ff;
-	--info: #22d3ee;
-	--ok-text: #34d399;
-	--warn-text: #fbbf24;
-	--bad-text: #f98181;
-	--info-text: #22d3ee;
+	--hintergrund: #0f1420;
+	--flaeche: #171e2e;
+	--vordergrund: #e6ebf5;
+	--vordergrund-leise: #97a3b8;
+	--linie: #28324a;
+	--grundfarbe: #7aa2ff;
+	--grundfarbe-soft: #1d2a4a;
+	--auf-grundfarbe: #0f1420;
+	--grundfarbe-text: #7aa2ff;
+	--b-ok: #34d399;
+	--b-laeuft: #22d3ee;
+	--b-wartet: #fbbf24;
+	--b-problem: #f87171;
+	--b-info: #7aa2ff;
+	--b-neutral: #697991;
+	--b-ok-text: #34d399;
+	--b-laeuft-text: #22d3ee;
+	--b-wartet-text: #fbbf24;
+	--b-problem-text: #f98181;
 	--shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -18px rgb(0 0 0 / 0.8);
 }
 /* stylelint-enable color-no-hex, function-disallowed-list */
@@ -438,30 +466,40 @@ html:has(.haftend) {
    (background: var(--ton, …) oder stroke: var(--ton, …)). Früher gab es dafür
    zwei Reihen (st-… und c-…); beide sind in diesen Klassen aufgegangen.
    Seit 3a-3 setzt sie dazu --ton-soft, die ruhige Fläche derselben Bedeutung
-   (Hinweiskästen, Kacheln); Text darauf bleibt --text. */
+   (Hinweiskästen, Kacheln); Text darauf bleibt --vordergrund. Dazu --ton-text,
+   die Bedeutung als Text (info und neutral aus der Farbreihe), und bei
+   „wartet“ --ton-auf für Text auf voller Fläche im Ton. Keine Vorbelegung
+   auf :root: Rückfallwerte wie var(--ton, var(--line)) sollen weiter greifen. */
 .b-ok {
-	--ton: var(--ok);
-	--ton-soft: var(--ok-soft);
+	--ton: var(--b-ok);
+	--ton-soft: var(--b-ok-soft);
+	--ton-text: var(--b-ok-text);
 }
 .b-laeuft {
-	--ton: var(--info);
-	--ton-soft: var(--info-soft);
+	--ton: var(--b-laeuft);
+	--ton-soft: var(--b-laeuft-soft);
+	--ton-text: var(--b-laeuft-text);
 }
 .b-wartet {
-	--ton: var(--warn);
-	--ton-soft: var(--warn-soft);
+	--ton: var(--b-wartet);
+	--ton-soft: var(--b-wartet-soft);
+	--ton-text: var(--b-wartet-text);
+	--ton-auf: var(--b-wartet-auf);
 }
 .b-problem {
-	--ton: var(--bad);
-	--ton-soft: var(--bad-soft);
+	--ton: var(--b-problem);
+	--ton-soft: var(--b-problem-soft);
+	--ton-text: var(--b-problem-text);
 }
 .b-info {
-	--ton: var(--done);
-	--ton-soft: var(--done-soft);
+	--ton: var(--b-info);
+	--ton-soft: var(--b-info-soft);
+	--ton-text: var(--grundfarbe-text);
 }
 .b-neutral {
-	--ton: var(--plan);
-	--ton-soft: var(--plan-soft);
+	--ton: var(--b-neutral);
+	--ton-soft: var(--b-neutral-soft);
+	--ton-text: var(--vordergrund-leise);
 }
 
 /* Widgets (Etappe 3a-3, A4): Stand, Frage, Arbeiten, Fristen, Zuletzt in
