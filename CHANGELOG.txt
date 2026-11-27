@@ -18,6 +18,10 @@ Hinzugefügt
 - Projekte können ein Kopfteil (kopf/Ende.svelte) anlegen; die Bauliste
   führt es, die Kopfleiste zeichnet es noch nicht.
 
+Behoben
+- Dienst: Der Notbau schreibt die leere Bauliste wieder vollständig, auch
+  mit der neuen Tabelle für Kopfteile.
+
 0.28.0 - 2026-11-27
 -------------------
 
