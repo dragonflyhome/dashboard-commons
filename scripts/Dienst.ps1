@@ -853,6 +853,8 @@ try {
                 'export const projektSeiten: Record<string, Laden> = {};',
                 '',
                 'export const projektUnterseiten: Record<string, Laden> = {};',
+                '',
+                'export const projektKopfEnde: Record<string, Laden> = {};',
                 ''
             ) -join "`n"
             Write-Host 'Schreibe die Bauliste (dashboard.exe pruefe --bauliste --svelte, dieselbe Prüfung wie im Boten; nach einer neuen Prüfer-Fassung prüft sie alle Seiten, etwa eine Minute, sonst Sekunden) ...'
