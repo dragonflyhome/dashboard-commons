@@ -15,6 +15,29 @@ function flaechen(jahr: KalenderJahr): [string, string, string, string][] {
 	]);
 }
 
+describe('Jahreskreis: Ausrichtung', () => {
+	it('die Wintersonnenwende steht oben (Winkel null), nicht der Anfang des ersten Monats', () => {
+		const { container } = render(Jahreskreis, { jahr: JAHR, tag: '2026-12-21' });
+		const i = JAHR.sonnentage.findIndex((s) => s.kennung === 'wende-winter');
+		const marke = container.querySelectorAll('path.marke')[i];
+		// Senkrecht über der Mitte (200 200): von Halbmesser 104 bis 122.
+		expect(marke?.getAttribute('d')).toBe('M 200.0 96.0 L 200.0 78.0');
+		// Am Tag der Wende zeigt der Zeiger senkrecht nach oben.
+		expect(container.querySelector('path.zeiger')?.getAttribute('d')).toMatch(
+			/^M 200\.0 164\.0 L 200\.0 /
+		);
+		// Der erste Monat beginnt am 9.12., also links vor der Spitze.
+		const start = Number(container.querySelector('path.monat')?.getAttribute('d')?.split(' ')[1]);
+		expect(start).toBeLessThan(200);
+	});
+
+	it('zeigt keinen Zeiger und kein „am …“, wenn das gezeigte Festjahr den Tag nicht enthält', () => {
+		const { container } = render(Jahreskreis, { jahr: JAHR, tag: '2028-01-15' });
+		expect(container.querySelector('path.zeiger')).toBeNull();
+		expect(container.querySelector('svg')?.getAttribute('aria-label')).not.toMatch(/ am /);
+	});
+});
+
 describe('Jahreskreis: Jahreszeiten', () => {
 	it('beginnen mit dem Neumond nach ihrem Festmonat, nicht am Sonnentag; der Winter über den Jahresanfang ist eine Fläche', () => {
 		expect(flaechen(JAHR)).toEqual([
