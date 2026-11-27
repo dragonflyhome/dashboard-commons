@@ -133,7 +133,7 @@
 			<circle class="mitte" cx={M} cy={M} r={R.mitte} />
 			<text class="jahr" x={M} y={M}>{festjahrName(jahr)}</text>
 		</svg>
-		<!-- Innen und außen folgen verschiedenen Zählungen; ohne den Satz liest man „Imbolc“ im „Winter“ als Fehler. -->
+		<!-- Beide Ringe folgen den Mondmonaten: innen die Jahreszeiten, außen die Monate; ein Festmonat wie „Imbolc“ gehört noch zur Jahreszeit davor. -->
 		<p class="muted small" data-legende>Innen die Jahreszeiten, außen die Mondmonate.</p>
 	</div>
 	<div class="liste">
