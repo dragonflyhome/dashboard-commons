@@ -119,16 +119,16 @@ export function dichteEreignisse(heute: Date): VerlaufEreignis[] {
 export const JAHR: KalenderJahr = (() => {
 	const monate: [string, string, string, string | null][] = [
 		['2026-12-09', '2026-12-24', '2. Wintervollmond · Yule-Mond', 'Wintervollmond'],
-		['2027-01-07', '2027-01-22', 'Imbolc', 'Frühlingsvollmond'],
+		['2027-01-07', '2027-01-22', 'Imbolc', 'Wintervollmond'],
 		['2027-02-06', '2027-02-21', '1. Frühlingsvollmond', 'Frühlingsvollmond'],
 		['2027-03-08', '2027-03-22', '2. Frühlingsvollmond · Ostara-Mond', 'Frühlingsvollmond'],
-		['2027-04-07', '2027-04-21', 'Beltane', 'Sommervollmond'],
+		['2027-04-07', '2027-04-21', 'Beltane', 'Frühlingsvollmond'],
 		['2027-05-06', '2027-05-20', '1. Sommervollmond', 'Sommervollmond'],
 		['2027-06-04', '2027-06-19', '2. Sommervollmond · Litha-Mond', 'Sommervollmond'],
-		['2027-07-04', '2027-07-18', 'Lughnassad (Lammas)', 'Herbstvollmond'],
+		['2027-07-04', '2027-07-18', 'Lughnassad (Lammas)', 'Sommervollmond'],
 		['2027-08-02', '2027-08-17', '1. Herbstvollmond', 'Herbstvollmond'],
 		['2027-08-31', '2027-09-16', '2. Herbstvollmond · Mabon-Mond', 'Herbstvollmond'],
-		['2027-09-30', '2027-10-15', 'Samhain', 'Wintervollmond'],
+		['2027-09-30', '2027-10-15', 'Samhain', 'Herbstvollmond'],
 		['2027-10-29', '2027-11-14', '1. Wintervollmond', 'Wintervollmond']
 	];
 	const ende = '2027-11-28';

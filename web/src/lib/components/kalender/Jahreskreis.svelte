@@ -31,11 +31,12 @@
 	const M = 200;
 	/** Halbmesser: Jahreszeiten innen, Marken der Sonnentage, Vollmonde, Monatsband, Namen. */
 	const R = { mitte: 36, zeiten: 104, marke: 122, voll: 130, band: 150, name: 178 };
-	const JAHRESZEIT: Record<string, { wort: string; klasse: string }> = {
-		'wende-winter': { wort: 'Winter', klasse: 'winter' },
-		'gleiche-fruehling': { wort: 'Frühling', klasse: 'fruehling' },
-		'wende-sommer': { wort: 'Sommer', klasse: 'sommer' },
-		'gleiche-herbst': { wort: 'Herbst', klasse: 'herbst' }
+	/** Klasse je Wort der Jahreszeit (`jahreszeit` eines Monats ohne „vollmond“). */
+	const KLASSE: Record<string, string> = {
+		Winter: 'winter',
+		Frühling: 'fruehling',
+		Sommer: 'sommer',
+		Herbst: 'herbst'
 	};
 
 	const nullTag = $derived(
@@ -80,15 +81,44 @@
 	const laufend = $derived(laufenderMonat(jahr, tag));
 	const naechste = $derived(jahr.naechste_vollmonde);
 	const ringe = $derived(vollmondeImKreis(jahr));
-	const zeiten = $derived(
-		jahr.monate.length === 0
-			? []
-			: jahr.sonnentage.map((s, i) => ({
-					...(JAHRESZEIT[s.kennung] ?? { wort: s.name, klasse: '' }),
-					von: winkel(s.datum),
-					bis: i + 1 < jahr.sonnentage.length ? winkel(jahr.sonnentage[i + 1]?.datum ?? '') : 360
-				}))
-	);
+	/**
+	 * Die Jahreszeiten als Flächen nach den Monaten, die der Dienst ihnen zuordnet: Jede
+	 * beginnt mit dem Neumond nach ihrem Festmonat, nicht am Sonnentag. Läuft dieselbe
+	 * Jahreszeit über den Anfang des Festjahrs, wird sie eine Fläche.
+	 */
+	const zeiten = $derived.by(() => {
+		const z: {
+			wort: string;
+			klasse: string;
+			von: number;
+			bis: number;
+			ab: string;
+			bisTag: string;
+		}[] = [];
+		for (const m of jahr.monate) {
+			const wort = (m.jahreszeit ?? '').replace(/s?vollmond$/, '');
+			const letzte = z.at(-1);
+			if (letzte?.wort === wort) {
+				letzte.bis = winkel(m.zeitraum.ende);
+				letzte.bisTag = m.zeitraum.ende;
+			} else
+				z.push({
+					wort,
+					klasse: KLASSE[wort] ?? '',
+					von: winkel(m.zeitraum.anfang),
+					bis: winkel(m.zeitraum.ende),
+					ab: m.zeitraum.anfang,
+					bisTag: m.zeitraum.ende
+				});
+		}
+		const [erste, letzte] = [z[0], z.at(-1)];
+		if (z.length > 1 && erste && erste.wort === letzte?.wort) {
+			erste.von = letzte.von - 360;
+			erste.ab = letzte.ab;
+			z.pop();
+		}
+		return z.filter((x) => x.wort !== '');
+	});
 	const beschreibung = $derived(
 		`Jahreskreis ${festjahrName(jahr)}, ${
 			jahr.monate.length > 0 ? `${String(jahr.monate.length)} Mondmonate` : 'ohne Mondmonate'
@@ -100,7 +130,12 @@
 	<div class="bild">
 		<svg viewBox="0 0 400 400" role="img" aria-label={beschreibung}>
 			{#each zeiten as z (z.klasse + String(z.von))}
-				<path class="zeit {z.klasse}" d={sektor(z.von, z.bis, R.mitte, R.zeiten)} />
+				<path
+					class="zeit {z.klasse}"
+					data-von={z.ab}
+					data-bis={z.bisTag}
+					d={sektor(z.von, z.bis, R.mitte, R.zeiten)}
+				/>
 				<text class="wort" {...lage((z.von + z.bis) / 2, (R.mitte + R.zeiten) / 2)}>{z.wort}</text>
 			{/each}
 			{#each jahr.monate as m (m.nummer)}
