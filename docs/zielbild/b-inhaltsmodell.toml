@@ -277,3 +277,28 @@ zeilen = [
 [[block]]
 text = """
 Die Verbote im Projekt-Code sind keine Bitte: ESLint und die Stil-Prüfung lehnen sie ab, und das Projekt wird dann nicht gebaut."""
+
+[[block]]
+titel = "Orte, Anschriften, Spitznamen"
+text = """
+Ein Ort ist grob und benennbar: eine Stadt, eine Gegend, ein öffentlicher Platz, mit Lage auf 0,1 Grad und Zeitzone. Eine Anschrift ist privat und liegt in einem Ort; gerechnet wird mit der Mitte ihres Orts, außer sie trägt wahlweise eine genaue Lage, von Hand eingetragen. Ein Spitzname wie „Zuhause“ oder „Arbeit“ zeigt auf einen Ort oder eine Anschrift.
+
+Die Zuordnung eines Spitznamens hat zwei Zeiten: gültig ab (in der Wirklichkeit, auch rückwirkend) und eingetragen (im System, vom Dienst gesetzt). Bindungen werden nur angehängt, nie überschrieben; eine Berichtigung ist eine neue Eintragung mit derselben Gültigkeit. Ein Ereignis rechnet mit der Bindung seines Tags. Heimat ist der Spitzname „zuhause“.
+
+Kennungen von Orten, Anschriften und Spitznamen teilen sich einen Namensraum; andere Daten zeigen nur per Kennung. Anschriften, genaue Lagen und der Verlauf der Bindungen gehen nie ungeschützt hinaus: angemeldet in der Ortsverwaltung, nie in Fehlersätzen, Protokoll, Ereigniskanal oder abgeleiteten Werten. Kein Dienst macht aus einer Anschrift eine Lage.
+
+Der Server schreibt diese privaten Kalenderdaten selbst, als Ausnahme von der Regel, dass nur Assistenten Inhalt schreiben: nur über den geprüften Schreibweg, Bindungen nur angehängt, die Eintragszeit vom Dienst."""
+
+[[block]]
+titel = "Blickort"
+text = """
+Der Blickort ist der Spitzname, Ort oder die Anschrift, von dem aus das Dashboard gerade schaut. Für einen Spitznamen gilt immer seine heutige Bindung. Er bestimmt Uhren, das Datum „heute“ und den Himmel in der Kopfleiste; er liegt als Einstellung im Datenspeicher, nicht im Inhalt. Ein Wechsel ändert keine Daten: Gespeicherte Zeitpunkte, Dateinamen, Protokolle und Sicherungen bleiben in der Zeit des Rechners, nur die Anzeige rechnet um. Kalenderzeiten mit eigener Ortszeit und ganztägige Daten werden nie umgerechnet; liegt ihr Ort nicht am Blickort, steht der Ortsname daneben."""
+
+[[block]]
+titel = "Kontakte"
+text = """
+Kontakte sind eine Form im Kern ohne Inhalt: Kennung als Anker (nie aus dem Namen abgeleitet), Name, weitere Namen, Kanäle als offene Liste mit Arten in den Daten, Rolle, Fähigkeiten als kurze Liste, Zeiger auf Ort und Anschrift, Herkunft, Notiz. Sie liegen in einem eigenen privaten Projekt; Anschriften Dritter stehen dort in einer eigenen Datei, nicht neben den eigenen Orten.
+
+Feste Bedingungen: nur privat und nur angemeldet sichtbar; Fehlersätze, Protokoll, Ereigniskanal und abgeleitete Werte nennen nur die Kennung; kein Abgleich mit fremden Diensten; Übernahme aus anderen Listen nur mit ausdrücklichem Ja des Inhabers; ein Kontakt lässt sich ganz löschen.
+
+Schritte: erst die Form mit Schutz, danach Zeiger aus Terminen und Einträgen, Beziehungsnetze später mit eigener Frage."""
