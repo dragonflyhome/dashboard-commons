@@ -51,7 +51,7 @@
 //! Fenster, mit Zeitlimit) und [`bauliste`]/[`bauliste_schreiben`] für
 //! `web/src/lib/projekte.generated.ts`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
@@ -72,6 +72,15 @@ pub const SATZ_ABBILDUNG: &str = "Abbildungen gehören als Datei nach assets/ od
 pub const SATZ_EINMALIG: &str = "Einmalige Links gehören in eine Aufgabe, nicht ins Repo.";
 
 const ERLAUBTE_IMPORTE: &str = "Erlaubt sind nur Dateien im eigenen Projektordner (./…), $katalog, $projekt, $vertrag und svelte.";
+/// Sätze der Regeln nur für das Kopfteil (`kopf/Ende.svelte`). Ein Kopfteil
+/// läuft auf jeder Seite, neben Schloss und Live-Punkt; darum ist dort enger
+/// gefasst, was eine Projektseite sonst darf.
+pub const SATZ_KOPF_EBENE: &str = "Ein Kopfteil öffnet nichts über der Seite: `<dialog>`, `popover`, Dialog, Schublade und Menü sind in kopf/Ende.svelte verboten. Sie würden Schloss und Live-Punkt verdecken.";
+pub const SATZ_KOPF_DOCUMENT: &str = "`document` ist in kopf/Ende.svelte verboten. Ein Kopfteil greift nicht in die Seite um sich herum.";
+pub const SATZ_KOPF_PROPS: &str = "Ein Kopfteil bekommt keine Eigenschaften: `$props` ist in kopf/Ende.svelte verboten.";
+pub const SATZ_KOPF_PROJEKT: &str =
+    "Die Eigenschaften `projekt` und `fetchFn` sind in kopf/Ende.svelte verboten. Ein Kopfteil liest nur die Daten seines eigenen Projekts.";
+
 const SATZ_DATEN_API: &str = "Daten kommen nur über `ladeDaten` aus '$projekt'.";
 const SATZ_HTML: &str = "`{@html …}` ist verboten. Text direkt ins Markup schreiben oder Bausteine aus $katalog nehmen.";
 const SATZ_ROH_HTML: &str = "`innerHTML`, `outerHTML`, `insertAdjacentHTML` und `document.write` sind verboten, wie `{@html …}`. Text direkt ins Markup schreiben oder Bausteine aus $katalog nehmen.";
@@ -338,6 +347,11 @@ impl<'a> Sammler<'a> {
         let zeilen = std::iter::once(0).chain(src.match_indices('\n').map(|(i, _)| i + 1)).collect();
         let (slug, ordner) = slug_und_ordner(datei);
         Self { datei, src, zeilen, slug, ordner, wurzel: None, befunde: Vec::new() }
+    }
+
+    /// Ist die Datei das Kopfteil des Projekts (`projects/<slug>/kopf/Ende.svelte`)?
+    fn ist_kopfteil(&self) -> bool {
+        self.ordner == ["kopf"] && self.datei.ends_with("/Ende.svelte")
     }
 
     fn zeile(&self, pos: usize) -> usize {
@@ -630,6 +644,14 @@ fn js_regeln(s: &mut Sammler, t: &[Tok]) {
                 let w = wort(i);
                 if let Some(satz) = verbotener_name(w) {
                     s.fehler(k.von, satz);
+                }
+                if s.ist_kopfteil() {
+                    match w {
+                        "document" => s.fehler(k.von, SATZ_KOPF_DOCUMENT),
+                        "showModal" | "showPopover" | "requestFullscreen" => s.fehler(k.von, SATZ_KOPF_EBENE),
+                        "$props" => s.fehler(k.von, SATZ_KOPF_PROPS),
+                        _ => {}
+                    }
                 }
                 match w {
                     "cookie" if nach_punkt && i >= 2 && name(i - 2, "document") => s.fehler(k.von, SATZ_COOKIE),
@@ -1410,6 +1432,16 @@ fn svelte_datei(s: &mut Sammler) {
                         if EINBETTEN.contains(&name) {
                             s.fehler(start, SATZ_EINBETTEN);
                         }
+                        if s.ist_kopfteil() {
+                            // `<dialog>` und der Baustein Dialog heißen hier gleich (klein gelesen).
+                            if ["dialog", "schublade", "menue"].contains(&name) || tag.attribute.iter().any(|a| a == "popover") {
+                                s.fehler(start, SATZ_KOPF_EBENE);
+                            }
+                            let baustein = b.get(start + 1).is_some_and(u8::is_ascii_uppercase);
+                            if baustein && tag.attribute.iter().any(|a| a == "projekt" || a == "fetchfn") {
+                                s.fehler(start, SATZ_KOPF_PROJEKT);
+                            }
+                        }
                         match name {
                             "svelte:window" | "svelte:body" | "svelte:document" => s.fehler(start, format!("`<{name}>` {SATZ_SVELTE_FENSTER}")),
                             "svelte:head" => s.fehler(start, SATZ_SVELTE_HEAD),
@@ -2026,15 +2058,18 @@ pub fn bauliste_leer_schreiben(dir: &Path, ziel: &Path) -> std::io::Result<bool>
 
 fn liste_schreiben(dir: &Path, ziel: &Path, gruen: &[String]) -> std::io::Result<bool> {
     let eintraege: Vec<(String, PathBuf)> = gruen.iter().map(|s| (s.clone(), dir.join(s))).collect();
-    liste_schreiben_aus(ziel, &eintraege)
+    // Ein einzelner Projektordner ist die erste Quelle: Kopfteile gehen alle.
+    liste_schreiben_aus(ziel, &eintraege, &BTreeSet::new())
 }
 
 /// Schreibt die Bauliste für `eintraege` (Slug, Ordner des Projekts) nach
 /// `ziel`, nur wenn sich der Inhalt ändert. Rückgabe: neu geschrieben?
 /// Etappe 4b: Der Ordner kann eine Inhaltsquelle außerhalb des Repos sein
 /// oder die letzte grüne Kopie unter `web/.projekte-gruen/<slug>`.
-pub fn liste_schreiben_aus(ziel: &Path, eintraege: &[(String, PathBuf)]) -> std::io::Result<bool> {
-    let text = bauliste_text(eintraege);
+/// `ohne_kopf`: Slugs, deren Kopfteil nicht in die Liste kommt (Projekte aus
+/// weiteren Quellen, `Quellen::ohne_kopfteil`).
+pub fn liste_schreiben_aus(ziel: &Path, eintraege: &[(String, PathBuf)], ohne_kopf: &BTreeSet<String>) -> std::io::Result<bool> {
+    let text = bauliste_text_mit(eintraege, ohne_kopf);
     if std::fs::read_to_string(ziel).is_ok_and(|alt| alt == text) {
         return Ok(false);
     }
@@ -2122,10 +2157,52 @@ fn ts_objekt(name: &str, eintraege: &[(String, String)]) -> String {
     t
 }
 
-/// Inhalt von projekte.generated.ts für `eintraege` (Slug, Ordner des
-/// Projekts): je Projekt `Seite.svelte` und die Unterseiten aus `seiten/`,
-/// mit absoluten Pfaden und nur explizitem `import()` (kein `import.meta.glob`).
+/// Der Ort des Kopfteils im Projektordner (Bereich `kopf.ende` der Hülle).
+pub const KOPFTEIL: &str = "kopf/Ende.svelte";
+
+/// So viele Kopfteile zeichnet die Kopfleiste höchstens (ab 80rem; nach Slug).
+pub const KOPFTEILE_HOECHSTENS: usize = 3;
+
+/// Hat das Projekt in `ordner` ein Kopfteil? Nur eine echte Datei zählt,
+/// kein Ordner und keine Verknüpfung.
+pub fn hat_kopfteil(ordner: &Path) -> bool {
+    std::fs::symlink_metadata(ordner.join("kopf").join("Ende.svelte")).is_ok_and(|m| m.is_file())
+}
+
+/// Die Slugs aus `eintraege` mit Kopfteil in der Bauliste, nach Slug sortiert.
+pub fn kopfteil_slugs(eintraege: &[(String, PathBuf)], ohne_kopf: &BTreeSet<String>) -> Vec<String> {
+    let mut slugs: Vec<String> =
+        eintraege.iter().filter(|(s, o)| !ohne_kopf.contains(s) && hat_kopfteil(o) && import_pfad_pruefen(o).is_ok()).map(|(s, _)| s.clone()).collect();
+    slugs.sort();
+    slugs.dedup();
+    slugs
+}
+
+/// Der Hinweis für ein Kopfteil über die Höchstzahl hinaus.
+pub fn satz_kopfteil_platz(slug: &str) -> String {
+    format!(
+        "Das Kopfteil von {slug} bekommt keinen Platz: Die Kopfleiste zeichnet höchstens {KOPFTEILE_HOECHSTENS} Teile aus Projekten, nach dem Namen des Ordners sortiert."
+    )
+}
+
+/// Je Kopfteil aus `eintraege`, das über die Höchstzahl hinausgeht: Slug und Satz.
+pub fn kopfteile_ohne_platz(eintraege: &[(String, PathBuf)], ohne_kopf: &BTreeSet<String>) -> Vec<(String, String)> {
+    kopfteil_slugs(eintraege, ohne_kopf).into_iter().skip(KOPFTEILE_HOECHSTENS).map(|s| (s.clone(), satz_kopfteil_platz(&s))).collect()
+}
+
+/// Wie [`bauliste_text_mit`] für einen einzelnen Projektordner (die erste
+/// Quelle): Jedes Kopfteil geht.
 pub fn bauliste_text(eintraege: &[(String, PathBuf)]) -> String {
+    bauliste_text_mit(eintraege, &BTreeSet::new())
+}
+
+/// Inhalt von projekte.generated.ts für `eintraege` (Slug, Ordner des
+/// Projekts): je Projekt `Seite.svelte`, die Unterseiten aus `seiten/` und,
+/// wenn es sie gibt, das Kopfteil `kopf/Ende.svelte` (nicht für die Slugs in
+/// `ohne_kopf`), mit absoluten Pfaden und nur explizitem `import()` (kein
+/// `import.meta.glob`).
+pub fn bauliste_text_mit(eintraege: &[(String, PathBuf)], ohne_kopf: &BTreeSet<String>) -> String {
+    let mit_kopf = kopfteil_slugs(eintraege, ohne_kopf);
     // Was sich nicht sicher einbinden lässt, fehlt in der Liste (der Bau
     // meldet es vorher als rot; hier nur die letzte Sperre).
     let eintraege: Vec<(String, PathBuf, String)> =
@@ -2144,9 +2221,12 @@ pub fn bauliste_text(eintraege: &[(String, PathBuf)]) -> String {
         namen.sort();
         unter.extend(namen.into_iter().map(|n| (format!("{slug}/{n}"), format!("{basis}/seiten/{n}.svelte"))));
     }
+    let kopf: Vec<(String, String)> =
+        mit_kopf.iter().filter_map(|slug| eintraege.iter().find(|(s, _, _)| s == slug).map(|(s, _, w)| (s.clone(), format!("{w}/{KOPFTEIL}")))).collect();
     format!(
-        "{BAULISTE_KOPF}\n\ntype Laden = () => Promise<{{ default: import('svelte').Component }}>;\n\n{}\n{}",
+        "{BAULISTE_KOPF}\n\ntype Laden = () => Promise<{{ default: import('svelte').Component }}>;\n\n{}\n{}\n{}",
         ts_objekt("projektSeiten", &seiten),
-        ts_objekt("projektUnterseiten", &unter)
+        ts_objekt("projektUnterseiten", &unter),
+        ts_objekt("projektKopfEnde", &kopf)
     )
 }

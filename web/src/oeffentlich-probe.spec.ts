@@ -55,6 +55,8 @@ const LEERE_BAULISTE = [
 	'export const projektSeiten: Record<string, Laden> = {};',
 	'',
 	'export const projektUnterseiten: Record<string, Laden> = {};',
+	'',
+	'export const projektKopfEnde: Record<string, Laden> = {};',
 	''
 ].join('\n');
 
@@ -98,6 +100,8 @@ function aufbau(
 			'};',
 			'',
 			'export const projektUnterseiten: Record<string, Laden> = {};',
+			'',
+			'export const projektKopfEnde: Record<string, Laden> = {};',
 			''
 		].join('\n')
 	);
@@ -130,6 +134,30 @@ describe('Dauerprobe der öffentlichen Bau-Dateien', () => {
 		]);
 		// Svelte lässt Zeilenumbrüche und Tabs im Text stehen; Entitäten wie im HTML.
 		expect(eben('a\n\t\tb\n\tc &amp; d&nbsp;e')).toBe('a b c & d e');
+	});
+
+	it('Kopfteile (dritte Tabelle) zählen getrennt, nicht als Seite ihres Slugs', () => {
+		const text = [
+			'export const projektSeiten: Record<string, Laden> = {',
+			"\ta: () => import('/x/a/Seite.svelte')",
+			'};',
+			'',
+			'export const projektUnterseiten: Record<string, Laden> = {',
+			"\t'a/plan': () => import('/x/a/seiten/plan.svelte')",
+			'};',
+			'',
+			'export const projektKopfEnde: Record<string, Laden> = {',
+			"\ta: () => import('/x/a/kopf/Ende.svelte')",
+			'};',
+			''
+		].join('\n');
+		const b = baulisteLesen(text);
+		expect(b.seiten.map((s) => s.datei)).toEqual(['/x/a/Seite.svelte', '/x/a/seiten/plan.svelte']);
+		expect(b.dateien).not.toContain('/x/a/kopf/Ende.svelte');
+		expect(b.kopf).toEqual([{ slug: 'a', datei: '/x/a/kopf/Ende.svelte' }]);
+		expect(b.unlesbar).toBe(0);
+		// Eine Liste in alter Form (zwei Tabellen) hat keine Kopfteile.
+		expect(baulisteLesen(text.split('export const projektKopfEnde')[0] ?? '').kopf).toEqual([]);
 	});
 
 	it('grün, wenn Slug und Text nur in geschützten Dateien stehen; ein Wort der Hülle ist frei', () => {

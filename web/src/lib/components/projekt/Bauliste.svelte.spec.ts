@@ -22,9 +22,11 @@ describe('Bauliste (Schritt E2b)', () => {
 	it('zeigt das Fehlerbild, wenn sie sich nicht laden lässt und die Seite nicht selbst weitergeht; „neu versuchen“ lädt noch einmal', async () => {
 		laden.mockReset();
 		teilFehlt.mockReset();
-		laden
-			.mockRejectedValueOnce(new Error('kaputt'))
-			.mockResolvedValueOnce({ projektSeiten: { a: vi.fn() }, projektUnterseiten: {} });
+		laden.mockRejectedValueOnce(new Error('kaputt')).mockResolvedValueOnce({
+			projektSeiten: { a: vi.fn() },
+			projektUnterseiten: {},
+			projektKopfEnde: {}
+		});
 		teilFehlt.mockResolvedValue('fehler');
 		render(Bauliste, { datei: 'projects/x/Seite.svelte', mit });
 		expect(screen.getByText('Seite wird geladen …')).toBeInTheDocument();
@@ -52,7 +54,7 @@ describe('Bauliste (Schritt E2b)', () => {
 		teilFehlt.mockReset();
 		laden
 			.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module: x'))
-			.mockResolvedValueOnce({ projektSeiten: {}, projektUnterseiten: {} });
+			.mockResolvedValueOnce({ projektSeiten: {}, projektUnterseiten: {}, projektKopfEnde: {} });
 		teilFehlt.mockResolvedValue('abgelaufen');
 		const feld = document.body.appendChild(document.createElement('input'));
 		feld.focus();

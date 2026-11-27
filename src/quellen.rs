@@ -96,6 +96,9 @@ pub struct Quellen {
     /// Je Projekt einer weiteren Quelle mit `server/` (Rechenteil) ein Hinweis:
     /// Slug und Satz ([`SATZ_RECHENTEIL`]).
     pub rechenteile: Vec<(String, String)>,
+    /// Je Projekt einer weiteren Quelle mit `kopf/Ende.svelte` (Kopfteil) ein
+    /// Hinweis: Slug und Satz ([`SATZ_KOPFTEIL`]).
+    pub kopfteile: Vec<(String, String)>,
     /// Nummern der Einträge, deren Ordner sich nicht lesen lässt (Satz: [`satz_unlesbar`]).
     pub unlesbar: Vec<usize>,
     /// Archivbereiche (`<ordner>/_archiv`), die es gibt, die sich aber nicht lesen lassen:
@@ -147,6 +150,13 @@ fn satz_version(nr: usize, wurzel: &Path, eigene: &str) -> Option<String> {
 /// keinen Rechenteil aus einer fremden Quelle. Der Baumeister
 /// sieht `server/` ohnehin nie an (nur `.svelte` und `.ts` außerhalb davon).
 pub const SATZ_RECHENTEIL: &str = "Rechenteil aus einer fremden Quelle wird noch nicht gebaut. Der Ordner server/ bleibt liegen; die Seite selbst geht.";
+
+/// Hinweis für ein Projekt aus einer weiteren Inhaltsquelle mit
+/// `kopf/Ende.svelte`. Ein Kopfteil läuft auf jeder Seite, eine Projektseite
+/// nur, wenn man sie öffnet. Wie beim Rechenteil kommt es deshalb nur aus der
+/// ersten, eigenen Quelle in die Bauliste (`projektKopfEnde`); aus weiteren
+/// Quellen bleibt die Datei liegen, bis es einen Prüfweg gibt.
+pub const SATZ_KOPFTEIL: &str = "Kopfteil aus einer fremden Quelle wird noch nicht gezeigt. Die Datei kopf/Ende.svelte bleibt liegen; die Seite selbst geht.";
 
 /// Ist `ordner` ein einzelnes Projekt (mit `projekt.toml`)?
 pub fn ist_einzelnes_projekt(ordner: &Path) -> bool {
@@ -227,6 +237,7 @@ impl Quellen {
         let mut archiv: BTreeMap<String, PathBuf> = BTreeMap::new();
         let mut doppelt = Vec::new();
         let mut rechenteile = Vec::new();
+        let mut kopfteile = Vec::new();
         let mut unlesbar = Vec::new();
         let mut version = Vec::new();
         let mut archiv_unlesbar = Vec::new();
@@ -273,6 +284,9 @@ impl Quellen {
                         if nr > 0 && eltern.join(&slug).join("server").is_dir() {
                             rechenteile.push((slug.clone(), SATZ_RECHENTEIL.to_string()));
                         }
+                        if nr > 0 && crate::werkzeug::scanner::hat_kopfteil(&eltern.join(&slug)) {
+                            kopfteile.push((slug.clone(), SATZ_KOPFTEIL.to_string()));
+                        }
                         projekte.insert(slug, eltern);
                     }
                 }
@@ -299,6 +313,7 @@ impl Quellen {
         self.archiv = archiv;
         self.doppelt = doppelt;
         self.rechenteile = rechenteile;
+        self.kopfteile = kopfteile;
         self.unlesbar = unlesbar;
         self.archiv_unlesbar = archiv_unlesbar;
         self.version = version;
@@ -328,6 +343,11 @@ impl Quellen {
             Some(Quelle { pfad, art: Art::Projekt }) => pfad.parent().map(Path::to_path_buf).unwrap_or_default(),
             None => PathBuf::from("projects"),
         }
+    }
+
+    /// Die Slugs, deren Kopfteil nicht in die Bauliste kommt (weitere Quellen).
+    pub fn ohne_kopfteil(&self) -> std::collections::BTreeSet<String> {
+        self.kopfteile.iter().map(|(s, _)| s.clone()).collect()
     }
 
     /// Alle Projekte: Slug → Elternordner.
@@ -501,6 +521,27 @@ mod tests {
         std::fs::write(o.0.join("fremd/beispiel-b/server/src/x.ts"), "export const x = 1;\n").unwrap();
         assert!(crate::werkzeug::scanner::code_dateien(&o.0.join("fremd"), "beispiel-b").is_empty());
         assert!(Quellen::ein_ordner(o.0.join("repo/projects")).rechenteile.is_empty());
+    }
+
+    /// Kopfteil (kopf/Ende.svelte) in einer weiteren Quelle: nicht in der
+    /// Bauliste, ein Hinweis; im ersten Ordner keiner. Ein Ordner mit diesem
+    /// Namen ist kein Kopfteil.
+    #[test]
+    fn kopfteil_aus_fremder_quelle_nur_hinweis() {
+        let o = ort("kopfteil");
+        for p in ["repo/projects/beispiel-a", "fremd/beispiel-b", "fremd2/ohne", "fremd3/ordner"] {
+            projekt(&o.0.join(p));
+        }
+        for p in ["repo/projects/beispiel-a", "fremd/beispiel-b"] {
+            std::fs::create_dir_all(o.0.join(p).join("kopf")).unwrap();
+            std::fs::write(o.0.join(p).join("kopf/Ende.svelte"), "<span>1</span>\n").unwrap();
+        }
+        std::fs::create_dir_all(o.0.join("fremd3/ordner/kopf/Ende.svelte")).unwrap();
+        let q = Quellen::aus_liste(vec![o.0.join("repo/projects"), o.0.join("fremd/beispiel-b"), o.0.join("fremd2/ohne"), o.0.join("fremd3/ordner")]);
+        assert_eq!(q.kopfteile, vec![("beispiel-b".to_string(), SATZ_KOPFTEIL.to_string())]);
+        assert_eq!(q.ohne_kopfteil().into_iter().collect::<Vec<_>>(), ["beispiel-b"]);
+        assert!(q.projekte().contains_key("beispiel-b"), "die Seite selbst bleibt");
+        assert!(Quellen::ein_ordner(o.0.join("repo/projects")).kopfteile.is_empty());
     }
 
     /// Ein Ordner, den es nicht gibt, ist eine leere Quelle (kein Absturz).

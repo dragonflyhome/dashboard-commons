@@ -890,6 +890,10 @@ fn pruefen_mit_fortschritt(ort: &BauOrt, pruefe_voll: PruefeVoll, sammel: Option
     for (slug, satz) in &q.rechenteile {
         info!("Bau: {slug}: {satz}");
     }
+    // Kopfteile (kopf/Ende.svelte) aus weiteren Quellen zeigt niemand (nur ein Hinweis).
+    for (slug, satz) in &q.kopfteile {
+        info!("Bau: {slug}: {satz}");
+    }
     // Projekte mit Seite.svelte (nur die kommen in die Bauliste).
     let projekte: Vec<(String, PathBuf)> = q
         .projekte()
@@ -1230,7 +1234,7 @@ fn abschliessen(ort: &BauOrt, z: Zwischen, g: Gesamt) -> Vorbereitet {
     if let Err(e) = stand.speichern(&gruen_ordner) {
         warn!("Bau: {} lässt sich nicht schreiben: {e}", gruen_ordner.join(STAND_DATEI).display());
     }
-    match scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &g.eintraege) {
+    match scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &g.eintraege, &ort.alle_quellen().ohne_kopfteil()) {
         Ok(neu) => v.liste_neu = neu,
         Err(e) => v.gescheitert = Some(format!("{} lässt sich nicht schreiben: {e}", pruefe::BAULISTE_DATEI)),
     }
@@ -1267,7 +1271,7 @@ fn bauliste_einspielen_mit(ort: &BauOrt, pruefe_voll: PruefeVoll, sammel: Option
     }
     // Wie in `bauen`: Die Gesamtprüfung liest die Oberfläche mit (`web/src`
     // bindet die Bauliste ein), also erst die vorläufige Liste.
-    if let Err(e) = scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &z.eintraege) {
+    if let Err(e) = scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &z.eintraege, &ort.alle_quellen().ohne_kopfteil()) {
         z.v.gescheitert = Some(format!("{} lässt sich nicht schreiben: {e}", pruefe::BAULISTE_DATEI));
         return z.v;
     }
@@ -1333,7 +1337,7 @@ fn nur_aus_kopien(ort: &BauOrt, mut v: Vorbereitet) -> Vorbereitet {
     if let Err(e) = stand.speichern(&gruen) {
         warn!("Einspielen: {} lässt sich nicht schreiben: {e}", gruen.join(STAND_DATEI).display());
     }
-    if let Err(e) = scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &eintraege) {
+    if let Err(e) = scanner::liste_schreiben_aus(&ort.repo.join(pruefe::BAULISTE_DATEI), &eintraege, &ort.alle_quellen().ohne_kopfteil()) {
         v.gescheitert = Some(format!("{} lässt sich nicht schreiben: {e}", pruefe::BAULISTE_DATEI));
     }
     v.eintraege = eintraege;
@@ -1423,7 +1427,7 @@ pub async fn bauen(ort: &BauOrt, limit: Duration) -> BauErgebnis {
         return nicht_gebaut(e, &grund);
     }
     let ziel_liste = ort.repo.join(pruefe::BAULISTE_DATEI);
-    if let Err(e) = scanner::liste_schreiben_aus(&ziel_liste, &z.eintraege) {
+    if let Err(e) = scanner::liste_schreiben_aus(&ziel_liste, &z.eintraege, &ort.alle_quellen().ohne_kopfteil()) {
         return rot(start, Vec::new(), format!("{} lässt sich nicht schreiben: {e}. Die letzte gute Fassung bleibt.", pruefe::BAULISTE_DATEI), None);
     }
 

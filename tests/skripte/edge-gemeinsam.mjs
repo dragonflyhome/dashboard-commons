@@ -592,7 +592,7 @@ async function selbstpruefung() {
   ok(typeof new Function(`return ${OHNE_ANMELDUNG}`) === "function");
   ok(OHNE_ANMELDUNG.includes(String.raw`/^\/(projects|gruppen)\//`));
   // Schritt E2b: Ob der Bau Projektseiten hat, sagt die Bauliste, nicht die Zahl geschützter Teile.
-  const leereListe = "export const projektSeiten: Record<string, Laden> = {};\nexport const projektUnterseiten: Record<string, Laden> = {};\n";
+  const leereListe = "export const projektSeiten: Record<string, Laden> = {};\nexport const projektUnterseiten: Record<string, Laden> = {};\nexport const projektKopfEnde: Record<string, Laden> = {};\n";
   const eineSeite = "\tbeispiel: () => import('/x/Seite.svelte')\n";
   ok(ohneProjektseiten(leereListe, true) !== null);
   ok(ohneProjektseiten(null, true) !== null);

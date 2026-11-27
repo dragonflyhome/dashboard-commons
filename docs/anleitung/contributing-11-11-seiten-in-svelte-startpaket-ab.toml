@@ -14,8 +14,31 @@ zeilen = [
   ['daten/<name>.toml', 'was der Chat von Hand eingibt: Schritte, Termine, Kosten, Fragen'],
   ['Seite.svelte', 'die Seite: Überschriften, Texte, welcher Baustein wo steht'],
   ['seiten/<name>.svelte', 'Unterseiten, zu sehen unter /projects/<slug>/<name>'],
+  ['kopf/Ende.svelte', 'das Kopfteil: ein Zeichen am Ende der Kopfleiste, auf jeder Seite (Bereich kopf.ende der Hülle)'],
   ['assets/', 'Bilder und fertige Grafiken'],
 ]
+
+[[block]]
+titel = 'Das Kopfteil (kopf/Ende.svelte)'
+text = '''
+Der Ordner kopf/ hat damit eine Bedeutung: Die Datei kopf/Ende.svelte ist das Kopfteil des Projekts. Wer kopf/ schon für Hilfsdateien nutzt, lässt sie dort; nur der Name Ende.svelte ist vergeben. Höchstens ein Kopfteil je Projekt. Die Bauliste führt es in der Tabelle projektKopfEnde. In dieser Fassung zeichnet die Kopfleiste Kopfteile noch nicht; das folgt im nächsten Schritt.
+
+Ein Kopfteil setzt eine eigene Seite voraus: In die Bauliste kommen nur Projekte mit Seite.svelte. Ein Projekt, das nur kopf/Ende.svelte hat, wird nicht geprüft und nicht aufgenommen.
+
+Rot gilt für das ganze Projekt. Ein Fehler nur im Kopfteil lässt auch die Seite auf ihre letzte grüne Kopie zurückfallen, und das Kopfteil erscheint erst nach dem ersten grünen Lauf.
+
+Ein Kopfteil kommt nur aus der ersten, eigenen Inhaltsquelle. Aus weiteren Quellen bleibt die Datei liegen, mit einem Hinweis, wie beim Rechenteil: Ein Kopfteil läuft auf jeder Seite, eine Projektseite nur, wenn man sie öffnet.
+
+Die Kopfleiste zeichnet höchstens drei Kopfteile, nach dem Namen des Projektordners sortiert. Für jedes weitere gibt pruefe --bauliste einen Hinweis.
+
+Für kopf/Ende.svelte gelten alle Regeln der Projektseiten und dazu eigene, weil es neben Schloss und Live-Punkt steht:
+- keine Eigenschaften ($props);
+- nichts, was sich über die Seite legt: kein <dialog>, kein popover, kein showModal, showPopover oder requestFullscreen, keine Bausteine Dialog, Schublade und Menü. Ein Klappfeld geht, wenn es nicht modal ist und beim Laden nicht offen steht;
+- kein Zugriff auf document;
+- an Bausteinen keine Eigenschaften projekt und fetchFn: Ein Kopfteil liest nur die Daten seines eigenen Projekts.
+
+Der Prüfer schützt hier vor Versehen, nicht vor Absicht. Gegen Absicht schützt, dass Kopfteile nur aus der eigenen Quelle kommen.
+'''
 
 [[block]]
 text = 'Nie in TOML: was sich ausrechnen lässt. „3 von 45 erledigt“, „7 %“ oder „noch 12 Tage“ rechnet der Server aus den Einträgen. In kennzahlen.toml steht dafür statt wert ein berechnet, zum Beispiel:'

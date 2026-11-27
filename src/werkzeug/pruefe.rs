@@ -383,6 +383,10 @@ fn bauliste(dir: &Path, repo: &Path, svelte: bool, quellen: Vec<PathBuf>) -> (St
         text.push_str(&format!("ROT {slug}: {} Fehler, wird nicht gebaut.\n", fehler.len()));
         zeilen(&mut text, fehler);
     }
+    let eintraege: Vec<(String, std::path::PathBuf)> = gruen.iter().map(|s| (s.clone(), dir.join(s))).collect();
+    for (slug, satz) in scanner::kopfteile_ohne_platz(&eintraege, &Default::default()) {
+        text.push_str(&format!("HINWEIS {slug}: {satz}\n"));
+    }
     let liste = if gruen.is_empty() { "keins".to_string() } else { gruen.join(", ") };
     text.push_str(&format!("GRÜN {liste}\n"));
     text.push_str(&format!("{BAULISTE_DATEI} {} ({} grün, {} rot).\n", if neu { "neu geschrieben" } else { "unverändert" }, gruen.len(), rote.len()));
@@ -425,6 +429,11 @@ pub(crate) fn einspiel_text(ort: &bau::BauOrt, v: bau::Vorbereitet) -> (String, 
         }
     }
     zeilen(&mut text, &v.stil);
+    // Kopfteile: aus weiteren Quellen nicht gezeigt, über die Höchstzahl ohne Platz.
+    let q = ort.alle_quellen();
+    for (slug, satz) in q.kopfteile.iter().cloned().chain(scanner::kopfteile_ohne_platz(&v.eintraege, &q.ohne_kopfteil())) {
+        text.push_str(&format!("HINWEIS {slug}: {satz}\n"));
+    }
     let namen = |l: Vec<&str>| if l.is_empty() { "keins".to_string() } else { l.join(", ") };
     let gebaut: Vec<&str> = v.eintraege.iter().map(|(s, _)| s.as_str()).collect();
     let nicht_gruen = |s: &str| v.gesamt_rot.is_some() || v.alte_fassung.iter().chain(&v.nicht_geprueft).any(|x| x == s);
