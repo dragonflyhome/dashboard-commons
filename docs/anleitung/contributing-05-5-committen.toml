@@ -385,7 +385,7 @@ punkte = [
 
 [[block]]
 titel = 'Für den Betreuer des Dashboards: das Logo tauschen (ab 3b-2)'
-text = 'Das Logo ist eine Datei: web/static/logo.svg. Gewählt ist unter /katalog/entwuerfe/logo Entwurf 1 „Blüte“; logo.svg ist dieses Logo, mit denselben Formen wie LogoBluete.svelte und den Werten von --accent, --on-accent und --warn aus app.css als feste Farben, hell und dunkel. Ändert sich einer dieser Token, kommt der neue Wert auch in logo.svg. Im Kommentar eines SVG nie zwei Bindestriche hintereinander: XML verbietet sie dort, das Bild bleibt dann leer.'
+text = 'Das Logo ist eine Datei: web/static/logo.svg. Gewählt ist unter /katalog/entwuerfe/logo Entwurf 1 „Blüte“; logo.svg ist dieses Logo, mit denselben Formen wie LogoBluete.svelte und den Werten von --grundfarbe, --auf-grundfarbe und --b-wartet aus app.css (bisher --accent, --on-accent und --warn) als feste Farben, hell und dunkel. Ändert sich einer dieser Token, kommt der neue Wert auch in logo.svg. Im Kommentar eines SVG nie zwei Bindestriche hintereinander: XML verbietet sie dort, das Bild bleibt dann leer.'
 
 [[block]]
 punkte = [

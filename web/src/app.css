@@ -113,7 +113,7 @@
 
 	/* Reihen für Anteile (Ordner auf /pc, Konfetti): mittlere Töne, die auf
 	   hellen und dunklen Karten tragen; darum in beiden Themen gleich.
-	   Schwelle Grafik 3:1 auf --bg und --card in beiden Themen
+	   Schwelle Grafik 3:1 auf --hintergrund und --flaeche in beiden Themen
 	   (kontrast.spec.ts). 3a+ angepasst, mit wenig Spielraum: --reihe-1
 	   dunkel auf --flaeche 3,10:1, --reihe-3 hell auf --hintergrund 3,10:1,
 	   --reihe-7 hell auf --hintergrund 3,14:1. Diese drei nicht heller (3, 7) oder dunkler (1) machen. */
