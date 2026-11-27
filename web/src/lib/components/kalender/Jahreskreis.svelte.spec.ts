@@ -36,6 +36,29 @@ describe('Jahreskreis: Ausrichtung', () => {
 		expect(container.querySelector('path.zeiger')).toBeNull();
 		expect(container.querySelector('svg')?.getAttribute('aria-label')).not.toMatch(/ am /);
 	});
+
+	it('der erste Tag gehört zum Festjahr, der Tag nach dem Ende (erster des nächsten) nicht', () => {
+		const zeiger = (tag: string) =>
+			render(Jahreskreis, { jahr: JAHR, tag }).container.querySelector('path.zeiger');
+		expect(zeiger(JAHR.zeitraum.anfang)).not.toBeNull();
+		expect(zeiger(JAHR.zeitraum.ende)).toBeNull();
+	});
+
+	it('Vollmonde vor dem Anfang des gezeigten Festjahrs bekommen keinen Ring', () => {
+		// Das kommende Festjahr mit den nächsten Vollmonden ab einem Tag im laufenden.
+		const kommend = { ...JAHR, zeitraum: { anfang: '2027-11-28', ende: '2028-12-16' } };
+		const { container } = render(Jahreskreis, {
+			jahr: kommend,
+			tag: '2027-06-21',
+			textOffen: true
+		});
+		expect(container.querySelectorAll('circle.naechster')).toHaveLength(0);
+		const zeilen = [...container.querySelectorAll('[data-textfassung] tbody tr')].map(
+			(z) => z.textContent
+		);
+		expect(zeilen.filter((z) => z.includes('vor diesem Festjahr'))).toHaveLength(3);
+		expect(zeilen.some((z) => z.includes('Ring im Bild'))).toBe(false);
+	});
 });
 
 describe('Jahreskreis: Jahreszeiten', () => {

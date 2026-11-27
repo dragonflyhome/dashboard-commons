@@ -265,12 +265,12 @@
 		const basis = jahr;
 		const v = Number(versatz);
 		const [o, f] = [ort, frei];
-		anderesJahr = null;
+		// Auch bei v = 0 hochzählen: eine noch laufende Antwort für ±1 zählt dann nicht mehr.
+		const nr = ++jahrNr;
 		if (basis === null || v === 0) return;
 		// Die Mitte des Festjahrs um `v` Jahre weiter liegt sicher im gesuchten: Festjahre
 		// beginnen höchstens einen Monat früher oder später und dauern mindestens 354 Tage.
 		const d = tagPlus(basis.zeitraum.anfang, 182 + 365 * v);
-		const nr = ++jahrNr;
 		void (async () => {
 			try {
 				const j =
@@ -291,13 +291,18 @@
 								} satisfies KalenderAbfrage)
 							).jahr;
 				// Die nächsten Vollmonde zählen ab dem gewählten Tag, nicht ab der Mitte des anderen Jahrs.
-				if (nr === jahrNr && j !== null)
-					anderesJahr = {
-						versatz: String(v),
-						jahr: { ...j, naechste_vollmonde: basis.naechste_vollmonde }
-					};
+				if (nr !== jahrNr) return;
+				if (j === null) throw new Error('Für dieses Festjahr lässt sich nichts rechnen.');
+				anderesJahr = {
+					versatz: String(v),
+					jahr: { ...j, naechste_vollmonde: basis.naechste_vollmonde }
+				};
+				fehler = null;
 			} catch (e) {
-				if (nr === jahrNr) fehler = fehlerText(e);
+				// Auswahl und Kreis sollen dasselbe Jahr nennen: zurück zum Jahr mit dem Tag.
+				if (nr !== jahrNr) return;
+				fehler = fehlerText(e);
+				versatz = '0';
 			}
 		})();
 	});

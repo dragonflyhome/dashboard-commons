@@ -203,7 +203,7 @@ function server(
 	tag: KalenderTag = TAG,
 	staedte: KalenderStaedte = STAEDTE,
 	antwort: KalenderAbfrageAntwort = ANTWORT,
-	jahrFuer: (pfad: string) => KalenderJahr = () => JAHR
+	jahrFuer: (pfad: string) => KalenderJahr | null = () => JAHR
 ): ReturnType<typeof vi.fn> {
 	let orte = ORTE;
 	const f = vi.fn((pfad: string, init?: RequestInit) => {
@@ -212,7 +212,14 @@ function server(
 			orte = { orte: orte.orte.map((o) => ({ ...o, heimat: o.kennung === ort })) };
 			return Promise.resolve(json(orte));
 		}
-		if (pfad.startsWith('/api/kalender/jahr')) return Promise.resolve(json(jahrFuer(pfad)));
+		if (pfad.startsWith('/api/kalender/jahr')) {
+			const j = jahrFuer(pfad);
+			return Promise.resolve(
+				j === null
+					? new Response(JSON.stringify({ fehler: 'Rechnen ging nicht.' }), { status: 500 })
+					: json(j)
+			);
+		}
 		if (pfad === '/api/kalender/gebete') return Promise.resolve(json(GEBETE));
 		if (pfad === '/api/kalender/staedte' && init?.method === 'POST')
 			return Promise.resolve(json(staedte));
@@ -230,6 +237,17 @@ function server(
 	});
 	vi.stubGlobal('fetch', f);
 	return f;
+}
+
+/** Wählt in der Auswahl „Festjahr“ des Abschnitts „Das Jahr“ den Eintrag `name`. */
+async function festjahrWaehlen(abschnitt: HTMLElement, name: string): Promise<void> {
+	const wahl = within(abschnitt).getByRole('combobox', { name: /^Festjahr / });
+	wahl.focus();
+	await fireEvent.keyDown(wahl, { key: 'ArrowDown' });
+	const eintrag = await screen.findByRole('option', { name });
+	await fireEvent.pointerDown(eintrag, { pointerType: 'mouse' });
+	await fireEvent.pointerUp(eintrag, { pointerType: 'mouse' });
+	await fireEvent.click(eintrag);
 }
 
 afterEach(() => {
@@ -843,9 +861,60 @@ describe('Seite /kalender', () => {
 			expect(bild.getAttribute('aria-label')).toMatch(/^Jahreskreis 2027\/28, 12 Mondmonate$/);
 		});
 		expect(bild.querySelector('path.zeiger')).toBeNull();
+		// Die nächsten Vollmonde (ab dem Tag im Juni 2027) liegen vor diesem Festjahr: keine Ringe.
+		expect(bild.querySelectorAll('circle.naechster')).toHaveLength(0);
 		expect(
 			within(abschnitt).getByText(/vom 28\.11\.2027 bis vor den 16\.12\.2028/)
 		).toBeInTheDocument();
+	});
+
+	it('Auswahl des Festjahrs: scheitert das Laden, steht die Auswahl wieder beim Jahr mit dem Tag, samt Zeiger und Meldung', async () => {
+		server(TAG, STAEDTE, ANTWORT, (p) => (p.includes('datum=2028-06-') ? null : JAHR));
+		render(Page);
+		const abschnitt = (await screen.findByRole('heading', { name: 'Das Jahr' })).closest('section');
+		if (abschnitt === null) throw new Error('Abschnitt fehlt');
+		await festjahrWaehlen(abschnitt, '2027/28');
+		expect(await screen.findByText(/Rechnen ging nicht/)).toBeInTheDocument();
+		await vi.waitFor(() => {
+			expect(within(abschnitt).getByRole('combobox', { name: /^Festjahr / }).textContent).toContain(
+				'2026/27 (mit dem gewählten Tag)'
+			);
+		});
+		const bild = within(abschnitt).getByRole('img');
+		expect(bild.getAttribute('aria-label')).toMatch(/^Jahreskreis 2026\/27, /);
+		expect(bild.querySelector('path.zeiger')).not.toBeNull();
+	});
+
+	it('Auswahl des Festjahrs beim anderen Ort: nur POST mit jahr = true, Koordinaten nie in einer Adresse', async () => {
+		const f = server();
+		render(Page);
+		await screen.findByText('04:43');
+		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.52' } });
+		await fireEvent.input(screen.getByLabelText(/Länge/), { target: { value: '13.405' } });
+		const form = screen.getByRole('group', { name: 'Anderer Ort' }).closest('form');
+		if (form === null) throw new Error('Formular fehlt');
+		await fireEvent.submit(form);
+		await screen.findByText(/Gerechnet für Breite/);
+		const vorher = f.mock.calls.length;
+		const abschnitt = screen.getByRole('heading', { name: 'Das Jahr' }).closest('section');
+		if (abschnitt === null) throw new Error('Abschnitt fehlt');
+		await festjahrWaehlen(abschnitt, '2027/28');
+		const ruempfe = (): Record<string, unknown>[] =>
+			f.mock.calls
+				.slice(vorher)
+				.filter(([p]) => p === '/api/kalender/abfrage')
+				.map(([, i]) => JSON.parse((i as RequestInit).body as string) as Record<string, unknown>);
+		await vi.waitFor(() => {
+			expect(ruempfe().some((r) => r.datum === '2028-06-08')).toBe(true);
+		});
+		expect(ruempfe().find((r) => r.datum === '2028-06-08')).toMatchObject({
+			jahr: true,
+			breite: 52.52,
+			laenge: 13.405
+		});
+		const pfade = f.mock.calls.map(([p]) => String(p));
+		expect(pfade.slice(vorher).some((p) => p.startsWith('/api/kalender/jahr'))).toBe(false);
+		expect(pfade.some((p) => /52\.52|13\.405|breite|laenge/.test(p))).toBe(false);
 	});
 
 	it('Stufe 6: beim anderen Ort kommt das Jahr aus derselben Abfrage (jahr = true im Rumpf)', async () => {
