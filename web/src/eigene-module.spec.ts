@@ -5,7 +5,16 @@
  * gegen den anderen Checkout auf und meldeten falsche no-unsafe-* Fehler.
  */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import {
+	copyFileSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +58,51 @@ describe('projekte-vorbereiten --eigene-module', () => {
 	it('läuft mit eigenem node_modules', () => {
 		mkdirSync(join(basis, 'web', 'node_modules'));
 		expect(lauf()).toEqual({ code: 0, fehler: '' });
+	});
+});
+
+describe('projekte-vorbereiten: leere Bauliste', () => {
+	const skript = join(import.meta.dirname, '..', 'scripts', 'projekte-vorbereiten.mjs');
+	const liste = join(basis, 'bauliste.generated.ts');
+	const vorbereiten = (): string =>
+		spawnSync(process.execPath, [skript, liste], { encoding: 'utf8' }).stdout;
+	// Die heutige leere Fassung, wie das Skript sie anlegt.
+	rmSync(liste, { force: true });
+	vorbereiten();
+	const heute = readFileSync(liste, 'utf8');
+
+	it('ersetzt die leere Fassung einer älteren Form (vor 0.29.0: zwei Tabellen)', () => {
+		const alt = heute
+			.split('\n')
+			.filter((z) => !z.includes('projektKopfEnde'))
+			.join('\n');
+		writeFileSync(liste, alt);
+		expect(vorbereiten()).toContain('alte leere Fassung ersetzt');
+		expect(readFileSync(liste, 'utf8')).toBe(heute);
+	});
+
+	it('lässt eine Liste mit Einträgen unangetastet (die schreibt Rust)', () => {
+		const mitEintrag = heute.replace(
+			'export const projektSeiten: Record<string, Laden> = {};',
+			"export const projektSeiten: Record<string, Laden> = {\n\tbeispiel: () => import('./beispiel.svelte')\n};"
+		);
+		writeFileSync(liste, mitEintrag);
+		expect(vorbereiten()).toBe('');
+		expect(readFileSync(liste, 'utf8')).toBe(mitEintrag);
+	});
+
+	it('lässt eine Datei ohne Tabelle (etwa nur ein Kommentar) in Ruhe', () => {
+		writeFileSync(liste, '// schon da\n');
+		expect(vorbereiten()).toBe('');
+		expect(readFileSync(liste, 'utf8')).toBe('// schon da\n');
+	});
+
+	it('lässt die heutige leere Fassung Byte für Byte, wie sie ist', () => {
+		writeFileSync(liste, heute);
+		const vorher = statSync(liste).mtimeMs;
+		expect(vorbereiten()).toBe('');
+		expect(readFileSync(liste, 'utf8')).toBe(heute);
+		expect(statSync(liste).mtimeMs).toBe(vorher);
 	});
 });
 

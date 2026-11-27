@@ -1,7 +1,9 @@
 // Legt src/lib/projekte.generated.ts in der leeren Fassung an, wenn die Datei
 // fehlt. Die echte Liste schreibt Rust (`dashboard pruefe --bauliste` und der
 // Bote vor jedem Bau); eingecheckt ist die Datei nicht. So gehen build, check
-// und test auch in einem frischen Stand. Gibt es die Datei, bleibt sie, wie sie ist.
+// und test auch in einem frischen Stand. Ist die Datei die leere Fassung einer
+// älteren Form (nur leere Tabellen, aber nicht genau die heutige), wird sie neu
+// geschrieben; eine Liste mit Einträgen bleibt, wie sie ist.
 //
 // Aufruf (über package.json vor build, check und test):
 //   node scripts/projekte-vorbereiten.mjs [--eigene-module] [ziel]
@@ -11,7 +13,7 @@
 // Verknüpfung (Junction, Symlink) ist. TypeScript löst $app/tsconfig dann hinter
 // dem Link auf; dessen rootDirs gehören zum anderen Checkout, ./$types bleibt
 // ungelöst (falsche eslint-Meldungen), und svelte-kit sync schreibt dorthin.
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,8 +48,29 @@ const leer = [
 	''
 ].join('\n');
 
+/**
+ * Mindestens eine leere Tabelle und sonst nur Kommentare und die Typzeile: eine
+ * Bauliste ohne Einträge, in welcher Form auch immer. Andere Dateien bleiben.
+ */
+const nurLeer = (text) => {
+	const zeilen = text.split(/\r?\n/).map((z) => z.trim());
+	const tabelle = (z) => /^export const \w+: Record<string, Laden> = \{\};$/.test(z);
+	return (
+		zeilen.some(tabelle) &&
+		zeilen.every(
+			(z) => z === '' || z.startsWith('//') || /^type Laden = .*;$/.test(z) || tabelle(z)
+		)
+	);
+};
+
 if (!existsSync(ziel)) {
 	mkdirSync(dirname(ziel), { recursive: true });
 	writeFileSync(ziel, leer);
 	console.log(`projekte-vorbereiten: leere Fassung angelegt (${ziel})`);
+} else {
+	const alt = readFileSync(ziel, 'utf8');
+	if (alt !== leer && nurLeer(alt)) {
+		writeFileSync(ziel, leer);
+		console.log(`projekte-vorbereiten: alte leere Fassung ersetzt (${ziel})`);
+	}
 }
