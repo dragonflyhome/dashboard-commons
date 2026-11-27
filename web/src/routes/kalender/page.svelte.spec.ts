@@ -3,7 +3,7 @@
  * Koordinaten eines anderen Orts gehen nur im Rumpf eines POST, nie in die
  * Adresse.
  */
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
 	KalenderAbfrageAntwort,
@@ -522,6 +522,10 @@ describe('Seite /kalender', () => {
 
 		// „Zurück“ vergisst die Stadt: dieselben Werte von Hand ergeben „Abgefragter Ort“.
 		await fireEvent.click(screen.getByRole('button', { name: /^Zurück zu/ }));
+		// Erst der benannte Ort zurück, sonst stünde „Abgefragter Ort“ noch vom Schritt davor da.
+		await waitFor(() => {
+			expect(screen.queryByText(/^Abgefragter Ort · Uhrzeiten in/)).toBeNull();
+		});
 		await fireEvent.input(screen.getByLabelText(/Breite/), { target: { value: '52.34' } });
 		await fireEvent.input(screen.getByLabelText(/Länge/), { target: { value: '14.55' } });
 		await fireEvent.input(screen.getByLabelText(/Zeitzone/), {
