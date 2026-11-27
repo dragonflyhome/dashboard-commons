@@ -299,6 +299,6 @@ titel = "Kontakte"
 text = """
 Kontakte sind eine Form im Kern ohne Inhalt: Kennung als Anker (nie aus dem Namen abgeleitet), Name, weitere Namen, Kanäle als offene Liste mit Arten in den Daten, Rolle, Fähigkeiten als kurze Liste, Zeiger auf Ort und Anschrift, Herkunft, Notiz. Sie liegen in einem eigenen privaten Projekt; Anschriften Dritter stehen dort in einer eigenen Datei, nicht neben den eigenen Orten.
 
-Feste Bedingungen: nur privat und nur angemeldet sichtbar; Fehlersätze, Protokoll, Ereigniskanal und abgeleitete Werte nennen nur die Kennung; kein Abgleich mit fremden Diensten; Übernahme aus anderen Listen nur mit ausdrücklichem Ja des Inhabers; ein Kontakt lässt sich ganz löschen.
+Das Adressbuch dient rein privaten Zwecken, nicht geschäftlichen. Feste Bedingungen: nur privat und nur angemeldet sichtbar; Fehlersätze, Protokoll, Ereigniskanal und abgeleitete Werte nennen nur die Kennung; kein Abgleich mit fremden Diensten; Übernahme aus anderen Listen nur mit ausdrücklichem Ja des Inhabers; ein Kontakt lässt sich ganz löschen.
 
 Schritte: erst die Form mit Schutz, danach Zeiger aus Terminen und Einträgen, Beziehungsnetze später mit eigener Frage."""
