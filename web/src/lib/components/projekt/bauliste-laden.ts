@@ -6,14 +6,21 @@
  * geladen, bleibt sie; ein Fehler wird nicht gemerkt (der nächste Versuch lädt neu).
  */
 import type * as Modul from '#lib/projekte.generated.ts';
-/** Die beiden Tabellen, ohne den Modul-Namensraum (den nähme $state.raw nicht als Wert). */
-export type Liste = Pick<typeof Modul, 'projektSeiten' | 'projektUnterseiten'>;
+/** Die drei Tabellen, ohne den Modul-Namensraum (den nähme $state.raw nicht als Wert). */
+export type Liste = Pick<typeof Modul, 'projektSeiten' | 'projektUnterseiten' | 'projektKopfEnde'>;
+
+/** Was das Modul liefert: Eine Liste in alter Form (zwei Tabellen) hat keine Kopfteile. */
+type Geladen = Omit<Liste, 'projektKopfEnde'> & Partial<Pick<Liste, 'projektKopfEnde'>>;
 
 let geladen: Promise<Liste> | null = null;
 
 export function bauliste(): Promise<Liste> {
 	geladen ??= import('#lib/projekte.generated.ts').then(
-		({ projektSeiten, projektUnterseiten }) => ({ projektSeiten, projektUnterseiten }),
+		(m: Geladen) => ({
+			projektSeiten: m.projektSeiten,
+			projektUnterseiten: m.projektUnterseiten,
+			projektKopfEnde: m.projektKopfEnde ?? {}
+		}),
 		(e: unknown) => {
 			geladen = null;
 			throw e;

@@ -602,7 +602,7 @@ fn bauliste_mit_svelte_ohne_werkzeuge_ist_leer() {
     assert!(aus.ends_with("Die Bauliste ist deshalb leer: gebaut wird ohne Projektseiten.\nweb/src/lib/projekte.generated.ts geschrieben (leer).\n"), "{aus}");
     let text = std::fs::read_to_string(&ziel).unwrap();
     assert!(
-        text.ends_with("export const projektSeiten: Record<string, Laden> = {};\n\nexport const projektUnterseiten: Record<string, Laden> = {};\n"),
+        text.ends_with("export const projektSeiten: Record<string, Laden> = {};\n\nexport const projektUnterseiten: Record<string, Laden> = {};\n\nexport const projektKopfEnde: Record<string, Laden> = {};\n"),
         "{text}"
     );
     assert!(!r.0.join("web/.projekte-gruen/gut").exists(), "keine grüne Kopie ohne Prüfung");
@@ -1000,7 +1000,8 @@ fn bauliste_laesst_rotes_projekt_aus() {
     let a = seiten.find(&format!("import('{p}/erstes/Seite.svelte')")).expect(&text);
     let b = seiten.find(&format!("import('{p}/pruef-zwei/Seite.svelte')")).expect(&text);
     assert!(a < b && seiten.contains("\terstes: () =>") && seiten.contains("\t'pruef-zwei': () =>"), "{text}");
-    let unter = text.split("export const projektUnterseiten").nth(1).unwrap();
+    let unter = text.split("export const projektUnterseiten").nth(1).unwrap().split("export const projektKopfEnde").next().unwrap();
+    assert!(text.ends_with("export const projektKopfEnde: Record<string, Laden> = {};\n"), "{text}");
     assert!(unter.contains(&format!("import('{p}/erstes/seiten/plan.svelte')")) && !unter.contains("Falscher"), "{text}");
     assert!(!text.contains("../") && !text.contains("import.meta"), "{text}");
     assert!(text.lines().all(|z| z.chars().count() + z.matches('\t').count() <= 100 || z.trim_start().starts_with("import(")), "{text}"); // Gleicher Inhalt: nicht neu geschrieben.
@@ -1037,7 +1038,7 @@ fn bauliste_leer_und_lange_namen() {
     assert!(
         std::fs::read_to_string(&ziel)
             .unwrap()
-            .ends_with("export const projektSeiten: Record<string, Laden> = {};\n\nexport const projektUnterseiten: Record<string, Laden> = {};\n")
+            .ends_with("export const projektSeiten: Record<string, Laden> = {};\n\nexport const projektUnterseiten: Record<string, Laden> = {};\n\nexport const projektKopfEnde: Record<string, Laden> = {};\n")
     );
     // Über 100 Zeichen bricht prettier nach `=>` um; die Datei auch.
     let lang = "ein-sehr-langer-projektname-mit-vielen-teilen";
@@ -1260,4 +1261,94 @@ fn bauliste_lehnt_gefaehrliche_pfade_ab() {
     let text = scanner::bauliste_text(&[("gut".to_string(), gut.clone()), ("boese".to_string(), boese.clone())]);
     assert!(text.contains("gut: () =>"), "{text}");
     assert!(!text.contains("boese") && !text.contains("-strich"), "der gefährliche Ordner fehlt: {text}");
+}
+
+// ----- Kopfteil (kopf/Ende.svelte) -----
+
+fn kopfteil(text: &str) -> Vec<Befund> {
+    scanner::pruefe_datei("projects/t/kopf/Ende.svelte", text)
+}
+
+/// Ein Kopfteil öffnet nichts über der Seite: `<dialog>`, `popover` und die
+/// modalen Bausteine sind dort Fehler, ebenso die Aufrufe dazu.
+#[test]
+fn kopfteil_oberste_ebene_ist_rot() {
+    for text in [
+        "<dialog open>x</dialog>\n",
+        "<div popover>x</div>\n",
+        "<button popover=\"auto\">x</button>\n",
+        "<script lang=\"ts\">\n\timport { Dialog } from '$katalog';\n</script>\n\n<Dialog titel=\"x\" />\n",
+        "<script lang=\"ts\">\n\timport { Schublade } from '$katalog';\n</script>\n\n<Schublade>x</Schublade>\n",
+        "<script lang=\"ts\">\n\timport { Menue } from '$katalog';\n</script>\n\n<Menue punkte={[]} />\n",
+        "<script lang=\"ts\">\n\tlet d: HTMLDialogElement;\n\tconst auf = () => d.showModal();\n</script>\n",
+        "<script lang=\"ts\">\n\tlet e: HTMLElement;\n\tconst auf = () => e.showPopover();\n</script>\n",
+        "<script lang=\"ts\">\n\tlet e: HTMLElement;\n\tconst gross = () => e.requestFullscreen();\n</script>\n",
+    ] {
+        let b = kopfteil(text);
+        assert!(b.iter().any(|b| b.ist_fehler() && b.text == scanner::SATZ_KOPF_EBENE), "{text}: {b:?}");
+    }
+}
+
+/// Kein Zugriff auf `document`, keine Eigenschaften, kein fremdes Projekt.
+#[test]
+fn kopfteil_document_props_und_projekt_sind_rot() {
+    let b = kopfteil("<script lang=\"ts\">\n\tconst weg = () => document.querySelector('header')?.remove();\n</script>\n");
+    assert!(b.iter().any(|b| b.ist_fehler() && b.zeile == Some(2) && b.text == scanner::SATZ_KOPF_DOCUMENT), "{b:?}");
+    let b = kopfteil("<script lang=\"ts\">\n\tlet { zahl } = $props();\n</script>\n");
+    assert!(b.iter().any(|b| b.ist_fehler() && b.zeile == Some(2) && b.text == scanner::SATZ_KOPF_PROPS), "{b:?}");
+    for text in [
+        "<script lang=\"ts\">\n\timport { Orte } from '$katalog';\n</script>\n\n<Orte projekt=\"anderes\" />\n",
+        "<script lang=\"ts\">\n\timport { Orte } from '$katalog';\n\tconst holen = undefined;\n</script>\n\n<Orte fetchFn={holen} />\n",
+    ] {
+        let b = kopfteil(text);
+        assert!(b.iter().any(|b| b.ist_fehler() && b.text == scanner::SATZ_KOPF_PROJEKT), "{text}: {b:?}");
+    }
+}
+
+/// Was ein Kopfteil darf: ein Zeichen mit kleiner Zahl, ein Klappfeld. Und
+/// die Regeln gelten nur für `kopf/Ende.svelte`, nicht für andere Dateien.
+#[test]
+fn kopfteil_regeln_gelten_nur_fuer_die_eine_datei() {
+    let gut = "<script lang=\"ts\">\n\timport { Klappfeld } from '$katalog';\n</script>\n\n<Klappfeld>\n\t<span>Offen</span>\n</Klappfeld>\n";
+    let b = kopfteil(gut);
+    assert!(!b.iter().any(Befund::ist_fehler), "{b:?}");
+    let seite = "<script lang=\"ts\">\n\timport { Dialog } from '$katalog';\n\tlet { zahl } = $props();\n</script>\n\n<Dialog titel=\"x\" />\n";
+    for datei in ["projects/t/Seite.svelte", "projects/t/kopf/Hilfe.svelte", "projects/t/seiten/kopf/Ende.svelte"] {
+        let b = scanner::pruefe_datei(datei, seite);
+        let kopf = [scanner::SATZ_KOPF_EBENE, scanner::SATZ_KOPF_PROPS, scanner::SATZ_KOPF_DOCUMENT, scanner::SATZ_KOPF_PROJEKT];
+        assert!(!b.iter().any(|b| kopf.contains(&b.text.as_str())), "{datei}: {b:?}");
+    }
+}
+
+/// Die dritte Tabelle der Bauliste: nur eine echte Datei, nach Slug sortiert,
+/// nicht für Slugs aus weiteren Quellen; der Hinweis ab dem vierten Kopfteil.
+#[test]
+fn bauliste_nennt_kopfteile_in_der_dritten_tabelle() {
+    let r = Repo::neu("kopfteile");
+    let dir = r.0.join("projects");
+    let mut eintraege = Vec::new();
+    for slug in ["zeta", "alpha", "ordner", "fremd", "ohne", "beta", "gamma"] {
+        let o = dir.join(slug);
+        std::fs::create_dir_all(o.join("kopf")).unwrap();
+        std::fs::write(o.join("Seite.svelte"), "<p>x</p>\n").unwrap();
+        match slug {
+            "ohne" => {}
+            "ordner" => std::fs::create_dir_all(o.join("kopf/Ende.svelte")).unwrap(),
+            _ => std::fs::write(o.join("kopf/Ende.svelte"), "<span>1</span>\n").unwrap(),
+        }
+        eintraege.push((slug.to_string(), o));
+    }
+    let ohne: std::collections::BTreeSet<String> = ["fremd".to_string()].into();
+    let text = scanner::bauliste_text_mit(&eintraege, &ohne);
+    let kopf = text.split("export const projektKopfEnde").nth(1).unwrap();
+    let stellen: Vec<usize> = ["alpha", "beta", "gamma", "zeta"].iter().map(|s| kopf.find(&format!("/{s}/kopf/Ende.svelte')")).expect(&text)).collect();
+    assert!(stellen.windows(2).all(|w| w[0] < w[1]), "nach Slug sortiert: {text}");
+    for fehlt in ["ordner", "fremd", "ohne"] {
+        assert!(!kopf.contains(&format!("/{fehlt}/")), "{fehlt}: {text}");
+    }
+    assert!(!text.split("export const projektKopfEnde").next().unwrap().contains("kopf/Ende.svelte"), "{text}");
+    assert_eq!(scanner::kopfteil_slugs(&eintraege, &ohne), ["alpha", "beta", "gamma", "zeta"]);
+    assert_eq!(scanner::kopfteile_ohne_platz(&eintraege, &ohne), vec![("zeta".to_string(), scanner::satz_kopfteil_platz("zeta"))]);
+    // Ein einzelner Projektordner ist die erste Quelle: auch „fremd“ geht.
+    assert!(scanner::bauliste_text(&eintraege).contains("/fremd/kopf/Ende.svelte')"));
 }

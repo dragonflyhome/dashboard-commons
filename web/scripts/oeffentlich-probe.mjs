@@ -83,27 +83,39 @@ const MIN_KURZ = 15;
 const MIN_GESEHEN = 0.8;
 /** Kurze Stücke (Seiten eines Slugs, der ein Wort der Hülle ist): ein Wort im Text ab so vielen Zeichen. */
 const MIN_WORT = 10;
-/** Die Bauliste ohne Einträge, wie `scanner::bauliste_text` sie schreibt (beide Tabellen). */
+/** Die Bauliste ohne Einträge, wie `scanner::bauliste_text` sie schreibt (alle drei Tabellen). */
 const LEERE_TABELLE =
-	/^export const projekt(?:Seiten|Unterseiten): Record<string, Laden> = \{\};$/gm;
+	/^export const projekt(?:Seiten|Unterseiten|KopfEnde): Record<string, Laden> = \{\};$/gm;
+/** So viele Tabellen hat die Bauliste. */
+const TABELLEN = 3;
+/** Ab hier stehen die Kopfteile (`kopf/Ende.svelte`), nicht mehr Seiten. */
+const KOPF_TABELLE = /^export const projektKopfEnde\b/m;
 
 /**
  * Die Einträge der Bauliste (projekte.generated.ts), je Slug und Seitendatei;
  * `unlesbar`: Einträge (`() => import(`), die das Muster nicht trifft.
+ * `kopf`: die Kopfteile (Tabelle `projektKopfEnde`), getrennt gezählt: Ein
+ * Kopfteil ist ein Zeichen mit wenig Text und keine Seite seines Slugs; in der
+ * Regel zu den gesehenen Texten würde es die Probe für sein Projekt blind machen.
  * @param {string} text
- * @returns {{ slugs: string[], dateien: string[], seiten: { slug: string, datei: string }[], unlesbar: number }}
+ * @returns {{ slugs: string[], dateien: string[], seiten: { slug: string, datei: string }[], kopf: { slug: string, datei: string }[], unlesbar: number }}
  */
 export function baulisteLesen(text) {
-	const seiten = [
-		...text.matchAll(
-			/^\s*'?([a-z0-9][a-z0-9-]*)(?:\/[a-z0-9-]+)?'?\s*:\s*\(\)\s*=>\s*import\('([^']+)'\)/gm
-		)
-	].map((m) => ({ slug: m[1] ?? '', datei: m[2] ?? '' }));
+	const ab = text.search(KOPF_TABELLE);
+	const lesen = (/** @type {string} */ teil) =>
+		[
+			...teil.matchAll(
+				/^\s*'?([a-z0-9][a-z0-9-]*)(?:\/[a-z0-9-]+)?'?\s*:\s*\(\)\s*=>\s*import\('([^']+)'\)/gm
+			)
+		].map((m) => ({ slug: m[1] ?? '', datei: m[2] ?? '' }));
+	const seiten = lesen(ab < 0 ? text : text.slice(0, ab));
+	const kopf = ab < 0 ? [] : lesen(text.slice(ab));
 	return {
 		slugs: [...new Set(seiten.map((s) => s.slug))],
 		dateien: [...new Set(seiten.map((s) => s.datei))],
 		seiten,
-		unlesbar: [...text.matchAll(/\(\)\s*=>\s*import\(/g)].length - seiten.length
+		kopf,
+		unlesbar: [...text.matchAll(/\(\)\s*=>\s*import\(/g)].length - seiten.length - kopf.length
 	};
 }
 
@@ -360,7 +372,7 @@ export function probe({ bau, bauliste, huelle }) {
 		// Die leere Tabelle ist höchstens eine geschützte Datei; mehr heißt: Der Bau
 		// kam aus einer anderen Bauliste, oder die Liste hat eine fremde Form.
 		const leerUndPasst =
-			(baulisteText.match(LEERE_TABELLE) ?? []).length === 2 &&
+			(baulisteText.match(LEERE_TABELLE) ?? []).length === TABELLEN &&
 			!/import\.meta|import\((?!'svelte'\))/.test(baulisteText) &&
 			geschuetzt <= 1;
 		return leerUndPasst

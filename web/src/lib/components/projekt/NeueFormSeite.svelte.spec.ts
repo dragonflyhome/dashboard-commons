@@ -8,7 +8,8 @@ import { describe, expect, it, vi } from 'vitest';
 const { grenze, standard } = vi.hoisted(() => ({ grenze: vi.fn(), standard: vi.fn() }));
 vi.mock('#lib/projekte.generated.ts', () => ({
 	projektSeiten: { gut: () => Promise.resolve({ default: vi.fn() }) },
-	projektUnterseiten: {}
+	projektUnterseiten: {},
+	projektKopfEnde: {}
 }));
 vi.mock('#lib/components/projekt/Grenze.svelte', () => ({ default: grenze }));
 vi.mock('#lib/components/projekt/Standardaufbau.svelte', () => ({ default: standard }));

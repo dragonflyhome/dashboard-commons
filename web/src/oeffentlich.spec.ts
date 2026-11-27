@@ -18,6 +18,8 @@ import { LISTE, modulPfad, oeffentlicheListe } from '../scripts/oeffentlich.mjs'
 
 const SLUG = 'zqxerfundenslug';
 const SATZ = 'Der erfundene Satz steht nur auf der Projektseite';
+/** Steht nur im Kopfteil des Projekts (kopf/Ende.svelte). */
+const KOPFSATZ = 'Der erfundene Name steht nur im Kopfteil';
 /** Gleiche Bytes für das Logo der Hülle und das Bild des Projekts. */
 const BILD = Buffer.from(
 	'89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489',
@@ -45,6 +47,10 @@ interface Fall {
 	bildImProjekt?: boolean;
 	/** Ein Modul der Hülle bindet die Projektseite selbst ein, an der Bauliste vorbei. */
 	huelleBindetSeite?: boolean;
+	/** Das Projekt hat ein Kopfteil (kopf/Ende.svelte) in der dritten Tabelle der Bauliste. */
+	kopfteil?: boolean;
+	/** Ein Modul der Hülle bindet das Kopfteil selbst ein, an der Bauliste vorbei. */
+	huelleBindetKopfteil?: boolean;
 }
 
 /** Ein virtuelles Modul, nur vom Projekt geladen, in denselben Teil wie die Hülle gezwungen. */
@@ -75,15 +81,29 @@ async function testbau(fall: Fall = {}): Promise<Map<string, string>> {
 			fall.huelleBindetSeite
 				? `import Seite from "${vorwaerts(join(projekt, 'Seite.svelte'))}"; export const s = Seite;`
 				: '',
+			fall.huelleBindetKopfteil
+				? `import Ende from "${vorwaerts(join(projekt, 'kopf', 'Ende.svelte'))}"; export const k = Ende;`
+				: '',
 			''
 		].join('\n')
 	);
 	mkdirSync(join(wurzel, 'lib'));
 	const tabelle = join(wurzel, 'lib', 'projekte.generated.ts');
+	const kopf = fall.kopfteil === true || fall.huelleBindetKopfteil === true;
 	writeFileSync(
 		tabelle,
-		`export const projektSeiten = { ${SLUG}: () => import('${vorwaerts(join(projekt, 'Seite.svelte'))}') };\n`
+		`export const projektSeiten = { ${SLUG}: () => import('${vorwaerts(join(projekt, 'Seite.svelte'))}') };\n` +
+			(kopf
+				? `export const projektKopfEnde = { ${SLUG}: () => import('${vorwaerts(join(projekt, 'kopf', 'Ende.svelte'))}') };\n`
+				: '')
 	);
+	if (kopf) {
+		mkdirSync(join(projekt, 'kopf'));
+		writeFileSync(
+			join(projekt, 'kopf', 'Ende.svelte'),
+			`<span class="zahl" aria-label="${KOPFSATZ}">3</span>\n\n<style>\n\t.zahl {\n\t\tword-spacing: 7px;\n\t}\n</style>\n`
+		);
+	}
 	writeFileSync(
 		join(projekt, 'Seite.svelte'),
 		[
@@ -181,6 +201,27 @@ describe('Öffentliche Menge des Baus (Vite-Plugin)', () => {
 
 	it('bricht ab, wenn die Hülle eine Projektseite an der Bauliste vorbei einbindet', async () => {
 		await expect(testbau({ huelleBindetSeite: true })).rejects.toThrow(
+			/Hülle erreicht 1 eigene Projektseiten ohne die Bauliste/
+		);
+	});
+
+	it('ein Kopfteil aus der dritten Tabelle der Bauliste liegt in der geschützten Menge', async () => {
+		const dateien = await testbau({ kopfteil: true });
+		const liste = JSON.parse(dateien.get(`_app/${LISTE}`) ?? 'null') as string[];
+		const oeffentlich = [...dateien].filter(([name]) => liste.includes(name));
+		const geschuetzt = [...dateien].filter(([name]) => !liste.includes(name));
+		for (const [name, inhalt] of oeffentlich) {
+			expect(inhalt.includes(KOPFSATZ), `Name des Kopfteils in ${name}`).toBe(false);
+			expect(inhalt.includes('word-spacing'), `Stil des Kopfteils in ${name}`).toBe(false);
+		}
+		expect(geschuetzt.some(([, i]) => i.includes(KOPFSATZ))).toBe(true);
+		expect(geschuetzt.some(([n, i]) => n.endsWith('.css') && i.includes('word-spacing'))).toBe(
+			true
+		);
+	});
+
+	it('bricht ab, wenn die Hülle ein Kopfteil an der Bauliste vorbei einbindet', async () => {
+		await expect(testbau({ huelleBindetKopfteil: true })).rejects.toThrow(
 			/Hülle erreicht 1 eigene Projektseiten ohne die Bauliste/
 		);
 	});

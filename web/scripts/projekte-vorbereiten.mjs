@@ -41,6 +41,8 @@ const leer = [
 	'export const projektSeiten: Record<string, Laden> = {};',
 	'',
 	'export const projektUnterseiten: Record<string, Laden> = {};',
+	'',
+	'export const projektKopfEnde: Record<string, Laden> = {};',
 	''
 ].join('\n');
 
