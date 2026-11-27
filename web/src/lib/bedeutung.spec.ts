@@ -29,7 +29,7 @@ describe('Bedeutungen', () => {
 	it('haben je eine Klasse in app.css, die den Ton setzt', () => {
 		const css = readFileSync(join(import.meta.dirname, '..', 'app.css'), 'utf8');
 		for (const k of BEDEUTUNGEN.map(klasse)) {
-			expect(css).toMatch(new RegExp(String.raw`\.${k} \{\r?\n\t--ton: var\(--[a-z]+\);`));
+			expect(css).toMatch(new RegExp(String.raw`\.${k} \{\r?\n\t--ton: var\(--b-[a-z]+\);`));
 		}
 		// Die alten Reihen st-… und c-… gibt es nicht mehr.
 		expect(css).not.toMatch(/\.(st|c)-(ok|wait|bad|done|plan|info)\b/);

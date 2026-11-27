@@ -279,10 +279,11 @@ describe('Themen der Liste (Etappe S1): Block je Wert, Kontrast, dieselben Token
 
 describe('Kontrast der Token', () => {
 	it('liest app.css: Hex, var() und color-mix', () => {
+		expect(farbe('var(--flaeche)', HELL)).toEqual([1, 1, 1, 1]);
 		expect(farbe('var(--card)', HELL)).toEqual([1, 1, 1, 1]);
 		expect(farbe('color-mix(in srgb, #000000 50%, transparent)', HELL)).toEqual([0, 0, 0, 0.5]);
 		expect(kontrast({ '--a': '#000000', '--b': '#ffffff' }, '--a', '--b', '--b')).toBeCloseTo(21);
-		expect(DUNKEL['--card']).not.toBe(HELL['--card']);
+		expect(DUNKEL['--flaeche']).not.toBe(HELL['--flaeche']);
 	});
 
 	it.each(THEMEN)('%s: alle Paare erreichen ihren Mindestwert', (thema, t) => {
@@ -387,10 +388,10 @@ describe('Kontrast: Reihen und wartet (Token 3a+, plan-3a.toml [plan_3a_plus.kon
  *   Seite, der eigenen Fläche (Punkt in Marke und StandHinweis), der Spalte
  *   in ProjektSpalten und dem gewählten Eintrag der Seitenleiste (Bau-Marke).
  * - Text auf der Fläche (--text, --muted auf --ton-soft): ab 4,5:1.
- * - Textfarbe der Bedeutung (--ok-text …, falls es sie gibt): ab 4,5:1 auf
- *   Karte, Seite und eigener Fläche.
+ * - Textfarbe der Bedeutung (--ton-text aus .b-…; bei info und neutral aus der
+ *   Farbreihe): ab 4,5:1 auf Karte, Seite und eigener Fläche.
  *
- * Töne tragen nie Text (eigener Test unten); wer das will, nimmt --…-text.
+ * Töne tragen nie Text (eigener Test unten); wer das will, nimmt --ton-text.
  */
 const SPALTE = 'color-mix(in srgb, var(--ton-soft) 60%, var(--bg))';
 
@@ -444,20 +445,18 @@ const STELLEN: [string, string, number, string][] = [
 	['--accent-text', '--accent-soft', 4.5, 'Zähler „wartet“ in der Seitenleiste']
 ];
 
-/** Werte von --ton und --ton-soft einer Klasse .b-… aus app.css. */
+/** Werte von --ton, --ton-soft und --ton-text einer Klasse .b-… aus app.css. */
 function bedeutungsToken(b: Bedeutung): Token {
 	const t = token(block(CSS, new RegExp(`^\\.${klasse(b)}\\s*\\{`, 'm')));
-	if (t['--ton'] === undefined || t['--ton-soft'] === undefined) {
-		throw new Error(`.${klasse(b)} setzt --ton und --ton-soft nicht`);
+	if (t['--ton'] === undefined || t['--ton-soft'] === undefined || t['--ton-text'] === undefined) {
+		throw new Error(`.${klasse(b)} setzt --ton, --ton-soft und --ton-text nicht`);
 	}
 	return t;
 }
 
-/** Textfarbe einer Bedeutung: zu --ton = var(--ok) gehört --ok-text, falls es sie gibt. */
-function textToken(b: Bedeutung, t: Token): string | null {
-	const ton = /^var\((--[a-z]+)\)$/.exec(bedeutungsToken(b)['--ton'] ?? '')?.[1];
-	const name = `${ton ?? ''}-text`;
-	return t[name] === undefined ? null : name;
+/** Textfarbe einer Bedeutung: --ton-text aus ihrer Klasse, falls sie ihn setzt. */
+function textToken(b: Bedeutung): string | null {
+	return bedeutungsToken(b)['--ton-text'] === undefined ? null : '--ton-text';
 }
 
 interface Zeile {
@@ -483,7 +482,7 @@ function inGebrauch(t: Token): Zeile[] {
 	});
 	const jeBedeutung = BEDEUTUNGEN.flatMap((b) => {
 		const tb: Token = { ...t, ...bedeutungsToken(b) };
-		const text = textToken(b, t);
+		const text = textToken(b);
 		const textPaare: [string, string, number, string][] =
 			text === null
 				? []
@@ -560,17 +559,18 @@ function stilDateien(ordner: string): string[] {
 }
 
 describe('Kontrast: Bedeutungen in Gebrauch', () => {
-	it('jede Bedeutung aus bedeutung.ts hat ihre Klasse mit Ton und Fläche', () => {
+	it('jede Bedeutung aus bedeutung.ts hat ihre Klasse mit Ton, Fläche und Textton', () => {
 		expect(BEDEUTUNGEN.map((b) => Object.keys(bedeutungsToken(b)).sort())).toEqual(
-			BEDEUTUNGEN.map(() => ['--ton', '--ton-soft'])
+			BEDEUTUNGEN.map((b) =>
+				b === 'wartet'
+					? ['--ton', '--ton-auf', '--ton-soft', '--ton-text']
+					: ['--ton', '--ton-soft', '--ton-text']
+			)
 		);
-		// Textfarben gibt es für ok, läuft, wartet und Problem.
-		expect(BEDEUTUNGEN.filter((b) => textToken(b, HELL) !== null)).toEqual([
-			'ok',
-			'laeuft',
-			'wartet',
-			'problem'
-		]);
+		// Textfarben für jede Bedeutung; info und neutral aus der Farbreihe.
+		expect(BEDEUTUNGEN.filter((b) => textToken(b) !== null)).toEqual([...BEDEUTUNGEN]);
+		expect(bedeutungsToken('info')['--ton-text']).toBe('var(--grundfarbe-text)');
+		expect(bedeutungsToken('neutral')['--ton-text']).toBe('var(--vordergrund-leise)');
 	});
 
 	it.each(THEMEN)('%s: alle benutzten Paare erreichen ihren Mindestwert', (thema, t) => {
@@ -579,7 +579,8 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 			console.log(`${thema} (in Gebrauch)`);
 			console.table(zeilen);
 		}
-		expect(zeilen.length).toBeGreaterThan(60);
+		// Vor den neuen Namen 74 Paare, seit Schritt 1 der Farben mindestens 80 (info und neutral mit Textton).
+		expect(zeilen.length).toBeGreaterThanOrEqual(80);
 		expect(zeilen.filter((z) => z.kontrast < z.mindest)).toEqual([]);
 	});
 
@@ -613,9 +614,9 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 		}
 	);
 
-	it('Töne tragen keinen Text: nie color: var(--ok) und Co., dafür gibt es --…-text', () => {
+	it('Töne tragen keinen Text: nie color: var(--ok), var(--b-ok) und Co., dafür gibt es --ton-text', () => {
 		const ton =
-			/(?<![\w-])color\s*[:=]\s*["'{]*\s*var\(--(?:ton|ok|warn|bad|info|done|plan)\s*[,)]/;
+			/(?<![\w-])color\s*[:=]\s*["'{]*\s*var\(--(?:ton|b-(?:ok|laeuft|wartet|problem|info|neutral)|ok|warn|bad|info|done|plan)\s*[,)]/;
 		const funde = stilDateien(import.meta.dirname)
 			.filter((d) => ton.test(readFileSync(d, 'utf8')))
 			.map((d) => relative(import.meta.dirname, d));

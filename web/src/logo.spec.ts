@@ -91,15 +91,15 @@ describe('Logo als eine Datei (Etappe 3b-2)', () => {
 		expect(box(svg)).toBe(box(entwurf));
 	});
 
-	it('logo.svg trägt die Werte von --accent, --on-accent und --warn, hell und dunkel', () => {
+	it('logo.svg trägt die Werte von --grundfarbe, --auf-grundfarbe und --b-wartet, hell und dunkel', () => {
 		const css = lies('src', 'app.css');
 		const token = (block: string, name: string): string | undefined =>
 			new RegExp(`--${name}:\\s*(#[0-9a-f]{6})\\s*;`, 'i').exec(block)?.[1];
 		// Der erste Block mit :root (Selektorliste) trägt die hellen Werte.
 		const hell = /:root\b[^{]*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
 		const dunkel = /:root\[data-theme='dunkel'\][^{]*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-		expect(token(hell, 'accent')).toBeDefined();
-		expect(token(dunkel, 'accent')).toBeDefined();
+		expect(token(hell, 'grundfarbe')).toBeDefined();
+		expect(token(dunkel, 'grundfarbe')).toBeDefined();
 		const svg = lies('static', 'logo.svg');
 		const [stilHell = '', stilDunkel = ''] = svg.split(
 			/@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)/
@@ -110,10 +110,10 @@ describe('Logo als eine Datei (Etappe 3b-2)', () => {
 			[stilHell, hell],
 			[stilDunkel, dunkel]
 		] as const) {
-			expect(fuell(stil, 'grund')).toBe(token(block, 'accent'));
-			expect(fuell(stil, 'blatt')).toBe(token(block, 'on-accent'));
-			expect(fuell(stil, 'wasser')).toBe(token(block, 'on-accent'));
-			expect(fuell(stil, 'kern')).toBe(token(block, 'warn'));
+			expect(fuell(stil, 'grund')).toBe(token(block, 'grundfarbe'));
+			expect(fuell(stil, 'blatt')).toBe(token(block, 'auf-grundfarbe'));
+			expect(fuell(stil, 'wasser')).toBe(token(block, 'auf-grundfarbe'));
+			expect(fuell(stil, 'kern')).toBe(token(block, 'b-wartet'));
 		}
 	});
 
