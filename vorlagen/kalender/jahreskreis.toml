@@ -277,7 +277,7 @@ regel = { mondmonat = { vollmond = 11 } }
 name = "Winterfylleþ"
 sprache = "altenglisch"
 quelle = "Beda, De temporum ratione 15, um 725"
-bedeutung = "Winter-Vollmond: Der Winter beginnt mit dem Vollmond dieses Monats."
+bedeutung = "Winter-Vollmond: Nach Beda beginnt der Winter mit dem Vollmond dieses Monats."
 stufe = "belegt"
 
 [[fest.namen]]

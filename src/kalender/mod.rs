@@ -957,16 +957,18 @@ impl Katalog {
                 Mond { kalender: kal.titel.clone(), nummer: None, name: "Mondmonat".into(), namen: None, zeitraum, phase: self.phase_am(m, heute), hinweis };
             return Some((m, None));
         }
-        // Die Monate, mit denen die Jahreszeiten beginnen, um das laufende Jahr.
+        // Die Monate, mit denen die Jahreszeiten beginnen, um das laufende Jahr: je der
+        // Monat nach dem Fest `nach` (der Neumond, der das Fest beendet). Der Monat des
+        // Fests selbst gehört noch zur Jahreszeit davor.
         let mut anker: Vec<(i32, &Jahreszeit, &Fest)> = Vec::new();
         for j in &kal.jahreszeit {
             let f = kal.fest.iter().find(|f| f.kennung == j.nach)?;
             for y in jahr - 1..=jahr + 1 {
-                anker.push((self.mondmonat(&f.regel, y)?, j, f));
+                anker.push((self.mondmonat(&f.regel, y)? + 1, j, f));
             }
         }
-        let (start, jz, fest) = anker.iter().filter(|(k, _, _)| *k <= m).max_by_key(|(k, _, _)| *k).copied()?;
-        let ende = anker.iter().map(|(k, _, _)| *k).filter(|k| *k > start).min()?;
+        let (start, jz, _) = anker.iter().filter(|(k, _, _)| *k <= m).max_by_key(|(k, _, _)| *k).copied()?;
+        let (ende, _, fest) = anker.iter().filter(|(k, _, _)| *k > start).min_by_key(|(k, _, _)| *k).copied()?;
         // Der Sonnenmonat dieser Jahreszeit (der Monat mit ihrem Sonnentag).
         let mut sonnenmonat = None;
         for f in kal.fest.iter().filter(|f| matches!(f.regel.art(), Ok(Art::MondmonatMit(_)))) {
@@ -976,10 +978,10 @@ impl Katalog {
                 }
             }
         }
-        let (mut name, namen) = if start == m {
+        let (mut name, namen) = if m + 1 == ende {
             (fest.titel.clone(), fest.namen.clone())
         } else {
-            let n = m - start;
+            let n = m - start + 1;
             let namen = match sonnenmonat {
                 Some((s, f)) if s == m => f.namen.clone(),
                 Some((s, _)) if m > s => jz.danach.clone(),
@@ -2017,16 +2019,16 @@ regel = { nach = "kirche.ostern", tage = -3 }
             monate,
             [
                 ("2026-12-09", "2. Wintervollmond · Yule-Mond", Some("Wintervollmond")),
-                ("2027-01-07", "Imbolc", Some("Frühlingsvollmond")),
+                ("2027-01-07", "Imbolc", Some("Wintervollmond")),
                 ("2027-02-06", "1. Frühlingsvollmond", Some("Frühlingsvollmond")),
                 ("2027-03-08", "2. Frühlingsvollmond · Ostara-Mond", Some("Frühlingsvollmond")),
-                ("2027-04-07", "Beltane", Some("Sommervollmond")),
+                ("2027-04-07", "Beltane", Some("Frühlingsvollmond")),
                 ("2027-05-06", "1. Sommervollmond", Some("Sommervollmond")),
                 ("2027-06-04", "2. Sommervollmond · Litha-Mond", Some("Sommervollmond")),
-                ("2027-07-04", "Lughnassad (Lammas)", Some("Herbstvollmond")),
+                ("2027-07-04", "Lughnassad (Lammas)", Some("Sommervollmond")),
                 ("2027-08-02", "1. Herbstvollmond", Some("Herbstvollmond")),
                 ("2027-08-31", "2. Herbstvollmond · Mabon-Mond", Some("Herbstvollmond")),
-                ("2027-09-30", "Samhain", Some("Wintervollmond")),
+                ("2027-09-30", "Samhain", Some("Herbstvollmond")),
                 ("2027-10-29", "1. Wintervollmond", Some("Wintervollmond")),
             ]
         );
@@ -2052,6 +2054,52 @@ regel = { nach = "kirche.ostern", tage = -3 }
         assert_eq!(k.festjahr("jahreskreis", tag("2027-11-27")).map(ohne_naechste), Some(ohne_naechste(j)));
         assert_eq!(k.festjahr("jahreskreis", tag("2026-12-08")).unwrap().zeitraum.ende, "2026-12-09");
         assert!(k.festjahr("kirche", tag("2027-06-21")).is_none(), "ohne Jahreszeiten kein Festjahr");
+    }
+
+    /// Jede Jahreszeit beginnt mit dem Neumond, der Imbolc, Beltane, Lughnassad oder Samhain
+    /// beendet; der Festmonat selbst gehört noch zur Jahreszeit davor. Je Festjahr genau
+    /// diese vier Grenzen, in dieser Reihenfolge, je an einem Neumond.
+    #[test]
+    fn jahreszeiten_beginnen_nach_dem_fest() {
+        let k = berlin();
+        let grenzen = |j: &KalenderJahr| -> Vec<(String, String, String)> {
+            j.monate
+                .windows(2)
+                .filter(|p| p[0].jahreszeit != p[1].jahreszeit)
+                .map(|p| (p[0].name.clone(), p[1].jahreszeit.clone().unwrap_or_default(), p[1].zeitraum.anfang.clone()))
+                .collect()
+        };
+        let j = k.festjahr("jahreskreis", tag("2027-06-21")).unwrap();
+        assert_eq!(
+            grenzen(&j),
+            [
+                ("Imbolc".into(), "Frühlingsvollmond".into(), "2027-02-06".into()),
+                ("Beltane".into(), "Sommervollmond".into(), "2027-05-06".into()),
+                ("Lughnassad (Lammas)".into(), "Herbstvollmond".into(), "2027-08-02".into()),
+                ("Samhain".into(), "Wintervollmond".into(), "2027-10-29".into()),
+            ]
+        );
+        // Über viele Festjahre am Stück (in Jahren mit Samhain als letztem Monat liegt die
+        // Grenze zum Winter zwischen zwei Festjahren): nur diese Grenzen, immer im Kreis.
+        let mut alle = KalenderJahr { monate: Vec::new(), ..j };
+        let mut neumonde = Vec::new();
+        for jahr in 2026..=2040 {
+            let j = k.festjahr("jahreskreis", tag(&format!("{jahr}-06-21"))).unwrap();
+            assert_eq!(j.monate.first().and_then(|m| m.jahreszeit.as_deref()), Some("Wintervollmond"), "{jahr}: {:?}", j.monate[0]);
+            neumonde.extend(j.viertel.iter().filter(|v| v.kennung == "neumond").map(|v| v.datum.clone()));
+            alle.monate.extend(j.monate);
+        }
+        let g = grenzen(&alle);
+        let kreis = ["Imbolc", "Beltane", "Lughnassad (Lammas)", "Samhain"];
+        let samhain_zuletzt = alle.monate.last().is_some_and(|m| m.name == "Samhain");
+        assert_eq!(g.len() + usize::from(samhain_zuletzt), 4 * 15, "{g:?}");
+        for (i, (fest, _, anfang)) in g.iter().enumerate() {
+            assert_eq!(fest, kreis[i % 4], "{g:?}");
+            assert!(neumonde.contains(anfang), "{anfang} ist kein Neumond");
+        }
+        // Die übrigen Monate heißen nicht nach den vier Festen (kein Fest mitten in einer Jahreszeit).
+        let festmonate = alle.monate.iter().filter(|m| kreis.contains(&m.name.as_str())).count();
+        assert_eq!(festmonate, 4 * 15);
     }
 
     /// S1: Auch am Ende des Festjahrs drei nächste Vollmonde ab dem Tag (der Tag selbst
