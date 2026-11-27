@@ -5,9 +5,19 @@
  * mit Anmeldung (`_app/oeffentlich.json`, scripts/oeffentlich.mjs). Einmal
  * geladen, bleibt sie; ein Fehler wird nicht gemerkt (der nächste Versuch lädt neu).
  */
-import type * as Modul from '#lib/projekte.generated.ts';
-/** Die drei Tabellen, ohne den Modul-Namensraum (den nähme $state.raw nicht als Wert). */
-export type Liste = Pick<typeof Modul, 'projektSeiten' | 'projektUnterseiten' | 'projektKopfEnde'>;
+import type { Component } from 'svelte';
+
+type Laden = () => Promise<{ default: Component }>;
+
+/**
+ * Die drei Tabellen als eigener Typ, nicht aus dem erzeugten Modul abgeleitet: Eine
+ * Arbeitskopie mit einer Liste alter Form (zwei Tabellen) besteht so die Typprüfung.
+ */
+export interface Liste {
+	projektSeiten: Record<string, Laden>;
+	projektUnterseiten: Record<string, Laden>;
+	projektKopfEnde: Record<string, Laden>;
+}
 
 /** Was das Modul liefert: Eine Liste in alter Form (zwei Tabellen) hat keine Kopfteile. */
 type Geladen = Omit<Liste, 'projektKopfEnde'> & Partial<Pick<Liste, 'projektKopfEnde'>>;
