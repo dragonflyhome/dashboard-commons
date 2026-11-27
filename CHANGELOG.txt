@@ -21,6 +21,8 @@ Hinzugefügt
 Behoben
 - Dienst: Der Notbau schreibt die leere Bauliste wieder vollständig, auch
   mit der neuen Tabelle für Kopfteile.
+- Bau: Die Typprüfung besteht auch, wenn die Arbeitskopie noch eine
+  Projektliste ohne Kopfteile hat.
 
 0.28.0 - 2026-11-27
 -------------------
