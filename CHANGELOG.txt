@@ -14,6 +14,13 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Kalenderseite: Eine Auswahl über dem Jahreskreis zeigt das vorige, das
+  laufende oder das kommende Festjahr; Kreis, Zeitraum und Liste folgen
+  ihr. Im anderen Festjahr fehlen Zeiger und hervorgehobener Monat.
+- Jahreskreis: Ein Test sichert, dass die Wintersonnenwende oben steht
+  und nicht der Anfang des ersten Monats.
+
 0.29.2 - 2026-11-27
 -------------------
 

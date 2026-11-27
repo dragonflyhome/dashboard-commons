@@ -78,7 +78,9 @@
 		return (name.split(' · ').at(-1) ?? name).replace(/\s*\(.*\)$/, '').replace(/s?vollmond$/, '');
 	}
 
-	const laufend = $derived(laufenderMonat(jahr, tag));
+	/** Zeiger und „am …“ nur, wenn das gezeigte Festjahr den Tag enthält (die Auswahl kann ein anderes zeigen). */
+	const drin = $derived(jahr.zeitraum.anfang <= tag && tag < jahr.zeitraum.ende);
+	const laufend = $derived(drin ? laufenderMonat(jahr, tag) : null);
 	const naechste = $derived(jahr.naechste_vollmonde);
 	const ringe = $derived(vollmondeImKreis(jahr));
 	/**
@@ -122,7 +124,7 @@
 	const beschreibung = $derived(
 		`Jahreskreis ${festjahrName(jahr)}, ${
 			jahr.monate.length > 0 ? `${String(jahr.monate.length)} Mondmonate` : 'ohne Mondmonate'
-		}, am ${fmtDate(tag)}${laufend ? ` im ${String(laufend.nummer)}. Monat (${laufend.name})` : ''}`
+		}${drin ? `, am ${fmtDate(tag)}` : ''}${laufend ? ` im ${String(laufend.nummer)}. Monat (${laufend.name})` : ''}`
 	);
 </script>
 
@@ -161,10 +163,12 @@
 					d="M {punkt(winkel(s.datum), R.zeiten)} L {punkt(winkel(s.datum), R.marke)}"
 				/>
 			{/each}
-			<path
-				class="zeiger"
-				d="M {punkt(winkel(tag), R.mitte)} L {punkt(winkel(tag), R.name - 12)}"
-			/>
+			{#if drin}
+				<path
+					class="zeiger"
+					d="M {punkt(winkel(tag), R.mitte)} L {punkt(winkel(tag), R.name - 12)}"
+				/>
+			{/if}
 			<circle class="mitte" cx={M} cy={M} r={R.mitte} />
 			<text class="jahr" x={M} y={M}>{festjahrName(jahr)}</text>
 		</svg>

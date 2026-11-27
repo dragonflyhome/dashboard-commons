@@ -34,6 +34,7 @@
 	import { API, fehlerText, getJson, readError } from '#lib/api/client.ts';
 	import { abrufen } from '#lib/api/antwortet.svelte.ts';
 	import { fmtDate } from '#lib/format.ts';
+	import { festjahrName } from '#lib/textfassung.ts';
 	import { nameKurz } from '#lib/fristen.ts';
 	import { lokalerTag } from '#lib/tageswechsel.ts';
 	import { tagPlus } from '#lib/zeit/tage.ts';
@@ -235,6 +236,75 @@
 	$effect(() => {
 		if (orte === null || datum === '') return;
 		void laden(datum, ort, frei, [...freiGebete]);
+	});
+
+	// „Das Jahr“: welches Festjahr der Kreis zeigt, gezählt ab dem mit dem gewählten Tag.
+	let versatz = $state('0');
+	let anderesJahr = $state<{ versatz: string; jahr: KalenderJahr } | null>(null);
+	let jahrNr = 0;
+	const gezeigt = $derived(
+		versatz !== '0' && anderesJahr?.versatz === versatz ? anderesJahr.jahr : jahr
+	);
+	/** „2025/26“ um `v` Jahre versetzt; jede Zahl behält ihre Stellen („2099/00“). */
+	function versetzt(name: string, v: number): string {
+		return name.replace(/\d+/g, (z) => {
+			const n = 10 ** z.length;
+			return String((((Number(z) + v) % n) + n) % n).padStart(z.length, '0');
+		});
+	}
+	const jahrOptionen = $derived.by(() => {
+		if (jahr === null) return [];
+		const name = festjahrName(jahr);
+		return [-1, 0, 1].map((v) => ({
+			wert: String(v),
+			text: `${versetzt(name, v)}${v === 0 ? ' (mit dem gewählten Tag)' : ''}`
+		}));
+	});
+
+	$effect(() => {
+		const basis = jahr;
+		const v = Number(versatz);
+		const [o, f] = [ort, frei];
+		// Auch bei v = 0 hochzählen: eine noch laufende Antwort für ±1 zählt dann nicht mehr.
+		const nr = ++jahrNr;
+		if (basis === null || v === 0) return;
+		// Die Mitte des Festjahrs um `v` Jahre weiter liegt sicher im gesuchten: Festjahre
+		// beginnen höchstens einen Monat früher oder später und dauern mindestens 354 Tage.
+		const d = tagPlus(basis.zeitraum.anfang, 182 + 365 * v);
+		void (async () => {
+			try {
+				const j =
+					f === null
+						? await getJson<KalenderJahr>(
+								`${API}/kalender/jahr?datum=${d}${o === '' ? '' : `&ort=${encodeURIComponent(o)}`}`
+							)
+						: (
+								await senden<KalenderAbfrageAntwort>(`${API}/kalender/abfrage`, {
+									datum: d,
+									von: heute,
+									bis: festeBis,
+									breite: f.breite,
+									laenge: f.laenge,
+									zeitzone: f.zeitzone,
+									gebete: null,
+									jahr: true
+								} satisfies KalenderAbfrage)
+							).jahr;
+				// Die nächsten Vollmonde zählen ab dem gewählten Tag, nicht ab der Mitte des anderen Jahrs.
+				if (nr !== jahrNr) return;
+				if (j === null) throw new Error('Für dieses Festjahr lässt sich nichts rechnen.');
+				anderesJahr = {
+					versatz: String(v),
+					jahr: { ...j, naechste_vollmonde: basis.naechste_vollmonde }
+				};
+				fehler = null;
+			} catch (e) {
+				// Auswahl und Kreis sollen dasselbe Jahr nennen: zurück zum Jahr mit dem Tag.
+				if (nr !== jahrNr) return;
+				fehler = fehlerText(e);
+				versatz = '0';
+			}
+		})();
 	});
 
 	/** Ein Schalter einer Variante: beim anderen Ort nur für die Abfrage, sonst gespeichert. */
@@ -639,14 +709,17 @@
 		</Abschnitt>
 	{/if}
 
-	{#if jahr !== null}
+	{#if gezeigt !== null}
 		<Abschnitt
 			titel="Das Jahr"
 			unterzeile="Festjahr des Jahreskreises vom {fmtDate(
-				jahr.zeitraum.anfang
-			)} bis vor den {fmtDate(jahr.zeitraum.ende)}"
+				gezeigt.zeitraum.anfang
+			)} bis vor den {fmtDate(gezeigt.zeitraum.ende)}"
 		>
-			<Jahreskreis {jahr} tag={tag.datum} />
+			<div class="jahrwahl">
+				<Auswahl beschriftung="Festjahr" optionen={jahrOptionen} bind:wert={versatz} />
+			</div>
+			<Jahreskreis jahr={gezeigt} tag={tag.datum} />
 		</Abschnitt>
 	{/if}
 {/if}
@@ -700,6 +773,9 @@
 {/if}
 
 <style>
+	.jahrwahl {
+		margin-bottom: 0.75rem;
+	}
 	.feld {
 		display: grid;
 		gap: 0.25rem;
