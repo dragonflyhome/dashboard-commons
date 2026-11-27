@@ -21,6 +21,12 @@ Hinzugefügt
 - Jahreskreis: Ein Test sichert, dass die Wintersonnenwende oben steht
   und nicht der Anfang des ersten Monats.
 
+Behoben
+- Jahreskreis: Nächste Vollmonde vor dem Anfang des gezeigten Festjahrs
+  bekommen keinen Ring mehr; die Textfassung nennt sie „vor diesem
+  Festjahr“. Scheitert das Laden eines anderen Festjahrs, springt die
+  Auswahl zurück auf das Jahr mit dem Tag.
+
 0.29.2 - 2026-11-27
 -------------------
 
