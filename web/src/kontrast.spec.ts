@@ -596,8 +596,9 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 				const m = new RegExp(
 					`\\.${klasse}\\s*\\{[^}]*fill:\\s*light-dark\\(var\\((--[\\w-]+)\\),\\s*var\\((--[\\w-]+)\\)\\)`
 				).exec(himmel);
-				if (m === null) throw new Error(`.${klasse} ohne fill: light-dark(var(…), var(…))`);
-				return m[grundthema === 'hell' ? 1 : 2];
+				const name = m?.[grundthema === 'hell' ? 1 : 2];
+				if (name === undefined) throw new Error(`.${klasse} ohne fill: light-dark(var(…), var(…))`);
+				return name;
 			};
 			const licht = fuellung('hell');
 			const schatten = fuellung('dunkel');
