@@ -384,7 +384,7 @@ export function probe({ bau, bauliste, huelle }) {
 			: {
 					...zahlen,
 					stufe: 2,
-					satz: `Die Bauliste nennt keine Projektseiten, aber der Bau hat ${geschuetzt} geschützte Dateien oder die Liste eine fremde Form; Bau und Bauliste passen nicht zusammen.`
+					satz: `Die Bauliste nennt keine Projektseiten, aber der Bau hat ${geschuetzt} geschützte Dateien oder die Liste eine fremde Form; Bau und Bauliste passen nicht zusammen. Ausweg: dashboard pruefe --bauliste ausführen oder web/src/lib/projekte.generated.ts löschen, dann neu bauen.`
 				};
 	}
 	if (funde.length > 0)
