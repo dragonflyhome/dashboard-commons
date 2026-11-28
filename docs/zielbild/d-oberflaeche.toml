@@ -262,6 +262,13 @@ punkte = [
 ]
 
 [[block]]
+titel = "Jahreskreis"
+punkte = [
+  "Der Jahreskreis zeigt ein Festjahr aus Mondmonaten als Kreis. Oben steht der kürzeste Tag, im Uhrzeigersinn folgen Frühlingsgleiche rechts, längster Tag unten und Herbstgleiche links: Die vier Sonnentage stehen jedes Jahr genau auf dem Kreuz.",
+  "Zwischen den Sonnentagen wird jeder Tag anteilig gelegt. Das Viertel von der Herbstgleiche bis zum kürzesten Tag umfasst das Ende des Festjahrs und seinen Anfang vor dem kürzesten Tag; es trägt den Unterschied zwischen Jahren mit 12 und mit 13 Monden und ist darum gedehnt oder gestaucht. Die Legende sagt das in einem Satz.",
+  "Fehlen dem Festjahr Sonnentage (etwa am Rand des Rechenbereichs), verteilt der Kreis die Tage gleichmäßig.",
+]
+[[block]]
 titel = "Tests"
 
 [block.tabelle]
