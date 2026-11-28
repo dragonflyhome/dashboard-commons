@@ -240,14 +240,14 @@ describe('Jahreskreis: Sonnentage auf dem Kreuz', () => {
 		expect(abstand(marken(ohneRest)['wende-sommer'] ?? NaN, (182 / 276) * 360)).toBeLessThan(0.1);
 	});
 
-	it('ohne Monate (zwischen den Wendekreisen) stehen die Marken auf dem Kreuz, und die Legende schweigt von Monden', () => {
+	it('ohne Monate (zwischen den Wendekreisen) stehen die Marken auf dem Kreuz, und es gibt keine Legende (weder Jahreszeiten noch Monde)', () => {
 		const tropen = { ...JAHR, monate: [] };
 		const w = marken(tropen);
 		for (const [rolle, soll] of Object.entries(KREUZ)) {
 			expect(abstand(w[rolle] ?? NaN, soll), rolle).toBeLessThan(0.5);
 		}
 		const { container } = render(Jahreskreis, { jahr: tropen, tag: '2027-06-21' });
-		expect(container.querySelector('[data-legende]')?.textContent).not.toMatch(/Kreuz|Monde/);
+		expect(container.querySelector('[data-legende]')).toBeNull();
 	});
 
 	it('die Legende sagt, dass die Monde vor der Wintersonnenwende gedehnt oder gestaucht sind', () => {

@@ -207,14 +207,16 @@
 			<circle class="mitte" cx={M} cy={M} r={R.mitte} />
 			<text class="jahr" x={M} y={M}>{festjahrName(jahr)}</text>
 		</svg>
-		<!-- Beide Ringe folgen den Mondmonaten: innen die Jahreszeiten, außen die Monate; ein Festmonat wie „Imbolc“ gehört noch zur Jahreszeit davor. -->
-		<p class="muted small" data-legende>
-			Innen die Jahreszeiten, außen die Mondmonate.
-			{#if stuetzen && jahr.monate.length > 0}
-				Die Sonnentage stehen auf dem Kreuz; die Monde im Viertel vor der Wintersonnenwende sind
-				gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
-			{/if}
-		</p>
+		<!-- Beide Ringe folgen den Mondmonaten: innen die Jahreszeiten, außen die Monate; ein Festmonat wie „Imbolc“ gehört noch zur Jahreszeit davor. Zwischen den Wendekreisen gibt es beides nicht, also keine Legende. -->
+		{#if jahr.monate.length > 0}
+			<p class="muted small" data-legende>
+				Innen die Jahreszeiten, außen die Mondmonate.
+				{#if stuetzen}
+					Die Sonnentage stehen auf dem Kreuz; die Monde im Viertel vor der Wintersonnenwende sind
+					gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
+				{/if}
+			</p>
+		{/if}
 	</div>
 	<div class="liste">
 		{#if jahr.hinweis}<p class="muted small">{jahr.hinweis}</p>{/if}
