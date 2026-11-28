@@ -187,6 +187,16 @@ describe('Regel dashboard/bekannte-namen', () => {
 			// Im Stil gilt der Name damit nicht als deklariert.
 			expect(f.filter((x) => x.text.includes('nicht deklariert'))).toHaveLength(1);
 			expect(f).toHaveLength(2);
+			// Der Fund zeigt auf die Zeile im Markup, nicht auf den Stilblock.
+			const { results } = await stylelint.lint({
+				code: `<p></p>\n${svelte}`,
+				codeFilename: 'x.svelte',
+				config
+			});
+			const zeilen = results.flatMap((r) =>
+				r.warnings.filter((w) => w.text.includes('per Klasse wählen')).map((w) => w.line)
+			);
+			expect(zeilen).toEqual([2]);
 		});
 
 		it('weist ab: das Markup deklariert sie in style="…"', async () => {

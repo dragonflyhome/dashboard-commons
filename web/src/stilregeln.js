@@ -155,16 +155,17 @@ function imMarkup(d) {
  * Die Namen, die das Markup der Datei über `style:--name` setzt, je mit ihrer
  * Zeile in der Datei.
  * @param {import('postcss').Root} wurzel
- * @returns {{ name: string, zeile: number }[]}
+ * @returns {{ name: string, zeile: number, spalte: number }[]}
  */
 function direktiven(wurzel) {
 	const mit = /** @type {{ document?: import('postcss').Document }} */ (wurzel);
 	const quelle = (mit.document ?? wurzel).source?.input.css ?? '';
-	/** @type {{ name: string, zeile: number }[]} */
+	/** @type {{ name: string, zeile: number, spalte: number }[]} */
 	const treffer = [];
 	for (const t of quelle.matchAll(/\bstyle:(--[\w-]+)/g)) {
 		if (t[1] === undefined) continue;
-		treffer.push({ name: t[1], zeile: quelle.slice(0, t.index).split('\n').length });
+		const davor = quelle.slice(0, t.index).split('\n');
+		treffer.push({ name: t[1], zeile: davor.length, spalte: (davor.at(-1)?.length ?? 0) + 1 });
 	}
 	return treffer;
 }
@@ -216,13 +217,14 @@ const bekannteNamen = (an) => (wurzel, ergebnis) => {
 	};
 	// Was das Markup über `style:--extern-…` setzt, je Treffer einmal.
 	if (istErste(wurzel)) {
-		for (const { name, zeile } of direktiven(wurzel)) {
+		for (const { name, zeile, spalte } of direktiven(wurzel)) {
 			if (!name.startsWith(EXTERN)) continue;
 			stylelint.utils.report({
 				ruleName: BEKANNT,
 				result: ergebnis,
 				node: wurzel,
-				line: zeile,
+				start: { line: zeile, column: spalte },
+				end: { line: zeile, column: spalte + 'style:'.length + name.length },
 				message: meldungen.externMarkup(name)
 			});
 		}
