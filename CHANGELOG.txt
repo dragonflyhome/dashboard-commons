@@ -14,6 +14,10 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Die Stilprüfung kennt die Liste der Farbnamen: Unbekannte Namen weist
+  sie ab, alte Namen meldet sie als Hinweis mit dem neuen Namen.
+
 0.32.1 - 2026-11-28
 -------------------
 
