@@ -8,19 +8,41 @@
  * Ein Abschalten der Prüfung braucht immer eine Begründung hinter „--“ in
  * derselben Zeile. Eine Regel für px-Werte kommt erst, wenn die Abstands-Token
  * vollständig sind.
+ *
+ * Dazu zwei eigene Regeln (src/stilregeln.js, Ticket 20, Teil 1): Jedes
+ * var(--…) nennt einen Namen aus der Liste in src/lib/rollen.js. Ein
+ * unbekannter Name wird abgewiesen. Ein alter Name ist in der Übergangszeit
+ * ein Hinweis mit dem neuen Namen; steht keiner mehr im Kern und in den
+ * Projekten, wird aus `warning` unten `error`. app.css ist ausgenommen: Dort
+ * stehen die Töne der Bedeutungen und die Verweise der alten Namen.
+ *
+ * Externe Vorgaben: Im Kern geht bis Teil 2 nur `--extern-x: var(--reihe-n)`
+ * mit Herkunft. Einen festen Farbwert in der Deklaration weisen color-no-hex
+ * und die beiden anderen Farbregeln weiter ab; die Ausnahme dafür kommt mit
+ * der eigenen Regel für feste Farben in Teil 2.
  */
+import namensregeln from './src/stilregeln.js';
 
 /** Wörter, die statt eines Tokens stehen dürfen (ohne Rücksicht auf Groß- und Kleinschreibung). */
 const ERLAUBT = ['/^transparent$/i', '/^inherit$/i', '/^currentcolor$/i'];
 
 /** @type {import('stylelint').Config} */
 export default {
-	plugins: ['stylelint-declaration-strict-value'],
+	plugins: ['stylelint-declaration-strict-value', ...namensregeln],
 	reportDescriptionlessDisables: true,
 	reportNeedlessDisables: true,
 	reportInvalidScopeDisables: true,
-	overrides: [{ files: ['**/*.svelte'], customSyntax: 'postcss-html' }],
+	overrides: [
+		{ files: ['**/*.svelte'], customSyntax: 'postcss-html' },
+		{
+			files: ['**/src/app.css'],
+			rules: { 'dashboard/bekannte-namen': null, 'dashboard/alte-namen': null }
+		}
+	],
 	rules: {
+		// Nur Namen, die es gibt; alte Namen vorerst als Hinweis.
+		'dashboard/bekannte-namen': true,
+		'dashboard/alte-namen': [true, { severity: 'warning' }],
 		// Keine freien Farben: kein Hex, keine Farbfunktionen, keine Farbnamen.
 		// Groß- und Kleinschreibung zählt nicht (RGB() ist dasselbe wie rgb()).
 		'color-no-hex': true,
