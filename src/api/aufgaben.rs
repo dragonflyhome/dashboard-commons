@@ -993,7 +993,8 @@ mod tests {
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
         let ohne = AppState::fuer_tests_ohne_speicher(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("beispiel"), "kaputt");
         let (status, _) = schicke(&ohne, get("/api/aufgaben/anzahl")).await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+        assert_eq!(status, if cfg!(windows) { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::UNAUTHORIZED });
     }
 
     /// Archiv über den Zeitplan (gestellte Zeit, sieben Tage später): nicht
@@ -1501,7 +1502,9 @@ mod tests {
         let state = AppState::fuer_tests_ohne_speicher(&beispiel, "kaputt");
         for req in [get("/api/aufgaben?offen=1"), post("/api/aufgaben", r#"{"projekt": "dashboard", "titel": "t"}"#)] {
             let (status, v) = schicke(&state, req).await;
-            assert_eq!((status, v["art"].as_str()), (StatusCode::SERVICE_UNAVAILABLE, Some("speicher-fehlt")));
+            // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+            let soll = if cfg!(windows) { (StatusCode::SERVICE_UNAVAILABLE, Some("speicher-fehlt")) } else { (StatusCode::UNAUTHORIZED, Some("anmeldung")) };
+            assert_eq!((status, v["art"].as_str()), soll, "{v}");
         }
     }
 }

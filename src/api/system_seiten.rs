@@ -751,9 +751,10 @@ mod tests {
 
     use crate::app::{AppState, beispiel_fuer_tests, router, router_angemeldet};
 
-    /// Seit der Abnahme 4d geschützt: angemeldet als Inhaber holen.
+    /// Seit der Abnahme 4d geschützt: angemeldet als Inhaber holen (mit Datenspeicher,
+    /// den `router_angemeldet` außerhalb von Windows für die Anmeldung braucht).
     async fn hole(pfad: &str) -> (StatusCode, serde_json::Value) {
-        let app = router_angemeldet(AppState::fuer_tests_ohne_speicher(&beispiel_fuer_tests(), ""));
+        let app = router_angemeldet(AppState::fuer_tests(&beispiel_fuer_tests()));
         let req = Request::get(pfad).header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
         let res = app.oneshot(req).await.unwrap();
         let status = res.status();

@@ -699,6 +699,11 @@ mod tests {
         let (status, _) = roh_mit(crate::app::router(ohne.clone()), get("/api/projekte/dashboard/stand")).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         let (status, text) = roh_mit(router(ohne.clone()), get("/api/projekte/dashboard/stand")).await;
+        // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+        if !cfg!(windows) {
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{text}");
+            return;
+        }
         assert_eq!(status, StatusCode::OK, "{text}");
         let v: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["speicher_fehlt"], true);

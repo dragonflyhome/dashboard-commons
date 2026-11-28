@@ -236,7 +236,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&extra);
         std::fs::create_dir_all(extra.join("beispiel-a/server/src")).unwrap();
         std::fs::write(extra.join("beispiel-a/projekt.toml"), "schema = 3\ntitle = \"Beispiel A\"\nstatus = \"aktiv\"\n").unwrap();
-        let state = AppState::fuer_tests_ohne_speicher(&beispiel, "").mit_quellen(vec![extra.clone(), beispiel.join("projects")]);
+        // Mit Datenspeicher: Außerhalb von Windows braucht `router_angemeldet` ihn für die Anmeldung.
+        let state = AppState::fuer_tests(&beispiel).mit_quellen(vec![extra.clone(), beispiel.join("projects")]);
         let app = crate::app::router_angemeldet(state);
         let hol = |pfad: &str| Request::get(pfad).header("host", "127.0.0.1:8787").body(Body::empty()).unwrap();
         let res = app.clone().oneshot(hol("/api/pruefung")).await.unwrap();
