@@ -46,6 +46,9 @@ pub struct Befund {
     pub schwere: Schwere,
     /// Was falsch ist und wie es richtig geht, ein bis zwei Sätze.
     pub text: String,
+    /// Zeitpunkt zum Satz (RFC 3339), etwa seit wann eine Datei gesperrt ist;
+    /// der Satz selbst nennt keine Uhrzeit.
+    pub zeit: Option<String>,
 }
 
 impl Befund {
@@ -60,7 +63,21 @@ impl Befund {
     /// Datei und Satz im Klartext: Befunde gehen nur über geschützte Wege, an
     /// Meldungen und an die Kommandozeile (Schritt E3).
     fn neu(schwere: Schwere, datei: String, zeile: Option<usize>, text: String) -> Self {
-        Self { datei, zeile: zeile.and_then(|z| u32::try_from(z).ok()), schwere, text }
+        Self { datei, zeile: zeile.and_then(|z| u32::try_from(z).ok()), schwere, text, zeit: None }
+    }
+
+    pub fn mit_zeit(self, zeit: impl Into<String>) -> Self {
+        Self { zeit: Some(zeit.into()), ..self }
+    }
+
+    /// Für Tests: kein `\d{1,2}:\d{2}` im Satz, `zeit` ist RFC 3339.
+    #[cfg(test)]
+    pub fn zeit_nur_im_feld(&self) {
+        let z: Vec<char> = self.text.chars().collect();
+        let uhr = z.windows(4).any(|w| w[0].is_ascii_digit() && w[1] == ':' && w[2].is_ascii_digit() && w[3].is_ascii_digit());
+        assert!(!uhr, "Uhrzeit im Satz: {}", self.text);
+        let zeit = self.zeit.as_deref().unwrap_or_else(|| panic!("ohne zeit: {self:?}"));
+        assert!(chrono::DateTime::parse_from_rfc3339(zeit).is_ok(), "zeit ist kein RFC 3339: {zeit}");
     }
 
     /// Ein Lesefehler als Fehler; `versatz` Zeilen stehen davor.
@@ -599,6 +616,7 @@ fn daten_pruefen(daten_ordner: &Path, slug: &str, befunde: &mut Vec<Befund>) {
                 nicht_endliche_zahlen(&text, &datei, befunde);
                 nicht_angezeigt(&daten, &text, &datei, befunde);
                 kanban_hinweis(&daten, &datei, befunde);
+                // shortcut: Prüfung rechnet nach dem Rechnertag, am Rand ein Tag Versatz möglich; aufrüsten, wenn ein Hinweis deshalb falsch erscheint
                 stand_pflege_hinweise(&daten, &text, &datei, abgeleitet::heute(), befunde);
                 zeitstrahl_hinweise(&daten, &text, &datei, befunde);
                 fristen_hinweise(&daten, &text, &datei, abgeleitet::heute(), befunde);
@@ -629,6 +647,7 @@ fn daten_pruefen(daten_ordner: &Path, slug: &str, befunde: &mut Vec<Befund>) {
         }
     }
     if let Some((mut k, datei, text)) = kennzahlen {
+        // shortcut: Prüfung rechnet nach dem Rechnertag, am Rand ein Tag Versatz möglich; aufrüsten, wenn ein Hinweis deshalb falsch erscheint
         for e in abgeleitet::kennzahlen_rechnen(&mut k, &quellen, abgeleitet::heute(), &datei, &text) {
             befunde.push(Befund::aus_lesefehler(e, 0));
         }
@@ -1177,6 +1196,7 @@ fn gebete_orte(g: &crate::vertrag::daten::Datei<crate::vertrag::gebete::Gebete>,
 /// eine doppelte Kennung ist schon beim Lesen ein Fehler.
 fn zeitstrahl_hinweise(daten: &ProjektDaten, quelle: &str, datei: &str, befunde: &mut Vec<Befund>) {
     use crate::vertrag::verlauf::{Hand, art_wort};
+    // shortcut: Prüfung rechnet nach dem Rechnertag, am Rand ein Tag Versatz möglich; aufrüsten, wenn ein Hinweis deshalb falsch erscheint
     let heute = abgeleitet::heute();
     let mut ab = 0;
     for z in daten.zeitstrahl.iter().flat_map(|d| d.inhalte()) {

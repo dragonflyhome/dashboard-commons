@@ -16,4 +16,9 @@ zeile: number | null, schwere: Schwere,
 /**
  * Was falsch ist und wie es richtig geht, ein bis zwei Sätze.
  */
-text: string, };
+text: string, 
+/**
+ * Zeitpunkt zum Satz (RFC 3339), etwa seit wann eine Datei gesperrt ist;
+ * der Satz selbst nennt keine Uhrzeit.
+ */
+zeit: string | null, };

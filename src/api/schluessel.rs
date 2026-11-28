@@ -92,7 +92,12 @@ pub async fn liste(State(state): State<AppState>) -> Json<KeyList> {
             (Vec::new(), Some("Die Datei data/schluessel.toml ist fehlerhaft. Einzelheiten stehen im Protokoll des Servers.".to_string()))
         }
     };
-    Json(KeyList { keys, error })
+    // Der Satz nennt keine Uhrzeit; der letzte Stand geht als eigenes Feld hinaus.
+    let bote_stand = match (&state.bote, error.as_deref()) {
+        (Some(bote), Some(crate::bote::client::SATZ_AUSGELASTET_MIT_STAND)) => crate::bote::client::letzter_stand(bote.stand().zuletzt_gesehen.as_deref()),
+        _ => None,
+    };
+    Json(KeyList { keys, error, bote_stand })
 }
 
 /// Formular-POST: nur vom Dashboard selbst, höchstens 4 KB, Wert geht direkt

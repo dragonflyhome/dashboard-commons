@@ -14,7 +14,7 @@ status: string,
 /**
  * Farbe des Status als Bedeutung.
  */
-bedeutung: Bedeutung, last_change: string, summary: string, chat: string | null, 
+bedeutung: Bedeutung, summary: string, chat: string | null, 
 /**
  * Das Wort aus dem Kopf: rot, gelb, grün.
  */
@@ -34,7 +34,7 @@ open: Array<string>,
  */
 open_zahl?: number, repos: Array<RepoStatus>, 
 /**
- * Ortszeit, RFC 3339.
+ * Letzte Änderung (`projekt.toml` und `daten/`), Ortszeit, RFC 3339.
  */
 file_modified: string | null, 
 /**

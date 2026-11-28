@@ -80,6 +80,7 @@ pub async fn archiv(State(state): State<AppState>) -> Json<ArchivListe> {
 }
 
 pub fn archiv_liste(bestand: &crate::inhalt::store::Bestand) -> ArchivListe {
+    // shortcut: Tag im Rechner-Versatz, am Rand ein Tag daneben; mit 7c-2 über tag_von_zeitpunkt
     let tag = |z: Option<chrono::DateTime<chrono::Local>>| z.map(|z| z.format("%Y-%m-%d").to_string());
     let mut projekte: Vec<ArchivProjekt> = bestand
         .archivierte()

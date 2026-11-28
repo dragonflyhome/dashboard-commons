@@ -127,7 +127,7 @@ export function beispielStand(teil: Partial<StandAnsicht> = {}): StandAnsicht {
 			grund_art: 'nichts-wartet',
 			bezug_art: null,
 			bezug: null,
-			zuletzt: '2026-10-29'
+			zuletzt: '2026-10-29T10:00:00+01:00'
 		},
 		kurz: {
 			wartet_auf_dich: 0,
@@ -165,7 +165,7 @@ export function beispielProjektStand(teil: Partial<ProjektStand> = {}): ProjektS
 			grund: 'nichts-wartet',
 			bezug_art: null,
 			bezug: null,
-			zuletzt: '2026-10-29'
+			zuletzt: '2026-10-29T10:00:00+01:00'
 		},
 		frist_bald_tage: 7,
 		sichtbar: true,

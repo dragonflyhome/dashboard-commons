@@ -56,9 +56,10 @@ export function istProjektStand(x: unknown): x is ProjektStand {
 	if (!obj(x) || !obj(x.gesamt)) return false;
 	const g = x.gesamt;
 	return (
-		[x.slug, x.schwerpunkt, g.titel, g.status, g.bedeutung, g.ampel, g.grund, g.zuletzt].every(
+		[x.slug, x.schwerpunkt, g.titel, g.status, g.bedeutung, g.ampel, g.grund].every(
 			(t) => typeof t === 'string'
 		) &&
+		(g.zuletzt === null || typeof g.zuletzt === 'string') &&
 		typeof x.frist_bald_tage === 'number' &&
 		typeof x.sichtbar === 'boolean' &&
 		typeof x.speicher_fehlt === 'boolean' &&

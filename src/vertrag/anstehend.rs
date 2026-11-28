@@ -800,8 +800,8 @@ pub struct GesamtStand {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub tage: Option<i64>,
-    /// Letzte Änderung der Seite.
-    pub zuletzt: String,
+    /// Letzte Änderung der Seite (RFC 3339); `null`, wenn unbekannt.
+    pub zuletzt: Option<String>,
 }
 
 /// Die Zahlen des Unter-Dashboards. Die Oberfläche zählt sie aus

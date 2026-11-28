@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KeyList } from '$vertrag';
+import { zoneSetzen } from '#lib/zeit/zone.svelte.ts';
 
 // Nach dem Speichern leitet der Server auf ?gespeichert=<name> um. Die Seite
 // feiert einmal und nimmt den Parameter danach aus der Adresse (Auflage
@@ -33,7 +34,8 @@ const daten: KeyList = {
 			stand: 'gespeichert'
 		}
 	],
-	error: null
+	error: null,
+	bote_stand: null
 };
 
 /** Seite laden, wie SvelteKit es täte: erst zeichnen, dann afterNavigate. */
@@ -110,11 +112,40 @@ describe('/schluessel', () => {
 				{ ...roh, saved_at: null, stand: 'unbekannt' },
 				{ ...roh, name: 'zweiter', saved_at: null, stand: 'fehlt' }
 			],
-			error: null
+			error: null,
+			bote_stand: null
 		};
 		render(Page, { data: anders, params: {} } as never);
 		expect(screen.getByText('Stand unbekannt')).toBeInTheDocument();
 		expect(screen.getAllByText('fehlt')).toHaveLength(1);
 		expect(screen.getByText(/2 angefordert, 1 fehlt,\s*1 unbekannt\./)).toBeInTheDocument();
+	});
+
+	it('Stufe 7c-1: Bote ausgelastet, der letzte Stand kommt als Zeitpunkt und steht in der Anzeigezone', () => {
+		ort.url = new URL('http://localhost:8787/schluessel');
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn(() => ({ matches: false }))
+		);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(() => Promise.resolve(new Response('{}', { status: 404 })))
+		);
+		zoneSetzen('Pacific/Auckland');
+		try {
+			render(Page, {
+				data: {
+					keys: [],
+					error: 'Der Bote ist gerade ausgelastet.',
+					bote_stand: '2026-11-27T11:30:00Z'
+				},
+				params: {}
+			} as never);
+			expect(screen.getByText(/Der Bote ist gerade ausgelastet\./)).toHaveTextContent(
+				'letzter Stand 28.11.2026, 00:30'
+			);
+		} finally {
+			zoneSetzen(null);
+		}
 	});
 });

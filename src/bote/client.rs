@@ -146,14 +146,19 @@ pub fn pruefer_abweichung(bote: Option<&str>, eigene: &str) -> Option<String> {
     }
 }
 
-/// Satz für die Oberfläche, wenn der Bote überlastet ist: mit der Zeit der
-/// letzten guten Antwort (`zuletzt_gesehen`, RFC 3339).
+/// Satz für die Oberfläche, wenn der Bote überlastet ist und es einen
+/// früheren Stand gibt; die Zeit dazu steht in `KeyList.bote_stand`.
+pub const SATZ_AUSGELASTET_MIT_STAND: &str = "Der Bote ist gerade ausgelastet.";
+
+/// Die Zeit der letzten guten Antwort (`zuletzt_gesehen`, RFC 3339).
+pub fn letzter_stand(zuletzt_gesehen: Option<&str>) -> Option<chrono::DateTime<chrono::Local>> {
+    zuletzt_gesehen.and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|t| t.with_timezone(&chrono::Local))
+}
+
+/// Satz für die Oberfläche, wenn der Bote überlastet ist, ohne Uhrzeit.
 pub fn satz_ausgelastet(zuletzt_gesehen: Option<&str>) -> String {
-    let zeit = zuletzt_gesehen
-        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-        .map(|t| t.with_timezone(&chrono::Local).format("%d.%m.%Y %H:%M").to_string());
-    match zeit {
-        Some(z) => format!("Der Bote ist gerade ausgelastet; letzter Stand von {z}."),
+    match letzter_stand(zuletzt_gesehen) {
+        Some(_) => SATZ_AUSGELASTET_MIT_STAND.to_string(),
         None => "Der Bote ist gerade ausgelastet; einen früheren Stand gibt es noch nicht.".to_string(),
     }
 }
@@ -657,10 +662,12 @@ mod tests {
     }
 
     #[test]
-    fn satz_bei_ueberlastung_nennt_den_letzten_stand() {
+    fn satz_bei_ueberlastung_ohne_uhrzeit() {
         let t = chrono::Local::now();
-        let s = satz_ausgelastet(Some(&t.to_rfc3339()));
-        assert_eq!(s, format!("Der Bote ist gerade ausgelastet; letzter Stand von {}.", t.format("%d.%m.%Y %H:%M")));
-        assert!(satz_ausgelastet(None).starts_with("Der Bote ist gerade ausgelastet;"));
+        // Die Zeit steht nicht im Satz, sondern geht als `KeyList.bote_stand` hinaus.
+        assert_eq!(satz_ausgelastet(Some(&t.to_rfc3339())), SATZ_AUSGELASTET_MIT_STAND);
+        assert_eq!(letzter_stand(Some(&t.to_rfc3339())), Some(t));
+        assert_eq!(satz_ausgelastet(None), "Der Bote ist gerade ausgelastet; einen früheren Stand gibt es noch nicht.");
+        assert_eq!(satz_ausgelastet(Some("kaputt")), satz_ausgelastet(None));
     }
 }

@@ -20,7 +20,6 @@ function projekt(
 		title: slug.toUpperCase(),
 		status: status[bedeutung],
 		bedeutung,
-		last_change: '2026-10-01',
 		summary: `Satz zu ${slug}`,
 		chat: null,
 		backup: null,
@@ -30,7 +29,7 @@ function projekt(
 		order: 100,
 		open: [],
 		repos: [],
-		file_modified: null,
+		file_modified: '2026-10-01T10:00:00+02:00',
 		...mehr
 	};
 }
@@ -38,7 +37,7 @@ function projekt(
 const LISTE = [
 	projekt('web', 'laeuft', { order: 20 }),
 	projekt('postfach', 'laeuft', { order: 10, chat: 'Post' }),
-	projekt('alt', 'ok', { last_change: '2026-10-30' }),
+	projekt('alt', 'ok', { file_modified: '2026-10-30T09:00:00+01:00' }),
 	projekt('pause', 'wartet'),
 	projekt('kaputt', 'problem')
 ];
@@ -82,6 +81,25 @@ describe('Startseite: auswerten (Etappe 3b)', () => {
 			'fertig',
 			'pausiert',
 			'problem'
+		]);
+	});
+
+	it('letzte Änderung nach dem Zeitpunkt, nicht nach dem Text; ohne Zeit zuletzt, Gleichstand nach Titel', () => {
+		const liste = [
+			projekt('ohne', 'laeuft', { file_modified: null }),
+			// Später als Text, früher als Zeitpunkt (09:30 Weltzeit gegen 10:00).
+			projekt('osten', 'laeuft', { file_modified: '2026-10-30T12:30:00+03:00' }),
+			projekt('b', 'laeuft', { file_modified: '2026-10-30T11:00:00+01:00' }),
+			projekt('a', 'laeuft', { file_modified: '2026-10-30T10:00:00Z' }),
+			// Zwei ohne Zeit: beide zuletzt, untereinander nach Titel (LEER vor OHNE).
+			projekt('leer', 'laeuft', { file_modified: null })
+		];
+		expect(auswerten(liste, { ...ALLE, sortierung: 'change' }).gezeigt.map((p) => p.slug)).toEqual([
+			'a',
+			'b',
+			'osten',
+			'leer',
+			'ohne'
 		]);
 	});
 

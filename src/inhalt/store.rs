@@ -108,8 +108,6 @@ pub struct ProjektStand {
     pub daten: Result<BTreeMap<String, DatenErgebnis>, LeseFehler>,
     /// Mit diesem Datum gerechnet (Kennzahlen mit `berechnet`).
     pub tag: NaiveDate,
-    /// Wann gelesen.
-    pub gelesen: DateTime<Local>,
     /// Lesefehler (gesperrte Dateien) beim letzten Versuch: Datei und Satz.
     /// Ist die Liste nicht leer, wird das Projekt alle 2 s wieder gelesen.
     pub lesefehler: Vec<LeseHinweis>,
@@ -136,7 +134,7 @@ pub struct ProjektStand {
 pub struct LeseHinweis {
     pub datei: String,
     pub satz: String,
-    /// Seit wann (Tag und Uhrzeit).
+    /// Seit wann (RFC 3339).
     pub seit: String,
 }
 
@@ -182,7 +180,6 @@ impl ProjektStand {
                 namen: seite::daten_namen(dir, slug),
                 daten,
                 tag: heute,
-                gelesen: Local::now(),
                 lesefehler: Vec::new(),
                 gut: true,
                 gesperrt: Vec::new(),
@@ -409,23 +406,24 @@ impl Bestand {
     /// Lesefehler, deren letzter guter Stand gerade gilt, als Funde je Projekt
     /// (für /api/pruefung); Dateien aus `data/` unter `dashboard`.
     pub fn lesefehler_befunde(&self) -> Vec<(String, Befund)> {
-        let satz = |h: &LeseHinweis, gut: Option<&str>| {
-            let anfang = format!("{}. Die Datei ist gesperrt oder ohne Leserechte (seit {}).", h.satz.trim_end_matches('.'), h.seit);
-            match gut {
-                Some(gelesen) => format!("{anfang} Das Dashboard zeigt den letzten guten Stand (gelesen {gelesen}) und versucht es alle 2 s wieder."),
+        // Der Satz nennt keine Uhrzeit; seit wann steht in `zeit` (RFC 3339).
+        let befund = |h: &LeseHinweis, gut: Option<&str>| {
+            let anfang = format!("{}. Die Datei ist gesperrt oder ohne Leserechte.", h.satz.trim_end_matches('.'));
+            let text = match gut {
+                Some(stand) => format!("{anfang} Das Dashboard zeigt den letzten guten Stand{stand} und versucht es alle 2 s wieder."),
                 None => format!("{anfang} Einen guten Stand gibt es noch nicht; das Dashboard versucht es alle 2 s wieder."),
-            }
+            };
+            Befund::fehler(h.datei.clone(), None, text).mit_zeit(h.seit.clone())
         };
         let mut aus = Vec::new();
         // Archivbereich: Projekte im Archiv werden nicht geprüft, auch nicht auf Lesefehler.
         for p in self.projekte.values().filter(|p| !p.im_archiv) {
-            let gelesen = p.gelesen.format("%d.%m. %H:%M").to_string();
             for h in &p.lesefehler {
-                aus.push((p.slug.clone(), Befund::fehler(h.datei.clone(), None, satz(h, p.gut.then_some(gelesen.as_str())))));
+                aus.push((p.slug.clone(), befund(h, p.gut.then_some(""))));
             }
         }
         for h in &self.daten_lesefehler {
-            aus.push(("dashboard".to_string(), Befund::fehler(h.datei.clone(), None, satz(h, Some("vorher")))));
+            aus.push(("dashboard".to_string(), befund(h, Some(" (vorher)"))));
         }
         aus
     }
@@ -482,7 +480,7 @@ fn sperren<'a, T>(m: &'a Mutex<T>, was: &str) -> MutexGuard<'a, T> {
 }
 
 fn jetzt_text() -> String {
-    Local::now().format("%d.%m. %H:%M").to_string()
+    crate::vertrag::verlauf::zeit_text(&Local::now())
 }
 
 /// Liegt `prefix` in `projects/<slug>/daten/` (oder tiefer)?

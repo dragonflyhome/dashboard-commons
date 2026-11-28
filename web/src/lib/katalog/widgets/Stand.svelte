@@ -27,6 +27,7 @@
 	import { klasse } from '#lib/bedeutung.ts';
 	import { AMPEL_WORT, ampelZiel, standSatz, standZahlen } from '#lib/projektteile.ts';
 	import { AMPEL } from './worte.ts';
+	import { kurzZeit } from '#lib/unterdashboard.ts';
 
 	interface Props {
 		gesamt: GesamtAnsicht;
@@ -114,7 +115,7 @@
 		{/if}
 		<p class="muted small">
 			{gesamt.status} · {schwerpunkt}
-			{#if gesamt.zuletzt}<br />zuletzt geändert {gesamt.zuletzt}{/if}
+			{#if gesamt.zuletzt !== null}<br />zuletzt geändert {kurzZeit(gesamt.zuletzt)}{/if}
 		</p>
 		{@render speicher()}
 	</div>

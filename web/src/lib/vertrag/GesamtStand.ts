@@ -29,6 +29,6 @@ bezug: string | null,
  */
 tage?: number, 
 /**
- * Letzte Änderung der Seite.
+ * Letzte Änderung der Seite (RFC 3339); `null`, wenn unbekannt.
  */
-zuletzt: string, };
+zuletzt: string | null, };

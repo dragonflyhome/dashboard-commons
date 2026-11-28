@@ -53,7 +53,6 @@ function detail(slug: string, title: string, teil: Partial<ProjectDetail> = {}):
 		title,
 		status: 'aktiv',
 		bedeutung: 'laeuft',
-		last_change: '2026-10-30',
 		summary: `Zusammenfassung von ${title}`,
 		chat: null,
 		backup: null,

@@ -8,7 +8,6 @@ const project: ProjectSummary = {
 	title: 'Beispiel',
 	status: 'aktiv',
 	bedeutung: 'laeuft',
-	last_change: '2026-10-25',
 	summary: 'Beispielseite im Schaufenster.',
 	chat: 'Beispiel-Chat Schaufenster',
 	backup: 'gelb',
@@ -58,6 +57,10 @@ describe('ProjectCard', () => {
 		unmount();
 		render(ProjectCard, { project, jetzt: spaeter });
 		expect(screen.getByText(/Git-Stand von \d\d:\d\d/)).toBeInTheDocument();
+	});
+	it('zeigt „zuletzt unbekannt“ ohne Zeitpunkt der Datei (file_modified null)', () => {
+		render(ProjectCard, { project });
+		expect(screen.getByText(/zuletzt unbekannt/)).toBeInTheDocument();
 	});
 	it('lässt Zeilen weg, wenn Felder fehlen', () => {
 		render(ProjectCard, {

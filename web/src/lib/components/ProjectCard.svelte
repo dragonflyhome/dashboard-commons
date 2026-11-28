@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import type { Bedeutung, ProjectSummary, SeitenBau } from '$vertrag';
 	import { gitStandHinweis } from '#lib/format.ts';
+	import { kurzZeit } from '#lib/unterdashboard.ts';
 	import StatusDot from './StatusDot.svelte';
 
 	interface Props {
@@ -39,7 +40,11 @@
 
 <a class="tile card" href={resolve('/projects/[slug]', { slug: project.slug })}>
 	<h2><StatusDot bedeutung={project.bedeutung} label={project.status} /> {project.title}</h2>
-	<p class="meta muted small">{project.status} · zuletzt {project.last_change}</p>
+	<p class="meta muted small">
+		{project.status} · zuletzt {project.file_modified === null
+			? 'unbekannt'
+			: kurzZeit(project.file_modified)}
+	</p>
 	{#if project.summary}
 		<p>{project.summary}</p>
 	{/if}

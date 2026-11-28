@@ -36,7 +36,6 @@ function projekt(slug: string, title: string, teil: Partial<ProjectSummary> = {}
 		title,
 		status: 'aktiv',
 		bedeutung: 'laeuft',
-		last_change: '2026-10-30',
 		summary: `Über ${title}`,
 		chat: null,
 		backup: null,

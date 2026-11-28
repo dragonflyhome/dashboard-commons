@@ -10,7 +10,6 @@ function projekt(slug: string, bedeutung: ProjectSummary['bedeutung']): ProjectS
 		title: `Projekt ${slug}`,
 		status: bedeutung === 'ok' ? 'fertig' : 'aktiv',
 		bedeutung,
-		last_change: '2026-10-30',
 		summary: 'Ein Satz.',
 		chat: null,
 		backup: null,

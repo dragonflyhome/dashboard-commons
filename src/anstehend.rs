@@ -57,6 +57,7 @@ use crate::vertrag::bedeutung::Bedeutung;
 use crate::vertrag::daten::{DatenInhalt, Frage};
 use crate::vertrag::gruppen::{self, GruppeAnzeige};
 use crate::vertrag::schwerpunkte::{self, SONSTIGES, Schwerpunkte};
+use crate::vertrag::verlauf::zeit_text;
 
 /// Eine Frist in höchstens so vielen Tagen hebt mindestens auf bald.
 pub const FRIST_BALD_TAGE: i64 = 7;
@@ -223,8 +224,8 @@ pub struct ProjektKopf {
     pub status: String,
     /// `open = [...]`.
     pub notizen: Vec<String>,
-    /// Letzte Änderung der Seite.
-    pub zuletzt: String,
+    /// Letzte Änderung der Seite (RFC 3339); `None`, wenn unbekannt.
+    pub zuletzt: Option<String>,
     /// Archiviert (Entscheidung archiv-status; aus dem ContentStore,
     /// auch wenn der Kopf gerade kaputt ist).
     pub archiviert: bool,
@@ -318,7 +319,7 @@ impl AusDenDateien {
                 titel: p.meta.title.clone(),
                 status: p.meta.status.clone(),
                 notizen: p.meta.open.clone(),
-                zuletzt: p.last_change(),
+                zuletzt: p.file_modified.as_ref().map(zeit_text),
                 archiviert: b.archiviert(&p.slug),
             });
         }
@@ -331,7 +332,7 @@ impl AusDenDateien {
                     titel: p.title.clone(),
                     status: p.status.wort().to_string(),
                     notizen: p.open.clone(),
-                    zuletzt: zeit.map_or_else(|| "unbekannt".to_string(), |t| t.format("%Y-%m-%d %H:%M").to_string()),
+                    zuletzt: zeit.as_ref().map(zeit_text),
                     archiviert: b.archiviert(&k.slug),
                 },
                 None => ProjektKopf {
@@ -339,7 +340,7 @@ impl AusDenDateien {
                     titel: k.slug.clone(),
                     status: "problem".to_string(),
                     notizen: Vec::new(),
-                    zuletzt: "unbekannt".to_string(),
+                    zuletzt: None,
                     archiviert: b.archiviert(&k.slug),
                 },
             });
@@ -1046,7 +1047,7 @@ pub(crate) mod tests {
             titel: format!("Projekt {slug}"),
             status: "aktiv".into(),
             notizen: vec!["Notiz".into()],
-            zuletzt: "2026-10-29 10:00".into(),
+            zuletzt: Some("2026-10-29T10:00:00+01:00".into()),
             archiviert: false,
         }
     }
