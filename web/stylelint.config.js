@@ -15,6 +15,11 @@
  * ein Hinweis mit dem neuen Namen; steht keiner mehr im Kern und in den
  * Projekten, wird aus `warning` unten `error`. app.css ist ausgenommen: Dort
  * stehen die Töne der Bedeutungen und die Verweise der alten Namen.
+ *
+ * Externe Vorgaben: Im Kern geht bis Teil 2 nur `--extern-x: var(--reihe-n)`
+ * mit Herkunft. Einen festen Farbwert in der Deklaration weisen color-no-hex
+ * und die beiden anderen Farbregeln weiter ab; die Ausnahme dafür kommt mit
+ * der eigenen Regel für feste Farben in Teil 2.
  */
 import namensregeln from './src/stilregeln.js';
 

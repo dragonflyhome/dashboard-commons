@@ -9,10 +9,15 @@
  * - einen Namen, den es nicht gibt,
  * - einen Ton der Bedeutungen (`--b-…`) außerhalb von app.css,
  * - eine externe Vorgabe (`--extern-…`), die in der Datei nicht deklariert ist,
- *   deren Herkunft fehlt oder die Text oder Umriss färbt.
+ *   deren Herkunft fehlt, die Text oder Umriss färbt oder die das Markup setzt
+ *   (`style:--extern-…` oder `style="--extern-…: …"`): Dort stünde sie ohne
+ *   Herkunft, darum wählt das Markup eine externe Farbe nur per Klasse,
+ * - einen Namen der Farbordnung, den eine Datei außerhalb von app.css neu setzt
+ *   (`.karte { --b-ok: … }` würde alle Bedeutungen darunter still umfärben).
  *
  * Durch gehen: die Namen der Liste, die Vorsilben, und eigene Namen, die in
  * derselben Datei deklariert sind (im Stil oder im Markup über `style:--name`).
+ * Ein eigener Name ist nur, was nicht schon der Farbordnung gehört.
  * Was ein eigener Name als Wert nennt, wird wie jede andere Stelle geprüft.
  *
  * `dashboard/alte-namen` meldet einen alten Namen mit seinem Ersatz. Sie ist
@@ -35,6 +40,25 @@ const FORM = '--extern-<name>: <wert>; /* extern: <Herkunft> */';
 const bekannt = new Set([...FARBROLLEN, ...UEBRIGE_NAMEN]);
 /** @type {ReadonlyMap<string, string>} */
 const alt = new Map(ALTE_NAMEN);
+/** Die Töne setzt eine Klasse `b-…`; ein Baustein darf sie für sich neu setzen. */
+const TON = /^--ton(-soft|-text|-auf)?$/;
+const farbrollen = /** @type {readonly string[]} */ (FARBROLLEN);
+
+/**
+ * Ob ein Name der Farbordnung gehört und darum kein eigener Name einer Datei
+ * sein kann: ein Ton der Bedeutungen, eine Farbrolle außer `--ton…`, ein alter
+ * Name oder ein Name mit Vorsilbe.
+ * @param {string} name
+ * @returns {boolean}
+ */
+function gehoertDerOrdnung(name) {
+	return (
+		name.startsWith('--b-') ||
+		(farbrollen.includes(name) && !TON.test(name)) ||
+		alt.has(name) ||
+		VORSILBEN.some((v) => name.startsWith(v))
+	);
+}
 
 const meldungen = stylelint.utils.ruleMessages(BEKANNT, {
 	/** @param {string} name */
@@ -49,6 +73,12 @@ const meldungen = stylelint.utils.ruleMessages(BEKANNT, {
 	/** @param {string} name */
 	externHerkunft: (name) =>
 		`Stil: Bei „${name}“ fehlt die Herkunft hinter dem Semikolon. Erwartet: ${FORM}`,
+	/** @param {string} name */
+	externMarkup: (name) =>
+		`Stil: Die externe Vorgabe „${name}“ setzt das Markup. Dort stünde sie ohne Herkunft: im Stil des Bausteins deklarieren (${FORM}) und im Markup per Klasse wählen.`,
+	/** @param {string} name @param {string} ersatz */
+	ordnung: (name, ersatz) =>
+		`Stil: „${name}“ gehört zur Farbordnung und wird nur in app.css gesetzt. Nimm stattdessen: ${ersatz}.`,
 	/** @param {string} name @param {string} eigenschaft */
 	externText: (name, eigenschaft) =>
 		`Stil: Die externe Vorgabe „${name}“ steht in „${eigenschaft}“. Externe Farben tragen nie Text, Bedeutung oder Fokus.`
@@ -102,13 +132,64 @@ function eigeneNamen(wurzel) {
 	const mit = /** @type {{ document?: import('postcss').Document }} */ (wurzel);
 	const datei = mit.document ?? wurzel;
 	datei.walkDecls(/^--/, (d) => {
-		eigene.add(d.prop);
+		// Eine externe Vorgabe zählt nur aus einem Stilblock, nie aus `style="…"`.
+		if (d.prop.startsWith(EXTERN) ? !imMarkup(d) : !gehoertDerOrdnung(d.prop)) eigene.add(d.prop);
 	});
-	const quelle = datei.source?.input.css ?? '';
-	for (const treffer of quelle.matchAll(/\bstyle:(--[\w-]+)/g)) {
-		if (treffer[1] !== undefined) eigene.add(treffer[1]);
+	for (const { name } of direktiven(wurzel)) {
+		if (!gehoertDerOrdnung(name)) eigene.add(name);
 	}
 	return eigene;
+}
+
+/**
+ * Ob eine Deklaration in einem `style="…"` des Markups steht.
+ * @param {import('postcss').Declaration} d
+ * @returns {boolean}
+ */
+function imMarkup(d) {
+	const wurzel = /** @type {{ source?: { inline?: boolean } }} */ (d.root());
+	return wurzel.source?.inline === true;
+}
+
+/**
+ * Die Namen, die das Markup der Datei über `style:--name` setzt, je mit ihrer
+ * Zeile in der Datei.
+ * @param {import('postcss').Root} wurzel
+ * @returns {{ name: string, zeile: number }[]}
+ */
+function direktiven(wurzel) {
+	const mit = /** @type {{ document?: import('postcss').Document }} */ (wurzel);
+	const quelle = (mit.document ?? wurzel).source?.input.css ?? '';
+	/** @type {{ name: string, zeile: number }[]} */
+	const treffer = [];
+	for (const t of quelle.matchAll(/\bstyle:(--[\w-]+)/g)) {
+		if (t[1] === undefined) continue;
+		treffer.push({ name: t[1], zeile: quelle.slice(0, t.index).split('\n').length });
+	}
+	return treffer;
+}
+
+/**
+ * Ob diese Wurzel die erste der Datei ist. Was die ganze Datei betrifft, wird
+ * nur dort gemeldet, sonst stünde es je Stilblock einmal da.
+ * @param {import('postcss').Root} wurzel
+ * @returns {boolean}
+ */
+function istErste(wurzel) {
+	const mit = /** @type {{ document?: import('postcss').Document }} */ (wurzel);
+	return mit.document === undefined || mit.document.first === wurzel;
+}
+
+/**
+ * Was statt eines Namens der Farbordnung zu nehmen ist.
+ * @param {string} name
+ * @returns {string}
+ */
+function ersatzFuerOrdnung(name) {
+	if (name.startsWith('--b-')) return ersatzFuerBedeutung(name);
+	const neu = alt.get(name);
+	if (neu?.startsWith('Klasse') === true) return neu;
+	return 'einen eigenen Namen, dessen Wert die Farbordnung nennt';
 }
 
 /**
@@ -133,8 +214,26 @@ const bekannteNamen = (an) => (wurzel, ergebnis) => {
 	const melde = (d, text) => {
 		stylelint.utils.report({ ruleName: BEKANNT, result: ergebnis, node: d, message: text });
 	};
+	// Was das Markup über `style:--extern-…` setzt, je Treffer einmal.
+	if (istErste(wurzel)) {
+		for (const { name, zeile } of direktiven(wurzel)) {
+			if (!name.startsWith(EXTERN)) continue;
+			stylelint.utils.report({
+				ruleName: BEKANNT,
+				result: ergebnis,
+				node: wurzel,
+				line: zeile,
+				message: meldungen.externMarkup(name)
+			});
+		}
+	}
 	wurzel.walkDecls((d) => {
-		if (d.prop.startsWith(EXTERN) && !hatHerkunft(d)) melde(d, meldungen.externHerkunft(d.prop));
+		if (d.prop.startsWith(EXTERN)) {
+			if (imMarkup(d)) melde(d, meldungen.externMarkup(d.prop));
+			else if (!hatHerkunft(d)) melde(d, meldungen.externHerkunft(d.prop));
+		} else if (d.prop.startsWith('--') && gehoertDerOrdnung(d.prop)) {
+			melde(d, meldungen.ordnung(d.prop, ersatzFuerOrdnung(d.prop)));
+		}
 		const eigenschaft = d.prop.toLowerCase();
 		for (const name of namenIn(d.value)) {
 			if (bekannt.has(name) || alt.has(name)) continue;

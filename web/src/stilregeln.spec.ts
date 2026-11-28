@@ -122,6 +122,33 @@ describe('Regel dashboard/bekannte-namen', () => {
 		).toEqual([BEKANNT]);
 	});
 
+	it.each([
+		['--b-ok', 'Klasse b-ok mit --ton.'],
+		['--b-wartet-soft', 'Klasse b-wartet mit --ton-soft.'],
+		['--ok', 'Klasse b-ok mit --ton.'],
+		['--linie', 'einen eigenen Namen'],
+		['--bg', 'einen eigenen Namen'],
+		['--reihe-3', 'einen eigenen Namen']
+	])('weist ab: eine Datei setzt %s neu', async (name, ersatz) => {
+		const f = await namensfunde(`.karte { ${name}: var(--reihe-6); }`);
+		expect(f.map((x) => x.regel)).toEqual([BEKANNT]);
+		expect(f[0]?.text).toContain(`„${name}“ gehört zur Farbordnung`);
+		expect(f[0]?.text).toContain(ersatz);
+	});
+
+	it('ein neu gesetzter Ton der Bedeutungen gilt nicht als eigener Name', async () => {
+		const f = await namensfunde('.karte { --b-ok: var(--reihe-6); color: var(--b-ok); }');
+		expect(f.map((x) => x.regel)).toEqual([BEKANNT, BEKANNT]);
+	});
+
+	it('einen Ton darf ein Baustein für sich setzen', async () => {
+		expect(
+			await funde(
+				'.karte { --ton: var(--reihe-2); --ton-soft: var(--flaeche); color: var(--ton); }'
+			)
+		).toEqual([]);
+	});
+
 	it('ein eigener Name mit festem Farbwert bleibt ein fester Farbwert', async () => {
 		const regeln = (await funde('a { --zeichen: #b8322a; fill: var(--zeichen); }')).map(
 			(f) => f.regel
@@ -135,11 +162,39 @@ describe('Regel dashboard/bekannte-namen', () => {
 			`.zeichen {\n\t${deklaration}\n\t${nutzung}\n}`;
 
 		it('geht durch: in der Datei deklariert, Herkunft hinter dem Semikolon', async () => {
+			const code = mit('--extern-osten: #b8322a; /* extern: Farbe des Ostens nach Quelle */');
+			expect(await namensfunde(code)).toEqual([]);
+			// Zwischenstand bis Teil 2: Den festen Wert weist color-no-hex weiter ab.
+			expect((await funde(code)).map((f) => f.regel)).toContain('color-no-hex');
+		});
+
+		it('geht im Kern ganz durch, wenn der Wert die Farbreihe nennt', async () => {
 			expect(
-				await namensfunde(
-					mit('--extern-osten: #b8322a; /* extern: Farbe des Ostens nach Quelle */')
+				await funde(
+					mit('--extern-osten: var(--reihe-3); /* extern: Farbe des Ostens nach Quelle */')
 				)
 			).toEqual([]);
+		});
+
+		it('weist ab: das Markup setzt sie über style:, je Treffer einmal', async () => {
+			const svelte =
+				'<div class="k" style:--extern-osten={farbe}></div>\n<p style="margin: 0"></p>\n' +
+				'<style>\n.k { fill: var(--extern-osten); }\n</style>\n<style>\n.l { margin: 0; }\n</style>';
+			const f = await namensfunde(svelte, 'x.svelte');
+			const markup = f.filter((x) => x.text.includes('per Klasse wählen'));
+			expect(markup).toHaveLength(1);
+			expect(markup[0]?.text.startsWith('Stil: ')).toBe(true);
+			// Im Stil gilt der Name damit nicht als deklariert.
+			expect(f.filter((x) => x.text.includes('nicht deklariert'))).toHaveLength(1);
+			expect(f).toHaveLength(2);
+		});
+
+		it('weist ab: das Markup deklariert sie in style="…"', async () => {
+			const svelte =
+				'<div class="k" style="--extern-osten: var(--reihe-3)"></div>\n<style>\n.k { fill: var(--extern-osten); }\n</style>';
+			const f = await namensfunde(svelte, 'x.svelte');
+			expect(f.filter((x) => x.text.includes('per Klasse wählen'))).toHaveLength(1);
+			expect(f.filter((x) => x.text.includes('nicht deklariert'))).toHaveLength(1);
 		});
 
 		it.each([
