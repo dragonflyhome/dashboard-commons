@@ -195,8 +195,16 @@ mod tests {
         let mut state = ohne_speicher();
         state.daten_datei = std::sync::Arc::new(PathBuf::from(&datei));
         let (status, body) = lesen(router(state.clone()).oneshot(get("/api/daten")).await.unwrap()).await;
-        assert_eq!(status, StatusCode::OK, "{body}");
-        let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+        // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+        // Darum prüfen die Handler direkt den Datenschutzteil, damit auch die /Users-Fassung geprüft bleibt.
+        let Ok(Json(bericht)) = bericht(State(state.clone())).await else { panic!("Bericht ohne Datenspeicher") };
+        let v = serde_json::to_value(bericht).unwrap();
+        if cfg!(windows) {
+            assert_eq!(status, StatusCode::OK, "{body}");
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&body).unwrap(), v);
+        } else {
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+        }
         assert_eq!(v["sicherung_klasse"], "bad");
         assert_eq!(v["schema"], 0);
         assert_eq!(v["groesse_bytes"], 0, "die Datei gibt es im Test nicht");
@@ -207,7 +215,8 @@ mod tests {
         assert_eq!(v["sicherungs_ordner"], ordner.as_str());
         assert_eq!(v["fehler"].as_str().unwrap(), format!("Der Datenspeicher lässt sich nicht öffnen. Die letzten Sicherungen liegen in {ordner}. {SATZ}"));
         // Die 503-Antwort desselben Zustands ist eine Fehlerantwort und bleibt verborgen.
-        let (status, body) = lesen(router(state).oneshot(get("/api/daten/export")).await.unwrap()).await;
+        let Err(fehler) = export(State(state), "/api/daten/export".parse().unwrap()).await else { panic!("Export ohne Datenspeicher") };
+        let (status, body) = lesen(fehler.into_response()).await;
         assert!(status == StatusCode::SERVICE_UNAVAILABLE && body.contains("%USERPROFILE%") && !body.contains(NAME), "{body}");
     }
 
@@ -225,8 +234,13 @@ mod tests {
         for res in antworten {
             assert!(res.headers()[header::CONTENT_TYPE].to_str().unwrap().starts_with("application/json"));
             let (status, body) = lesen(res).await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
             let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+            // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+            if !cfg!(windows) {
+                assert_eq!((status, v["art"].as_str()), (StatusCode::UNAUTHORIZED, Some("anmeldung")), "{body}");
+                continue;
+            }
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
             assert_eq!(v["art"], "speicher-fehlt");
             let satz = v["fehler"].as_str().unwrap();
             assert!(satz.contains("Die letzten Sicherungen liegen in") && satz.ends_with(SATZ), "{body}");

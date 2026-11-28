@@ -1647,7 +1647,8 @@ mod tests {
         std::fs::write(solo.join("projekt.toml"), "schema = 3\ntitle = \"Fremd Solo\"\nstatus = \"aktiv\"\n").unwrap();
         std::fs::write(solo.join("assets/bild.png"), "PNG").unwrap();
         std::fs::write(solo.join("daten/fortschritt.toml"), "[[zeile]]\ntitel = \"F\"\nprozent = 40\n").unwrap();
-        let state = AppState::fuer_tests_ohne_speicher(&beispiel(), "").mit_quellen(vec![beispiel().join("projects"), solo.clone()]);
+        // Mit Datenspeicher: Außerhalb von Windows braucht `router_angemeldet` ihn für die Anmeldung.
+        let state = AppState::fuer_tests(&beispiel()).mit_quellen(vec![beispiel().join("projects"), solo.clone()]);
         let app = router_angemeldet(state);
         let hole = |pfad: &'static str| {
             let app = app.clone();
@@ -1818,6 +1819,11 @@ mod tests {
         let state = AppState::fuer_tests_ohne_speicher(&beispiel(), "Ein Eintrag im Datenspeicher ist beschädigt.");
         assert!(state.speicher().is_err());
         let app = router_angemeldet(state);
+        // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+        if !cfg!(windows) {
+            assert_eq!(app.oneshot(get("/api/projects")).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+            return;
+        }
         for pfad in ["/api/projects", "/api/projects/dashboard", "/api/pc", "/api/schluessel", "/api/daten", "/healthz"] {
             let res = app.clone().oneshot(get(pfad)).await.unwrap();
             assert_eq!(res.status(), StatusCode::OK, "{pfad}");

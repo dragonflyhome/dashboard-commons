@@ -1168,8 +1168,9 @@ mod tests {
         ] {
             let pfad = req.uri().to_string();
             let (status, v) = schicke(&state, req).await;
-            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{pfad}: {v}");
-            assert_eq!(v["art"], "speicher-fehlt");
+            // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+            let soll = if cfg!(windows) { (StatusCode::SERVICE_UNAVAILABLE, "speicher-fehlt") } else { (StatusCode::UNAUTHORIZED, "anmeldung") };
+            assert_eq!((status, v["art"].as_str().unwrap_or_default()), soll, "{pfad}: {v}");
         }
     }
 
