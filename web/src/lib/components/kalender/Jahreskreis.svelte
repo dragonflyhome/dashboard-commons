@@ -44,9 +44,44 @@
 	);
 	const tage = $derived(tagZahl(jahr.zeitraum.ende) - tagZahl(jahr.zeitraum.anfang));
 
-	/** Winkel eines Tags in Grad, im Uhrzeigersinn ab oben (der Wende im Winter). */
+	/** Die Rollen der vier Sonnentage, im Uhrzeigersinn ab oben. */
+	const SONNENTAGE = ['wende-winter', 'gleiche-fruehling', 'wende-sommer', 'gleiche-herbst'];
+	/**
+	 * Die Stützpunkte des Kreises als Tageszahlen: die vier Sonnentage nach ihrer Rolle, Anfang
+	 * und Ende des Festjahrs und `rest`, die Tage des letzten Viertels (Herbstgleiche bis Ende
+	 * und Anfang bis Wende zusammen). `null`, wenn ein Sonnentag fehlt, sie nicht in dieser
+	 * Reihenfolge im Festjahr liegen oder das letzte Viertel keinen Tag hat: Dann gilt die
+	 * gleichmäßige Rechnung über das ganze Festjahr.
+	 */
+	const stuetzen = $derived.by(() => {
+		const [w, f, s, h] = SONNENTAGE.map((rolle) =>
+			tagZahl(jahr.sonnentage.find((x) => x.kennung === rolle)?.datum ?? '')
+		);
+		const a = tagZahl(jahr.zeitraum.anfang);
+		const e = tagZahl(jahr.zeitraum.ende);
+		if (w === undefined || f === undefined || s === undefined || h === undefined) return null;
+		// Ein fehlender Tag ist keine Zahl; jeder Vergleich damit ist falsch.
+		if (!(a <= w && w < f && f < s && s < h && h <= e)) return null;
+		const rest = e - h + (w - a);
+		return rest > 0 ? { w, f, s, h, rest } : null;
+	});
+
+	/**
+	 * Winkel eines Tags in Grad, im Uhrzeigersinn ab oben (der Wende im Winter). Die vier
+	 * Sonnentage stehen auf dem Kreuz (0°, 90°, 180°, 270°), jeder Tag dazwischen liegt anteilig
+	 * in seinem Viertel. Das letzte Viertel teilen sich zwei Stücke, damit der Kreis sich
+	 * schließt: von der Herbstgleiche bis zum Ende und vom Anfang bis zur Wende. Die Monde in
+	 * diesem Viertel sind darum gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
+	 */
 	function winkel(t: string): number {
-		return ((tagZahl(t) - tagZahl(nullTag)) / tage) * 360;
+		const n = tagZahl(t);
+		const p = stuetzen;
+		if (p === null) return ((n - tagZahl(nullTag)) / tage) * 360;
+		if (n < p.w) return (-90 * (p.w - n)) / p.rest;
+		if (n < p.f) return (90 * (n - p.w)) / (p.f - p.w);
+		if (n < p.s) return 90 + (90 * (n - p.f)) / (p.s - p.f);
+		if (n < p.h) return 180 + (90 * (n - p.s)) / (p.h - p.s);
+		return 270 + (90 * (n - p.h)) / p.rest;
 	}
 	function lage(w: number, r: number): { x: string; y: string } {
 		const a = ((w - 90) * Math.PI) / 180;
@@ -173,7 +208,13 @@
 			<text class="jahr" x={M} y={M}>{festjahrName(jahr)}</text>
 		</svg>
 		<!-- Beide Ringe folgen den Mondmonaten: innen die Jahreszeiten, außen die Monate; ein Festmonat wie „Imbolc“ gehört noch zur Jahreszeit davor. -->
-		<p class="muted small" data-legende>Innen die Jahreszeiten, außen die Mondmonate.</p>
+		<p class="muted small" data-legende>
+			Innen die Jahreszeiten, außen die Mondmonate.
+			{#if stuetzen && jahr.monate.length > 0}
+				Die Sonnentage stehen auf dem Kreuz; die Monde im Viertel vor der Wintersonnenwende sind
+				gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
+			{/if}
+		</p>
 	</div>
 	<div class="liste">
 		{#if jahr.hinweis}<p class="muted small">{jahr.hinweis}</p>{/if}
