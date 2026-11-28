@@ -8,6 +8,41 @@ pub fn eigene_uid() -> u32 {
     unsafe { libc::getuid() }
 }
 
+/// Die gezählten Ticks aller Prozessoren seit dem Start, in der Reihenfolge von
+/// macOS: Benutzer, System, Leerlauf, Nice (`CPU_STATE_USER` bis
+/// `CPU_STATE_NICE`). `None`, wenn das System die Zahlen nicht gibt.
+///
+/// Die Zähler sind 32 Bit breit und zählen über alle Kerne zusammen; je nach
+/// Rechner laufen sie nach einigen Wochen über. Wer zwei Stände vergleicht,
+/// muss darum mit einem Stand rechnen, der kleiner ist als der davor.
+#[cfg(target_os = "macos")]
+pub fn cpu_ticks() -> Option<[u32; 4]> {
+    use std::sync::OnceLock;
+    // Jeder Aufruf von `mach_host_self` gibt eine weitere Referenz auf den Port
+    // zurück. Bei einer Messung alle paar Sekunden über Wochen wüchse ihre Zahl
+    // stetig; darum wird der Port einmal geholt und behalten. Freigegeben wird
+    // er nicht, er gilt, solange der Prozess lebt.
+    static PORT: OnceLock<libc::mach_port_t> = OnceLock::new();
+    let port = *PORT.get_or_init(|| {
+        // `libc` nennt den Aufruf veraltet und verweist auf das Paket `mach2`.
+        // Eine neue Abhängigkeit für einen Aufruf nehmen wir nicht auf.
+        // SAFETY: `mach_host_self` hat keine Vorbedingung und gibt nur den Port
+        // des eigenen Rechners zurück.
+        #[allow(deprecated)]
+        unsafe {
+            libc::mach_host_self()
+        }
+    });
+    let mut last = libc::host_cpu_load_info { cpu_ticks: [0; 4] };
+    let mut anzahl = libc::HOST_CPU_LOAD_INFO_COUNT;
+    // SAFETY: `last` ist eine gültige, beschreibbare `host_cpu_load_info`, und
+    // `anzahl` nennt ihre Größe in Einheiten von `integer_t` (vier Zähler). Der
+    // Kern schreibt höchstens so viele und trägt in `anzahl` ein, wie viele es
+    // waren. Beide Zeiger zeigen auf den Stapel und gelten über den Aufruf.
+    let ergebnis = unsafe { libc::host_statistics(port, libc::HOST_CPU_LOAD_INFO, std::ptr::from_mut(&mut last).cast::<libc::integer_t>(), &raw mut anzahl) };
+    (ergebnis == libc::KERN_SUCCESS && anzahl == libc::HOST_CPU_LOAD_INFO_COUNT).then_some(last.cpu_ticks)
+}
+
 /// Der nice-Wert für Kindprozesse mit niedriger Priorität (Bau der
 /// Oberfläche, Wächter). Entspricht `BELOW_NORMAL_PRIORITY_CLASS` unter
 /// Windows; Kinder erben ihn.

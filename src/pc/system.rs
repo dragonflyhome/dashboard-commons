@@ -360,7 +360,8 @@ pub fn percent(part: u64, whole: u64) -> f32 {
 // 0 %, während Windows 65 % meldete. GetSystemTimes zählt Leerlauf-, Kern- und
 // Benutzerzeit aller Prozessoren und geht in jedem Konto, auch im Dienst.
 
-/// Gezählte Zeiten aller Prozessoren in 100-ns-Schritten; `kern` enthält den Leerlauf.
+/// Gezählte Zeiten aller Prozessoren in der Einheit des Systems (Windows
+/// 100 ns, macOS Ticks); `kern` enthält den Leerlauf.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuZeiten {
     pub leerlauf: u64,
@@ -393,7 +394,26 @@ fn cpu_zeiten() -> Option<CpuZeiten> {
     Some(CpuZeiten { leerlauf: zahl(l), kern: zahl(k), benutzer: zahl(b) })
 }
 
-#[cfg(not(windows))]
+/// Die vier Zähler von macOS (Benutzer, System, Leerlauf, Nice) als
+/// `CpuZeiten`. Wie bei Windows enthält `kern` den Leerlauf; Nice zählt zur
+/// Benutzerzeit. Die Ticks werden nicht umgerechnet: Für das Verhältnis ist die
+/// Einheit gleich.
+///
+/// Die Zähler von macOS sind 32 Bit breit und laufen nach einigen Wochen über.
+/// Dann ist ein Stand kleiner als der davor, `cpu_auslastung` merkt das und
+/// gibt für diese eine Messung `None`: eine Lücke, kein falscher Wert.
+#[cfg(any(target_os = "macos", test))]
+fn cpu_zeiten_aus_ticks(ticks: [u32; 4]) -> CpuZeiten {
+    let [benutzer, system, leerlauf, nice] = ticks.map(u64::from);
+    CpuZeiten { leerlauf, kern: system + leerlauf, benutzer: benutzer + nice }
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_zeiten() -> Option<CpuZeiten> {
+    crate::unix::cpu_ticks().map(cpu_zeiten_aus_ticks)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn cpu_zeiten() -> Option<CpuZeiten> {
     None
 }
@@ -438,7 +458,8 @@ pub fn spawn_collector(shared: SharedSnapshot) {
             match handle.await {
                 Ok((s, mut snap)) => {
                     sys = s;
-                    // Nur GetSystemTimes (Hotfix 3a-4); scheitert es, ist die Last unbekannt.
+                    // Nur die gezählten Zeiten des Systems (Hotfix 3a-4: GetSystemTimes,
+                    // unter macOS host_statistics); scheitert das, ist die Last unbekannt.
                     let zeiten = cpu_zeiten();
                     let prozent = match (zeiten_vorher, zeiten) {
                         (Some(a), Some(b)) => cpu_auslastung(a, b),
@@ -779,6 +800,52 @@ mod tests {
             let x = cpu_zeiten().expect("GetSystemTimes");
             assert!(x.kern >= x.leerlauf);
         }
+    }
+
+    #[test]
+    fn cpu_zeiten_aus_den_ticks_von_macos() {
+        // Benutzer 400, System 250, Leerlauf 350, Nice 0.
+        let a = cpu_zeiten_aus_ticks([1_000, 500, 2_000, 10]);
+        assert_eq!(a, CpuZeiten { leerlauf: 2_000, kern: 2_500, benutzer: 1_010 });
+        let b = cpu_zeiten_aus_ticks([1_400, 750, 2_350, 10]);
+        assert_eq!(cpu_auslastung(a, b), Some(65.0));
+        // Nice zählt zur Benutzerzeit: 100 Ticks Nice, 100 Leerlauf, sonst nichts.
+        let c = cpu_zeiten_aus_ticks([1_400, 750, 2_450, 110]);
+        assert_eq!(cpu_auslastung(b, c), Some(50.0));
+        // Die größten Zähler passen ohne Überlauf in die Summe.
+        let voll = cpu_zeiten_aus_ticks([u32::MAX; 4]);
+        assert_eq!(voll.kern, 2 * u64::from(u32::MAX));
+    }
+
+    /// Die Zähler von macOS sind 32 Bit breit: Läuft einer über, ist der neue
+    /// Stand kleiner als der alte. Das ergibt eine Lücke, keinen falschen Wert.
+    #[test]
+    fn cpu_ticks_nach_ueberlauf_sind_unbekannt() {
+        let vorher = cpu_zeiten_aus_ticks([u32::MAX - 10, 500, 2_000, 0]);
+        let danach = cpu_zeiten_aus_ticks([20, 600, 2_100, 0]);
+        assert_eq!(cpu_auslastung(vorher, danach), None);
+        // Auch der Leerlauf kann überlaufen.
+        let vorher = cpu_zeiten_aus_ticks([1_000, 500, u32::MAX - 5, 0]);
+        let danach = cpu_zeiten_aus_ticks([1_100, 600, 30, 0]);
+        assert_eq!(cpu_auslastung(vorher, danach), None);
+        // Die Messung danach rechnet wieder.
+        let weiter = cpu_zeiten_aus_ticks([1_200, 650, 80, 0]);
+        assert_eq!(cpu_auslastung(danach, weiter), Some(75.0));
+    }
+
+    /// Auf dem Mac gelingen zwei Lesungen nacheinander, und kein Zähler läuft
+    /// rückwärts.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cpu_zeiten_auf_macos_lesen() {
+        let a = cpu_zeiten().expect("host_statistics");
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let b = cpu_zeiten().expect("host_statistics, zweite Lesung");
+        assert!(a.kern >= a.leerlauf && b.kern >= b.leerlauf);
+        assert!(b.leerlauf >= a.leerlauf && b.kern >= a.kern && b.benutzer >= a.benutzer, "{a:?} {b:?}");
+        let last = cpu_auslastung(a, b).expect("zwischen zwei Lesungen vergeht Zeit");
+        println!("Prozessorlast auf diesem Mac: {last:.1} % ({a:?} -> {b:?})");
+        assert!((0.0..=100.0).contains(&last));
     }
 
     /// Hotfix 3a-4: genau 0 % über mehrere Messungen ist ein Messfehler.
