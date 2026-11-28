@@ -239,7 +239,7 @@ mod tests {
         warten().await;
         assert_eq!(rx.try_recv().unwrap().bereich, Bereich::Systemprogramme, "erster Fehler wird gezeigt");
         assert!(shared.read().await.benutzer_fehler.is_some());
-        // `errors` geht an den Browser: keine Uhrzeit in Rechnerzeit im Satz, auch mit früherem Stand.
+        // `errors` bleibt im Dienst (/api/pc nimmt `lokal_fehler`); der Satz nennt trotzdem keine Uhrzeit, auch mit früherem Stand.
         let stand = Local::now();
         shared.write().await.benutzer_stand = Some(stand);
         assert!(!benutzer_runde(&shared, &bote, &melder, false).await);

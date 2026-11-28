@@ -90,12 +90,15 @@ describe('Startseite: auswerten (Etappe 3b)', () => {
 			// Später als Text, früher als Zeitpunkt (09:30 Weltzeit gegen 10:00).
 			projekt('osten', 'laeuft', { file_modified: '2026-10-30T12:30:00+03:00' }),
 			projekt('b', 'laeuft', { file_modified: '2026-10-30T11:00:00+01:00' }),
-			projekt('a', 'laeuft', { file_modified: '2026-10-30T10:00:00Z' })
+			projekt('a', 'laeuft', { file_modified: '2026-10-30T10:00:00Z' }),
+			// Zwei ohne Zeit: beide zuletzt, untereinander nach Titel (LEER vor OHNE).
+			projekt('leer', 'laeuft', { file_modified: null })
 		];
 		expect(auswerten(liste, { ...ALLE, sortierung: 'change' }).gezeigt.map((p) => p.slug)).toEqual([
 			'a',
 			'b',
 			'osten',
+			'leer',
 			'ohne'
 		]);
 	});

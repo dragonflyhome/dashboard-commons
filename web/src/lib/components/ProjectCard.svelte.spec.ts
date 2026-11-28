@@ -58,6 +58,10 @@ describe('ProjectCard', () => {
 		render(ProjectCard, { project, jetzt: spaeter });
 		expect(screen.getByText(/Git-Stand von \d\d:\d\d/)).toBeInTheDocument();
 	});
+	it('zeigt „zuletzt unbekannt“ ohne Zeitpunkt der Datei (file_modified null)', () => {
+		render(ProjectCard, { project });
+		expect(screen.getByText(/zuletzt unbekannt/)).toBeInTheDocument();
+	});
 	it('lässt Zeilen weg, wenn Felder fehlen', () => {
 		render(ProjectCard, {
 			project: { ...project, chat: null, backup: null, backup_bedeutung: null, open: [], repos: [] }

@@ -108,8 +108,6 @@ pub struct ProjektStand {
     pub daten: Result<BTreeMap<String, DatenErgebnis>, LeseFehler>,
     /// Mit diesem Datum gerechnet (Kennzahlen mit `berechnet`).
     pub tag: NaiveDate,
-    /// Wann gelesen.
-    pub gelesen: DateTime<Local>,
     /// Lesefehler (gesperrte Dateien) beim letzten Versuch: Datei und Satz.
     /// Ist die Liste nicht leer, wird das Projekt alle 2 s wieder gelesen.
     pub lesefehler: Vec<LeseHinweis>,
@@ -182,7 +180,6 @@ impl ProjektStand {
                 namen: seite::daten_namen(dir, slug),
                 daten,
                 tag: heute,
-                gelesen: Local::now(),
                 lesefehler: Vec::new(),
                 gut: true,
                 gesperrt: Vec::new(),

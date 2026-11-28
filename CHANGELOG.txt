@@ -16,12 +16,15 @@ Unreleased
 
 Hinzugefügt
 - Befunde der Prüfung tragen `zeit` (RFC 3339), die Schlüsselliste
-  `bote_stand`; die Sätze selbst nennen keine Uhrzeit mehr.
+  `bote_stand`.
 
 Geändert
 - Bruch: /api/projects und /api/projects/<slug>: `last_change` entfällt,
   `file_modified` (RFC 3339) gilt.
-- Bruch: Stand eines Projekts: `gesamt.zuletzt` ist RFC 3339 oder null.
+- Bruch: /api/projekte/<slug>/stand und /api/projekte/<slug>/stand/voll:
+  `gesamt.zuletzt` ist RFC 3339 oder null.
+- Befunde der Prüfung und die Sätze der Schlüsselliste nennen keine Uhrzeit
+  mehr.
 
 Behoben
 - Zeitangaben vom Server zeigt die Oberfläche in der Zeit des Orts, an dem

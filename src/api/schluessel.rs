@@ -94,7 +94,7 @@ pub async fn liste(State(state): State<AppState>) -> Json<KeyList> {
     };
     // Der Satz nennt keine Uhrzeit; der letzte Stand geht als eigenes Feld hinaus.
     let bote_stand = match (&state.bote, error.as_deref()) {
-        (Some(bote), Some(crate::bote::client::SATZ_AUSGELASTET_KURZ)) => crate::bote::client::letzter_stand(bote.stand().zuletzt_gesehen.as_deref()),
+        (Some(bote), Some(crate::bote::client::SATZ_AUSGELASTET_MIT_STAND)) => crate::bote::client::letzter_stand(bote.stand().zuletzt_gesehen.as_deref()),
         _ => None,
     };
     Json(KeyList { keys, error, bote_stand })
