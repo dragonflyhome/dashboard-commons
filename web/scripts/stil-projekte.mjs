@@ -30,7 +30,14 @@ const web = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** Die Regeln von web/src, für Projekte ohne Abschalten per Kommentar. */
 const config = {
 	plugins: basis.plugins,
-	rules: basis.rules,
+	rules: {
+		...basis.rules,
+		// Die beiden Namensregeln (Ticket 20, Teil 1) bleiben für Projektseiten
+		// vorerst aus, damit keine Seite rot wird. Teil 2 schaltet sie hier ein,
+		// zusammen mit der Stufe je Fund und der Ausnahme für --extern-….
+		'dashboard/bekannte-namen': null,
+		'dashboard/alte-namen': null
+	},
 	customSyntax: 'postcss-html',
 	reportDescriptionlessDisables: false,
 	reportNeedlessDisables: false,

@@ -478,6 +478,9 @@ pub const UMGEBUNG_DATEIEN: &[&str] = &[
     "eslint.projekte.config.js",
     "eslint.config.js",
     "stylelint.config.js",
+    // Die Stilregeln für Namen und ihre Liste lädt stylelint.config.js.
+    "src/stilregeln.js",
+    "src/lib/rollen.js",
     "scripts/stil-projekte.mjs",
     "vitest.projekte.config.ts",
     "vitest-setup.ts",
@@ -1946,6 +1949,11 @@ writeFileSync(join(ziel, 'index.html'), '<!doctype html><title>gebaut</title>');
             std::fs::write(self.0.join("web/tsconfig.json"), tsconfig).unwrap();
             std::fs::create_dir_all(self.0.join("web/src")).unwrap();
             for d in ["eslint.projekte.config.js", "eslint.config.js", ".gitignore", "stylelint.config.js", "vitest.projekte.config.ts"] {
+                std::fs::copy(echt.join(d), self.0.join("web").join(d)).unwrap();
+            }
+            // stylelint.config.js lädt die Stilregeln für Namen und ihre Liste.
+            std::fs::create_dir_all(self.0.join("web/src/lib")).unwrap();
+            for d in ["src/stilregeln.js", "src/lib/rollen.js"] {
                 std::fs::copy(echt.join(d), self.0.join("web").join(d)).unwrap();
             }
             std::fs::create_dir_all(self.0.join("web/scripts")).unwrap();

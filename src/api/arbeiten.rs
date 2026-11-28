@@ -1124,13 +1124,18 @@ mod tests {
         // Ohne Datenspeicher: der Eintrag von Hand bleibt, dazu der Hinweis.
         let ohne = AppState::fuer_tests_ohne_speicher(&ordner, "kaputt");
         let (status, v) = schicke(&ohne, get("/api/projekte/probe/verlauf")).await;
+        let _ = std::fs::remove_dir_all(&ordner);
+        // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+        if !cfg!(windows) {
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{v}");
+            return;
+        }
         assert_eq!(status, StatusCode::OK, "{v}");
         assert!(v.to_string().contains("hand:start") && !v.to_string().contains("arbeit:"), "{v}");
         assert!(
             v["hinweise"].as_array().unwrap().iter().any(|h| h["art"] == "ohne-speicher" && h["text"] == super::super::pc::SATZ_PROJEKT_OHNE_SPEICHER),
             "{v}"
         );
-        let _ = std::fs::remove_dir_all(&ordner);
     }
 
     /// Grenze: die 31. offene Arbeit eines Projekts gibt 429 mit Satz.

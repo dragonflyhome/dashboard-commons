@@ -598,7 +598,9 @@ mod tests {
         let ohne = AppState::fuer_tests_ohne_speicher(&beispiel(), "kaputt");
         for req in [get("/api/antworten"), post_browser("/api/antworten/neu-form/konzept", "{}")] {
             let (status, v) = schicke(&ohne, req).await;
-            assert_eq!((status, v["art"].as_str()), (StatusCode::SERVICE_UNAVAILABLE, Some("speicher-fehlt")));
+            // Außerhalb von Windows legt `router_angemeldet` ohne Datenspeicher keinen Passkey an: keine Anmeldung.
+            let soll = if cfg!(windows) { (StatusCode::SERVICE_UNAVAILABLE, Some("speicher-fehlt")) } else { (StatusCode::UNAUTHORIZED, Some("anmeldung")) };
+            assert_eq!((status, v["art"].as_str()), soll, "{v}");
         }
     }
 

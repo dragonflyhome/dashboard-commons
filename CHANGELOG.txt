@@ -30,6 +30,18 @@ Behoben
 - Zeitangaben vom Server zeigt die Oberfläche in der Zeit des Orts, an dem
   man gerade ist.
 
+0.33.0 - 2026-11-28
+-------------------
+
+Hinzugefügt
+- Die Stilprüfung kennt die Liste der Farbnamen: Unbekannte Namen weist
+  sie ab, alte Namen meldet sie als Hinweis mit dem neuen Namen.
+
+Behoben
+- Stilprüfung: Eine externe Farbvorgabe (--extern-…) im Markup und ein
+  neu gesetzter Name der Farbordnung außerhalb von app.css werden
+  abgewiesen; ein solcher Fund nennt Zeile und Spalte im Markup.
+
 0.32.1 - 2026-11-28
 -------------------
 
