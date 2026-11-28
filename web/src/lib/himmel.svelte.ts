@@ -10,11 +10,12 @@
  * auch nach Rückkehr in die Seite; ohne Kopf zur lokalen Mitternacht), bei
  * einem neuen Blickort (Bereich `blickort`, auch aus einem anderen Tab), bei
  * einer Änderung im Projekt `kalender` (oder einem Sammelereignis), nach
- * verpassten Ereignissen und beim Anmelden ohne Neuladen. Beim Abmelden ist der
- * Zustand sofort leer. Jede Antwort setzt die Anzeigezone (`zeit/zone.svelte.ts`),
+ * verpassten Ereignissen und beim Anmelden ohne Neuladen; ohne IANA-Zone am Blickort
+ * zusätzlich stündlich. Beim Abmelden ist der Zustand sofort leer, der Fehler sagt
+ * „anmelden“. Jede Antwort setzt die Anzeigezone (`zeit/zone.svelte.ts`),
  * jeder Fehler setzt sie zurück. Nichts wird im Browser gespeichert.
  */
-import { API, getJson, senden } from './api/client';
+import { API, AnmeldungNoetig, getJson, senden } from './api/client';
 import { freierKanal } from './freikanal.svelte.ts';
 import { live } from './live.svelte.ts';
 import { beiTageswechsel, beiZeitpunkt } from './tageswechsel.ts';
@@ -24,6 +25,8 @@ import type { KalenderBlickort, KalenderKopf } from '$vertrag';
 
 /** Solange /heute offen ist, so oft neu (die Sonnenhöhe ändert sich langsam). */
 export const HAEUFIG_MS = 10 * 60_000;
+/** Ohne IANA-Zone (`naechster_tag` leer) so oft neu, damit der Vortag höchstens so lange steht. */
+export const OHNE_ZONE_MS = 60 * 60_000;
 
 export class HimmelLaden {
 	/** Die letzte 200-Antwort; ohne Anmeldung, bei Fehler oder ohne Netz `null`. */
@@ -116,14 +119,27 @@ export class HimmelLaden {
 		this.#tagStellen();
 	}
 
-	/** Zeitgeber auf den nächsten Tag am Blickort; ohne Kopf auf die lokale Mitternacht. */
+	/**
+	 * Zeitgeber auf den nächsten Tag am Blickort; ohne Kopf auf die lokale Mitternacht.
+	 * Ohne IANA-Zone kennt der Browser den Tageswechsel am Ort nicht: dann zusätzlich
+	 * eine Stunde nach dem letzten Laden neu.
+	 */
 	#tagStellen(): void {
 		if (this.#nutzer === 0) return;
 		this.#tag?.();
 		const neu = (): void => void this.laden();
 		const ziel = this.kopf === null ? NaN : Date.parse(this.kopf.naechster_tag);
 		// Ein Zeitpunkt in der Vergangenheit (Uhr des Geräts vor der des Servers) liefe sonst im Kreis.
-		this.#tag = ziel > Date.now() ? beiZeitpunkt(ziel, neu) : beiTageswechsel(neu);
+		const tag = ziel > Date.now() ? beiZeitpunkt(ziel, neu) : beiTageswechsel(neu);
+		if (this.kopf?.naechster_tag !== '') {
+			this.#tag = tag;
+			return;
+		}
+		const stunde = setTimeout(neu, OHNE_ZONE_MS);
+		this.#tag = () => {
+			tag();
+			clearTimeout(stunde);
+		};
 	}
 
 	#starten(): void {
@@ -142,6 +158,8 @@ export class HimmelLaden {
 			}),
 			freierKanal.onAbgemeldet(() => {
 				this.leeren();
+				// Sonst stünde auf /heute bis zum nächsten Takt „wird geladen“.
+				this.fehler = new AnmeldungNoetig();
 			})
 		];
 		this.#tagStellen();

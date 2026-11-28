@@ -5,7 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KalenderKopf, LiveBereich } from '$vertrag';
-import { HAEUFIG_MS, HimmelLaden } from './himmel.svelte.ts';
+import { freierKanal } from './freikanal.svelte.ts';
+import { HAEUFIG_MS, HimmelLaden, OHNE_ZONE_MS } from './himmel.svelte.ts';
 import { live } from './live.svelte.ts';
 import { anzeigeZone } from './zeit/zone.svelte.ts';
 
@@ -152,6 +153,57 @@ describe('Himmel-Laden: ein Laden für Kopfleiste und /heute', () => {
 		expect(f).toHaveBeenCalledTimes(2);
 		ab();
 		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('ohne IANA-Zone (naechster_tag leer) lädt er stündlich neu; der letzte Nutzer räumt den Zeitgeber ab', async () => {
+		vi.useFakeTimers();
+		// Lokal 10 Uhr: bis zur Mitternacht des Geräts sind es Stunden.
+		vi.setSystemTime(new Date(2026, 10, 27, 10, 0));
+		const f = vi.fn(() =>
+			Promise.resolve(antwort(200, { ...KOPF, zone: null, naechster_tag: '' }))
+		);
+		const h = new HimmelLaden(f);
+		const ab = h.nutzen();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(f).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(OHNE_ZONE_MS - 1);
+		expect(f).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(f).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(OHNE_ZONE_MS);
+		expect(f).toHaveBeenCalledTimes(3);
+		ab();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('mit IANA-Zone kein stündliches Neuladen', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-11-27T01:00:00Z'));
+		const f = vi.fn(() => Promise.resolve(antwort(200, KOPF)));
+		const h = new HimmelLaden(f);
+		const ab = h.nutzen();
+		await vi.advanceTimersByTimeAsync(2 * OHNE_ZONE_MS);
+		expect(f).toHaveBeenCalledTimes(1);
+		ab();
+	});
+
+	it('Abmelden leert den Kopf und setzt den Fehler „anmelden“ (401), ohne zu laden', async () => {
+		const hoerer: (() => void)[] = [];
+		vi.spyOn(freierKanal, 'onAbgemeldet').mockImplementation(
+			(l) => (hoerer.push(l), () => undefined)
+		);
+		const f = vi.fn(() => Promise.resolve(antwort(200, KOPF)));
+		const h = new HimmelLaden(f);
+		const ab = h.nutzen();
+		await vi.waitFor(() => {
+			expect(h.kopf).not.toBeNull();
+		});
+		for (const l of hoerer) l();
+		expect(h.kopf).toBeNull();
+		expect(h.fehler).toMatchObject({ status: 401, art: 'anmeldung' });
+		expect(anzeigeZone()).toBeNull();
+		expect(f).toHaveBeenCalledTimes(1);
+		ab();
 	});
 
 	it('Bereich „blickort“ lädt neu, andere Bereiche nicht', async () => {

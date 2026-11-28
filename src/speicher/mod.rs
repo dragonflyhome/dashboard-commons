@@ -312,6 +312,26 @@ impl Speicher {
         self.festschreiben(txn, &[Bereich::Blickort])
     }
 
+    /// Entfernt den Blickort nur, wenn noch `alt` gespeichert ist: Vergleich und
+    /// Löschen in einer Schreibtransaktion, damit eine Wahl dazwischen bleibt.
+    pub fn blickort_vergessen_wenn(&self, alt: &str) -> Result<bool, SpeicherFehler> {
+        let txn = self.db.begin_write()?;
+        let gleich = {
+            let mut t = txn.open_table(META)?;
+            let gleich = redb::ReadableTable::get(&t, tabellen::META_BLICKORT)?.is_some_and(|w| w.value() == alt);
+            if gleich {
+                t.remove(tabellen::META_BLICKORT)?;
+            }
+            gleich
+        };
+        if !gleich {
+            txn.abort()?;
+            return Ok(false);
+        }
+        self.festschreiben(txn, &[Bereich::Blickort])?;
+        Ok(true)
+    }
+
     /// Schema-Fassung der Datei (0, wenn noch keine eingetragen ist).
     pub fn schema(&self) -> Result<u32, SpeicherFehler> {
         Ok(migration::schema_lesen(&*self.db)?.unwrap_or(0))
@@ -522,6 +542,20 @@ mod tests {
         }
         assert!(s.groesse_bytes() > 0);
         assert!(s.ist_temporaer());
+    }
+
+    /// Eine Wahl zwischen Lesen und Vergessen des verwaisten Blickorts bleibt stehen.
+    #[test]
+    fn blickort_vergessen_nur_wenn_unveraendert() {
+        let s = Speicher::temporaer();
+        let lesen = || s.meta_lesen(tabellen::META_BLICKORT).unwrap();
+        s.blickort_setzen(Some("verwaist")).unwrap();
+        s.blickort_setzen(Some("gueltig")).unwrap();
+        assert!(!s.blickort_vergessen_wenn("verwaist").unwrap());
+        assert_eq!(lesen().as_deref(), Some("gueltig"));
+        assert!(s.blickort_vergessen_wenn("gueltig").unwrap());
+        assert_eq!(lesen(), None);
+        assert!(!s.blickort_vergessen_wenn("gueltig").unwrap(), "ohne Eintrag nichts zu tun");
     }
 
     #[test]

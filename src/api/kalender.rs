@@ -683,7 +683,24 @@ pub async fn kopf(State(state): State<AppState>, angemeldet: Option<Extension<An
         return super::anmeldung::bitte_anmelden(None);
     }
     let gespeichert = blickort_lesen(&state).await;
-    kopf_am_blickort(&Orte::aus_bestand(&state.inhalt.bestand()), gespeichert.as_deref()).map(Json).into_response()
+    let bestand = state.inhalt.bestand();
+    let orte = Orte::aus_bestand(&bestand);
+    // Nur bei lesbarer Datei: Eine gerade unlesbare zählt wie keine und ließe jeden eigenen Ort verschwinden.
+    let lesbar = matches!(bestand.daten(crate::kalender::orte::PROJEKT, "standorte"), Ok(Some((DatenInhalt::Standorte(_), _))));
+    if let Some(alt) = gespeichert.as_deref().filter(|k| lesbar && orte.finden(k).is_none()) {
+        blickort_vergessen(&state, alt.to_string()).await;
+    }
+    kopf_am_blickort(&orte, gespeichert.as_deref()).map(Json).into_response()
+}
+
+/// Vergisst einen verwaisten Blickort, damit eine später neu vergebene gleiche Kennung
+/// nicht still Blickort wird. Nur wenn noch `alt` gespeichert ist: Eine Wahl seit dem
+/// Lesen bleibt. Ein Fehler steht nur im Protokoll (ohne Kennung).
+async fn blickort_vergessen(state: &AppState, alt: String) {
+    let Ok(speicher) = state.speicher() else { return };
+    if let Err(e) = crate::speicher::Speicher::im_hintergrund(speicher, move |s| s.blickort_vergessen_wenn(&alt)).await {
+        tracing::warn!("Kalender: verwaister Blickort nicht vergessen: {e} ({})", e.einzelheiten());
+    }
 }
 
 /// Ein Blickort, den es in GET /api/kalender/standorte nicht gibt (ohne die Kennung).
@@ -2258,6 +2275,54 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        assert_eq!((v["kennung"].as_str(), v["folgt_heimat"].as_bool()), (Some("zuhause"), Some(true)), "{v}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Verschwindet der Blickort aus der Datei, vergisst der Kopf ihn: Der Schlüssel ist weg, und
+    /// ein später neu gemerkter Ort mit derselben Kennung wird nicht still Blickort.
+    #[tokio::test]
+    async fn blickort_verschwunden_wird_vergessen() {
+        let wurzel = inhalt("blickort-verschwunden");
+        let eins = "
+
+[[standort]]
+kennung = \"ort-1\"
+titel = \"Erster Ort\"
+breite = 10.0
+laenge = 20.0
+herkunft = \"hand\"
+";
+        std::fs::write(standorte_datei(&wurzel), format!("{}{eins}", STANDORTE.trim_end())).unwrap();
+        let state = AppState::fuer_tests(&wurzel);
+        let gespeichert = |state: &AppState| state.speicher().unwrap().meta_lesen(crate::speicher::tabellen::META_BLICKORT).unwrap();
+        let app = router_angemeldet(state.clone());
+        let mut s = StatusCode::NOT_FOUND;
+        for _ in 0..50 {
+            s = schicke(&app, post_an("/api/kalender/blickort", serde_json::json!({ "ort": "ort-1" }))).await.0;
+            if s == StatusCode::OK {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!((s, gespeichert(&state).as_deref()), (StatusCode::OK, Some("ort-1")));
+        std::fs::write(standorte_datei(&wurzel), STANDORTE).unwrap();
+        let mut v = Value::Null;
+        for _ in 0..50 {
+            v = schicke(&app, get("/api/kalender/kopf")).await.1;
+            if v["kennung"] == "zuhause" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!((v["kennung"].as_str(), v["folgt_heimat"].as_bool()), (Some("zuhause"), Some(true)), "{v}");
+        assert_eq!(gespeichert(&state), None);
+        // Dieselbe Kennung wird neu vergeben; der Kopf bleibt am Heimatort.
+        let (s, neu) = schicke(&app, post_an("/api/kalender/standorte", serde_json::json!({"titel": "Neuer Ort", "breite": 30.0, "laenge": 40.0}))).await;
+        assert_eq!((s, neu["kennung"].as_str()), (StatusCode::OK, Some("ort-1")), "{neu}");
+        let (_, orte) = schicke(&app, get("/api/kalender/standorte")).await;
+        assert!(orte["orte"].as_array().unwrap().iter().any(|o| o["kennung"] == "ort-1"), "{orte}");
+        let (_, v) = schicke(&app, get("/api/kalender/kopf")).await;
         assert_eq!((v["kennung"].as_str(), v["folgt_heimat"].as_bool()), (Some("zuhause"), Some(true)), "{v}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }

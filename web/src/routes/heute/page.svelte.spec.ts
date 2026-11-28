@@ -10,6 +10,7 @@ import type { KalenderKopf, KalenderOrt, KalenderOrte, KalenderStaedte } from '$
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 const { default: Page } = await import('./+page.svelte');
 const { SATZ_ANMELDUNG_NOETIG } = await import('#lib/anmeldung.ts');
+const { freierKanal } = await import('#lib/freikanal.svelte.ts');
 
 const KOPF: KalenderKopf = {
 	ort: 'Zuhause',
@@ -201,6 +202,42 @@ describe('Seite /heute', () => {
 		await fireEvent.click(await screen.findByRole('button', { name: 'Nebelfurt (XQ)' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Diesen Ort gibt es nicht.');
 		expect(posts(f, '/api/kalender/standorte')).toHaveLength(1);
+	});
+
+	it('scheitert die Wahl in der Auswahl (422), zeigt sie wieder den alten Ort, die Meldung steht da', async () => {
+		const echt = server();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn((p: string, i?: RequestInit) =>
+				p === '/api/kalender/blickort'
+					? Promise.resolve(json(422, { fehler: 'Diesen Ort gibt es nicht.' }))
+					: (echt as unknown as typeof fetch)(p, i)
+			)
+		);
+		render(Page);
+		await screen.findByRole('img', { name: /^Sonnenbogen/ });
+		await ortWaehlen('Hütte');
+		expect(await screen.findByRole('alert')).toHaveTextContent('Diesen Ort gibt es nicht.');
+		await waitFor(() => {
+			expect(screen.getByRole('combobox', { name: /^Ort / })).toHaveTextContent(
+				'Zuhause (Zuhause)'
+			);
+		});
+		expect(screen.getByText(/· Zuhause$/)).toBeInTheDocument();
+	});
+
+	it('Abmelden auf /heute zeigt den Anmeldesatz', async () => {
+		const hoerer: (() => void)[] = [];
+		vi.spyOn(freierKanal, 'onAbgemeldet').mockImplementation(
+			(l) => (hoerer.push(l), () => undefined)
+		);
+		server();
+		const { container } = render(Page);
+		await screen.findByRole('img', { name: /^Sonnenbogen/ });
+		for (const l of hoerer) l();
+		expect(await screen.findByText(SATZ_ANMELDUNG_NOETIG)).toBeInTheDocument();
+		expect(container.querySelector('time')).toBeNull();
+		expect(screen.queryByText(/wird geladen/)).toBeNull();
 	});
 
 	it('ohne Anmeldung: der Satz zur Anmeldung, keine Uhr', async () => {

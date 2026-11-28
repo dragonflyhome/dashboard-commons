@@ -62,12 +62,15 @@
 	});
 	// Die Auswahl kennt nur Text; '' steht für „folgt dem Heimatort“ (keine Kennung ist leer).
 	const gewaehlt = $derived(k === null || k.folgt_heimat ? '' : k.kennung);
+	// Die Auswahl hält ihren Wert selbst; scheitert die Wahl, muss er auf den geltenden Ort zurück.
+	let wahl = $derived(gewaehlt);
 
 	async function waehlen(ort: string | null): Promise<void> {
 		meldung = null;
 		try {
 			await himmel.waehlen(ort);
 		} catch (e) {
+			wahl = gewaehlt;
 			meldung = fehlerText(e);
 		}
 	}
@@ -113,7 +116,7 @@
 			<Auswahl
 				beschriftung="Ort"
 				{optionen}
-				wert={gewaehlt}
+				bind:wert={wahl}
 				gesperrt={himmel.waehlt}
 				onwechsel={(w: string) => void waehlen(w === '' ? null : w)}
 			/>

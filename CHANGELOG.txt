@@ -24,7 +24,10 @@ Hinzugefügt
 
 Behoben
 - Der Himmel in der Kopfleiste nimmt das Datum am Ort, nicht das des
-  Rechners.
+  Rechners; an Orten ohne Zeitzone lädt er zusätzlich stündlich neu.
+- Heute: Eine gescheiterte Ortswahl springt in der Auswahl zurück, nach
+  dem Abmelden steht sofort der Satz zur Anmeldung, und ein gewählter
+  Ort, den es nicht mehr gibt, wird vergessen.
 
 0.31.1 - 2026-11-27
 -------------------
