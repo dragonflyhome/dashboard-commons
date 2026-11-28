@@ -4,6 +4,7 @@
 	import { invalidate } from '$app/navigation';
 	import { api, exportUrl } from '#lib/api/client.ts';
 	import { fmtBytes, istZahl } from '#lib/format.ts';
+	import { zoneOption } from '#lib/zeit/zone.svelte.ts';
 	import { scrollShadow } from '#lib/scrollschatten.ts';
 	import Sicherung from '#lib/components/daten/Sicherung.svelte';
 	import Verlauf from '#lib/components/daten/Verlauf.svelte';
@@ -30,7 +31,8 @@
 			day: '2-digit',
 			month: '2-digit',
 			hour: '2-digit',
-			minute: '2-digit'
+			minute: '2-digit',
+			...zoneOption()
 		});
 	}
 	function zahl(n: number): string {

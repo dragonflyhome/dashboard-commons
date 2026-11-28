@@ -239,15 +239,36 @@ pub struct KalenderStaedte {
     pub hinweis: Option<String>,
 }
 
-/// `GET /api/kalender/kopf` (Stufe 6): der Himmel von heute am Heimatort für die
-/// Kopfleiste, nur angemeldet. Ohne Koordinaten und ohne Zone als Zahl.
+/// `GET /api/kalender/kopf` (Stufe 6, Blickort seit 7b): der Himmel von heute am
+/// Blickort für Kopfleiste und /heute, nur angemeldet. „Heute“ ist der Tag am Blickort.
+/// Ohne Koordinaten und ohne Versatz als Zahl; die Zone nur als IANA-Name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 pub struct KalenderKopf {
-    /// Titel des Heimatorts.
+    /// Titel des aufgelösten Blickorts.
     pub ort: String,
+    /// Kennung des aufgelösten Blickorts (aus GET /api/kalender/standorte).
+    pub kennung: String,
+    /// Kein Blickort gewählt: Er folgt dem Heimatort.
+    pub folgt_heimat: bool,
+    /// Der Tag am Blickort (JJJJ-MM-TT).
+    pub datum: String,
+    /// IANA-Zone des Blickorts; `null` bei Ortszeit von Windows oder festem Versatz.
+    pub zone: Option<String>,
     /// Sonnenaufgang heute „HH:MM“ in der Zeitart des Orts; fehlt er, steht `text` da.
     pub aufgang: Option<String>,
     pub untergang: Option<String>,
+    /// Wahrer Mittag heute „HH:MM“, wie `aufgang`; ohne Lage `null`.
+    pub mittag: Option<String>,
+    /// Sonnenaufgang morgen „HH:MM“, wie `aufgang` (für die Nacht nach dem Untergang).
+    pub aufgang_morgen: Option<String>,
+    /// Sonnenhöhe jetzt in ganzen Grad über dem sichtbaren Horizont (mit Refraktion und
+    /// Halbmesser, 0 zur Aufgangszeit); ohne Lage `null`.
+    pub hoehe: Option<i32>,
+    /// Sonnenhöhe am wahren Mittag heute, gemessen wie `hoehe`.
+    pub hoehe_mittag: Option<i32>,
+    /// Beginn des nächsten Tags am Blickort als RFC 3339 in Weltzeit mit `Z`; leer ohne
+    /// IANA-Zone, weil er mit `datum` den festen Versatz und so die Länge verriete.
+    pub naechster_tag: String,
     /// Ein Satz ohne Zahlen, wenn eine Zeit fehlt (Polarnacht, Polartag).
     pub text: Option<String>,
     /// Mondphase jetzt in ganzen Grad: 0 Neumond, 90 erstes Viertel, 180 Vollmond, 270 letztes Viertel.
@@ -265,6 +286,14 @@ pub struct KalenderKopf {
 #[serde(deny_unknown_fields)]
 pub struct KalenderHeimat {
     pub ort: String,
+}
+
+/// Rumpf von `POST /api/kalender/blickort`: die Kennung eines Orts aus GET
+/// /api/kalender/standorte; `null` heißt „folgt dem Heimatort“.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct KalenderBlickort {
+    pub ort: Option<String>,
 }
 
 /// Erster Tag eines Festjahrs und erster Tag des nächsten (JJJJ-MM-TT, Ortszeit).

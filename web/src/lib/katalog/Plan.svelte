@@ -27,7 +27,8 @@
 		zaehlung,
 		zeitstreifen
 	} from '#lib/projektteile.ts';
-	import { kurzDatum, tagText } from '#lib/zeit/tage.ts';
+	import { kurzDatum } from '#lib/zeit/tage.ts';
+	import { tagInZone } from '#lib/zeit/zone.svelte.ts';
 	import Marke from './Marke.svelte';
 
 	interface Props {
@@ -37,7 +38,7 @@
 	}
 	let { plan, jetzt = new Date() }: Props = $props();
 
-	const streifen = $derived(zeitstreifen(plan, tagText(jetzt)));
+	const streifen = $derived(zeitstreifen(plan, tagInZone(jetzt)));
 </script>
 
 {#snippet arbeiten(liste: readonly PlanArbeit[])}
@@ -88,7 +89,7 @@
 				{/each}
 				<span class="achse">
 					<span>{kurzDatum(streifen.von)}</span>
-					<span>{streifen.bis === tagText(jetzt) ? 'heute ' : ''}{kurzDatum(streifen.bis)}</span>
+					<span>{streifen.bis === tagInZone(jetzt) ? 'heute ' : ''}{kurzDatum(streifen.bis)}</span>
 				</span>
 			</div>
 		{/if}

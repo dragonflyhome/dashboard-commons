@@ -280,6 +280,24 @@ describe('Seite /kalender', () => {
 		);
 	});
 
+	it('Stufe 7b: Startort ist der Blickort, Tag und Feste beginnen am Tag des Blickorts', async () => {
+		const echt = server();
+		// Erfundener Kopf: Blickort Hütte, dort ist schon der 5. Januar.
+		const f = vi.fn((p: string, i?: RequestInit) =>
+			p === '/api/kalender/kopf'
+				? Promise.resolve(json({ kennung: 'hütte', datum: '2027-01-05', zone: 'Europe/Oslo' }))
+				: (echt as unknown as typeof fetch)(p, i)
+		);
+		vi.stubGlobal('fetch', f);
+		render(Page);
+		await vi.waitFor(() => {
+			const pfade = f.mock.calls.map((c) => c[0]);
+			expect(pfade).toContain('/api/kalender/tag?datum=2027-01-05&ort=h%C3%BCtte');
+			expect(pfade).toContain('/api/kalender/feste?von=2027-01-05&bis=2027-02-04&ort=h%C3%BCtte');
+		});
+		expect(screen.getByLabelText('Tag')).toHaveValue('2027-01-05');
+	});
+
 	it('„Anderer Ort“ schickt die Koordinaten im Rumpf eines POST, nie in der Adresse', async () => {
 		const f = server();
 		render(Page);

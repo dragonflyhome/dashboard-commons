@@ -4,6 +4,7 @@
 	 * x nach Zeit. Unter zwei Werten gibt es keine Kurve, nur einen Satz.
 	 */
 	import type { PcMesswert } from '$vertrag';
+	import { zoneOption } from '#lib/zeit/zone.svelte.ts';
 	import { pcKurveText } from '#lib/textfassung.ts';
 	import Textfassung from '../Textfassung.svelte';
 
@@ -53,7 +54,11 @@
 
 	function uhr(iso: string | undefined): string {
 		if (iso === undefined) return '';
-		return new Date(iso).toLocaleString('de-DE', { hour: '2-digit', minute: '2-digit' });
+		return new Date(iso).toLocaleString('de-DE', {
+			hour: '2-digit',
+			minute: '2-digit',
+			...zoneOption()
+		});
 	}
 	function mittel(feld: 'cpu' | 'mem'): number {
 		const da = werte.flatMap((m) => (m[feld] === null ? [] : [m[feld]]));

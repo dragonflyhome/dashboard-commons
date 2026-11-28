@@ -7,6 +7,7 @@
  * Plänen ohne Datum (`plan`) sind es Plan-Monate (0, 1, 2 …).
  */
 import { MONATE_KURZ, MS_TAG, tagAusZahl, tagKurz, tagZahl } from './tage.ts';
+import { tagInZone, teileInZone } from './zone.svelte.ts';
 
 /** Ein Ausschnitt der Achse: von bis bis (bis ausschließlich). */
 export interface Fenster {
@@ -60,12 +61,11 @@ export function zeitpunkt(f: Fenster, breite: number, px: number): number {
 	return f.von + (px / Math.max(breite, 1e-9)) * spanne(f);
 }
 
-/** Tageszahl eines Zeitpunkts (mit Bruchteil des Tages, Ortszeit). */
+/** Tageszahl eines Zeitpunkts (mit Bruchteil des Tages, Anzeigezone). */
 export function tagzahlAus(d: Date): number {
-	const tag = tagZahl(
-		`${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-	);
-	const seitMitternacht = d.getHours() * 3600_000 + d.getMinutes() * 60_000 + d.getSeconds() * 1000;
+	const tag = tagZahl(tagInZone(d));
+	const t = teileInZone(d);
+	const seitMitternacht = t.stunde * 3600_000 + t.minute * 60_000 + t.sekunde * 1000;
 	return tag + seitMitternacht / MS_TAG;
 }
 

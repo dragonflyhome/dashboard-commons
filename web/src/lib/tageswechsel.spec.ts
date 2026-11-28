@@ -1,5 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { PUFFER_MS, beiTageswechsel, lokalerTag, msBisMitternacht } from './tageswechsel.ts';
+import {
+	PUFFER_MS,
+	beiTageswechsel,
+	beiZeitpunkt,
+	lokalerTag,
+	msBisMitternacht
+} from './tageswechsel.ts';
 
 const STUNDE = 3_600_000;
 
@@ -102,6 +108,47 @@ describe('beiTageswechsel', () => {
 		expect(vi.getTimerCount()).toBe(1);
 		vi.advanceTimersByTime(17 * STUNDE + PUFFER_MS);
 		expect(rufen).toHaveBeenCalledTimes(2);
+		ab();
+	});
+});
+
+describe('beiZeitpunkt (Kalender, Stufe 7b)', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('feuert einmal zum gelieferten Zeitpunkt (plus Puffer), nicht zur lokalen Mitternacht', () => {
+		vi.useFakeTimers();
+		// 23:00 in Berlin; der nächste Tag in Auckland beginnt um 11:00Z, also schon vorher.
+		vi.setSystemTime(new Date('2026-11-27T10:00:00Z'));
+		const rufen = vi.fn();
+		const doc = dokument();
+		const ab = beiZeitpunkt(Date.parse('2026-11-27T11:00:00Z'), rufen, undefined, doc);
+		vi.advanceTimersByTime(STUNDE);
+		expect(rufen).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(PUFFER_MS);
+		expect(rufen).toHaveBeenCalledTimes(1);
+		// Einmal: weder Zeitgeber noch Sichtbarkeit rufen noch einmal.
+		doc.dispatchEvent(new Event('visibilitychange'));
+		vi.advanceTimersByTime(48 * STUNDE);
+		expect(rufen).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+		ab();
+	});
+
+	it('nach dem Schlafen: wieder sichtbar nach dem Zeitpunkt ruft sofort, davor nicht', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-11-27T10:00:00Z'));
+		const rufen = vi.fn();
+		const doc = dokument();
+		const ab = beiZeitpunkt(Date.parse('2026-11-27T11:00:00Z'), rufen, undefined, doc);
+		vi.setSystemTime(new Date('2026-11-27T10:30:00Z'));
+		doc.dispatchEvent(new Event('visibilitychange'));
+		expect(rufen).not.toHaveBeenCalled();
+		vi.setSystemTime(new Date('2026-11-27T18:00:00Z'));
+		doc.dispatchEvent(new Event('visibilitychange'));
+		expect(rufen).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
 		ab();
 	});
 });

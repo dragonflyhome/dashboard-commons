@@ -18,10 +18,10 @@ import {
 	monatVon,
 	tagPlus,
 	tagTitel,
-	tagText,
 	tagZahl,
 	wochenanfang
 } from './tage.ts';
+import { tagInZone, uhrInZone } from './zone.svelte.ts';
 
 // ----- Bedeutung und Wörter -----
 
@@ -122,7 +122,7 @@ function letzterTagDes(tag: string, genauigkeit: VerlaufEreignis['genauigkeit'])
 function tagDes(zeit: string, genauigkeit: VerlaufEreignis['genauigkeit']): string | null {
 	if (genauigkeit === 'minute') {
 		const d = new Date(zeit);
-		return Number.isNaN(d.getTime()) ? null : tagText(d);
+		return Number.isNaN(d.getTime()) ? null : tagInZone(d);
 	}
 	return /^\d{4}-\d{2}-\d{2}/.test(zeit) ? zeit.slice(0, 10) : null;
 }
@@ -151,8 +151,7 @@ function aelteste(a: Eintrag, b: Eintrag): number {
 }
 
 function uhrzeit(zeit: string): string {
-	const d = new Date(zeit);
-	return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+	return uhrInZone(new Date(zeit));
 }
 
 function monatKurz(tag: string, mitJahr: boolean): string {
@@ -495,7 +494,7 @@ export function zielFuer(
  * Gruppen nur den Leer-Satz, und Pos1 bleibt ohne Ziel.
  */
 export function gruppieren(ereignisse: readonly VerlaufEreignis[], jetzt: Date): Gruppe[] {
-	const heute = tagText(jetzt);
+	const heute = tagInZone(jetzt);
 	const gruppen = new Map<
 		string,
 		{ ziel: Ziel; jeTag: Map<string, Eintrag[]>; ohneTag: Eintrag[] }
@@ -602,7 +601,7 @@ export function projektVerlauf(
 	ereignisse: readonly VerlaufEreignis[],
 	jetzt: Date
 ): ProjektVerlauf {
-	const heute = tagText(jetzt);
+	const heute = tagInZone(jetzt);
 	const kommend: Eintrag[] = [];
 	const jeJahr = new Map<string, Eintrag[]>();
 	for (const e of ereignisse) {

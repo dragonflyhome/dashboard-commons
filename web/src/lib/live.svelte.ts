@@ -204,6 +204,8 @@ export const BEREICH_ABHAENGIGKEIT: Record<LiveBereich, readonly string[]> = {
 	// Ohne Slug: keine Projektseite zeigt eine Modul-Tabelle (siehe
 	// `projektseiten_zeigen_keine_modul_tabellen`), nur /daten zählt sie.
 	'projekt-tabellen': ['api:daten'],
+	// Der Blickort steht in `meta`; /daten zählt deren Einträge.
+	blickort: ['api:daten'],
 	inventar: ['api:pc:benutzer'],
 	systemprogramme: ['api:pc:benutzer'],
 	tresor: ['api:pc:benutzer', 'api:schluessel'],

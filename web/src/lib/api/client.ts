@@ -205,6 +205,22 @@ export async function postJson<T>(path: string, fetchFn: typeof fetch = fetch): 
 	return (await res.json()) as T;
 }
 
+/** POST mit JSON-Rumpf; Fehler wie bei `getJson`. Daten wie Koordinaten gehen so nie in die Adresse. */
+export async function senden<T>(
+	path: string,
+	koerper: unknown,
+	fetchFn: typeof fetch = fetch
+): Promise<T> {
+	const res = await abrufen(fetchFn, path, {
+		method: 'POST',
+		credentials: 'same-origin',
+		headers: { accept: 'application/json', 'content-type': 'application/json' },
+		body: JSON.stringify(koerper)
+	});
+	if (!res.ok) throw await readError(res);
+	return (await res.json()) as T;
+}
+
 /** Adresse für den Export des Datenspeichers (TOML zum Ansehen, JSON zum Herunterladen). */
 export function exportUrl(format: 'toml' | 'json'): string {
 	return `${API}/daten/export?format=${format}`;

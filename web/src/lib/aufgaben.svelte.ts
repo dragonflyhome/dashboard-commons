@@ -196,6 +196,7 @@ export class Aufgaben {
 			this.#neu();
 		});
 		// Etappe 3a+: um Mitternacht neu laden, damit die Frist-Stufen des Servers stimmen.
+		// shortcut: Tag des Rechners, weil der Server bis 7c nach Windows rechnet; mit 7c auf den Tag des Blickorts
 		const offTag = beiTageswechsel(() => {
 			this.#neu();
 		});

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as LiveModul from '#lib/live.svelte.ts';
 import type * as AktualitaetModul from '#lib/aktualitaet.svelte.ts';
 import type * as HimmelModul from '#lib/himmel.svelte.ts';
+import type { KalenderKopf } from '$vertrag';
 
 // Die Kopfleiste im Layout (Fassung 3): Brotkrumen, Seitenleiste und rechts
 // Himmel, PC, Glocke, Live-Punkt, Schloss. Route und Daten kommen aus `$app/state`; die Live-Kanäle
@@ -128,23 +129,30 @@ vi.mock('#lib/passkey.svelte.ts', () => ({
 		zaehlen: vi.fn(() => Promise.resolve())
 	}
 }));
-// Kalender, Stufe 6: der Himmel mit einer erfundenen Antwort (eigene Tests in Himmel.svelte.spec.ts).
+// Kalender, Stufe 6 und 7b: der gemeinsame Himmel-Laden mit einer erfundenen Antwort
+// (eigene Tests in Himmel.svelte.spec.ts und himmel.svelte.spec.ts).
 vi.mock('#lib/himmel.svelte.ts', async (original) => {
 	const echt = await original<typeof HimmelModul>();
-	class HimmelLaden {
-		kopf = {
-			ort: 'Mitte Deutschlands (Mühlhausen/Thüringen)',
-			aufgang: '07:53',
-			untergang: '16:18',
-			text: null,
-			phase_grad: 250,
-			phase: 'abnehmend',
-			sued: false,
-			naechster_vollmond: '2026-12-24'
-		};
-		start = () => () => undefined;
-	}
-	return { ...echt, HimmelLaden };
+	const kopf: KalenderKopf = {
+		ort: 'Mitte Deutschlands (Mühlhausen/Thüringen)',
+		kennung: 'mitte',
+		folgt_heimat: true,
+		datum: '2026-11-27',
+		zone: null,
+		aufgang: '07:53',
+		untergang: '16:18',
+		mittag: '12:05',
+		aufgang_morgen: '07:54',
+		hoehe: 12,
+		hoehe_mittag: 18,
+		naechster_tag: '2026-11-27T23:00:00Z',
+		text: null,
+		phase_grad: 250,
+		phase: 'abnehmend',
+		sued: false,
+		naechster_vollmond: '2026-12-24'
+	};
+	return { ...echt, himmel: { kopf, nutzen: () => () => undefined } };
 });
 // Etappe 4c: der Bau-Stand als Platzhalter (eigene Tests in bau.svelte.spec.ts).
 vi.mock('#lib/bau.svelte.ts', () => ({
@@ -217,7 +225,7 @@ describe('Kopfleiste im Layout (Fassung 3)', () => {
 		const himmel = within(rechts as HTMLElement).getByRole('link', { name: /^Mond: abnehmend/ });
 		const pc = within(rechts as HTMLElement).getByRole('link', { name: /^PC: Prozessor/ });
 		expect(himmel.compareDocumentPosition(pc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(himmel).toHaveAttribute('href', '/kalender');
+		expect(himmel).toHaveAttribute('href', '/heute');
 		const glocke = within(rechts as HTMLElement).getByRole('button', { name: /^Meldungen/ });
 		const schloss = within(rechts as HTMLElement).getByRole('link', {
 			name: 'Angemeldet, Passkey verwalten'

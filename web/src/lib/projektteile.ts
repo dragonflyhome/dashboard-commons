@@ -12,6 +12,7 @@ import { fmtDate } from './format.ts';
 import { SCHRITT_STAND, wartetAufWort } from './katalog/widgets/worte.ts';
 import { gepolstert, position } from './zeit/achse.ts';
 import { tagAusZahl, tagPlus, tagText, tagZahl } from './zeit/tage.ts';
+import { tagInZone } from './zeit/zone.svelte.ts';
 import type {
 	AmpelGrund,
 	AnstehendEintrag,
@@ -202,6 +203,7 @@ export function ladeProjektVerlauf(
 	fetchFn: typeof fetch,
 	jetzt: Date = new Date()
 ): Promise<Ladung<Verlauf>> {
+	// shortcut: Tag des Rechners, weil der Server bis 7c nach Windows rechnet; mit 7c auf den Tag des Blickorts
 	const seit = tagPlus(tagText(jetzt), -(tage - 1));
 	return holen(
 		`${API}/projekte/${encodeURIComponent(slug)}/verlauf?seit=${seit}`,
@@ -392,9 +394,10 @@ export const NAECHSTES_SICHTBAR = 5;
 
 // ----- 3 Plan -----
 
-/** RFC 3339 oder JJJJ-MM-TT → „05.11.“. */
+/** RFC 3339 (Tag in der Anzeigezone) oder JJJJ-MM-TT (bleibt) → „05.11.“. */
 function datum(zeit: string): string {
-	return kurzDatum(zeit.slice(0, 10));
+	const d = zeit.length > 10 ? new Date(zeit) : null;
+	return kurzDatum(d === null || Number.isNaN(d.getTime()) ? zeit.slice(0, 10) : tagInZone(d));
 }
 
 export const ETAPPEN_BEDEUTUNG: Record<EtappenStand, Bedeutung> = {

@@ -39,7 +39,8 @@
 		type Zeile,
 		type Zeitraum
 	} from '#lib/zeit/verlauf.ts';
-	import { kurzDatum, tagText, tagTitel } from '#lib/zeit/tage.ts';
+	import { kurzDatum, tagTitel } from '#lib/zeit/tage.ts';
+	import { tagInZone } from '#lib/zeit/zone.svelte.ts';
 	import { LaufendesJetzt } from '#lib/zeit/jetzt.svelte.ts';
 
 	interface Props {
@@ -78,7 +79,7 @@
 	const h2 = $derived(`h${String(Math.min(ebene + 1, 6))}`);
 	const uhr = new LaufendesJetzt();
 	const zeitpunkt = $derived(jetzt ?? uhr.wert);
-	const heute = $derived(tagText(zeitpunkt));
+	const heute = $derived(tagInZone(zeitpunkt));
 
 	const umgeschaltet = new SvelteMap<string, boolean>();
 	const quellen = $derived(quellenZaehlen(ereignisse));

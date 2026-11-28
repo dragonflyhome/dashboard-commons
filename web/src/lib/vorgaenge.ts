@@ -1,5 +1,7 @@
 /** Kleine Helfer für die Seite /vorgaenge: Farben, Wörter, Zeiten. */
 import type { Bedeutung, Vorgang, VorgangsArt, VorgangsZustand } from '$vertrag';
+import { tagPlus } from './zeit/tage.ts';
+import { tagInZone, zoneOption } from './zeit/zone.svelte.ts';
 
 const MINUTE = 60_000;
 const STUNDE = 60 * MINUTE;
@@ -69,25 +71,24 @@ export function herkunftWort(von: string): string {
 }
 
 function gleicherTag(a: Date, b: Date): boolean {
-	return (
-		a.getFullYear() === b.getFullYear() &&
-		a.getMonth() === b.getMonth() &&
-		a.getDate() === b.getDate()
-	);
+	return tagInZone(a) === tagInZone(b);
 }
 
 function istGestern(d: Date, now: Date): boolean {
-	const gestern = new Date(now);
-	gestern.setDate(now.getDate() - 1);
-	return gleicherTag(d, gestern);
+	return tagInZone(d) === tagPlus(tagInZone(now), -1);
 }
 
 function datum(d: Date): string {
-	return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+	return d.toLocaleDateString('de-DE', {
+		day: '2-digit',
+		month: '2-digit',
+		year: 'numeric',
+		...zoneOption()
+	});
 }
 
 function uhrzeit(d: Date): string {
-	return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+	return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', ...zoneOption() });
 }
 
 /**

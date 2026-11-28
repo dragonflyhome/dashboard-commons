@@ -3,4 +3,4 @@
 /**
  * Was sich geändert hat. Im JSON klein mit Bindestrich (`pc-messung`).
  */
-export type LiveBereich = "aufgaben" | "arbeiten" | "einstufung" | "meldungen" | "antworten" | "vorgaenge" | "passkeys" | "sicherung" | "pc-messung" | "windows-ereignisse" | "projekt-tabellen" | "inventar" | "systemprogramme" | "tresor" | "bote" | "entscheidungen" | "zielbild";
+export type LiveBereich = "aufgaben" | "arbeiten" | "einstufung" | "meldungen" | "antworten" | "vorgaenge" | "passkeys" | "sicherung" | "pc-messung" | "windows-ereignisse" | "projekt-tabellen" | "blickort" | "inventar" | "systemprogramme" | "tresor" | "bote" | "entscheidungen" | "zielbild";

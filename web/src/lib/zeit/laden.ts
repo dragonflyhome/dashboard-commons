@@ -22,6 +22,7 @@ export async function ladeVerlauf(
 	tage?: number,
 	jetzt: Date = new Date()
 ): Promise<VerlaufLadung> {
+	// shortcut: Tag des Rechners, weil der Server bis 7c nach Windows rechnet; mit 7c auf den Tag des Blickorts
 	const seit = tage === undefined ? undefined : tagPlus(tagText(jetzt), -(tage - 1));
 	try {
 		return { verlauf: await api.verlaufVoll(seit, mitZugang(f)), fehler: null };

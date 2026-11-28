@@ -101,6 +101,12 @@ impl Orte {
         self.liste.iter().find(|b| b.kennung == kennung)
     }
 
+    /// Der Blickort zur gespeicherten Kennung. Ohne Kennung oder mit einer, die
+    /// es (nicht mehr) gibt, der Heimatort: Ein gelöschter Ort lässt den Kopf nicht leer.
+    pub fn blickort(&self, kennung: Option<&str>) -> Option<&Benannt> {
+        kennung.and_then(|k| self.finden(k)).or_else(|| self.heimat())
+    }
+
     /// Die eingebauten Kalender, gerechnet für den Heimatort (ohne ihn wie in Stufe 2).
     pub fn katalog(&self) -> Katalog {
         let k = Katalog::eingebaut();
@@ -160,5 +166,26 @@ mod tests {
         assert_eq!(kennungen, ["zuhause", "ort-2", "mitte"]);
         assert_eq!(o.katalog().ort().halbkugel, crate::kalender::mond::Halbkugel::Sued);
         assert!(o.katalog_fuer(Some("mars")).unwrap_err().contains("„mars“"));
+    }
+
+    #[test]
+    fn blickort_faellt_auf_heimat() {
+        let zwei = "[[standort]]
+kennung = \"ort-2\"
+titel = \"Zweiter\"
+breite = 47.3
+laenge = 73.9
+herkunft = \"hand\"
+zeitzone = \"Asia/Almaty\"
+";
+        let mit = datei_lesen::<Standorte>("standorte.toml", zwei).unwrap();
+        let o = Orte::aus(Some(&mit), vorlage().as_ref());
+        let k = |b: Option<&Benannt>| b.map(|b| b.kennung.clone());
+        assert_eq!(k(o.blickort(None)), Some("mitte".into()), "ohne Kennung");
+        assert_eq!(k(o.blickort(Some("mars"))), Some("mitte".into()), "unbekannt");
+        assert_eq!(k(o.blickort(Some("ort-2"))), Some("ort-2".into()), "bekannt");
+        let ohne = Orte::aus(None, vorlage().as_ref());
+        assert_eq!(k(ohne.blickort(Some("ort-2"))), Some("mitte".into()), "aus standorte.toml verschwunden");
+        assert!(Orte::aus(None, None).blickort(Some("ort-2")).is_none());
     }
 }

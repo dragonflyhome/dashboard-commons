@@ -6,7 +6,7 @@
 //!
 //! - `speicher`: der Datenspeicher hat geschrieben (Aufgaben, Arbeiten,
 //!   Einstufung, Meldungen, Antworten, Vorgänge, Passkeys, Sicherung,
-//!   PC-Messung, Windows-Ereignisse, Tabellen der Projekte). Der Speicher meldet
+//!   PC-Messung, Windows-Ereignisse, Tabellen der Projekte, Blickort). Der Speicher meldet
 //!   selbst nach jedem Festschreiben (`Speicher::festschreiben`).
 //! - `pc-benutzer`: Benutzer-Daten der PC-Seite (Ordnergrößen, Systemprogramme,
 //!   Tresor, Bote da oder weg).
@@ -47,6 +47,7 @@ pub enum Bereich {
     PcMessung,
     WindowsEreignisse,
     ProjektTabellen,
+    Blickort,
     // Ereignis `pc-benutzer`
     Inventar,
     Systemprogramme,
@@ -66,7 +67,7 @@ pub enum Gruppe {
 }
 
 impl Bereich {
-    pub const ALLE: [Bereich; 17] = [
+    pub const ALLE: [Bereich; 18] = [
         Bereich::Aufgaben,
         Bereich::Arbeiten,
         Bereich::Einstufung,
@@ -78,6 +79,7 @@ impl Bereich {
         Bereich::PcMessung,
         Bereich::WindowsEreignisse,
         Bereich::ProjektTabellen,
+        Bereich::Blickort,
         Bereich::Inventar,
         Bereich::Systemprogramme,
         Bereich::Tresor,
@@ -98,7 +100,8 @@ impl Bereich {
             | Bereich::Sicherung
             | Bereich::PcMessung
             | Bereich::WindowsEreignisse
-            | Bereich::ProjektTabellen => Gruppe::Speicher,
+            | Bereich::ProjektTabellen
+            | Bereich::Blickort => Gruppe::Speicher,
             Bereich::Inventar | Bereich::Systemprogramme | Bereich::Tresor | Bereich::Bote => Gruppe::PcBenutzer,
             Bereich::Entscheidungen | Bereich::Zielbild => Gruppe::Docs,
         }

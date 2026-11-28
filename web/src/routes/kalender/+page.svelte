@@ -20,19 +20,22 @@
 	 * Zählungen (Stufe 5): die aktiven Zählkalender des Tags in der Reihenfolge der
 	 * Vorlage, unabhängig vom Ort; eingeschaltet über `kalender = [...]` einer fristen.toml.
 	 *
-	 * Städtesuche: Treffer mit Landnamen (`Intl.DisplayNames`, sonst der Ländercode), gleichnamige
-	 * Orte eines Lands mit gerundeter Breite. Der Name der gewählten Stadt steht nach dem Rechnen
-	 * statt „Abgefragter Ort“ in der Anzeige; er geht nie an den Server und wird nicht gespeichert.
+	 * Städtesuche (Baustein `kalender/Staedtesuche.svelte`): Eine gewählte Stadt füllt Breite,
+	 * Länge und Zeitzone. Ihr Name steht nach dem Rechnen statt „Abgefragter Ort“ in der Anzeige;
+	 * er geht nie an den Server und wird nicht gespeichert.
 	 *
 	 * Stufe 6: Der gewählte Ort wird auf Knopfdruck Heimatort (`POST /api/kalender/heimat`);
 	 * „Das Jahr“ zeigt das Festjahr des Jahreskreises am Ort als Kreis und Liste.
+	 *
+	 * Stufe 7b: Startort ist der Blickort (Kopf aus dem gemeinsamen Laden `himmel`); der Tag und
+	 * die Spanne der Feste beginnen beim Tag am Blickort, solange der Kopf fehlt beim Gerätetag.
 	 */
 	import { onMount, tick } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { resolve } from '$app/paths';
 	import { Abschnitt, Absatz, Auswahl, Hinweis, Knopf, Schalter } from '$katalog';
-	import { API, fehlerText, getJson, readError } from '#lib/api/client.ts';
-	import { abrufen } from '#lib/api/antwortet.svelte.ts';
+	import { API, fehlerText, getJson, senden } from '#lib/api/client.ts';
+	import { himmel } from '#lib/himmel.svelte.ts';
 	import { fmtDate } from '#lib/format.ts';
 	import { festjahrName } from '#lib/textfassung.ts';
 	import { nameKurz } from '#lib/fristen.ts';
@@ -40,6 +43,7 @@
 	import { tagPlus } from '#lib/zeit/tage.ts';
 	import { seitenTitel } from '#lib/titel.svelte.ts';
 	import Jahreskreis from '#lib/components/kalender/Jahreskreis.svelte';
+	import Staedtesuche from '#lib/components/kalender/Staedtesuche.svelte';
 	import type {
 		KalenderAbfrage,
 		KalenderAbfrageAntwort,
@@ -52,8 +56,6 @@
 		KalenderOrt,
 		KalenderOrte,
 		KalenderStadt,
-		KalenderStaedte,
-		KalenderStaedteAnfrage,
 		KalenderTag,
 		KalenderZonen,
 		Zeitraum
@@ -62,12 +64,17 @@
 	/** Die Feste ab heute, so viele Tage weit. */
 	const FESTE_TAGE = 30;
 
-	const heute = lokalerTag(new Date());
-	const festeBis = tagPlus(heute, FESTE_TAGE);
+	const geraeteTag = lokalerTag(new Date());
+	/** Der Tag am Blickort, sobald der Kopf da ist; vorher der des Geräts. */
+	const heute = $derived(himmel.kopf?.datum ?? geraeteTag);
+	const festeBis = $derived(tagPlus(heute, FESTE_TAGE));
 
 	let orte = $state<KalenderOrt[] | null>(null);
 	let ort = $state('');
-	let datum = $state(heute);
+	/** Hat jemand den Ort gewählt (Auswahl, Merken, Heimat), folgt er nicht mehr dem Blickort. */
+	let ortGewaehlt = false;
+	// Folgt `heute`, bis jemand einen anderen Tag einträgt.
+	let datum = $derived(heute);
 	let tag = $state<KalenderTag | null>(null);
 	let feste = $state<KalenderFeste | null>(null);
 	let jahr = $state<KalenderJahr | null>(null);
@@ -110,39 +117,14 @@
 			: (wuensche.get(ort) ?? gebete?.auswahl.find((a) => a.ort === ort)?.varianten ?? [])
 	);
 
-	// „Stadt suchen“: Suchtext und Antwort, nur hier im Speicher.
-	let suchtext = $state('');
-	let staedte = $state<KalenderStaedte | null>(null);
 	let breiteFeld = $state<HTMLInputElement | null>(null);
-	let suchNr = 0;
-
-	async function stadtSuchen(): Promise<void> {
-		const anfrage = suchtext.trim();
-		if (anfrage === '') return;
-		const nr = ++suchNr;
-		const koerper: KalenderStaedteAnfrage = { anfrage, hoechstens: 10 };
-		try {
-			const a = await senden<KalenderStaedte>(`${API}/kalender/staedte`, koerper);
-			if (nr === suchNr) staedte = a;
-		} catch (e) {
-			if (nr === suchNr) fehler = fehlerText(e);
-		}
-	}
-
-	/** Enter im Suchfeld sucht, statt das Formular „Anderer Ort“ abzuschicken. */
-	function suchTaste(e: KeyboardEvent): void {
-		if (e.key !== 'Enter') return;
-		e.preventDefault();
-		void stadtSuchen();
-	}
 
 	/** Übernimmt die Stadt in Breite, Länge und Zeitzone; rechnen erst auf Knopfdruck. */
-	function stadtWaehlen(s: KalenderStadt, alle: KalenderStadt[]): void {
-		stadt = { text: stadtText(s, alle), breite: s.breite, laenge: s.laenge, zeitzone: s.zeitzone };
+	function stadtWaehlen(s: KalenderStadt, text: string): void {
+		stadt = { text, breite: s.breite, laenge: s.laenge, zeitzone: s.zeitzone };
 		breite = s.breite;
 		laenge = s.laenge;
 		zeitzone = s.zeitzone;
-		staedte = null;
 		breiteFeld?.focus();
 	}
 
@@ -150,27 +132,27 @@
 		(orte ?? []).map((o) => ({ wert: o.kennung, text: o.heimat ? `${o.titel} (Heimat)` : o.titel }))
 	);
 
-	/** Lädt die Orte, der Heimatort zuerst; gewählt wird `waehlen` oder die Heimat. */
+	/** Lädt die Orte, der Heimatort zuerst; gewählt wird `waehlen`, sonst der Blickort oder die Heimat. */
 	async function orteLaden(waehlen: string | null): Promise<void> {
 		const antwort = await getJson<KalenderOrte>(`${API}/kalender/standorte`);
+		if (waehlen !== null) ortGewaehlt = true;
+		const da = (k: string | undefined): k is string =>
+			k !== undefined && antwort.orte.some((o) => o.kennung === k);
+		const blick = himmel.kopf?.kennung;
 		// Der Server liefert den Heimatort zuerst.
-		ort = waehlen ?? antwort.orte[0]?.kennung ?? '';
+		ort = waehlen ?? (!ortGewaehlt && da(blick) ? blick : (antwort.orte[0]?.kennung ?? ''));
 		orte = antwort.orte;
 	}
 
-	/** POST mit JSON-Rumpf; Fehler wie bei `getJson`. */
-	async function senden<T>(pfad: string, koerper: unknown): Promise<T> {
-		const res = await abrufen(fetch, pfad, {
-			method: 'POST',
-			credentials: 'same-origin',
-			headers: { accept: 'application/json', 'content-type': 'application/json' },
-			body: JSON.stringify(koerper)
-		});
-		if (!res.ok) throw await readError(res);
-		return (await res.json()) as T;
-	}
+	// Kommt der Kopf erst nach den Orten, wechselt der Startort noch zum Blickort.
+	$effect(() => {
+		const blick = himmel.kopf?.kennung;
+		if (blick === undefined || ortGewaehlt || frei !== null || orte === null) return;
+		if (orte.some((o) => o.kennung === blick)) ort = blick;
+	});
 
 	onMount(() => {
+		const ab = himmel.nutzen();
 		orteLaden(null).catch((e: unknown) => {
 			fehler = fehlerText(e);
 		});
@@ -183,6 +165,7 @@
 			(g) => (gebete = g),
 			() => (gebete = null)
 		);
+		return ab;
 	});
 
 	/** Nur die letzte Anfrage zählt; eine langsamere ältere überschreibt nichts. */
@@ -417,41 +400,6 @@
 
 	const grad = (n: number): string => `${n.toFixed(1).replace('.', ',')}°`;
 
-	/** Landname auf Deutsch; ohne `Intl.DisplayNames` oder bei unbekanntem Code der Code selbst. */
-	const landNamen = (() => {
-		try {
-			return new Intl.DisplayNames(['de'], { type: 'region', fallback: 'none' });
-		} catch {
-			return null;
-		}
-	})();
-	function landName(code: string): string {
-		try {
-			// `of` gibt ohne Namen undefined; ein leerer Name zählt ebenso als keiner.
-			const name = landNamen?.of(code) ?? '';
-			return name === '' ? code : name;
-		} catch {
-			return code;
-		}
-	}
-
-	/**
-	 * „Frankfurt (Deutschland)“; gibt es unter `alle` einen gleichnamigen Ort im selben Land,
-	 * dazu die gerundete Breite, und lautet auch die gleich, die Länge. Verglichen wird der
-	 * angezeigte Text, damit zwei Knöpfe fast nie gleich heißen. Ohne Land keine leeren Klammern.
-	 */
-	function stadtText(s: KalenderStadt, alle: KalenderStadt[]): string {
-		const nachBreite = (t: KalenderStadt): string =>
-			`${grad(Math.abs(t.breite))} ${t.breite < 0 ? 'S' : 'N'}`;
-		const gleich = alle.filter(
-			(t) => t !== s && t.name === s.name && t.land.trim() === s.land.trim()
-		);
-		const teile = [landName(s.land.trim())].filter((x) => x !== '');
-		if (gleich.length > 0) teile.push(nachBreite(s));
-		if (gleich.some((t) => nachBreite(t) === nachBreite(s)))
-			teile.push(`${grad(Math.abs(s.laenge))} ${s.laenge < 0 ? 'W' : 'O'}`);
-		return teile.length === 0 ? s.name : `${s.name} (${teile.join(', ')})`;
-	}
 	/**
 	 * Herkunft für die Anzeige: Der Server nennt den anderen Ort „ · <tag.ort> · “; ist der Name
 	 * der gewählten Stadt bekannt, steht er dort wie in der Kopfzeile. Nur Anzeige.
@@ -482,7 +430,15 @@
 
 <Abschnitt titel="Ort und Tag">
 	{#if orte !== null && orte.length > 0}
-		<Auswahl beschriftung="Ort" {optionen} bind:wert={ort} onwechsel={vergessen} />
+		<Auswahl
+			beschriftung="Ort"
+			{optionen}
+			bind:wert={ort}
+			onwechsel={() => {
+				ortGewaehlt = true;
+				vergessen();
+			}}
+		/>
 		{#if gewaehltOrt !== null && !gewaehltOrt.heimat && frei === null}
 			<Knopf onclick={() => void alsHeimat()}>Als Heimatort</Knopf>
 		{/if}
@@ -495,45 +451,7 @@
 	<form class="anders" onsubmit={abschicken} autocomplete="off">
 		<fieldset>
 			<legend>Anderer Ort</legend>
-			<div class="suche">
-				<label class="feld">
-					Stadt suchen
-					<input
-						type="search"
-						bind:value={suchtext}
-						onkeydown={suchTaste}
-						maxlength="100"
-						spellcheck="false"
-					/>
-				</label>
-				<Knopf onclick={() => void stadtSuchen()}>Suchen</Knopf>
-			</div>
-			<div role="status" data-staedte>
-				{#if staedte !== null}
-					{#if staedte.hinweis}
-						<p class="muted small">{staedte.hinweis}</p>
-					{:else if staedte.treffer.length === 0}
-						<p class="muted small">Keine Stadt gefunden.</p>
-					{:else}
-						<ul class="plain treffer">
-							{#each staedte.treffer as s, i (i)}
-								<li>
-									<Knopf
-										art="leise"
-										onclick={() => {
-											stadtWaehlen(s, staedte?.treffer ?? []);
-										}}>{stadtText(s, staedte.treffer)}</Knopf
-									>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/if}
-			</div>
-			<!-- Namensnennung der Städteliste (Lizenzpflicht), dauerhaft am Suchfeld. -->
-			<p class="muted small" data-quelle>
-				Städteliste: {staedte?.quelle ?? 'GeoNames (geonames.org), CC BY 4.0'}
-			</p>
+			<Staedtesuche onwahl={stadtWaehlen} onfehler={(satz: string) => (fehler = satz)} />
 			<label class="feld">
 				Breite (Grad, Norden positiv)
 				<input
@@ -802,18 +720,6 @@
 		flex-wrap: wrap;
 		align-items: end;
 		gap: 0.5rem;
-	}
-	.suche {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: end;
-		gap: 0.5rem;
-	}
-	.treffer {
-		display: grid;
-		justify-items: start;
-		gap: 0.15rem;
-		margin: 0.3rem 0;
 	}
 	/* Die Statuszeile bleibt im Baum, damit Vorlese-Programme die Rückmeldung ansagen. */
 	.leer {

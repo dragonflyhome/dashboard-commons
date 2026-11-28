@@ -129,6 +129,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/kalender/kopf", get(kalender::kopf))
         .route("/api/kalender/heimat", post(kalender::heimat))
         .route("/api/kalender/jahr", get(kalender::jahr))
+        // Kalender, Stufe 7: der Blickort (nur angemeldet; zieht keinen Ort um).
+        .route("/api/kalender/blickort", post(kalender::blickort))
         .route("/api/kalender/staedte", post(staedte::suchen))
         .route("/api/events", get(events::sse))
         // Kopfleiste, Fassung 2: der freie Kanal (Verbindung, Anmeldestand, Fassung; öffentlich, `sicherheit::oeffentlich`).
