@@ -208,6 +208,7 @@ async fn pc_quellen(
                 tracing::error!("Verlauf: Datenspeicher: {e} ({})", e.einzelheiten());
                 AppError::intern(format!("{e} Einzelheiten stehen im Protokoll."))
             })?;
+            // shortcut: Tag im Rechner-Versatz, am Rand ein Tag daneben; mit 7c-2 über tag_von_zeitpunkt
             if mit_archiv && let Some(ab) = windows_ereignisse_ab(&pc).filter(|ab| seit < *ab) {
                 hinweise.push(VerlaufHinweis::neu(
                     HinweisArt::BeginntAb,

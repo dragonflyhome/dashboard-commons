@@ -26,7 +26,6 @@ const kopf = {
 	slug: 'beispiel',
 	title: 'Beispiel',
 	status: 'aktiv',
-	last_change: '2026-10-25',
 	summary: 'Ein Projekt mit Repo.',
 	chat: 'Beispiel-Chat',
 	backup: 'rot',

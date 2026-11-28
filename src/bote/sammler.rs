@@ -31,14 +31,6 @@ pub const START_WERKZEUGE: Duration = Duration::from_secs(4);
 pub const START_WINGET: Duration = Duration::from_secs(10);
 pub const START_INVENTAR: Duration = Duration::from_secs(20);
 
-/// Zeit für Sätze: `26.10.2026 14:03`.
-fn zeit(t: Option<chrono::DateTime<Local>>) -> String {
-    match t {
-        Some(t) => format!("Letzter Stand: {}.", t.format("%d.%m.%Y %H:%M")),
-        None => "Noch kein Stand.".to_string(),
-    }
-}
-
 /// Fragt alle 60 s „Hallo“, damit `/api/betrieb` den Boten aktuell nennt.
 pub fn spawn_lebenszeichen(bote: Arc<Bote>) {
     tokio::spawn(async move {
@@ -149,7 +141,7 @@ async fn benutzer_daten(shared: &sysapps::SharedSysApps, bote: &Bote, erste: boo
             info!("Benutzer-Daten vom Boten: {} Autostart, {} winget-Pakete, {} Werkzeuge", g.autostart.len(), g.winget.len(), g.tools.len());
         }
         Some(s) => {
-            g.benutzer_fehler = Some(format!("Benutzer-Daten (winget, Autostart, Werkzeuge) über den Boten: {s} {}", zeit(g.benutzer_stand)));
+            g.benutzer_fehler = Some(format!("Benutzer-Daten (winget, Autostart, Werkzeuge) über den Boten: {s}"));
         }
     }
     g.fehler_zusammenfassen();
@@ -200,7 +192,8 @@ pub fn spawn_inventar(shared: inventory::SharedInventory, bote: Arc<Bote>, cache
                             Err(s) => s.0,
                         };
                         g.computing = false;
-                        g.error = Some(format!("Ordnergrößen über den Boten: {s} {}", zeit(g.computed_at)));
+                        // Ohne Zeit: `computed_at` steht im selben Objekt (RFC 3339).
+                        g.error = Some(format!("Ordnergrößen über den Boten: {s}"));
                         warten = NOCHMAL;
                     }
                 }
@@ -246,6 +239,13 @@ mod tests {
         warten().await;
         assert_eq!(rx.try_recv().unwrap().bereich, Bereich::Systemprogramme, "erster Fehler wird gezeigt");
         assert!(shared.read().await.benutzer_fehler.is_some());
+        // `errors` geht an den Browser: keine Uhrzeit in Rechnerzeit im Satz, auch mit früherem Stand.
+        let stand = Local::now();
+        shared.write().await.benutzer_stand = Some(stand);
+        assert!(!benutzer_runde(&shared, &bote, &melder, false).await);
+        let errors = shared.read().await.errors.clone();
+        assert!(!errors.is_empty());
+        assert!(errors.iter().all(|e| !e.contains(&stand.format("%H:%M").to_string()) && !e.contains("Letzter Stand")), "{errors:?}");
         for _ in 0..2 {
             assert!(!benutzer_runde(&shared, &bote, &melder, false).await);
         }

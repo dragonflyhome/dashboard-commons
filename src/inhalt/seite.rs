@@ -99,13 +99,6 @@ pub struct Project {
     pub file_modified: Option<DateTime<Local>>,
 }
 
-impl Project {
-    /// „Letzte Änderung“: das Dateidatum (`projekt.toml` und `daten/`).
-    pub fn last_change(&self) -> String {
-        self.file_modified.map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_else(|| "unbekannt".to_string())
-    }
-}
-
 /// Erlaubt sind nur Kleinbuchstaben, Ziffern und Bindestriche.
 pub fn is_valid_slug(slug: &str) -> bool {
     !slug.is_empty() && slug.len() <= 64 && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') && !slug.starts_with('-')

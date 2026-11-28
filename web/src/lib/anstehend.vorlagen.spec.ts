@@ -89,7 +89,7 @@ interface AltStand {
 		bedeutung: string;
 		ampel: string;
 		grund: string;
-		zuletzt: string;
+		zuletzt: string | null;
 	};
 	kurz: StandAnsicht['kurz'];
 	frage: { aktuell: AltEintrag | null; weitere: number };
@@ -236,7 +236,8 @@ describe('Gleichwertig mit dem Server vor 3a+: Unter-Dashboard', () => {
 				bedeutung: s.gesamt.bedeutung,
 				ampel: s.gesamt.ampel,
 				grund: s.gesamt.grund,
-				zuletzt: s.gesamt.zuletzt
+				// Stufe 7c-1: Der Server schickt RFC 3339 statt „JJJJ-MM-TT HH:MM“ (dieselbe Ortszeit).
+				zuletzt: s.gesamt.zuletzt?.slice(0, 16).replace('T', ' ') ?? null
 			},
 			kurz: s.kurz,
 			frage: {

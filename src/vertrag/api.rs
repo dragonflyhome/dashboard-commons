@@ -33,7 +33,6 @@ pub struct ProjectSummary {
     pub status: String,
     /// Farbe des Status als Bedeutung.
     pub bedeutung: Bedeutung,
-    pub last_change: String,
     pub summary: String,
     pub chat: Option<String>,
     /// Das Wort aus dem Kopf: rot, gelb, grün.
@@ -51,7 +50,7 @@ pub struct ProjectSummary {
     #[ts(as = "Option<u64>", optional)]
     pub open_zahl: u64,
     pub repos: Vec<RepoStatus>,
-    /// Ortszeit, RFC 3339.
+    /// Letzte Änderung (`projekt.toml` und `daten/`), Ortszeit, RFC 3339.
     #[ts(type = "string | null")]
     pub file_modified: Option<chrono::DateTime<chrono::Local>>,
     /// Kopfleiste, Fassung 3: Name des Schwerpunkts aus `data/schwerpunkte.toml`,
@@ -92,7 +91,6 @@ impl ProjectSummary {
             title: p.meta.title.clone(),
             status: p.meta.status.clone(),
             bedeutung: Bedeutung::aus_wort_oder_neutral(&p.meta.status),
-            last_change: p.last_change(),
             summary: p.meta.summary.clone(),
             chat: p.meta.chat.clone(),
             backup: p.meta.backup.clone(),
@@ -369,6 +367,10 @@ pub enum TresorStand {
 pub struct KeyList {
     pub keys: Vec<KeyStatus>,
     pub error: Option<String>,
+    /// Letzte gute Antwort des Boten (Ortszeit, RFC 3339), nur beim Satz
+    /// „Der Bote ist gerade ausgelastet.“ in `error`; sonst `null`.
+    #[ts(type = "string | null")]
+    pub bote_stand: Option<chrono::DateTime<chrono::Local>>,
 }
 
 /// Eine Tabelle des Datenspeichers, für die Seite /daten.

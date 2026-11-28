@@ -8,7 +8,6 @@ const project: ProjectSummary = {
 	title: 'Beispiel',
 	status: 'aktiv',
 	bedeutung: 'laeuft',
-	last_change: '2026-10-25',
 	summary: 'Beispielseite im Schaufenster.',
 	chat: 'Beispiel-Chat Schaufenster',
 	backup: 'gelb',

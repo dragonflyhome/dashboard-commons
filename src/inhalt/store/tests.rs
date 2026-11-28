@@ -279,7 +279,9 @@ fn lesefehler_behaelt_den_letzten_stand() {
     let funde = b.lesefehler_befunde();
     assert_eq!(funde.len(), 1);
     assert_eq!(funde[0].0, "alpha");
-    assert!(funde[0].1.text.contains("letzten guten Stand"), "{}", funde[0].1.text);
+    assert!(funde[0].1.text.contains("zeigt den letzten guten Stand und"), "{}", funde[0].1.text);
+    funde[0].1.zeit_nur_im_feld();
+    assert_eq!(funde[0].1.zeit.as_ref(), Some(&p.lesefehler[0].seit));
     drop(sperre);
     // Kein neuer Zeitstempel, trotzdem neu gelesen.
     store.abgleichen();
@@ -311,6 +313,8 @@ fn gesperrt_beim_start_wird_spaeter_gelesen() {
     let funde = b.lesefehler_befunde();
     assert_eq!(funde.len(), 2, "{funde:?}");
     assert!(funde[0].1.text.contains("noch nicht"), "{funde:?}");
+    assert!(funde[1].1.text.contains("(vorher)"), "{funde:?}");
+    funde.iter().for_each(|(_, b)| b.zeit_nur_im_feld());
     let mut rx = store.abonnieren();
     store.abgleichen();
     assert!(ereignisse(&mut rx).is_empty(), "gesperrt: still");
@@ -878,6 +882,7 @@ fn gesperrte_datei_im_archiv_ohne_befund() {
     assert_eq!(b.projekt("beta").unwrap().lesefehler.len(), 1, "gelesen und gemerkt wird weiter");
     let funde = b.lesefehler_befunde();
     assert_eq!(funde.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["alpha"], "{funde:?}");
+    funde[0].1.zeit_nur_im_feld();
 }
 
 /// Archivbereich: Eine gesperrte Datei hält den alten Stand fest, die Lage

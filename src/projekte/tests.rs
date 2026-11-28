@@ -502,3 +502,17 @@ fn modul_passt_zu_ordner_und_kiste() {
     assert_eq!(reg.slugs(), ["beispiel"], "{:?}", reg.stoerungen().alle());
     let _ = std::fs::remove_dir_all(&ordner);
 }
+
+/// Stufe 7c-1: Der Satz einer Störung nennt keine Uhrzeit; der letzte Fehler
+/// steht als RFC 3339 in `zeit`.
+#[test]
+fn stoerung_mit_zeit_ohne_uhrzeit_im_satz() {
+    let s = Stoerungen::default();
+    s.melden("alpha", "nach_lesen", "Kaputt um 12:30.");
+    s.melden("alpha", "nach_lesen", "Kaputt.");
+    let b = s.befunde();
+    assert_eq!(b.len(), 1);
+    assert_eq!(b[0].1.text, "Backend-Modul, nach_lesen: Kaputt (2-mal seit dem Start).");
+    b[0].1.zeit_nur_im_feld();
+    assert_eq!(b[0].1.zeit.as_deref(), Some(s.alle()[0].1.zuletzt.as_str()));
+}

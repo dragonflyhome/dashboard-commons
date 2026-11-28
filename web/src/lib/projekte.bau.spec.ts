@@ -25,7 +25,6 @@ function projekt(slug: string, bau?: ProjektBau): ProjectSummary {
 		title: slug,
 		status: 'aktiv',
 		bedeutung: 'laeuft',
-		last_change: '2026-10-31',
 		summary: '',
 		chat: null,
 		backup: null,

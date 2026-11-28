@@ -165,6 +165,16 @@ function passt(p: ProjectSummary, suche: string): boolean {
 	return q.split(/\s+/).every((w) => heu.includes(w));
 }
 
+/** Jüngere Änderung zuerst; ohne lesbare Zeit (`null`) zuletzt. */
+function neuerZuerst(a: string | null, b: string | null): number {
+	const wert = (z: string | null): number => {
+		const t = z === null ? NaN : Date.parse(z);
+		return Number.isNaN(t) ? -Infinity : t;
+	};
+	const [x, y] = [wert(a), wert(b)];
+	return x === y ? 0 : y > x ? 1 : -1;
+}
+
 function vergleich(a: ProjectSummary, b: ProjectSummary, s: Sortierung): number {
 	switch (s) {
 		case 'order':
@@ -172,7 +182,7 @@ function vergleich(a: ProjectSummary, b: ProjectSummary, s: Sortierung): number 
 		case 'title':
 			return a.title.localeCompare(b.title, 'de');
 		case 'change':
-			return b.last_change.localeCompare(a.last_change) || a.title.localeCompare(b.title, 'de');
+			return neuerZuerst(a.file_modified, b.file_modified) || a.title.localeCompare(b.title, 'de');
 	}
 }
 

@@ -9,6 +9,7 @@
 	import { resolve } from '$app/paths';
 	import type { Spalte } from '#lib/projekte.ts';
 	import { klasse } from '#lib/bedeutung.ts';
+	import { kurzZeit } from '#lib/unterdashboard.ts';
 	import StatusDot from './StatusDot.svelte';
 
 	interface Props {
@@ -46,7 +47,9 @@
 								<b class="titel">{p.title}</b>
 								{#if p.summary}<span class="satz muted small">{p.summary}</span>{/if}
 								<span class="meta muted small"
-									>{p.status} · zuletzt {p.last_change}{#if (p.open_zahl ?? p.open.length) > 0}
+									>{p.status} · zuletzt {p.file_modified === null
+										? 'unbekannt'
+										: kurzZeit(p.file_modified)}{#if (p.open_zahl ?? p.open.length) > 0}
 										· {p.open_zahl ?? p.open.length} offen{/if}</span
 								>
 							</a>

@@ -8,6 +8,7 @@ import type {
 	PcMesswert,
 	ProjectSummary,
 	Schritt,
+	VerlaufEreignis,
 	Vorgang,
 	VorgangDetail
 } from '$vertrag';
@@ -17,11 +18,15 @@ import DashboardStand from '../components/pc/DashboardStand.svelte';
 import VorgangZeile from '../components/vorgaenge/VorgangZeile.svelte';
 import Plan from '../katalog/Plan.svelte';
 import Meldung from '../katalog/widgets/Meldung.svelte';
+import Stand from '../katalog/widgets/Stand.svelte';
 import Schritte from '../katalog/widgets/Schritte.svelte';
 import ZeitVerlauf from '../katalog/zeit/Verlauf.svelte';
+import type { GesamtAnsicht } from '../anstehend.ts';
+import { beispielProjektStand } from '../anstehend.beispiel.ts';
 import { bauAnzeige } from '../projekte.ts';
 import { projektPlan } from '../../routes/katalog/beispiele.ts';
 import { LaufendesJetzt } from './jetzt.svelte.ts';
+import { datumText, eintrag } from './verlauf.ts';
 import { tagInZone, zoneSetzen } from './zone.svelte.ts';
 
 vi.mock('$app/navigation', () => ({ invalidate: vi.fn() }));
@@ -135,7 +140,6 @@ describe('Zone gesetzt nach dem Zeichnen ergibt neuen Text', () => {
 			title: 'Beispiel',
 			status: 'aktiv',
 			bedeutung: 'laeuft',
-			last_change: '2026-11-27',
 			summary: null,
 			chat: null,
 			backup: null,
@@ -158,13 +162,33 @@ describe('Zone gesetzt nach dem Zeichnen ergibt neuen Text', () => {
 					stand: '2026-11-27T10:50:00Z'
 				}
 			],
-			file_modified: null
+			file_modified: '2026-11-27T10:50:00Z'
 		} as unknown as ProjectSummary;
 		render(ProjectCard, { project, jetzt: JETZT });
 		expect(screen.getByText('Git-Stand von 11:50')).toBeInTheDocument();
+		expect(screen.getByText('aktiv · zuletzt 27.11. 11:50')).toBeInTheDocument();
 		zoneSetzen(AUCKLAND);
 		flushSync();
 		expect(screen.getByText('Git-Stand von 27.11. 23:50')).toBeInTheDocument();
+		// Stufe 7c-1: die letzte Änderung (file_modified) in der Anzeigezone.
+		expect(screen.getByText('aktiv · zuletzt 27.11. 23:50')).toBeInTheDocument();
+	});
+
+	it('Stand: „zuletzt geändert“ in der Anzeigezone, ohne Zeit keine Zeile', () => {
+		const gesamt = (zuletzt: string | null): GesamtAnsicht => ({
+			...beispielProjektStand().gesamt,
+			grund: 'Alles im Plan.',
+			grund_art: beispielProjektStand().gesamt.grund,
+			zuletzt
+		});
+		const { unmount } = render(Stand, { gesamt: gesamt('2026-11-27T10:50:00Z'), schwerpunkt: 'S' });
+		expect(text()).toContain('zuletzt geändert 27.11. 11:50');
+		zoneSetzen(AUCKLAND);
+		flushSync();
+		expect(text()).toContain('zuletzt geändert 27.11. 23:50');
+		unmount();
+		render(Stand, { gesamt: gesamt(null), schwerpunkt: 'S' });
+		expect(text()).not.toContain('zuletzt geändert');
 	});
 
 	it('Vorgänge: „seit“ und die Zeit eines Schritts in der Zeile', async () => {
@@ -328,5 +352,28 @@ describe('LaufendesJetzt am Blickort', () => {
 		expect(uhr.wert.getTime()).toBe(Date.parse('2026-11-27T11:30:00Z'));
 		expect(tagInZone(uhr.wert)).toBe('2026-11-28');
 		ende();
+	});
+});
+
+describe('Tagesereignisse im Verlauf (Stufe 7c-1)', () => {
+	it('ein Ereignis mit Genauigkeit tag zeigt den Datumsteil, auch in New York', () => {
+		zoneSetzen('America/New_York');
+		const e: VerlaufEreignis = {
+			kennung: 'hand:fest',
+			// So schreibt der Server einen Tag: Mitternacht im Versatz des Rechners.
+			zeit: '2026-11-28T00:00:00+01:00',
+			genauigkeit: 'tag',
+			bis: null,
+			titel: 'Fest',
+			text: null,
+			quelle: 'hand',
+			art: 'erledigt',
+			verweis: null
+		};
+		const tag = eintrag(e);
+		expect(tag?.tag).toBe('2026-11-28');
+		expect(tag === null ? '' : datumText(tag)).toMatch(/^28\.11\./);
+		// Gegenprobe: derselbe Zeitpunkt mit Uhrzeit ist in New York noch der 27.
+		expect(eintrag({ ...e, genauigkeit: 'minute' })?.tag).toBe('2026-11-27');
 	});
 });

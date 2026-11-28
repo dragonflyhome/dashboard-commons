@@ -34,6 +34,12 @@ describe('Stand an der Grenze', () => {
 		expect(await ladeStand('p', netz(gut))).toEqual(gut);
 	});
 
+	it('zuletzt darf null sein (Änderungszeit unbekannt), aber keine Zahl', () => {
+		const gut = beispielProjektStand();
+		expect(istProjektStand({ ...gut, gesamt: { ...gut.gesamt, zuletzt: null } })).toBe(true);
+		expect(istProjektStand({ ...gut, gesamt: { ...gut.gesamt, zuletzt: 1 } })).toBe(false);
+	});
+
 	it('wirft die Auswertung trotzdem, ist der Stand nicht geladen und nichts wirft', async () => {
 		// Die Form stimmt, ein Eintrag aber nicht: die Auswertung liest e.art.
 		const kaputt = { ...beispielProjektStand(), sichtbar: true, eintraege: [null] };

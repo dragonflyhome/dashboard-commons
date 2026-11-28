@@ -67,7 +67,8 @@
 {/if}
 {#if problem}<p class="block-error">{problem}</p>{/if}
 {#if data.error}<p class="block-error">
-		Die Liste der Schlüssel lässt sich nicht lesen: {data.error}
+		Die Liste der Schlüssel lässt sich nicht lesen: {data.error}{#if data.bote_stand !== null}
+			<br />letzter Stand {fmtDateTime(data.bote_stand)}{/if}
 	</p>{/if}
 {#if data.keys.length === 0 && !data.error}
 	<p class="muted">Zurzeit braucht kein Chat einen Schlüssel.</p>

@@ -110,7 +110,7 @@ fn sperren<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 fn jetzt_text() -> String {
-    chrono::Local::now().format("%d.%m. %H:%M").to_string()
+    crate::vertrag::verlauf::zeit_text(&chrono::Local::now())
 }
 
 // ----- Störungen -----
@@ -123,7 +123,7 @@ pub struct Stoerung {
     /// Fehler seit dem Start des Dienstes.
     pub gesamt: u32,
     pub satz: String,
-    /// Tag und Uhrzeit des letzten Fehlers.
+    /// Zeitpunkt des letzten Fehlers (RFC 3339).
     pub zuletzt: String,
 }
 
@@ -172,8 +172,9 @@ impl Stoerungen {
                 } else {
                     "einmal".to_string()
                 };
-                let text = format!("Backend-Modul, {wo}: {} ({wie_oft}, zuletzt {}).", s.satz.trim_end_matches('.'), s.zuletzt);
-                (slug.clone(), Befund::fehler(format!("projects/{slug}/server/src/lib.rs"), None, text))
+                // Der Satz nennt keine Uhrzeit; der letzte Fehler steht in `zeit` (RFC 3339).
+                let text = format!("Backend-Modul, {wo}: {} ({wie_oft}).", s.satz.trim_end_matches('.'));
+                (slug.clone(), Befund::fehler(format!("projects/{slug}/server/src/lib.rs"), None, text).mit_zeit(s.zuletzt))
             })
             .collect()
     }

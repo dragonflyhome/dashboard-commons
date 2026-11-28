@@ -196,7 +196,7 @@ mod tests {
             titel: format!("Projekt {slug}"),
             status: "aktiv".into(),
             notizen: Vec::new(),
-            zuletzt: "2026-11-03 10:00".into(),
+            zuletzt: Some("2026-11-03T10:00:00+01:00".into()),
             archiviert: false,
         }
     }

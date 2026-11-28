@@ -21,7 +21,6 @@ function projekt(
 		title,
 		status: 'aktiv',
 		bedeutung: 'laeuft',
-		last_change: '2026-10-30',
 		summary: '',
 		chat: null,
 		backup: null,

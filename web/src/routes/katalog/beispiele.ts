@@ -705,7 +705,7 @@ export function widgetBeispiel(): WidgetBeispiel {
 			grund_art: 'wartet',
 			bezug_art: null,
 			bezug: null,
-			zuletzt: tagIso(0)
+			zuletzt: zeitIso(0, 10)
 		},
 		kurz: {
 			wartet_auf_dich: 4,
