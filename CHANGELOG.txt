@@ -14,6 +14,14 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Projektseiten mit alten oder unbekannten Farbnamen erscheinen als Hinweis in
+  der Glocke, mit Datei und Zeile.
+
+Behoben
+- Stilprüfung: Eine externe Farbvorgabe gilt nur im <style>-Block einer
+  Projektseite, nicht im style-Attribut.
+
 0.35.0 - 2026-11-28
 -------------------
 

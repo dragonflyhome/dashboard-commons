@@ -1177,7 +1177,8 @@ fn css_wert_pruefen(s: &mut Sammler, off: usize, wert: &str) {
 
 /// CSS in `src[von..bis]` (ein `<style>`-Block oder ein `style="…"`):
 /// `@import`, `url(http…)`, freie Farben in Werten. Zahlen zählen hier nicht.
-fn css_pruefen(s: &mut Sammler, von: usize, bis: usize) {
+/// `extern_erlaubt`: nur im `<style>`-Block gilt `--extern-…` mit Herkunft (wie bei Stylelint), nie im Attribut.
+fn css_pruefen(s: &mut Sammler, von: usize, bis: usize, extern_erlaubt: bool) {
     // Kommentare durch Leerzeichen ersetzen, Stellen bleiben gleich.
     let mut roh = s.src.as_bytes()[von..bis].to_vec();
     let mut i = 0;
@@ -1203,7 +1204,7 @@ fn css_pruefen(s: &mut Sammler, von: usize, bis: usize) {
     let mut teil = 0;
     for (p, c) in css.char_indices() {
         if matches!(c, ';' | '{' | '}') {
-            if c != '{' {
+            if c != '{' && !(c == ';' && extern_erlaubt && extern_zeile(&css[teil..p], &s.src[von + p + 1..bis])) {
                 css_deklaration(s, von + teil, &css[teil..p]);
             }
             teil = p + 1;
@@ -1226,6 +1227,21 @@ fn url_und_global(s: &mut Sammler, off: usize, css: &str) {
             s.fehler(off + p, SATZ_GLOBAL);
         }
     }
+}
+
+/// Die gekennzeichnete Farbe von außen: `--extern-<name>: <wert>; /* extern: <Herkunft> */`.
+/// `dekl` steht vor dem `;` (Kommentare darin sind schon Leerzeichen), `danach`
+/// ist der Quelltext dahinter; die Herkunft muss hinter dem `;` derselben Zeile stehen.
+fn extern_zeile(dekl: &str, danach: &str) -> bool {
+    let Some((name, _)) = dekl.split_once(':') else { return false };
+    let name = name.trim();
+    if !name.strip_prefix("--extern-").is_some_and(|n| !n.is_empty() && n.chars().all(wortzeichen)) {
+        return false;
+    }
+    let zeile = danach.split('\n').next().unwrap_or("").trim_start_matches([' ', '\t']);
+    let Some(rest) = zeile.strip_prefix("/*") else { return false };
+    let Some((kommentar, _)) = rest.split_once("*/") else { return false };
+    kommentar.trim_start().strip_prefix("extern:").is_some_and(|herkunft| !herkunft.trim().is_empty())
 }
 
 fn css_deklaration(s: &mut Sammler, off: usize, dekl: &str) {
@@ -1424,7 +1440,7 @@ fn svelte_datei(s: &mut Sammler) {
                         }
                         if !tag.selbst {
                             let zu = finde_ci(b, i, n, b"</style").unwrap_or(n);
-                            css_pruefen(s, i, zu);
+                            css_pruefen(s, i, zu, true);
                             i = finde(b, zu, n, b">").map_or(n, |p| p + 1);
                         }
                     }
@@ -1565,7 +1581,7 @@ fn attribut_pruefen(s: &mut Sammler, tag: &str, name: &str, teile: &[(usize, usi
     }
     if name == "style" {
         for &(a, b) in teile {
-            css_pruefen(s, a, b);
+            css_pruefen(s, a, b, false);
         }
     } else if name.starts_with("style:") || FARB_ATTRIBUTE.contains(&name) {
         for &(a, w) in &texte {

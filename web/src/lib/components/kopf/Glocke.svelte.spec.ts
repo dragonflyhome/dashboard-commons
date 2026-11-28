@@ -12,7 +12,8 @@ function meldung(
 	art: MeldungsArt,
 	zuletzt: string,
 	schluessel = `dashboard/${art}:${id}`,
-	system = false
+	system = false,
+	text: string | null = null
 ): AnstehendEintrag {
 	const stufe = art === 'fertig' ? 'bald' : art === 'info' ? 'irgendwann' : 'jetzt';
 	const e = eintrag({
@@ -23,7 +24,7 @@ function meldung(
 		wartet_auf: null,
 		wartet_auf_dich: false,
 		ziel: system ? `/pc#meldung-${id}` : `/projects/dashboard#meldung-${id}`,
-		meldung: { art, anzahl: 1, zuletzt, text: null, system, schluessel },
+		meldung: { art, anzahl: 1, zuletzt, text, system, schluessel },
 		erstellt: zuletzt
 	});
 	e.stufe = { vorschlag: stufe, inhaber: null, wirksam: stufe, grund: 'fest' };
@@ -127,6 +128,30 @@ describe('Glocke (Kopfleiste, Fassung 3)', () => {
 		expect(
 			screen.getByRole('button', { name: 'Meldungen: keine ungelesenen' })
 		).toBeInTheDocument();
+	});
+
+	it('nur Stil-Hinweise offen: Zahl an der Glocke, kein Satz „keine ungelesenen“', async () => {
+		const um = '2026-10-30T11:00:00+01:00';
+		// Nur Stil-Hinweise zeigen ihren Text; eine Rechte-Meldung nicht.
+		const { s } = speicherMit([
+			meldung(
+				'm-5',
+				'info',
+				um,
+				'schaufenster/stil-hinweise',
+				false,
+				'Stellen: projects/x/Seite.svelte:3.'
+			),
+			meldung('m-6', 'fehler', um, 'dashboard/lesen:docs', true, 'Text der Rechte-Meldung.')
+		]);
+		await s.laden();
+		render(Glocke, { speicher: s, offen: true });
+		const feld = await screen.findByRole('dialog');
+		expect(within(feld).getByText('Hinweise')).toBeInTheDocument();
+		expect(within(feld).getByText('Stellen: projects/x/Seite.svelte:3.')).toBeInTheDocument();
+		expect(within(feld).queryByText('Text der Rechte-Meldung.')).toBeNull();
+		expect(within(feld).queryByText('Keine ungelesenen Meldungen.')).toBeNull();
+		expect(screen.getByRole('button', { name: 'Meldungen: 1 ungelesen' })).toBeInTheDocument();
 	});
 
 	it('ohne Anmeldung: keine Zahl, nur der Hinweis zur Anmeldung', async () => {

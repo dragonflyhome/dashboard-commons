@@ -478,13 +478,21 @@ export function istRechteMeldung(schluessel: string | null | undefined): boolean
 	return typeof schluessel === 'string' && /\/(?:lesen|zugriff|rechte?):/.test(schluessel);
 }
 
+/**
+ * Stil-Hinweise eines Projekts (Farben 2b: alte oder unbekannte Farbnamen,
+ * Schlüssel `<slug>/stil-hinweise`). Sie stehen unter „Hinweise“ und zählen mit.
+ */
+export function istStilHinweis(schluessel: string | null | undefined): boolean {
+	return typeof schluessel === 'string' && schluessel.endsWith('/stil-hinweise');
+}
+
 /** Was die Glocke zeigt: die Zahl und die Liste in zwei Teilen. */
 export interface GlockenAnsicht {
-	/** Ungelesene Meldungen ohne Hinweise; behobene sind gar nicht darunter. */
+	/** Ungelesene Meldungen ohne Rechte-Hinweise; behobene sind gar nicht darunter. */
 	zahl: number;
-	/** Diese Meldungen, neueste zuerst. */
+	/** Diese Meldungen ohne die Hinweise, neueste zuerst. */
 	meldungen: AnstehendEintrag[];
-	/** Rechte- und Zugriffsmeldungen: als Hinweis, ohne Zahl. */
+	/** Rechte- und Zugriffsmeldungen (ohne Zahl) und Stil-Hinweise (mit Zahl). */
 	hinweise: AnstehendEintrag[];
 }
 
@@ -495,15 +503,19 @@ export interface GlockenAnsicht {
  * behobene zählen also nie mit (Vorschlag aus dem Auftrag: sie stehen nur in
  * der Liste unter „behoben“, siehe `behobenUngelesen`). Alle Arten zählen
  * (Fehler, Frist, fertig, Info), außer Rechte-Meldungen: die sind Hinweise.
+ * Stil-Hinweise stehen ebenfalls unter „Hinweise“, zählen aber mit: Der
+ * Prüfer soll melden, bis die Projekte umgestellt sind.
  */
 export function glocke(eintraege: readonly AnstehendEintrag[]): GlockenAnsicht {
 	const neueste = (a: AnstehendEintrag, b: AnstehendEintrag): number =>
 		zeitWert(b.meldung?.zuletzt ?? b.erstellt) - zeitWert(a.meldung?.zuletzt ?? a.erstellt) ||
 		vergleich(b.id, a.id);
 	const alle = eintraege.filter((e) => e.art === 'meldung').sort(neueste);
-	const meldungen = alle.filter((e) => !istRechteMeldung(e.meldung?.schluessel));
-	const hinweise = alle.filter((e) => istRechteMeldung(e.meldung?.schluessel));
-	return { zahl: meldungen.length, meldungen, hinweise };
+	const rechte = (e: AnstehendEintrag): boolean => istRechteMeldung(e.meldung?.schluessel);
+	const stil = (e: AnstehendEintrag): boolean => istStilHinweis(e.meldung?.schluessel);
+	const meldungen = alle.filter((e) => !rechte(e) && !stil(e));
+	const hinweise = alle.filter((e) => rechte(e) || stil(e));
+	return { zahl: meldungen.length + hinweise.filter(stil).length, meldungen, hinweise };
 }
 
 /**

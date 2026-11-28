@@ -5,7 +5,8 @@
 	 * wie „Anstehend“ (`glocke` in anstehend.ts, keine zweite Zählung);
 	 * behobene zählen nie mit, sie stehen nur in der Liste unter „behoben“.
 	 * Rechte- und Zugriffsmeldungen (etwa „Ordner nicht lesbar“) sind Hinweise
-	 * ohne Zahl. Meldungen sind geschützt: Ohne Anmeldung keine Zahl, nur der
+	 * ohne Zahl; Stil-Hinweise der Projekte stehen dort mit Zahl und mit den
+	 * Stellen (Datei:Zeile) aus dem Text der Meldung. Meldungen sind geschützt: Ohne Anmeldung keine Zahl, nur der
 	 * Hinweis zur Anmeldung.
 	 *
 	 * Die Liste ist ein Klappfeld aus dem Katalog (Bits UI Popover) ohne
@@ -18,7 +19,12 @@
 	import { resolve } from '$app/paths';
 	import { Klappfeld } from '$katalog';
 	import { anstehend, type Anstehend } from '#lib/anstehend.svelte.ts';
-	import { MELDUNG_WORT, SATZ_OHNE_ANMELDUNG, meldungsOrt } from '#lib/anstehend.ts';
+	import {
+		MELDUNG_WORT,
+		SATZ_OHNE_ANMELDUNG,
+		istStilHinweis,
+		meldungsOrt
+	} from '#lib/anstehend.ts';
 	import { SATZ_FREMDES_KONTO } from '#lib/anmeldung.ts';
 	import { zielHref } from '#lib/zieladresse.ts';
 	import type { AnstehendEintrag, Meldung } from '$vertrag';
@@ -111,9 +117,10 @@
 				</p>
 			{/if}
 		{:else}
-			{#if g.meldungen.length === 0}
+			<!-- Stil-Hinweise zählen mit: Mit Zahl an der Glocke steht hier nie „keine“. -->
+			{#if zahl === 0}
 				<p class="muted small">Keine ungelesenen Meldungen.</p>
-			{:else}
+			{:else if g.meldungen.length > 0}
 				<ul class="plain liste">
 					{#each g.meldungen as e (e.id)}
 						{@const href = e.ziel_da ? zielHref(e.ziel) : null}
@@ -148,6 +155,9 @@
 						<li class="meldung hinweis-zeile">
 							<span class="ort">Hinweis · {meldungsOrt(e)}</span>
 							<span class="titel">{e.titel}</span>
+							{#if istStilHinweis(e.meldung?.schluessel) && e.meldung?.text}
+								<span class="muted small">{e.meldung.text}</span>
+							{/if}
 							<button
 								type="button"
 								class="button gelesen"

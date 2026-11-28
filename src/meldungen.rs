@@ -9,6 +9,7 @@
 //! |---|---|---|---|
 //! | Bau rot (je Chat, der gebaut hat) | fehler | `<slug>/bau-rot` | zählt hoch; behoben beim nächsten grünen Bau |
 //! | Seite fehlt im Bau (Scanner rot) | fehler | `<slug>/bau-rot` | Zustand |
+//! | Stil-Hinweise eines im Bau geprüften Projekts (Farben 2b) | info | `<slug>/stil-hinweise` | Zustand; behoben, sobald ein Bau es ohne Hinweis prüft oder ein grüner Bau es gelöscht oder im Archiv findet |
 //! | Prüfung rot (Fehler im Prüfbericht) | fehler | `<slug>/pruefung-rot` | Zustand; behoben, sobald ohne Fehler |
 //! | Frist in höchstens zwei Tagen | frist | `<projekt>/frist:<art>-<id>` | Zustand; behoben, wenn erledigt oder verschoben |
 //! | Frist vorbei | frist | `<projekt>/frist-vorbei:<art>-<id>` | Zustand; ebenso |
@@ -197,6 +198,9 @@ pub async fn bau_ergebnis(state: &AppState, slugs: &[String], gruen: bool, satz:
 /// Startseite, zählt hoch); die alte Fassung bleibt. Je Projekt, das rot ist:
 /// eine Meldung mit dem Satz des Baumeisters, ob es in seiner letzten guten
 /// Fassung bleibt oder fehlt. Bau grün: alle anderen Bau-Meldungen sind behoben.
+/// Farben 2b: je Projekt, das der Lauf geprüft hat, eine Info-Meldung zu
+/// seinen Stil-Hinweisen; ohne Hinweis ist sie behoben, nach einem grünen Bau
+/// auch, wenn das Projekt gelöscht oder archiviert ist.
 pub async fn bau_ergebnis_4b(state: &AppState, slugs: &[String], e: &crate::vertrag::bote::BauErgebnis, satz: &str, jetzt: Zeit) {
     if !e.gruen {
         for slug in slugs {
@@ -222,6 +226,47 @@ pub async fn bau_ergebnis_4b(state: &AppState, slugs: &[String], e: &crate::vert
     if e.gruen {
         beheben(state, move |m| m.schluessel == schluessel(&m.projekt, "bau-rot") && !noch_rot.contains(&m.projekt), jetzt).await;
     }
+    let mut ohne: BTreeSet<String> = BTreeSet::new();
+    for h in &e.stil_hinweise {
+        match stil_meldung(h) {
+            Some(n) => {
+                melden(state, n, Wiederholung::Zustand, jetzt).await;
+            }
+            None => {
+                ohne.insert(schluessel(&h.slug, "stil-hinweise"));
+            }
+        }
+    }
+    if !ohne.is_empty() {
+        beheben(state, move |m| ohne.contains(&m.schluessel), jetzt).await;
+    }
+    // Gelöschte oder archivierte Projekte prüft kein Bau mehr: ihre Stil-Meldung ist erledigt (wie bei pruefung-rot).
+    if e.gruen {
+        let s = state.clone();
+        beheben(
+            state,
+            move |m| {
+                m.schluessel == schluessel(&m.projekt, "stil-hinweise")
+                    && (projekt_weg_aus(&s.quellen, &m.projekt) || crate::quellen::im_archiv(&s.projekt_eltern(&m.projekt)))
+            },
+            jetzt,
+        )
+        .await;
+    }
+}
+
+/// Die Meldung zu den Stil-Hinweisen eines Projekts; `None` ohne Hinweis.
+pub fn stil_meldung(h: &crate::vertrag::bote::StilHinweise) -> Option<NeueMeldung> {
+    let titel = match h.zahl {
+        0 => return None,
+        1 => format!("„{}“ hat 1 Stil-Hinweis: alte oder unbekannte Farbnamen.", h.slug),
+        n => format!("„{}“ hat {n} Stil-Hinweise: alte oder unbekannte Farbnamen.", h.slug),
+    };
+    let mut n = neu(&h.slug, MeldungsArt::Info, "stil-hinweise", titel);
+    let mehr = if (h.zahl as usize) > h.stellen.len() { " und weitere" } else { "" };
+    let text = format!("Stellen: {}{mehr}. Einzelheiten mit dashboard.exe pruefe {}.", h.stellen.join(", "), h.slug);
+    n.text = Some(kuerzen(&text, crate::api::arbeiten::NOTIZ_HOECHSTENS));
+    Some(n)
 }
 
 // ----- Prüfung -----
@@ -1062,6 +1107,59 @@ mod tests {
         assert!(web.behoben.is_none() && web.schluessel == "schaufenster/bau-rot", "fehlt im Bau: offen");
         bau_ergebnis(&state, &slugs, true, "Grün.", &[], zeit(30, 9, 20)).await;
         assert!(meldungen(&state).iter().all(|x| x.behoben.is_some()));
+    }
+
+    /// Farben 2b: Stil-Hinweise eines geprüften Projekts werden eine
+    /// Info-Meldung mit Datei:Zeile; ohne Hinweise verschwindet sie. Ein
+    /// Projekt, das der Lauf nicht geprüft hat, behält seine.
+    #[tokio::test]
+    async fn stil_hinweise_erscheinen_und_verschwinden() {
+        use crate::vertrag::bote::{BauErgebnis, StilHinweise};
+        let state = AppState::fuer_tests(&beispiel());
+        let h = |slug: &str, zahl: u32| StilHinweise {
+            slug: slug.into(),
+            zahl,
+            stellen: (1..=zahl.min(2)).map(|z| format!("projects/{slug}/Seite.svelte:{z}")).collect(),
+        };
+        let e = BauErgebnis { gruen: true, stil_hinweise: vec![h("geflecht", 3), h("schaufenster", 1)], ..Default::default() };
+        bau_ergebnis_4b(&state, &[], &e, "Grün.", zeit(30, 9, 0)).await;
+        bau_ergebnis_4b(&state, &[], &e, "Grün.", zeit(30, 9, 5)).await;
+        let m = meldungen(&state);
+        assert_eq!(m.len(), 2, "{m:?}");
+        let a = m.iter().find(|x| x.projekt == "geflecht").unwrap();
+        assert_eq!((a.schluessel.as_str(), a.art, a.anzahl), ("geflecht/stil-hinweise", MeldungsArt::Info, 1));
+        assert_eq!(a.titel, "„geflecht“ hat 3 Stil-Hinweise: alte oder unbekannte Farbnamen.");
+        assert_eq!(
+            a.text.as_deref(),
+            Some("Stellen: projects/geflecht/Seite.svelte:1, projects/geflecht/Seite.svelte:2 und weitere. Einzelheiten mit dashboard.exe pruefe geflecht.")
+        );
+        // Nur geflecht ist in diesem Lauf geprüft, ohne Hinweis.
+        let e = BauErgebnis { gruen: false, stil_hinweise: vec![h("geflecht", 0)], ..Default::default() };
+        bau_ergebnis_4b(&state, &[], &e, "Rot.", zeit(30, 9, 10)).await;
+        let m = meldungen(&state);
+        assert!(m.iter().find(|x| x.projekt == "geflecht").unwrap().behoben.is_some(), "{m:?}");
+        assert!(m.iter().find(|x| x.projekt == "schaufenster").unwrap().behoben.is_none(), "nicht geprüft: bleibt");
+    }
+
+    /// Farben 2b, H-c: Nach einem grünen Bau ist die Stil-Meldung eines
+    /// gelöschten oder archivierten Projekts behoben; ein noch da liegendes
+    /// Projekt, das der Lauf nicht geprüft hat, behält seine. Ein roter Bau behebt nichts.
+    #[tokio::test]
+    async fn stil_hinweise_geloeschter_und_archivierter_projekte_behoben() {
+        use crate::vertrag::bote::{BauErgebnis, StilHinweise};
+        let wurzel = std::env::temp_dir().join(format!("dashboard-meldung-stil-weg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&wurzel);
+        std::fs::create_dir_all(wurzel.join("projects").join("lebt")).unwrap();
+        std::fs::create_dir_all(wurzel.join("projects").join(crate::quellen::ARCHIV).join("ruht")).unwrap();
+        let state = AppState::fuer_tests(&wurzel);
+        let h = |slug: &str| StilHinweise { slug: slug.into(), zahl: 1, stellen: vec![format!("projects/{slug}/Seite.svelte:1")] };
+        let e = BauErgebnis { gruen: false, stil_hinweise: vec![h("lebt"), h("ruht"), h("weg")], ..Default::default() };
+        bau_ergebnis_4b(&state, &[], &e, "Rot.", zeit(30, 9, 0)).await;
+        let offen = |state: &AppState| -> BTreeSet<String> { meldungen(state).iter().filter(|x| x.behoben.is_none()).map(|x| x.projekt.clone()).collect() };
+        assert_eq!(offen(&state), ["lebt", "ruht", "weg"].map(String::from).into(), "rot: nichts behoben");
+        bau_ergebnis_4b(&state, &[], &BauErgebnis { gruen: true, ..Default::default() }, "Grün.", zeit(30, 9, 5)).await;
+        assert_eq!(offen(&state), ["lebt"].map(String::from).into());
+        let _ = std::fs::remove_dir_all(&wurzel);
     }
 
     /// Prüfung: rot mit Fehler (nicht mit Hinweisen), Text mit Datei und
