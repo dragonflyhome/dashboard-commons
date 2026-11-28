@@ -90,9 +90,9 @@ describe('Stil-Prüfung', () => {
 	it('lässt Token, color-mix mit Token und erlaubte Wörter durch', async () => {
 		expect(
 			await funde(`a {
-	color: var(--text);
-	background: color-mix(in srgb, var(--ok) 10%, transparent);
-	border: 1px solid var(--line);
+	color: var(--vordergrund);
+	background: color-mix(in srgb, var(--ton) 10%, transparent);
+	border: 1px solid var(--linie);
 	border-left: 4px solid currentColor;
 	border-right-color: CURRENTCOLOR;
 	caret-color: Transparent;
