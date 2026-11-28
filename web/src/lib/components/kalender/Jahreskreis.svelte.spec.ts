@@ -132,8 +132,8 @@ const DREIZEHN = festjahr(
 		'gleiche-herbst': '2028-09-22'
 	}
 );
-/** Sydney: Der kürzeste Tag liegt im Juni, die Rollen sind dieselben. */
-const SYDNEY = festjahr(
+/** Südhalbkugel: Der kürzeste Tag liegt im Juni, die Rollen sind dieselben (Daten nach Weltzeit). */
+const SUEDEN = festjahr(
 	[
 		'2027-06-05',
 		'2027-07-04',
@@ -167,7 +167,7 @@ describe('Jahreskreis: Sonnentage auf dem Kreuz', () => {
 	it.each([
 		['mit 12 Monden', JAHR],
 		['mit 13 Monden', DREIZEHN],
-		['in Sydney, nach der Rolle und nicht nach der Reihenfolge der Liste', SYDNEY]
+		['auf der Südhalbkugel, nach der Rolle und nicht nach der Reihenfolge der Liste', SUEDEN]
 	])('die vier Marken stehen bei 0°, 90°, 180° und 270° (%s)', (_, jahr) => {
 		const w = marken(jahr);
 		for (const [rolle, soll] of Object.entries(KREUZ)) {
@@ -214,6 +214,40 @@ describe('Jahreskreis: Sonnentage auf dem Kreuz', () => {
 		};
 		// 182 Tage nach der Wende von 354: 185,1° wie vor der Berichtigung.
 		expect(abstand(marken(drei)['wende-sommer'] ?? NaN, (182 / 354) * 360)).toBeLessThan(0.1);
+	});
+
+	it('stehen die Sonnentage in falscher Reihenfolge im Festjahr, gilt die gleichmäßige Rechnung', () => {
+		// Sommersonnenwende und Herbstgleiche vertauscht.
+		const vertauscht = {
+			...JAHR,
+			sonnentage: JAHR.sonnentage.map((s) =>
+				s.kennung === 'wende-sommer'
+					? { ...s, datum: '2027-09-23' }
+					: s.kennung === 'gleiche-herbst'
+						? { ...s, datum: '2027-06-21' }
+						: s
+			)
+		};
+		const w = marken(vertauscht);
+		// 276 und 182 Tage nach der Wende von 354, gleichmäßig über das Festjahr.
+		expect(abstand(w['wende-sommer'] ?? NaN, (276 / 354) * 360)).toBeLessThan(0.1);
+		expect(abstand(w['gleiche-herbst'] ?? NaN, (182 / 354) * 360)).toBeLessThan(0.1);
+	});
+
+	it('hat das letzte Viertel keinen Tag, gilt die gleichmäßige Rechnung', () => {
+		// Das Festjahr beginnt an der Wintersonnenwende und endet an der Herbstgleiche: 276 Tage.
+		const ohneRest = { ...JAHR, zeitraum: { anfang: '2026-12-21', ende: '2027-09-23' } };
+		expect(abstand(marken(ohneRest)['wende-sommer'] ?? NaN, (182 / 276) * 360)).toBeLessThan(0.1);
+	});
+
+	it('ohne Monate (zwischen den Wendekreisen) stehen die Marken auf dem Kreuz, und die Legende schweigt von Monden', () => {
+		const tropen = { ...JAHR, monate: [] };
+		const w = marken(tropen);
+		for (const [rolle, soll] of Object.entries(KREUZ)) {
+			expect(abstand(w[rolle] ?? NaN, soll), rolle).toBeLessThan(0.5);
+		}
+		const { container } = render(Jahreskreis, { jahr: tropen, tag: '2027-06-21' });
+		expect(container.querySelector('[data-legende]')?.textContent).not.toMatch(/Kreuz|Monde/);
 	});
 
 	it('die Legende sagt, dass die Monde vor der Wintersonnenwende gedehnt oder gestaucht sind', () => {

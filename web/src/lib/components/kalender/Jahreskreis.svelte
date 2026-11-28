@@ -71,7 +71,7 @@
 	 * Sonnentage stehen auf dem Kreuz (0°, 90°, 180°, 270°), jeder Tag dazwischen liegt anteilig
 	 * in seinem Viertel. Das letzte Viertel teilen sich zwei Stücke, damit der Kreis sich
 	 * schließt: von der Herbstgleiche bis zum Ende und vom Anfang bis zur Wende. Die Monde in
-	 * diesem Viertel sind darum gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 hat.
+	 * diesem Viertel sind darum gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
 	 */
 	function winkel(t: string): number {
 		const n = tagZahl(t);
@@ -210,7 +210,7 @@
 		<!-- Beide Ringe folgen den Mondmonaten: innen die Jahreszeiten, außen die Monate; ein Festmonat wie „Imbolc“ gehört noch zur Jahreszeit davor. -->
 		<p class="muted small" data-legende>
 			Innen die Jahreszeiten, außen die Mondmonate.
-			{#if stuetzen}
+			{#if stuetzen && jahr.monate.length > 0}
 				Die Sonnentage stehen auf dem Kreuz; die Monde im Viertel vor der Wintersonnenwende sind
 				gedehnt oder gestaucht, je nachdem, ob das Jahr 12 oder 13 Monde hat.
 			{/if}
