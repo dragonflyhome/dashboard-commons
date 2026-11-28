@@ -5,6 +5,7 @@ import {
 	behobenUngelesen,
 	glocke,
 	istRechteMeldung,
+	istStilHinweis,
 	wartetJeProjekt
 } from './anstehend.ts';
 import { beispielListe } from './anstehend.beispiel.ts';
@@ -41,6 +42,20 @@ describe('Glocke und Zähler „wartet“ (anstehend.ts)', () => {
 		expect(g.zahl).toBe(2);
 		expect(g.meldungen.map((e) => e.id)).toEqual(['m-3', 'm-1']);
 		expect(g.hinweise.map((e) => e.id)).toEqual(['m-2']);
+	});
+
+	it('glocke: Stil-Hinweise unter „Hinweise“, sie zählen mit (Farben 2b)', () => {
+		expect(istStilHinweis('schaufenster/stil-hinweise')).toBe(true);
+		expect(istStilHinweis('schaufenster/bau-rot')).toBe(false);
+		expect(istStilHinweis(null)).toBe(false);
+		const g = glocke([
+			m('m-1', '2026-10-30T08:00:00+01:00', 'schaufenster/bau-rot'),
+			m('m-2', '2026-10-30T10:00:00+01:00', 'dashboard/lesen:docs'),
+			m('m-3', '2026-10-30T09:00:00+01:00', 'schaufenster/stil-hinweise')
+		]);
+		expect(g.meldungen.map((e) => e.id)).toEqual(['m-1']);
+		expect(g.hinweise.map((e) => e.id)).toEqual(['m-2', 'm-3']);
+		expect(g.zahl).toBe(2);
 	});
 
 	it('behobenUngelesen: nur behoben und ungelesen, nicht im Archiv, neueste zuerst', () => {

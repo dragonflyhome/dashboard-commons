@@ -292,6 +292,32 @@ fn style_block_zaehlt_nicht_fuer_zahlen() {
     assert_eq!(saetze(&b), ["FEHLER projects/t/Seite.svelte, Zeile 2: Freie Farbe „#abc“. Farben nur über die Design-Token (var(--…)), nicht frei."]);
 }
 
+/// Farben 2b: Eine Farbe von außen ist mit Herkunft hinter dem `;` derselben
+/// Zeile erlaubt; ohne Herkunft oder mit dem Kommentar vor dem `;` nicht.
+#[test]
+fn extern_farbe_mit_herkunft() {
+    let b = svelte("<style>\n\tp {\n\t\t--extern-himmel: #6fa8dc; /* extern: Herkunft */\n\t}\n</style>\n");
+    assert!(b.is_empty(), "{:#?}", saetze(&b));
+    // Im Attribut gilt die Ausnahme nicht: Stylelint weist extern im Markup ab, eine
+    // Farbe von außen gehört an eine Stelle im `<style>`-Block, nicht in jedes Element.
+    ein_fehler(&svelte("<p style=\"--extern-himmel: #6fa8dc; /* extern: Herkunft */\">x</p>\n"), 1, "Freie Farbe „#6fa8dc“.");
+}
+
+#[test]
+fn extern_farbe_mit_leerer_herkunft() {
+    ein_fehler(&svelte("<style>\n\tp {\n\t\t--extern-osten: #b8322a; /* extern: */\n\t}\n</style>\n"), 3, "Freie Farbe „#b8322a“.");
+    ein_fehler(&svelte("<style>\n\tp {\n\t\t--extern-osten: #b8322a;\n\t}\n</style>\n"), 3, "Freie Farbe „#b8322a“.");
+    // Ein anderer Name ist keine Farbe von außen.
+    ein_fehler(&svelte("<style>\n\tp {\n\t\t--osten: #b8322a; /* extern: X */\n\t}\n</style>\n"), 3, "Freie Farbe „#b8322a“.");
+}
+
+#[test]
+fn extern_farbe_mit_herkunft_vor_dem_semikolon() {
+    ein_fehler(&svelte("<style>\n\tp {\n\t\t--extern-osten: #b8322a /* extern: X */;\n\t}\n</style>\n"), 3, "Freie Farbe „#b8322a“.");
+    // Herkunft erst in der nächsten Zeile.
+    ein_fehler(&svelte("<style>\n\tp {\n\t\t--extern-osten: #b8322a;\n\t\t/* extern: X */\n\t}\n</style>\n"), 3, "Freie Farbe „#b8322a“.");
+}
+
 #[test]
 fn attribute_und_svelte_syntax_hoechstens_hinweis() {
     let text = "<svg viewBox=\"0 0 100 50\" width=\"100\" height=\"50\"></svg>\n<textarea rows=\"4\" cols=\"40\"></textarea>\n<td colspan=\"2\" tabindex=\"3\">x</td>\n{#each xs as x, i}\n\t{#if i > 3}<p>{x}</p>{/if}\n{/each}\n<Karte breite={300} />\n";

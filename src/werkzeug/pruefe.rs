@@ -30,6 +30,9 @@
 //! Projekt mit Svelte-Dateien und bei `--alle` (ein Lauf für alle, unter einer
 //! Sekunde; braucht Node und `web/node_modules`, sonst ein Hinweis);
 //! `--ohne-stil` lässt sie weg. Bei `--bauliste` läuft sie mit `--svelte`.
+//! Bei `--alle` prüft sie dazu die grünen Kopien (`web/.projekte-gruen`,
+//! Farben 2b, [`gruene_kopien`]): Funde dort stehen als Hinweis mit eigenem
+//! Ort („letzte grüne Fassung“) und ändern den Rückgabewert nicht.
 //!
 //! Seit Etappe 4b für ein Projekt dazu ESLint für den Projektordner (mit
 //! `--cache`, `web/eslint.projekte.config.js`) und Vitest für eigene
@@ -142,7 +145,7 @@ fn erstes_repo(kandidaten: impl IntoIterator<Item = std::path::PathBuf>) -> Opti
 /// Quelle, bei `pruefe <slug>` und bei `--bauliste` läuft `lauf_in_mit`, dort
 /// bleibt eine unlesbare Quelle stumm.
 #[cfg(test)]
-fn lauf_quellen(q: &crate::quellen::Quellen, repo: &Path, args: &[String]) -> (String, i32) {
+pub(crate) fn lauf_quellen(q: &crate::quellen::Quellen, repo: &Path, args: &[String]) -> (String, i32) {
     lauf_quellen_mit(q, repo, args, Vec::new())
 }
 
@@ -173,6 +176,7 @@ fn lauf_quellen_mit(q: &crate::quellen::Quellen, repo: &Path, args: &[String], z
     }
     if !args.iter().any(|a| a == "--ohne-stil") {
         befunde.extend(stil::pruefen(&erste, repo, None));
+        befunde.extend(gruene_kopien(repo));
     }
     // Eine unlesbare Quelle fehlt sonst stumm; ihre Projekte hießen dann in data/ „gibt es nicht“.
     for satz in q.doppelt.iter().cloned().chain(q.unlesbare_pfade().iter().map(|p| satz_unlesbar(p))) {
@@ -307,6 +311,7 @@ fn lauf_in_mit(dir: &Path, repo_anders: Option<&Path>, args: &[String], zusatz: 
             }
             if !ohne_stil {
                 b.extend(stil::pruefen(dir, repo, None));
+                b.extend(gruene_kopien(repo));
             }
             b
         }
@@ -348,6 +353,35 @@ fn lauf_in_mit(dir: &Path, repo_anders: Option<&Path>, args: &[String], zusatz: 
     zeilen(&mut text, &befunde);
     let f = summe(&mut text, &befunde, projekt_zahlen);
     (text, if f > 0 { 1 } else { 0 })
+}
+
+/// Ort der grünen Kopien in den Funden, relativ zum Repo.
+pub const ORT_GRUEN: &str = "web/.projekte-gruen";
+
+/// Farben 2b: die Stil-Prüfung der grünen Kopien (`web/.projekte-gruen`),
+/// also dessen, was heute ausgeliefert ist. Ohne den Ordner nichts.
+fn gruene_kopien(repo: &Path) -> Vec<Befund> {
+    gruene_kopien_in(&repo.join("web").join(bau::GRUEN_ORDNER), repo)
+}
+
+/// Wie [`gruene_kopien`] für den Ordner `gruen`. Jeder Fund wird ein Hinweis
+/// mit dem Ort der Kopie: Die Kopie ändert nur ein neuer grüner Bau, also
+/// zählt sie nicht als Fehler dieser Prüfung.
+fn gruene_kopien_in(gruen: &Path, repo: &Path) -> Vec<Befund> {
+    if !gruen.is_dir() {
+        return Vec::new();
+    }
+    stil::pruefen(gruen, repo, None)
+        .into_iter()
+        .map(|b| {
+            let datei = match b.datei.strip_prefix("projects") {
+                Some(rest) => format!("{ORT_GRUEN}{rest}"),
+                None => b.datei.clone(),
+            };
+            let wort = if b.ist_fehler() { "Letzte grüne Fassung (dort ein Fehler)" } else { "Letzte grüne Fassung" };
+            Befund::hinweis(datei, b.zeile.map(|z| z as usize), format!("{wort}: {}", b.text))
+        })
+        .collect()
 }
 
 fn zeilen(text: &mut String, befunde: &[Befund]) {
@@ -551,6 +585,34 @@ mod tests {
         assert!(text.contains("HINWEIS projects/neu-form/daten/kanban.toml: `kanban.toml` läuft aus"), "{text}");
         assert_eq!(zeilen[13], "0 Fehler, 13 Hinweise");
         assert_eq!(lauf(&beispiel(), &args(&["neu-form", "--ohne-stil"])), (text, 0), "--ohne-stil wird angenommen");
+    }
+
+    /// Farben 2b: `pruefe --alle` prüft die grünen Kopien mit; ihre Funde
+    /// stehen als Hinweis unter dem eigenen Ort und ändern den Rückgabewert nicht.
+    #[test]
+    fn gruene_kopien_mit_eigenem_ort() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        if crate::dienst::programme::pfad_von(crate::dienst::programme::Werkzeug::Node).is_none() || !repo.join("web/node_modules/stylelint").is_dir() {
+            crate::ueberspringen("Node oder web/node_modules/stylelint fehlt.");
+            return;
+        }
+        let gruen = std::env::temp_dir().join(format!("dashboard-gruen-kopien-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&gruen);
+        std::fs::create_dir_all(gruen.join("alt")).unwrap();
+        std::fs::write(gruen.join("alt/Seite.svelte"), "<p>x</p>\n<style>\n\tp { color: #fff; }\n\th3 { color: var(--text); }\n</style>\n").unwrap();
+        // Kein Projekt: Dateien neben den Kopien zählen nicht.
+        std::fs::write(gruen.join("stand.json"), "{}").unwrap();
+        let b = gruene_kopien_in(&gruen, &repo);
+        assert!(gruene_kopien_in(&gruen.join("fehlt"), &repo).is_empty());
+        let _ = std::fs::remove_dir_all(&gruen);
+        // Stylelint meldet „#fff“ zweimal (Hex und freier Wert) und nicht nach Zeilen geordnet.
+        let mut zeilen: Vec<Option<u32>> = b.iter().map(|x| x.zeile).collect();
+        zeilen.sort();
+        assert_eq!(zeilen, [Some(3), Some(3), Some(4)], "{b:?}");
+        assert!(b.iter().all(|x| x.datei == "web/.projekte-gruen/alt/Seite.svelte" && x.schwere == Schwere::Hinweis), "{b:?}");
+        assert!(b.iter().any(|x| x.text.starts_with("Letzte grüne Fassung (dort ein Fehler): Stil: Freie Farbe „#fff“.")), "{b:?}");
+        assert!(b.iter().any(|x| x.text.starts_with("Letzte grüne Fassung: Stil: „--text“ ist ein alter Name.")), "{b:?}");
+        assert_eq!(pruefung::zaehlen(&b).0, 0, "ändert den Rückgabewert nicht");
     }
 
     #[test]

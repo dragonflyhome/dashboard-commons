@@ -21,7 +21,9 @@
 //! trotzdem nicht durch, läuft er je Projekt einzeln ([`pruefen_mit`]).
 //!
 //! Mit [`STIL_ALS_FEHLER`] sind alle Funde Fehler: Ein Projekt mit Fund
-//! wird nicht gebaut, die anderen bauen weiter.
+//! wird nicht gebaut, die anderen bauen weiter. Ausgenommen sind Funde mit
+//! `stufe: "warning"` (Farben 2b: alte oder unbekannte Farbnamen): Sie sind
+//! Hinweise, das Projekt bleibt grün.
 
 use std::path::Path;
 use std::process::Stdio;
@@ -152,6 +154,11 @@ pub fn ausgabe_lesen(aus: &str, dateien: &[(String, std::path::PathBuf)]) -> Opt
         let grund = match regel {
             "absturz" => format!("Stylelint ist bei {datei} abgestürzt"),
             "lesen" => format!("{datei} ließ sich nicht lesen"),
+            // Ohne Feld `stufe` (älteres Skript) ein Fehler wie bisher.
+            _ if v["stufe"].as_str() == Some("warning") => {
+                befunde.push(Befund::hinweis(datei.clone(), nr, satz));
+                continue;
+            }
             _ => {
                 befunde.push(befund(datei.clone(), nr, satz));
                 continue;
@@ -205,6 +212,8 @@ pub fn satz(regel: &str, text: &str) -> String {
         "function-url-scheme-disallowed-list" | "function-url-no-scheme-relative" => {
             "Stil: `url(…)` aus dem Netz ist verboten. Bilder und Schriften gehören nach assets/.".to_string()
         }
+        // Die eigenen Regeln melden schon auf Deutsch.
+        r if r.starts_with("dashboard/") => ohne_regel(text).to_string(),
         "CssSyntaxError" => format!("Stil: Stylelint kann den Stil nicht lesen ({}). Klammern und Semikolons an der Stelle prüfen.", ohne_regel(text)),
         "lesen" => format!("Stil: Die Datei lässt sich für die Stil-Prüfung nicht lesen ({}).", text.trim()),
         "absturz" => format!(
@@ -258,6 +267,27 @@ mod tests {
         }
     }
 
+    /// Farben 2b: `stufe: "warning"` ist ein Hinweis ohne den Satz zur
+    /// Umstellung; `error` und ein fehlendes Feld bleiben Fehler.
+    #[test]
+    fn stufe_je_fund() {
+        let aus = concat!(
+            r#"{"nr":0,"zeile":3,"regel":"dashboard/alte-namen","stufe":"warning","text":"Stil: „--text“ ist ein alter Name. Neu: --vordergrund. (dashboard/alte-namen)"}"#,
+            "\n",
+            r##"{"nr":0,"zeile":4,"regel":"color-no-hex","stufe":"error","text":"Disallowed hex color \"#fff\" (color-no-hex)"}"##,
+            "\n",
+            r##"{"nr":1,"zeile":5,"regel":"color-no-hex","text":"Disallowed hex color \"#000\" (color-no-hex)"}"##,
+            "\nFERTIG 2 3\n"
+        );
+        let b = ausgabe_lesen(aus, &dateien()).unwrap();
+        let stufen: Vec<(Option<u32>, Schwere)> = b.iter().map(|x| (x.zeile, x.schwere)).collect();
+        let fehler = if STIL_ALS_FEHLER { Schwere::Fehler } else { Schwere::Hinweis };
+        assert_eq!(stufen, [(Some(3), Schwere::Hinweis), (Some(4), fehler), (Some(5), fehler)], "{b:?}");
+        assert_eq!(b[0].text, "Stil: „--text“ ist ein alter Name. Neu: --vordergrund. (Regel dashboard/alte-namen)");
+        assert!(!b[0].text.contains(SATZ_BIS_UMSTELLUNG));
+        assert!(!crate::werkzeug::projektpruefung::ist_uebersprungen(&b[0]));
+    }
+
     #[test]
     fn ohne_fertig_keine_befunde() {
         assert!(ausgabe_lesen("", &dateien()).is_none());
@@ -277,7 +307,9 @@ mod tests {
 
     /// Echter Lauf mit Node und Stylelint aus `web/node_modules` dieses Repos,
     /// auf Projekten in einem Temp-Ordner. Abschalten per Kommentar wirkt
-    /// nicht; ein Projekt ohne Fund bleibt ohne Befund.
+    /// nicht. Farben 2b: „ruhig“ nutzt den alten Namen --text und bekommt dafür
+    /// einen Hinweis (kein Fehler, es bliebe grün), ebenso ein Tippfehler im
+    /// Namen; „still“ mit neuen Namen bleibt ohne Befund.
     #[test]
     fn echter_lauf_mit_stylelint() {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -296,6 +328,11 @@ mod tests {
         .unwrap();
         std::fs::write(dir.join("bunt/seiten/mehr.svelte"), "<h3>x</h3>\n<style>\n\th3 { font-size: 1.05em; }\n</style>\n").unwrap();
         std::fs::write(dir.join("ruhig/Seite.svelte"), "<h3>x</h3>\n<style>\n\th3 { font-size: var(--text-em-lg); color: var(--text); }\n</style>\n").unwrap();
+        std::fs::create_dir_all(dir.join("still")).unwrap();
+        std::fs::write(dir.join("still/Seite.svelte"), "<h3>x</h3>\n<style>\n\th3 { font-size: var(--text-em-lg); color: var(--vordergrund); }\n</style>\n")
+            .unwrap();
+        std::fs::create_dir_all(dir.join("tippfehler")).unwrap();
+        std::fs::write(dir.join("tippfehler/Seite.svelte"), "<h3>x</h3>\n<style>\n\th3 {\n\t\tcolor: var(--vordergrnd);\n\t}\n</style>\n").unwrap();
         let start = std::time::Instant::now();
         let b = pruefen(&dir, &repo, None);
         eprintln!("Stil-Prüfung, zwei Projekte: {:?}", start.elapsed());
@@ -303,10 +340,22 @@ mod tests {
         let stellen: Vec<(&str, Option<u32>)> = b.iter().map(|x| (x.datei.as_str(), x.zeile)).collect();
         assert_eq!(
             stellen,
-            [("projects/bunt/Seite.svelte", Some(5)), ("projects/bunt/Seite.svelte", Some(5)), ("projects/bunt/seiten/mehr.svelte", Some(3))],
+            [
+                ("projects/bunt/Seite.svelte", Some(5)),
+                ("projects/bunt/Seite.svelte", Some(5)),
+                ("projects/bunt/seiten/mehr.svelte", Some(3)),
+                ("projects/ruhig/Seite.svelte", Some(3)),
+                ("projects/tippfehler/Seite.svelte", Some(4))
+            ],
             "{b:?}"
         );
         assert!(b[2].text.contains("„1.05em“"), "{}", b[2].text);
+        // Freie Farben bleiben Fehler, alte und unbekannte Namen sind Hinweise.
+        let fehler = if STIL_ALS_FEHLER { Schwere::Fehler } else { Schwere::Hinweis };
+        assert!(b[..3].iter().all(|x| x.schwere == fehler), "{b:?}");
+        assert_eq!((b[3].schwere, b[4].schwere), (Schwere::Hinweis, Schwere::Hinweis), "{b:?}");
+        assert!(b[3].text.starts_with("Stil: „--text“ ist ein alter Name.") && b[3].text.ends_with("(Regel dashboard/alte-namen)"), "{}", b[3].text);
+        assert!(b[4].text.contains("„--vordergrnd“") && b[4].text.ends_with("(Regel dashboard/bekannte-namen)"), "{}", b[4].text);
     }
 
     /// Etappe 3b-2: Ein Absturz von Stylelint bei einer Datei ist ein Hinweis

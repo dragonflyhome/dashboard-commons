@@ -12,8 +12,9 @@
 // solche Kommentare gibt es darum auch nicht.
 //
 // Ausgabe auf stdout: je Fund eine Zeile JSON
-//   {"nr":0,"zeile":12,"regel":"color-no-hex","text":"…"}
-// (`nr` ist die Zeile der Eingabe ab 0), am Ende `FERTIG <dateien> <funde>`.
+//   {"nr":0,"zeile":12,"regel":"color-no-hex","stufe":"error","text":"…"}
+// (`nr` ist die Zeile der Eingabe ab 0; `stufe` ist "warning" für einen
+// Hinweis, sonst "error"), am Ende `FERTIG <dateien> <funde>`.
 // Eine Datei, die sich nicht lesen lässt, ergibt einen Fund mit der Regel
 // `lesen`; stürzt Stylelint bei einer Datei ab, gibt es für sie einen Fund mit
 // der Regel `absturz`, und die anderen Dateien werden weiter geprüft (Etappe
@@ -32,11 +33,11 @@ const config = {
 	plugins: basis.plugins,
 	rules: {
 		...basis.rules,
-		// Die beiden Namensregeln (Ticket 20, Teil 1) bleiben für Projektseiten
-		// vorerst aus, damit keine Seite rot wird. Teil 2 schaltet sie hier ein,
-		// zusammen mit der Stufe je Fund und der Ausnahme für --extern-….
-		'dashboard/bekannte-namen': null,
-		'dashboard/alte-namen': null
+		// Die beiden Namensregeln (Ticket 20) sind in Projekten nur Hinweise, hier
+		// ausdrücklich: Stellt der Kern sie auf error, bleiben Projektseiten grün,
+		// bis sie umgestellt sind. Feste Farben bleiben wie im Kern Fehler.
+		'dashboard/bekannte-namen': [true, { severity: 'warning' }],
+		'dashboard/alte-namen': [true, { severity: 'warning' }]
 	},
 	customSyntax: 'postcss-html',
 	reportDescriptionlessDisables: false,
@@ -57,7 +58,15 @@ for (const [nr, datei] of dateien.entries()) {
 	try {
 		code = readFileSync(datei, 'utf8');
 	} catch (e) {
-		aus.push(JSON.stringify({ nr, zeile: null, regel: 'lesen', text: String(e?.message ?? e) }));
+		aus.push(
+			JSON.stringify({
+				nr,
+				zeile: null,
+				regel: 'lesen',
+				stufe: 'error',
+				text: String(e?.message ?? e)
+			})
+		);
 		funde += 1;
 		continue;
 	}
@@ -71,13 +80,29 @@ for (const [nr, datei] of dateien.entries()) {
 			ignoreDisables: true
 		});
 	} catch (e) {
-		aus.push(JSON.stringify({ nr, zeile: null, regel: 'absturz', text: String(e?.message ?? e) }));
+		aus.push(
+			JSON.stringify({
+				nr,
+				zeile: null,
+				regel: 'absturz',
+				stufe: 'error',
+				text: String(e?.message ?? e)
+			})
+		);
 		funde += 1;
 		continue;
 	}
 	for (const r of ergebnis.results) {
 		for (const w of r.warnings) {
-			aus.push(JSON.stringify({ nr, zeile: w.line ?? null, regel: w.rule, text: w.text }));
+			aus.push(
+				JSON.stringify({
+					nr,
+					zeile: w.line ?? null,
+					regel: w.rule,
+					stufe: w.severity === 'warning' ? 'warning' : 'error',
+					text: w.text
+				})
+			);
 			funde += 1;
 		}
 	}

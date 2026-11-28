@@ -170,6 +170,16 @@ pub struct BauSchritt {
     pub ms: u64,
 }
 
+/// Farben 2b: Stil-Hinweise eines Projekts, das in diesem Bau geprüft wurde.
+/// Null Hinweise stehen auch da: Dann ist eine alte Meldung behoben.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StilHinweise {
+    pub slug: String,
+    pub zahl: u32,
+    /// Die ersten Stellen als `Datei:Zeile` (Datei relativ zum Repo).
+    pub stellen: Vec<String>,
+}
+
 /// Ergebnis eines Baus der Oberfläche (`Anfrage::Bau`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct BauErgebnis {
@@ -199,6 +209,9 @@ pub struct BauErgebnis {
     /// keine eigene Bau-Meldung). Nur im Dienst gesetzt, nie vom Boten.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bote_fehlt: bool,
+    /// Farben 2b: Stil-Hinweise je Projekt, das in diesem Lauf geprüft wurde.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stil_hinweise: Vec<StilHinweise>,
 }
 
 /// Zustand einer Windows-Sitzung (aus `WTS_CONNECTSTATE_CLASS`), so weit er
@@ -369,6 +382,7 @@ mod tests {
                 alte_fassung: vec!["x".into()],
                 schritte: vec![BauSchritt { name: "vite build".into(), ms: 900 }],
                 bote_fehlt: false,
+                stil_hinweise: vec![StilHinweise { slug: "x".into(), zahl: 1, stellen: vec!["projects/x/Seite.svelte:3".into()] }],
             }),
             Antwort::Geoeffnet,
             Antwort::Fortschritt(None),

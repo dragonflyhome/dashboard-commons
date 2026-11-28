@@ -71,7 +71,7 @@ use tracing::{info, warn};
 use crate::dienst::programme;
 use crate::inhalt::seite;
 use crate::quellen::Quellen;
-use crate::vertrag::bote::{BauErgebnis, BauFortschritt, BauSchritt, FortschrittSchritt, RotesProjekt};
+use crate::vertrag::bote::{BauErgebnis, BauFortschritt, BauSchritt, FortschrittSchritt, RotesProjekt, StilHinweise};
 use crate::werkzeug::projektpruefung::{self, CheckFund};
 use crate::werkzeug::{pruefe, scanner};
 
@@ -768,6 +768,9 @@ pub(crate) struct Vorbereitet {
     /// gebaut, sonst ohne Seite; weder rot noch „alte Fassung“ (keine Meldung).
     pub(crate) nicht_geprueft: Vec<String>,
     pub(crate) stil: Vec<crate::inhalt::pruefung::Befund>,
+    /// Farben 2b: in dieser Runde ganz geprüft (nichts übersprungen); nur für
+    /// sie gilt `stil` als vollständig, auch mit null Hinweisen.
+    pub(crate) stil_geprueft: Vec<String>,
     pub(crate) schritte: Vec<BauSchritt>,
     /// Die Prüfung ließ sich nicht machen, oder die Gesamtprüfung blieb rot.
     pub(crate) gescheitert: Option<String>,
@@ -880,6 +883,7 @@ fn pruefen_mit_fortschritt(ort: &BauOrt, pruefe_voll: PruefeVoll, sammel: Option
         rote: Vec::new(),
         nicht_geprueft: Vec::new(),
         stil: Vec::new(),
+        stil_geprueft: Vec::new(),
         schritte: Vec::new(),
         gescheitert: None,
         gesamt_rot: None,
@@ -939,6 +943,8 @@ fn pruefen_mit_fortschritt(ort: &BauOrt, pruefe_voll: PruefeVoll, sammel: Option
         })
         .collect();
     let mut offen: Vec<usize> = (0..zu_pruefen.len()).filter(|&i| befunde[i].is_none()).collect();
+    // Vorab rote sieht Stylelint nie; sie gelten nicht als stilgeprüft, ihre Stil-Meldung bleibt.
+    let vorab_rot: BTreeSet<String> = (0..zu_pruefen.len()).filter(|&i| befunde[i].is_some()).map(|i| zu_pruefen[i].0.clone()).collect();
     // Reicht die Frist nicht für alle, kommen die am längsten nicht zu Ende geprüften
     // zuerst dran (ohne Zeit vor allen, dann der späteren von `gruen_um` und
     // `versucht_um`, dann der Name), nicht immer dieselben. Zeiten in der Zukunft (Uhr sprang) zählen als jetzt.
@@ -980,6 +986,9 @@ fn pruefen_mit_fortschritt(ort: &BauOrt, pruefe_voll: PruefeVoll, sammel: Option
         let fehler: Vec<_> = befunde.iter().filter(|b| b.ist_fehler()).cloned().collect();
         let uebersprungen: Vec<_> = befunde.iter().filter(|b| projektpruefung::ist_uebersprungen(b)).cloned().collect();
         v.stil.extend(befunde.into_iter().filter(|b| !b.ist_fehler() && b.text.starts_with("Stil")));
+        if uebersprungen.is_empty() && !vorab_rot.contains(&slug) {
+            v.stil_geprueft.push(slug.clone());
+        }
         if fehler.is_empty() && !uebersprungen.is_empty() {
             // Zweig A: Übersprungen heißt nicht geprüft, nicht grün. Kein Rot,
             // keine Meldung; gebaut wird die Kopie (Schritt 2), der nächste Bau prüft neu.
@@ -1475,6 +1484,7 @@ pub async fn bauen(ort: &BauOrt, limit: Duration) -> BauErgebnis {
         alte_fassung: v.alte_fassung.clone(),
         rote: v.rote.clone(),
         schritte: v.schritte.clone(),
+        stil_hinweise: stil_hinweise(&v.stil, &v.stil_geprueft),
         ..Default::default()
     };
     ergebnis.schritte.push(BauSchritt { name: format!("Gesamtprüfung ({laeufe} Lauf/Läufe, neben vite build)"), ms: g_ms });
@@ -1580,6 +1590,23 @@ pub fn stil_satz(stil: &[crate::inhalt::pruefung::Befund]) -> Option<String> {
     }
     let liste: Vec<String> = je.iter().map(|(s, n)| format!("{s} ({n})")).collect();
     Some(format!("Stil-Hinweise von Stylelint: {}. Einzelheiten mit dashboard.exe pruefe <slug>.", liste.join(", ")))
+}
+
+/// So viele Stellen nennt eine Meldung zu Stil-Hinweisen höchstens.
+pub const STIL_STELLEN: usize = 5;
+
+/// Farben 2b: die Stil-Hinweise je geprüftem Projekt (`geprueft`), auch mit
+/// null; Hinweise anderer Projekte zählen nicht.
+pub fn stil_hinweise(stil: &[crate::inhalt::pruefung::Befund], geprueft: &[String]) -> Vec<StilHinweise> {
+    geprueft
+        .iter()
+        .map(|slug| {
+            let vorne = format!("projects/{slug}/");
+            let eigene: Vec<_> = stil.iter().filter(|b| b.datei.starts_with(&vorne)).collect();
+            let stellen = eigene.iter().take(STIL_STELLEN).map(|b| b.zeile.map_or_else(|| b.datei.clone(), |z| format!("{}:{z}", b.datei))).collect();
+            StilHinweise { slug: slug.clone(), zahl: eigene.len() as u32, stellen }
+        })
+        .collect()
 }
 
 /// Warum ein Lauf von npm nicht grün war.
@@ -1773,6 +1800,19 @@ mod tests {
             Befund::hinweis("projects/b/seiten/c.svelte", Some(2), "x"),
         ];
         assert_eq!(stil_satz(&b).unwrap(), "Stil-Hinweise von Stylelint: a (1), b (2). Einzelheiten mit dashboard.exe pruefe <slug>.");
+    }
+
+    #[test]
+    fn stil_hinweise_je_geprueftem_projekt() {
+        use crate::inhalt::pruefung::Befund;
+        let mut b: Vec<Befund> = (1..=7).map(|z| Befund::hinweis("projects/a/Seite.svelte", Some(z), "Stil: x")).collect();
+        b.push(Befund::hinweis("projects/ab/Seite.svelte", None, "Stil: y"));
+        b.push(Befund::hinweis("projects/c/Seite.svelte", Some(2), "Stil: z"));
+        let h = stil_hinweise(&b, &["a".into(), "ab".into(), "leer".into()]);
+        assert_eq!(h.len(), 3, "c ist nicht geprüft: {h:?}");
+        assert_eq!((h[0].zahl, h[0].stellen.len(), h[0].stellen[0].as_str()), (7, STIL_STELLEN, "projects/a/Seite.svelte:1"));
+        assert_eq!((h[1].zahl, h[1].stellen.clone()), (1, vec!["projects/ab/Seite.svelte".to_string()]));
+        assert_eq!((h[2].slug.as_str(), h[2].zahl, h[2].stellen.len()), ("leer", 0, 0));
     }
 
     #[test]
@@ -2612,6 +2652,7 @@ writeFileSync(join(ziel, 'index.html'), '<!doctype html><title>gebaut</title>');
             rote: Vec::new(),
             nicht_geprueft: Vec::new(),
             stil: Vec::new(),
+            stil_geprueft: Vec::new(),
             schritte: Vec::new(),
             gescheitert: None,
             gesamt_rot: None,
@@ -2801,6 +2842,70 @@ writeFileSync(join(ziel, 'index.html'), '<!doctype html><title>gebaut</title>');
         f.zaehlen();
         f.zaehlen();
         assert_eq!(f.jetzt().map(|x| (x.fertig, x.gesamt)), Some((1, 1)));
+    }
+
+    /// Farben 2b: Ein Stil-Hinweis (alter Name) lässt das Projekt grün und in
+    /// der Bauliste; es zählt als geprüft mit einem Hinweis. Ein Projekt mit
+    /// übersprungenem Werkzeug ist nicht geprüft und bekommt keine Zahl.
+    #[test]
+    fn stil_hinweis_bleibt_gruen_und_zaehlt() {
+        let r = TestRepo::neu("stil-hinweis", "gruen");
+        if !r.werkzeuge_attrappe() {
+            return;
+        }
+        r.projekt("a", "<p>a</p>\n");
+        r.projekt("b", "<p>b</p>\n");
+        // Ein verknüpftes Projekt ist vorab rot, Stylelint sieht es nie: nicht stilgeprüft (S1).
+        let ziel = r.0.join("anderswo");
+        std::fs::create_dir_all(&ziel).unwrap();
+        std::fs::write(ziel.join("Seite.svelte"), "<p>c</p>\n").unwrap();
+        let verknuepft = seite::junction_anlegen(&r.0.join("projects").join("c"), &ziel);
+        let voll = |_: &Path, _: &Path, s: &str| -> Vec<crate::inhalt::pruefung::Befund> {
+            match s {
+                "a" => vec![crate::inhalt::pruefung::Befund::hinweis("projects/a/Seite.svelte", Some(3), "Stil: alter Farbname")],
+                _ => projektpruefung::uebersprungen(&format!("projects/{s}"), "Stylelint", "lief nicht"),
+            }
+        };
+        let z = pruefen_je_projekt(&r.ort(), &voll);
+        assert_eq!(z.frisch_gruen.iter().map(|(s, _, _)| s.as_str()).collect::<Vec<_>>(), ["a"], "grün trotz Hinweis");
+        assert!(z.eintraege.iter().any(|(s, _)| s == "a"), "gebaut: {:?}", z.eintraege);
+        assert_eq!((z.v.stil_geprueft.clone(), z.v.nicht_geprueft.clone()), (vec!["a".to_string()], vec!["b".to_string()]));
+        if verknuepft {
+            assert!(z.v.rote.iter().any(|s| s == "c"), "verknüpft ist rot: {:?}", z.v.rote);
+        } else {
+            crate::ueberspringen("Die Verknüpfung ließ sich nicht anlegen.");
+        }
+        let h = stil_hinweise(&z.v.stil, &z.v.stil_geprueft);
+        assert_eq!((h.len(), h[0].zahl, h[0].stellen.clone()), (1, 1, vec!["projects/a/Seite.svelte:3".to_string()]));
+    }
+
+    /// Farben 2b: `pruefe --alle` prüft im Repo die grünen Kopien mit, mit
+    /// einer und mit zwei Inhaltsquellen; der Fund steht unter dem eigenen Ort,
+    /// und ein Fehler in der Kopie lässt den Rückgabewert bei 0. Hier, weil
+    /// `TestRepo` das Repo mit echtem Stylelint schon baut.
+    #[test]
+    fn pruefe_alle_mit_gruener_kopie() {
+        let r = TestRepo::neu("pruefe-gruen", "gruen");
+        if !r.mit_svelte_check() {
+            crate::ueberspringen("Node, web/node_modules oder die Junction fehlt.");
+            return;
+        }
+        let alt = r.ort().gruen().join("alt");
+        std::fs::create_dir_all(&alt).unwrap();
+        std::fs::write(alt.join("Seite.svelte"), "<p>x</p>\n<style>\n\tp { color: #fff; }\n\th3 { color: var(--text); }\n</style>\n").unwrap();
+        std::fs::create_dir_all(r.0.join("weitere")).unwrap();
+        let projekte = r.0.join("projects");
+        let alle = ["--alle".to_string()];
+        let zwei = Quellen::aus_liste(vec![projekte.clone(), r.0.join("weitere")]);
+        for (text, code) in [pruefe::lauf_in(&projekte, None, &alle), pruefe::lauf_quellen(&zwei, &r.0, &alle)] {
+            assert_eq!(code, 0, "{text}");
+            assert!(
+                text.contains("HINWEIS web/.projekte-gruen/alt/Seite.svelte, Zeile 3: Letzte grüne Fassung (dort ein Fehler): Stil: Freie Farbe"),
+                "{text}"
+            );
+            assert!(text.contains("HINWEIS web/.projekte-gruen/alt/Seite.svelte, Zeile 4: Letzte grüne Fassung: Stil: „--text“ ist ein alter Name."), "{text}");
+            assert!(!text.contains("FEHLER"), "{text}");
+        }
     }
 
     /// Muss des Nachtrags Tempo B: Die Prüfung nimmt die am längsten nicht
