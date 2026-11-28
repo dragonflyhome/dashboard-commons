@@ -592,11 +592,11 @@ describe('Kontrast: Bedeutungen in Gebrauch', () => {
 	it.each(THEMEN)(
 		'%s: im Mondsymbol ist der beleuchtete Teil heller als der Schatten, über 3:1',
 		(_thema, t, grundthema) => {
-			const himmel = quelle('lib', 'components', 'kopf', 'Himmel.svelte');
+			const mond = quelle('lib', 'components', 'kalender', 'Mond.svelte');
 			const fuellung = (klasse: string): string => {
 				const m = new RegExp(
 					`\\.${klasse}\\s*\\{[^}]*fill:\\s*light-dark\\(var\\((--[\\w-]+)\\),\\s*var\\((--[\\w-]+)\\)\\)`
-				).exec(himmel);
+				).exec(mond);
 				const name = m?.[grundthema === 'hell' ? 1 : 2];
 				if (name === undefined) throw new Error(`.${klasse} ohne fill: light-dark(var(…), var(…))`);
 				return name;

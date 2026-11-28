@@ -555,6 +555,7 @@ describe('Live-Lücken: Ereignisse mit Bereich und Assets', () => {
 		expect(bereichBetroffen('entscheidungen')(url('api:entscheidungen'))).toBe(true);
 		expect(bereichBetroffen('entscheidungen')(url('api:zielbild'))).toBe(false);
 		expect(bereichBetroffen('zielbild')(url('api:zielbild'))).toBe(true);
+		expect(bereichBetroffen('blickort')(url('api:daten'))).toBe(true);
 		// Jeder Bereich aus dem Vertrag hat mindestens einen Schlüssel.
 		for (const k of Object.values(BEREICH_ABHAENGIGKEIT)) expect(k.length).toBeGreaterThan(0);
 	});

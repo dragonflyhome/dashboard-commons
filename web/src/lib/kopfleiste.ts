@@ -37,6 +37,7 @@ export interface Seite {
 		| '/anleitung'
 		| '/zielbild'
 		| '/entscheidungen'
+		| '/heute'
 		| '/kalender'
 		| '/einstellungen';
 	label: string;
@@ -45,7 +46,7 @@ export interface Seite {
 /** Oben in der Leiste. */
 export const ANSTEHEND: Seite = { schluessel: 'anstehend', pfad: '/anstehend', label: 'Anstehend' };
 
-/** Abgesetzt unter den Projekten, in dieser Reihenfolge (Fassung 3). */
+/** Abgesetzt unter den Projekten, in dieser Reihenfolge (Fassung 3); Heute (Kalender, Stufe 7b) als Einstieg über den Himmel direkt vor Kalender. */
 export const SEITEN: readonly Seite[] = [
 	{ schluessel: 'schluessel', pfad: '/schluessel', label: 'Schlüssel' },
 	{ schluessel: 'hallo', pfad: '/hallo', label: 'Hallo' },
@@ -54,6 +55,7 @@ export const SEITEN: readonly Seite[] = [
 	{ schluessel: 'anleitung', pfad: '/anleitung', label: 'Anleitung' },
 	{ schluessel: 'zielbild', pfad: '/zielbild', label: 'Zielbild' },
 	{ schluessel: 'entscheidungen', pfad: '/entscheidungen', label: 'Entscheidungen' },
+	{ schluessel: 'heute', pfad: '/heute', label: 'Heute' },
 	{ schluessel: 'kalender', pfad: '/kalender', label: 'Kalender' },
 	{ schluessel: 'einstellungen', pfad: '/einstellungen', label: 'Einstellungen' }
 ];

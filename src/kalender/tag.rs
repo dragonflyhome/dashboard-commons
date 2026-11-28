@@ -92,6 +92,16 @@ pub fn mittag(d: NaiveDate, lage: Lage) -> f64 {
     himmel::welt_aus_lokal(himmel::lokal_aus_scheinbar(tag_zahl(d) + 0.5, lage.laenge), lage.laenge)
 }
 
+/// Geometrische Höhe der Sonnenmitte in Grad zum Zeitpunkt `t` (Weltzeit) am Tag `d` des
+/// Orts, ohne Refraktion. Der Stundenwinkel zählt ab dem wahren Mittag von `d`; ganze
+/// Tage Abstand ändern ihn nicht, darum genügt der Tag am Ort statt des Sonnentags.
+pub fn sonnenhoehe(t: f64, d: NaiveDate, lage: Lage) -> f64 {
+    let delta = himmel::deklination(t, 0.0, himmel::sonnenlaenge(t)).to_radians();
+    let h = ((t - mittag(d, lage)) * 360.0).to_radians();
+    let phi = lage.breite.to_radians();
+    (phi.sin() * delta.sin() + phi.cos() * delta.cos() * h.cos()).asin().to_degrees()
+}
+
 /// Die Tageszeiten eines Tags.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tageszeiten {
@@ -502,5 +512,30 @@ mod tests {
         for n in ["2027-03-27", "2027-03-29", "2027-06-21", "2027-10-30", "2027-11-01"] {
             assert!(drei(&berlin, tag(n)).iter().all(|t| t.len() == 5), "{n}: {:?}", drei(&berlin, tag(n)));
         }
+    }
+
+    /// Sonnenhöhe an festen Tagen: am wahren Mittag 90° − |φ − δ|; zur Aufgangszeit über
+    /// dem sichtbaren Horizont (geometrisch + 0,833°) nahe 0; Polartag und Polarnacht in Tromsø.
+    #[test]
+    fn sonnenhoehe_an_festen_tagen() {
+        let berlin = Lage { breite: 52.52, laenge: 13.405 };
+        let sydney = Lage { breite: -33.87, laenge: 151.21 };
+        let tromsoe = Lage { breite: 69.6492, laenge: 18.9553 };
+        let sichtbar = |t: f64, d: NaiveDate, l: Lage| sonnenhoehe(t, d, l) + tiefe_aufgang();
+        for (l, n) in [(berlin, "2027-06-21"), (berlin, "2027-12-21"), (sydney, "2027-03-20"), (tromsoe, "2027-03-20"), (tromsoe, "2027-06-21")] {
+            let m = mittag(tag(n), l);
+            let delta = himmel::deklination(m, 0.0, himmel::sonnenlaenge(m));
+            let h = sonnenhoehe(m, tag(n), l);
+            assert!((h - (90.0 - (l.breite - delta).abs())).abs() <= 0.1, "{n} {}: {h}", l.breite);
+        }
+        for (l, n) in [(berlin, "2027-06-21"), (berlin, "2027-12-21"), (sydney, "2027-03-20"), (tromsoe, "2027-03-20")] {
+            let a = um(rechnen(tag(n), l).aufgang);
+            let h = sichtbar(a, tag(n), l);
+            assert!(h.abs() <= 0.3, "{n} {}: {h}", l.breite);
+        }
+        let polartag = sichtbar(mittag(tag("2027-06-21"), tromsoe) + 0.5, tag("2027-06-21"), tromsoe);
+        let polarnacht = sichtbar(mittag(tag("2027-12-21"), tromsoe), tag("2027-12-21"), tromsoe);
+        assert!(polartag > 0.0, "{polartag}");
+        assert!(polarnacht < 0.0, "{polarnacht}");
     }
 }

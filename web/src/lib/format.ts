@@ -1,4 +1,5 @@
-/** Zahlen und Zeiten lesbar machen, auf Deutsch. */
+/** Zahlen und Zeiten lesbar machen, auf Deutsch. Uhrzeiten und Tage in der Anzeigezone. */
+import { tagInZone, teileInZone, zoneOption } from './zeit/zone.svelte.ts';
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
@@ -47,14 +48,15 @@ export function fmtDateTime(iso: string | null | undefined): string {
 		month: '2-digit',
 		year: 'numeric',
 		hour: '2-digit',
-		minute: '2-digit'
+		minute: '2-digit',
+		...zoneOption()
 	});
 }
 
 const WOCHENTAGE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] as const;
 
 /**
- * Etappe 4c: Tag und Uhrzeit für den Inhaber, „Sa 31.10., 14:05 Uhr“ (Ortszeit);
+ * Etappe 4c: Tag und Uhrzeit für den Inhaber, „Sa 31.10., 14:05 Uhr“ (Anzeigezone);
  * aus einem anderen Jahr mit Jahr („Mi 30.12.2026, 09:00 Uhr“). Leer oder
  * unlesbar: `null`.
  */
@@ -66,9 +68,10 @@ export function fmtTagUhrzeit(
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return null;
 	const zwei = (n: number): string => String(n).padStart(2, '0');
-	const jahr = d.getFullYear() === now.getFullYear() ? '' : String(d.getFullYear());
-	const tag = `${WOCHENTAGE[d.getDay()] ?? ''} ${zwei(d.getDate())}.${zwei(d.getMonth() + 1)}.${jahr}`;
-	return `${tag}, ${zwei(d.getHours())}:${zwei(d.getMinutes())} Uhr`;
+	const t = teileInZone(d);
+	const jahr = t.jahr === teileInZone(now).jahr ? '' : String(t.jahr);
+	const tag = `${WOCHENTAGE[t.wochentag] ?? ''} ${zwei(t.tag)}.${zwei(t.monat)}.${jahr}`;
+	return `${tag}, ${zwei(t.stunde)}:${zwei(t.minute)} Uhr`;
 }
 
 /** „2026-10-25“ → „25.10.2026“; „2026-10“ → „10/2026“; sonst unverändert. */
@@ -108,8 +111,12 @@ export function gitStandHinweis(stand: string | null, now: Date = new Date()): s
 	const t = new Date(stand);
 	if (Number.isNaN(t.getTime())) return null;
 	if (now.getTime() - t.getTime() <= GIT_STAND_ALT_MS) return null;
-	const uhr = t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-	if (t.toDateString() === now.toDateString()) return `Git-Stand von ${uhr}`;
-	const tag = t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+	const uhr = t.toLocaleTimeString('de-DE', {
+		hour: '2-digit',
+		minute: '2-digit',
+		...zoneOption()
+	});
+	if (tagInZone(t) === tagInZone(now)) return `Git-Stand von ${uhr}`;
+	const tag = t.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', ...zoneOption() });
 	return `Git-Stand von ${tag} ${uhr}`;
 }

@@ -1,7 +1,8 @@
 /**
- * Der Himmel oben rechts (Kalender, Stufe 6): Anzeige und Name, ausgeblendet
- * ohne Anmeldung und bei Fehler, Anmelden ohne Neuladen zeigt ihn, ein
- * Inhalts-Ereignis „kalender“ lädt neu, Abmelden leert sofort. Alle Werte erfunden.
+ * Der Himmel oben rechts (Kalender, Stufe 6, Blickort seit 7b): Anzeige und Name,
+ * Link zu /heute, ausgeblendet ohne Anmeldung und bei Fehler, Anmelden ohne Neuladen
+ * zeigt ihn, ein Inhalts-Ereignis „kalender“ lädt neu, Abmelden leert sofort. Den
+ * gemeinsamen Laden prüft himmel.svelte.spec.ts. Alle Werte erfunden.
  */
 import { render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,8 +19,17 @@ const { freierKanal } = await import('#lib/freikanal.svelte.ts');
 
 const KOPF: KalenderKopf = {
 	ort: 'Mitte Deutschlands (Mühlhausen/Thüringen)',
+	kennung: 'mitte',
+	folgt_heimat: true,
+	datum: '2026-11-27',
+	zone: null,
 	aufgang: '07:53',
 	untergang: '16:18',
+	mittag: '12:05',
+	aufgang_morgen: '07:54',
+	hoehe: 12,
+	hoehe_mittag: 18,
+	naechster_tag: '2026-11-27T23:00:00Z',
 	text: null,
 	phase_grad: 250,
 	phase: 'abnehmend',
@@ -27,7 +37,7 @@ const KOPF: KalenderKopf = {
 	naechster_vollmond: '2026-12-24'
 };
 const SATZ =
-	'Mond: abnehmend. Sonne heute 07:53 bis 16:18. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zum Kalender';
+	'Mond: abnehmend. Sonne heute 07:53 bis 16:18. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zu Heute';
 
 function antwort(status: number, koerper: unknown): Response {
 	return new Response(JSON.stringify(koerper), {
@@ -58,14 +68,14 @@ afterEach(() => {
 });
 
 describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
-	it('zeigt Mond, Zeiten und Ort als Link zu /kalender mit dem vollen Satz', async () => {
+	it('zeigt Mond, Zeiten und Ort als Link zu /heute mit dem vollen Satz', async () => {
 		hoerer();
 		const f = vi.fn(() => Promise.resolve(antwort(200, KOPF)));
 		vi.stubGlobal('fetch', f);
-		ort.route.id = '/kalender';
+		ort.route.id = '/heute';
 		render(Himmel);
 		const link = await screen.findByRole('link', { name: SATZ });
-		expect(link).toHaveAttribute('href', '/kalender');
+		expect(link).toHaveAttribute('href', '/heute');
 		expect(link).toHaveAttribute('title', SATZ);
 		expect(link).toHaveAttribute('aria-current', 'page');
 		expect(link.textContent).toContain('↑ 07:53');
@@ -74,6 +84,17 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 		expect(f).toHaveBeenCalledTimes(1);
 		expect(String(f.mock.calls[0]?.[0 as never])).toBe('/api/kalender/kopf');
 		expect(localStorage.length + sessionStorage.length).toBe(0);
+	});
+
+	it('auf /kalender ist der Link nicht „hier“', async () => {
+		hoerer();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(() => Promise.resolve(antwort(200, KOPF)))
+		);
+		ort.route.id = '/kalender';
+		render(Himmel);
+		expect(await screen.findByRole('link', { name: SATZ })).not.toHaveAttribute('aria-current');
 	});
 
 	it('ohne Anmeldung (401) und bei Fehler oder ohne Netz zeichnet er nichts', async () => {
@@ -124,7 +145,7 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 		expect(f).toHaveBeenCalledTimes(2);
 		for (const l of h.inhalt) l({ projekte: ['kalender'], daten: [], version: 2, sammel: false });
 		const neu = await screen.findByRole('link', {
-			name: 'Mond: abnehmend. Die Sonne geht heute nicht auf. Ort: Hütte. Zum Kalender'
+			name: 'Mond: abnehmend. Die Sonne geht heute nicht auf. Ort: Hütte. Zu Heute'
 		});
 		expect(neu.textContent).not.toContain('↑');
 		// Ohne Zeiten kein „·“ vor dem Ort.
@@ -148,7 +169,7 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 				text: 'Die Sonne geht heute nicht unter.'
 			})
 		).toBe(
-			'Mond: abnehmend. Die Sonne geht heute nicht unter. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zum Kalender'
+			'Mond: abnehmend. Die Sonne geht heute nicht unter. Ort: Mitte Deutschlands (Mühlhausen/Thüringen). Zu Heute'
 		);
 	});
 
@@ -161,7 +182,7 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 				text: 'Die Sonne geht heute nicht unter.'
 			})
 		).toBe(
-			'Mond: abnehmend. Sonnenaufgang heute 07:53. Die Sonne geht heute nicht unter. Ort: Tromsø. Zum Kalender'
+			'Mond: abnehmend. Sonnenaufgang heute 07:53. Die Sonne geht heute nicht unter. Ort: Tromsø. Zu Heute'
 		);
 		expect(
 			himmelSatz({
@@ -172,7 +193,7 @@ describe('Himmel in der Kopfleiste (Kalender, Stufe 6)', () => {
 				text: 'Für den Aufgang gibt es heute hier keine Zeit.'
 			})
 		).toBe(
-			'Mond: abnehmend. Sonnenuntergang heute 00:17 (am 27.7.). Für den Aufgang gibt es heute hier keine Zeit. Ort: Tromsø. Zum Kalender'
+			'Mond: abnehmend. Sonnenuntergang heute 00:17 (am 27.7.). Für den Aufgang gibt es heute hier keine Zeit. Ort: Tromsø. Zu Heute'
 		);
 	});
 });

@@ -27,7 +27,8 @@
 	} from '#lib/zeit/dichte.ts';
 	import { filtern, type Zeitraum } from '#lib/zeit/verlauf.ts';
 	import { LaufendesJetzt } from '#lib/zeit/jetzt.svelte.ts';
-	import { kurzDatum, tagPlus, tagText, tagTitel, tagZahl } from '#lib/zeit/tage.ts';
+	import { kurzDatum, tagPlus, tagTitel, tagZahl } from '#lib/zeit/tage.ts';
+	import { tagInZone } from '#lib/zeit/zone.svelte.ts';
 
 	interface Props {
 		ereignisse: readonly VerlaufEreignis[];
@@ -55,7 +56,7 @@
 	}: Props = $props();
 
 	const uhr = new LaufendesJetzt();
-	const heute = $derived(tagText(jetzt ?? uhr.wert));
+	const heute = $derived(tagInZone(jetzt ?? uhr.wert));
 	const grenzen = $derived<TagFenster>({ von: tagPlus(heute, -(tage - 1)), bis: heute });
 	const balken = $derived(tageZaehlen(filtern(ereignisse, aus), heute, tage));
 	const hoechstes = $derived(Math.max(1, ...balken.map((b) => b.anzahl)));

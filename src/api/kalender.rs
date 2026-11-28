@@ -27,8 +27,9 @@ use crate::kalender::{Anzeige, Katalog, Regel};
 use crate::vertrag::daten::{Datei, DatenInhalt, datei_lesen};
 use crate::vertrag::gebete::{Gebete, GebeteAuswahl, gebete_eindeutig};
 use crate::vertrag::kalender::{
-    GebeteOrtAuswahl, GebeteVariante, Gebetsliste, Gebetszeile, KalenderAbfrage, KalenderAbfrageAntwort, KalenderFest, KalenderFeste, KalenderGebete,
-    KalenderGebeteSpeichern, KalenderHeimat, KalenderJahr, KalenderKopf, KalenderMerken, KalenderOrt, KalenderOrte, KalenderTag, KalenderZonen, Tageszeile,
+    GebeteOrtAuswahl, GebeteVariante, Gebetsliste, Gebetszeile, KalenderAbfrage, KalenderAbfrageAntwort, KalenderBlickort, KalenderFest, KalenderFeste,
+    KalenderGebete, KalenderGebeteSpeichern, KalenderHeimat, KalenderJahr, KalenderKopf, KalenderMerken, KalenderOrt, KalenderOrte, KalenderTag, KalenderZonen,
+    Tageszeile,
 };
 use crate::vertrag::standorte::{Standorte, standorte_eindeutig, versatz_nach_laenge};
 
@@ -428,8 +429,9 @@ pub async fn merken(State(state): State<AppState>, kopf: HeaderMap, angemeldet: 
         if m.zeitzone.as_deref().is_some_and(|z| crate::kalender::zone::zone(z).is_none()) {
             return Err(AppError::unlesbar("Diese Zeitzone kennt der Server nicht. Gemeint ist ein Name der IANA-Liste, etwa Europe/Berlin."));
         }
-        // Kennung aus der Datei auf der Platte, unter der Sperre des gemeinsamen Schreibwegs:
-        // Zwei Aufrufe kurz hintereinander (Doppelklick) bekommen verschiedene Kennungen.
+        // Kennung aus der Datei auf der Platte, unter der Sperre des gemeinsamen Schreibwegs.
+        // Gibt es den Ort schon (gleicher Titel, gleiche gerundete Lage, gleiche Zone), kommt
+        // seine Kennung zurück, und nichts wird geschrieben: Ein Doppelklick merkt ihn einmal.
         let vorlage: Vec<String> = crate::kalender::orte::vorlage().map(|v| v.alle().into_iter().map(|s| s.kennung.clone()).collect()).unwrap_or_default();
         let zone = m.zeitzone.as_deref().map(|z| format!("zeitzone = {}\n", toml::Value::String(z.to_string()))).unwrap_or_default();
         let saetze = super::schreiben::Saetze {
@@ -438,11 +440,23 @@ pub async fn merken(State(state): State<AppState>, kopf: HeaderMap, angemeldet: 
             neu_fehlerhaft: "Der Ort ließ sich nicht sauber anfügen; es bleibt bei den bisherigen Orten.",
             nicht_geschrieben: "Der Dienst darf die Datei der Orte nicht schreiben, oder sie ist gerade belegt. Der Ort ist nicht gemerkt.",
         };
-        let kennung = super::schreiben::privat_schreiben::<Standorte, String>(
+        let (kennung, vorhanden) = super::schreiben::privat_schreiben::<Standorte, (String, Option<(bool, String)>)>(
             &state,
             "standorte",
             &saetze,
             |alt| {
+                let gleich = alt.as_ref().and_then(|(_, s)| {
+                    s.standort.iter().find(|s| {
+                        s.titel == titel
+                            && runden(s.breite) == runden(m.breite)
+                            && runden(s.laenge) == runden(m.laenge)
+                            && s.zeitzone == m.zeitzone
+                            && s.versatz.is_none()
+                    })
+                });
+                if let Some(s) = gleich {
+                    return Ok((None, (s.kennung.clone(), Some((s.heimat, s.ort(s.heimat).zeit.art())))));
+                }
                 let (text, vorhanden): (&str, Vec<String>) = match &alt {
                     Some((t, s)) => (t, s.standort.iter().map(|s| s.kennung.clone()).collect()),
                     None => (KOPF_STANDORTE, Vec::new()),
@@ -455,13 +469,13 @@ pub async fn merken(State(state): State<AppState>, kopf: HeaderMap, angemeldet: 
                     runden(m.breite),
                     runden(m.laenge)
                 );
-                Ok((Some(neu), kennung))
+                Ok((Some(neu), (kennung, None)))
             },
             standorte_eindeutig,
         )
         .await?;
-        let zeitart = m.zeitzone.clone().unwrap_or_else(|| "fester Versatz, Näherung nach der Länge".into());
-        Ok::<_, AppError>(Json(KalenderOrt { kennung, titel: titel.to_string(), zeitart, heimat: false }))
+        let (heimat, zeitart) = vorhanden.unwrap_or_else(|| (false, m.zeitzone.clone().unwrap_or_else(|| "fester Versatz, Näherung nach der Länge".into())));
+        Ok::<_, AppError>(Json(KalenderOrt { kennung, titel: titel.to_string(), zeitart, heimat }))
     }
     .await
     .into_response()
@@ -589,23 +603,49 @@ fn kopf_satz(roh: Option<(Sonnenzeit, Sonnenzeit)>, auf: bool, unter: bool) -> O
     }
 }
 
-/// Der Himmel von heute am Ort `ort` für die Kopfleiste: Auf- und Untergang am Tag
-/// `heute` (fehlt einer, ein Satz ohne Zahlen), die Mondphase zum Zeitpunkt `jetzt_t`
-/// (Weltzeit, [`mond::aus_weltzeit`]) und der Tag des nächsten Vollmonds ab Beginn von heute.
-pub fn kopf_antwort(ort: &Benannt, heute: NaiveDate, jetzt_t: f64) -> KalenderKopf {
+/// Der Himmel von heute am Blickort `ort` für Kopfleiste und /heute: Auf- und Untergang,
+/// Mittag und Sonnenhöhe am Tag `heute` (fehlt eine Zeit, ein Satz ohne Zahlen), der
+/// Aufgang von morgen, die Mondphase zum Zeitpunkt `jetzt_t` (Weltzeit,
+/// [`mond::aus_weltzeit`]), der Tag des nächsten Vollmonds ab Beginn von heute und der
+/// Beginn von morgen. `folgt_heimat`: Es ist kein Blickort gewählt.
+pub fn kopf_antwort(ort: &Benannt, folgt_heimat: bool, heute: NaiveDate, jetzt_t: f64) -> KalenderKopf {
     let o = &ort.ort;
     let z = tag::am_tag(heute, o);
-    let um = |s: Sonnenzeit| match s {
-        Sonnenzeit::Um(t) => tag::uhrzeit(o, t, heute),
+    let um = |s: Sonnenzeit, d: NaiveDate| match s {
+        Sonnenzeit::Um(t) => tag::uhrzeit(o, t, d),
         _ => None,
     };
-    let (aufgang, untergang) = z.as_ref().map_or((None, None), |z| (um(z.aufgang), um(z.untergang)));
+    let (aufgang, untergang) = z.as_ref().map_or((None, None), |z| (um(z.aufgang, heute), um(z.untergang, heute)));
+    let morgen = heute.succ_opt();
+    let aufgang_morgen = morgen.and_then(|m| tag::am_tag(m, o).and_then(|z| um(z.aufgang, m)));
+    // Über dem sichtbaren Horizont: zur angezeigten Aufgangszeit 0°.
+    let hoehe_um = |t: f64| o.lage.map(|l| (tag::sonnenhoehe(t, heute, l) + tag::tiefe_aufgang()).round() as i32);
+    // Nur mit IANA-Zone, die den Versatz ohnehin nennt: Mit `datum` ergäbe der Beginn von
+    // morgen den Versatz und mit `mittag` die Länge, die `Zeit::art` bei festem Versatz und
+    // Rechnerzeit verschweigt. Leer fällt der Browser auf die Mitternacht des Geräts zurück.
+    let naechster_tag = matches!(o.zeit, mond::Zeit::Zone(_))
+        .then(|| morgen.and_then(|m| o.beginn_ab(m)).and_then(mond::weltzeit))
+        .flatten()
+        .map(|t| t.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_default();
     let satz = kopf_satz(z.as_ref().map(|z| (z.aufgang, z.untergang)), aufgang.is_some(), untergang.is_some());
     let beginn = o.beginn_ab(heute).unwrap_or_else(|| mond::tag_zahl(heute));
     KalenderKopf {
         ort: ort.titel.clone(),
+        kennung: ort.kennung.clone(),
+        folgt_heimat,
+        datum: text(heute),
+        zone: match &o.zeit {
+            mond::Zeit::Zone(z) => Some(z.name().to_string()),
+            _ => None,
+        },
         aufgang,
         untergang,
+        mittag: z.as_ref().and_then(|z| tag::uhrzeit(o, z.mittag, heute)),
+        aufgang_morgen,
+        hoehe: hoehe_um(jetzt_t),
+        hoehe_mittag: z.as_ref().and_then(|z| hoehe_um(z.mittag)),
+        naechster_tag,
         text: satz.map(str::to_string),
         phase_grad: himmel::mondphase(jetzt_t).round() % 360.0,
         phase: Katalog::eingebaut().mit_ort(o.clone()).phase_am(o.monat_ab_tag(heute), heute),
@@ -614,19 +654,65 @@ pub fn kopf_antwort(ort: &Benannt, heute: NaiveDate, jetzt_t: f64) -> KalenderKo
     }
 }
 
-/// `GET /api/kalender/kopf`: Mond, Sonne und Ort von heute am Heimatort (ohne `inhalt_sammeln`).
+/// Die gespeicherte Kennung des Blickorts; ohne Speicher oder bei einem Lesefehler keine
+/// (dann folgt der Kopf dem Heimatort). Der Fehler nennt die Kennung nicht.
+async fn blickort_lesen(state: &AppState) -> Option<String> {
+    let speicher = state.speicher().ok()?;
+    match crate::speicher::Speicher::im_hintergrund(speicher, |s| s.meta_lesen(crate::speicher::tabellen::META_BLICKORT)).await {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::warn!("Kalender: Blickort nicht lesbar: {e}");
+            None
+        }
+    }
+}
+
+/// Der Kopf am Blickort zur gespeicherten Kennung `gespeichert`; ohne jeden Ort 404.
+fn kopf_am_blickort(orte: &Orte, gespeichert: Option<&str>) -> Result<KalenderKopf, AppError> {
+    let b = orte.blickort(gespeichert).ok_or_else(|| AppError::nicht_gefunden(SATZ_OHNE_ORT))?;
+    let jetzt = mond::aus_weltzeit(chrono::Utc::now().naive_utc());
+    // Der Tag am Ort; ohne Lage und Zone (Ortszeit von Windows) der des Rechners.
+    let heute = b.ort.tag(jetzt).unwrap_or_else(crate::vertrag::abgeleitet::heute);
+    let folgt_heimat = gespeichert.is_none_or(|k| orte.finden(k).is_none());
+    Ok(kopf_antwort(b, folgt_heimat, heute, jetzt))
+}
+
+/// `GET /api/kalender/kopf`: Mond, Sonne und Ort von heute am Blickort (ohne `inhalt_sammeln`).
 pub async fn kopf(State(state): State<AppState>, angemeldet: Option<Extension<Angemeldet>>) -> Response {
     if angemeldet.is_none() {
         return super::anmeldung::bitte_anmelden(None);
     }
-    let orte = Orte::aus_bestand(&state.inhalt.bestand());
-    match orte.heimat() {
-        Some(h) => {
-            let jetzt = mond::aus_weltzeit(chrono::Utc::now().naive_utc());
-            Json(kopf_antwort(h, crate::vertrag::abgeleitet::heute(), jetzt)).into_response()
-        }
-        None => AppError::nicht_gefunden(SATZ_OHNE_ORT).into_response(),
+    let gespeichert = blickort_lesen(&state).await;
+    kopf_am_blickort(&Orte::aus_bestand(&state.inhalt.bestand()), gespeichert.as_deref()).map(Json).into_response()
+}
+
+/// Ein Blickort, den es in GET /api/kalender/standorte nicht gibt (ohne die Kennung).
+pub const SATZ_BLICKORT_NICHT: &str = "Diesen Ort gibt es nicht.";
+
+/// `POST /api/kalender/blickort`: der Ort, an dem man gerade ist (`null`: folgt dem
+/// Heimatort). Nur eine Kennung aus GET /api/kalender/standorte; zieht keinen Ort um.
+pub async fn blickort(State(state): State<AppState>, kopf: HeaderMap, angemeldet: Option<Extension<Angemeldet>>, koerper: Bytes) -> Response {
+    if angemeldet.is_none() {
+        return super::anmeldung::bitte_anmelden(None);
     }
+    async {
+        json_kopf_pruefen(&kopf)?;
+        let b: KalenderBlickort = serde_json::from_slice(&koerper)
+            .map_err(|_| AppError::unlesbar("Der Inhalt ist kein passendes JSON. Erwartet wird etwa {\"ort\": \"zuhause\"} oder {\"ort\": null}."))?;
+        let orte = Orte::aus_bestand(&state.inhalt.bestand());
+        if b.ort.as_deref().is_some_and(|k| orte.finden(k).is_none()) {
+            return Err(AppError::unlesbar(SATZ_BLICKORT_NICHT));
+        }
+        let speicher = state.speicher()?;
+        let k = b.ort.clone();
+        crate::speicher::Speicher::im_hintergrund(speicher, move |s| s.blickort_setzen(k.as_deref())).await.map_err(|e| {
+            tracing::error!("Kalender: Blickort nicht gespeichert: {e} ({})", e.einzelheiten());
+            AppError::intern(format!("{e} Einzelheiten stehen im Protokoll."))
+        })?;
+        kopf_am_blickort(&orte, b.ort.as_deref()).map(Json)
+    }
+    .await
+    .into_response()
 }
 
 /// Das Festjahr des Jahreskreises am Ort des Katalogs, das den Tag `d` enthält.
@@ -1006,12 +1092,24 @@ mod tests {
         assert_eq!((v["kennung"].as_str(), v["zeitart"].as_str()), (Some("ort-2"), Some("fester Versatz, Näherung nach der Länge")));
         let text = std::fs::read_to_string(&datei).unwrap();
         assert!(text.contains("kennung = \"ort-2\"\ntitel = \"Hütte\"\nbreite = -38.6\nlaenge = -62.4\nherkunft = \"hand\"\n"), "{text}");
-        // Atomar: keine halbe Datei daneben; der Inhalt liest beide Orte.
+        // Derselbe Ort noch einmal (auch mit anderen Stellen hinter der gerundeten): dieselbe
+        // Kennung, die Datei bleibt Byte für Byte. Ohne Zone ist es ein anderer Ort.
+        for koerper in [
+            serde_json::json!({"titel": "Ferienhaus", "breite": 47.3449, "laenge": 73.8551, "zeitzone": ZONE}),
+            serde_json::json!({"titel": " Ferienhaus ", "breite": 47.31, "laenge": 73.94, "zeitzone": ZONE}),
+        ] {
+            let (s, v) = schicke(&app, merken(koerper.clone())).await;
+            assert_eq!((s, v["kennung"].as_str(), v["zeitart"].as_str()), (StatusCode::OK, Some("ort-1"), Some(ZONE)), "{koerper}: {v}");
+            assert_eq!(std::fs::read_to_string(&datei).unwrap(), text, "{koerper}");
+        }
+        let (_, v) = schicke(&app, merken(serde_json::json!({"titel": "Ferienhaus", "breite": 47.3449, "laenge": 73.8551}))).await;
+        assert_eq!(v["kennung"].as_str(), Some("ort-3"), "ohne Zone ein anderer Ort: {v}");
+        // Atomar: keine halbe Datei daneben; der Inhalt liest alle drei Orte.
         let daneben: Vec<_> = std::fs::read_dir(datei.parent().unwrap()).unwrap().flatten().map(|e| e.file_name()).collect();
         assert_eq!(daneben.len(), 2, "nur fristen.toml und standorte.toml: {daneben:?}");
         let (_, v) = schicke(&app, get("/api/kalender/standorte")).await;
         let kennungen: Vec<&str> = v["orte"].as_array().unwrap().iter().filter_map(|o| o["kennung"].as_str()).collect();
-        assert_eq!(kennungen, ["mitte", "ort-1", "ort-2"], "{v}");
+        assert_eq!(kennungen, ["mitte", "ort-1", "ort-2", "ort-3"], "{v}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 
@@ -1105,6 +1203,30 @@ mod tests {
         for o in orte {
             assert_eq!(text.matches(&format!("ort = \"{o}\"\n")).count(), 1, "{o}: {text}");
         }
+        assert_eq!(zwischendateien(&wurzel), Vec::<std::ffi::OsString>::new());
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Zwei gleichzeitige Merk-Aufrufe mit demselben Rumpf (Doppelklick): Der Abgleich unter
+    /// der Sperre gibt beiden dieselbe Kennung, in der Datei steht der Ort einmal.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn ort_merken_doppelt_zugleich() {
+        let wurzel = inhalt("merken-doppelt");
+        let datei = standorte_datei(&wurzel);
+        std::fs::write(&datei, HEIMAT).unwrap();
+        let app = router_angemeldet(AppState::fuer_tests(&wurzel));
+        let rumpf = serde_json::json!({"titel": "Ferienhaus", "breite": 10.04, "laenge": 20.04, "zeitzone": "Asia/Singapore"});
+        let antworten = zugleich(&app, vec![post_an("/api/kalender/standorte", rumpf.clone()), post_an("/api/kalender/standorte", rumpf)]).await;
+        let kennungen: Vec<&str> = antworten
+            .iter()
+            .map(|(s, v)| {
+                assert_eq!(*s, StatusCode::OK, "{v}");
+                v["kennung"].as_str().unwrap()
+            })
+            .collect();
+        assert_eq!(kennungen, ["ort-1", "ort-1"]);
+        let text = std::fs::read_to_string(&datei).unwrap();
+        assert_eq!(text.matches("[[standort]]").count(), 2, "Heimatort und ein gemerkter: {text}");
         assert_eq!(zwischendateien(&wurzel), Vec::<std::ffi::OsString>::new());
         let _ = std::fs::remove_dir_all(&wurzel);
     }
@@ -1420,6 +1542,7 @@ mod tests {
             ("/api/kalender/abfrage", serde_json::json!({"breite": 47.3, "laenge": 73.9})),
             ("/api/kalender/standorte", serde_json::json!({"titel": "X", "breite": 47.3, "laenge": 73.9})),
             ("/api/kalender/heimat", serde_json::json!({"ort": "zuhause"})),
+            ("/api/kalender/blickort", serde_json::json!({"ort": "ort-2"})),
         ] {
             let (s, v) = schicke(&frei, post_an(pfad, j)).await;
             assert_eq!(s, StatusCode::UNAUTHORIZED, "{pfad}");
@@ -1457,12 +1580,16 @@ mod tests {
         assert!(fristen_text.contains("Ort Zuhause · Asia/Almaty") && fristen_text.contains("Ort Zweiter Ort · fester Versatz"), "{fristen_text}");
         // Angemeldet steht das Ereignis der Zählung in den Fristen (sonst prüfte der Rest nichts).
         assert!(fristen_text.contains("260-Tage-Zyklus der Zählung Hochland"), "{fristen_text}");
-        // Stufe 6: Kopfleiste und Festjahr angemeldet mit Titel und Zeiten, ohne Zahl der Lage und ohne Zone.
-        for pfad in ["/api/kalender/kopf", "/api/kalender/jahr", "/api/kalender/jahr?ort=ort-2"] {
+        // Stufe 6: Festjahr angemeldet mit Titel und Zeiten, ohne Zahl der Lage und ohne Zone.
+        for pfad in ["/api/kalender/jahr", "/api/kalender/jahr?ort=ort-2"] {
             let (s, v) = schicke(&app, get(pfad)).await;
             assert_eq!(s, StatusCode::OK, "{pfad}: {v}");
             ohne_zahlen_und_zone(pfad, &v.to_string());
         }
+        // Stufe 7b: Der Kopf nennt angemeldet die IANA-Zone des Blickorts, nie eine Zahl der Lage.
+        let (s, v) = schicke(&app, get("/api/kalender/kopf")).await;
+        assert_eq!((s, v["zone"].as_str()), (StatusCode::OK, Some(ZONE)), "{v}");
+        ohne_zahlen("/api/kalender/kopf", &v.to_string());
         let kanal = kanal.await.unwrap();
         assert!(kanal.contains("anmeldung"), "Kanal nicht gelesen: {kanal}");
         let kanal = kanal_ohne_zeitstempel(&kanal);
@@ -1952,24 +2079,24 @@ mod tests {
         let orte = crate::kalender::orte::Orte::aus(None, crate::kalender::orte::vorlage().as_ref());
         let mitte = orte.heimat().unwrap();
         for tag in ["2027-03-20", "2027-06-21", "2027-12-21"] {
-            let k = super::kopf_antwort(mitte, d(tag), mittag_utc(tag));
+            let k = super::kopf_antwort(mitte, true, d(tag), mittag_utc(tag));
             let t = super::tag_antwort(&orte.katalog(), &[], d(tag), Some(mitte.titel.clone()), "", &[]);
             let zeile = |kennung: &str| t.zeiten.iter().find(|z| z.kennung == kennung).and_then(|z| z.zeit.clone());
             assert_eq!((k.aufgang.clone(), k.untergang.clone(), k.text.clone()), (zeile("aufgang"), zeile("untergang"), None), "{tag}");
             assert_eq!(k.ort, "Mitte Deutschlands (Mühlhausen/Thüringen)");
             assert!(!k.sued);
         }
-        let k = super::kopf_antwort(mitte, d("2027-06-19"), mittag_utc("2027-06-19"));
+        let k = super::kopf_antwort(mitte, true, d("2027-06-19"), mittag_utc("2027-06-19"));
         assert_eq!((k.naechster_vollmond.as_str(), k.phase.as_str()), ("2027-06-19", "Vollmond"), "{k:?}");
         assert!((170.0..=190.0).contains(&k.phase_grad) && k.phase_grad.fract() == 0.0, "{k:?}");
-        let k = super::kopf_antwort(mitte, d("2027-06-20"), mittag_utc("2027-06-20"));
+        let k = super::kopf_antwort(mitte, true, d("2027-06-20"), mittag_utc("2027-06-20"));
         assert_eq!((k.naechster_vollmond.as_str(), k.phase.as_str()), ("2027-07-18", "abnehmend"), "{k:?}");
         let tromsoe = benannt_an("tromsoe", 69.6, 19.0, "Europe/Oslo");
-        let k = super::kopf_antwort(&tromsoe, d("2027-12-21"), mittag_utc("2027-12-21"));
+        let k = super::kopf_antwort(&tromsoe, true, d("2027-12-21"), mittag_utc("2027-12-21"));
         assert_eq!((k.aufgang, k.untergang, k.text.as_deref()), (None, None, Some("Die Sonne geht heute nicht auf.")));
-        let k = super::kopf_antwort(&tromsoe, d("2027-06-21"), mittag_utc("2027-06-21"));
+        let k = super::kopf_antwort(&tromsoe, true, d("2027-06-21"), mittag_utc("2027-06-21"));
         assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."));
-        assert!(super::kopf_antwort(&benannt_an("sydney", -33.9, 151.2, "Australia/Sydney"), d("2027-06-21"), mittag_utc("2027-06-21")).sued);
+        assert!(super::kopf_antwort(&benannt_an("sydney", -33.9, 151.2, "Australia/Sydney"), true, d("2027-06-21"), mittag_utc("2027-06-21")).sued);
     }
 
     /// S5: Tromsø an den Übergangstagen 2027 (Mai in den Polartag, Juli hinaus; vgl.
@@ -1978,7 +2105,7 @@ mod tests {
     #[test]
     fn kopf_satz_an_uebergangstagen() {
         let tromsoe = benannt_an("tromsoe", 69.6492, 18.9553, "Europe/Oslo");
-        let tage = |von: &str| d(von).iter_days().take(14).map(|t| (t, super::kopf_antwort(&tromsoe, t, mittag_utc(&t.to_string())))).collect::<Vec<_>>();
+        let tage = |von: &str| d(von).iter_days().take(14).map(|t| (t, super::kopf_antwort(&tromsoe, true, t, mittag_utc(&t.to_string())))).collect::<Vec<_>>();
         let mai = tage("2027-05-12");
         let (t, k) = mai.iter().find(|(_, k)| k.aufgang.is_some() && k.untergang.is_none()).expect("Übergangstag im Mai");
         assert_eq!(k.text.as_deref(), Some("Die Sonne geht heute nicht unter."), "{t}: {k:?}");
@@ -2014,7 +2141,21 @@ mod tests {
         assert_eq!(kopf_satz(Some((Um(0.5), Um(0.6))), true, true), None);
     }
 
-    /// `GET /api/kalender/kopf`: nur angemeldet; Form; der Heimatort mit Titel, ohne Zahl und Zone.
+    /// Der Kopf am Blickort Sydney: Datum am Ort, Zone, Mittag und Höhen, und der nächste Tag
+    /// beginnt am 15.1.2027 um 13:00 Weltzeit (Mitternacht in Sommerzeit, +11 Stunden).
+    #[test]
+    fn kopf_am_blickort_sydney() {
+        let sydney = benannt_an("sydney", -33.9, 151.2, "Australia/Sydney");
+        let k = super::kopf_antwort(&sydney, false, d("2027-01-15"), mittag_utc("2027-01-15"));
+        assert_eq!(k.naechster_tag, "2027-01-15T13:00:00Z");
+        assert_eq!((k.kennung.as_str(), k.folgt_heimat, k.datum.as_str(), k.zone.as_deref()), ("sydney", false, "2027-01-15", Some("Australia/Sydney")));
+        assert!(k.mittag.as_deref().is_some_and(|m| m.starts_with("13:")) && k.aufgang_morgen.as_deref().is_some_and(|a| a.len() == 5), "{k:?}");
+        // Hochsommer im Süden: mittags etwa 90 − |−33,9 + 21,1| + 0,8 ≈ 78°; um 12:00 Weltzeit ist dort Nacht.
+        assert!(k.hoehe_mittag.is_some_and(|h| (77..=79).contains(&h)) && k.hoehe.is_some_and(|h| h < 0), "{k:?}");
+    }
+
+    /// `GET /api/kalender/kopf`: nur angemeldet; Form; ohne Blickort der Heimatort mit Titel,
+    /// Kennung und IANA-Zone, ohne Zahl der Lage.
     #[tokio::test]
     async fn kopf_schnittstelle() {
         let wurzel = inhalt("kopf");
@@ -2025,10 +2166,111 @@ mod tests {
         let (s, v) = schicke(&router_angemeldet(state), get("/api/kalender/kopf")).await;
         assert_eq!(s, StatusCode::OK, "{v}");
         let felder: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-        assert_eq!(felder, ["ort", "aufgang", "untergang", "text", "phase_grad", "phase", "sued", "naechster_vollmond"]);
-        assert_eq!((v["ort"].as_str(), v["sued"].as_bool()), (Some("Zuhause"), Some(false)));
+        assert_eq!(
+            felder,
+            [
+                "ort",
+                "kennung",
+                "folgt_heimat",
+                "datum",
+                "zone",
+                "aufgang",
+                "untergang",
+                "mittag",
+                "aufgang_morgen",
+                "hoehe",
+                "hoehe_mittag",
+                "naechster_tag",
+                "text",
+                "phase_grad",
+                "phase",
+                "sued",
+                "naechster_vollmond"
+            ]
+        );
+        assert_eq!(
+            (v["ort"].as_str(), v["kennung"].as_str(), v["folgt_heimat"].as_bool(), v["sued"].as_bool()),
+            (Some("Zuhause"), Some("zuhause"), Some(true), Some(false))
+        );
         assert!(v["aufgang"].as_str().is_some_and(|a| a.len() == 5) && v["naechster_vollmond"].as_str().is_some_and(|t| t.len() == 10), "{v}");
-        ohne_zahlen_und_zone("kopf", &v.to_string());
+        assert!(v["mittag"].as_str().is_some_and(|a| a.len() == 5) && v["hoehe"].is_i64() && v["hoehe_mittag"].is_i64(), "{v}");
+        assert!(v["datum"].as_str().is_some_and(|t| t.len() == 10) && v["naechster_tag"].as_str().is_some_and(|t| t.len() == 20 && t.ends_with('Z')), "{v}");
+        assert_eq!(v["zone"].as_str(), Some(ZONE));
+        ohne_zahlen("kopf", &v.to_string());
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// `POST /api/kalender/blickort`: nur angemeldet; ein Ort aus der Liste setzt den Blickort
+    /// (fester Versatz: keine Zahl, keine Zone), `null` folgt wieder dem Heimatort, eine
+    /// unbekannte Kennung ist 422 mit einem Satz ohne die Kennung; jeder Wechsel meldet den Bereich.
+    #[tokio::test]
+    async fn blickort_waehlen() {
+        let wurzel = inhalt("blickort");
+        let state = AppState::fuer_tests(&wurzel);
+        let mut bereiche = state.aenderungen.abonnieren();
+        let (frei, app) = (router(state.clone()), router_angemeldet(state));
+        let waehlen = |j: Value| post_an("/api/kalender/blickort", j);
+        let (s, v) = schicke(&frei, waehlen(serde_json::json!({ "ort": "ort-2" }))).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+        ohne_zahlen_und_zone("blickort ohne Anmeldung", &v.to_string());
+        let (s, v) = schicke(&app, waehlen(serde_json::json!({ "ort": "ort-2" }))).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert_eq!(
+            (v["kennung"].as_str(), v["ort"].as_str(), v["folgt_heimat"].as_bool(), v["sued"].as_bool()),
+            (Some("ort-2"), Some("Zweiter Ort"), Some(false), Some(true))
+        );
+        // Ohne IANA-Zone kein Beginn von morgen: er verriete mit `datum` den festen Versatz.
+        assert!(v["zone"].is_null() && v["naechster_tag"] == "", "{v}");
+        ohne_zahlen_und_zone("blickort ort-2", &v.to_string());
+        let ereignis = tokio::time::timeout(Duration::from_secs(2), bereiche.recv()).await.expect("Bereich gemeldet").unwrap();
+        assert_eq!(ereignis.bereich, crate::aenderungen::Bereich::Blickort);
+        let (s, v) = schicke(&app, get("/api/kalender/kopf")).await;
+        assert_eq!((s, v["kennung"].as_str(), v["zone"].is_null()), (StatusCode::OK, Some("ort-2"), true), "{v}");
+        ohne_zahlen_und_zone("kopf am Blickort ort-2", &v.to_string());
+        // Unbekannt, unpassend: 422, der Blickort bleibt.
+        for (koerper, satz) in [
+            (serde_json::json!({ "ort": "mars" }), Some(super::SATZ_BLICKORT_NICHT)),
+            (serde_json::json!({ "ort": 7 }), None),
+            (serde_json::json!({ "ort": "zuhause", "breite": 1.0 }), None),
+        ] {
+            let (s, v) = schicke(&app, waehlen(koerper.clone())).await;
+            assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY, "{koerper}: {v}");
+            let t = v.to_string();
+            assert!(!t.contains("mars") && satz.is_none_or(|x| t.contains(x)), "{koerper}: {t}");
+        }
+        assert_eq!(schicke(&app, get("/api/kalender/kopf")).await.1["kennung"].as_str(), Some("ort-2"));
+        // `null`: wieder am Heimatort, mit dessen Zone.
+        let (s, v) = schicke(&app, waehlen(serde_json::json!({ "ort": null }))).await;
+        assert_eq!(
+            (s, v["kennung"].as_str(), v["folgt_heimat"].as_bool(), v["zone"].as_str()),
+            (StatusCode::OK, Some("zuhause"), Some(true), Some(ZONE)),
+            "{v}"
+        );
+        // Verschwindet der gewählte Ort aus der Datei, folgt der Kopf dem Heimatort.
+        assert_eq!(schicke(&app, waehlen(serde_json::json!({ "ort": "ort-3" }))).await.0, StatusCode::OK);
+        let ohne_drei = STANDORTE.split("\n\n[[standort]]\nkennung = \"ort-3\"").next().unwrap();
+        std::fs::write(standorte_datei(&wurzel), ohne_drei).unwrap();
+        let mut v = Value::Null;
+        for _ in 0..50 {
+            v = schicke(&app, get("/api/kalender/kopf")).await.1;
+            if v["kennung"] == "zuhause" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!((v["kennung"].as_str(), v["folgt_heimat"].as_bool()), (Some("zuhause"), Some(true)), "{v}");
+        let _ = std::fs::remove_dir_all(&wurzel);
+    }
+
+    /// Ohne Datenspeicher: Der Kopf folgt dem Heimatort, Wählen ist 503 wie alle Schreibwege.
+    #[tokio::test]
+    async fn blickort_ohne_speicher() {
+        let wurzel = inhalt("blickort-ohne-speicher");
+        let app = router_angemeldet(AppState::fuer_tests_ohne_speicher(&wurzel, "Probe: Speicher fehlt."));
+        let (s, v) = schicke(&app, get("/api/kalender/kopf")).await;
+        assert_eq!((s, v["kennung"].as_str(), v["folgt_heimat"].as_bool()), (StatusCode::OK, Some("zuhause"), Some(true)), "{v}");
+        let (s, v) = schicke(&app, post_an("/api/kalender/blickort", serde_json::json!({ "ort": "ort-2" }))).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE, "{v}");
         let _ = std::fs::remove_dir_all(&wurzel);
     }
 

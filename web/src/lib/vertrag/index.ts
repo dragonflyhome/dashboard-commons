@@ -144,6 +144,7 @@ export type { Inventory } from './Inventory';
 export type { InventoryEntry } from './InventoryEntry';
 export type { KalenderAbfrage } from './KalenderAbfrage';
 export type { KalenderAbfrageAntwort } from './KalenderAbfrageAntwort';
+export type { KalenderBlickort } from './KalenderBlickort';
 export type { KalenderFest } from './KalenderFest';
 export type { KalenderFeste } from './KalenderFeste';
 export type { KalenderGebete } from './KalenderGebete';

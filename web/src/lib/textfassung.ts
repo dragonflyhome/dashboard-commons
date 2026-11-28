@@ -18,6 +18,7 @@ import type {
 	GanttData,
 	KalenderJahr,
 	KalenderJahrMonat,
+	KalenderKopf,
 	KalenderZeitpunkt,
 	KpiItem,
 	PcMesswert,
@@ -325,6 +326,49 @@ export function jahreskreisText(jahr: KalenderJahr, tag: string): Textfassung {
 	};
 }
 
+/** Grad als Text, etwa „15°“; ohne Wert „–“. */
+const gradText = (g: number | null): string => (g === null ? '–' : `${String(g)}°`);
+
+/**
+ * Sonnenbogen (Kalender, Stufe 7b, /heute): Aufgang, wahrer Mittag mit Höhe,
+ * Untergang und die Höhe jetzt; `uhrzeit` ist die Uhrzeit, zu der das Bild die Sonne
+ * zeigt. Fehlt eine Zeit (Polartag, Polarnacht), steht der Satz des Servers da.
+ */
+export function sonnenbogenText(k: KalenderKopf, uhrzeit: string): Textfassung {
+	const ohne = k.text ?? '–';
+	return {
+		titel: `Sonnenbogen am ${fmtDate(k.datum)} als Text`,
+		spalten: [
+			{ schluessel: 'was', titel: 'Was' },
+			{ schluessel: 'wann', titel: 'Uhrzeit' },
+			{ schluessel: 'hoehe', titel: 'Höhe', art: 'zahl' }
+		],
+		zeilen: [
+			{ was: 'Aufgang', wann: k.aufgang ?? ohne, hoehe: '' },
+			{ was: 'Mittag', wann: k.mittag ?? '–', hoehe: gradText(k.hoehe_mittag) },
+			{ was: 'Untergang', wann: k.untergang ?? ohne, hoehe: '' },
+			{ was: 'Höhe um', wann: uhrzeit, hoehe: gradText(k.hoehe) }
+		],
+		leer: ohne
+	};
+}
+
+/** Mond (Kalender, Stufe 7b, /heute): Phase und Tag des nächsten Vollmonds. */
+export function mondText(k: Pick<KalenderKopf, 'phase' | 'naechster_vollmond'>): Textfassung {
+	return {
+		titel: 'Mond als Text',
+		spalten: [
+			{ schluessel: 'was', titel: 'Was' },
+			{ schluessel: 'wert', titel: 'Wert' }
+		],
+		zeilen: [
+			{ was: 'Phase', wert: k.phase },
+			{ was: 'Nächster Vollmond', wert: fmtDate(k.naechster_vollmond) }
+		],
+		leer: 'Für den Mond gibt es nichts zu zeigen.'
+	};
+}
+
 /** Alle Fassungen nach Namen (für die Liste unten und den Test). */
 export const FASSUNGEN = {
 	ganttText,
@@ -335,7 +379,9 @@ export const FASSUNGEN = {
 	kennzahlenText,
 	flussText,
 	pcKurveText,
-	jahreskreisText
+	jahreskreisText,
+	sonnenbogenText,
+	mondText
 } as const;
 
 // ----- Die Liste -----
@@ -364,6 +410,12 @@ export const BILD_BAUSTEINE: Readonly<Record<string, BildBaustein>> = {
 		ort: 'selbst',
 		funktion: 'jahreskreisText'
 	},
+	'lib/components/kalender/Sonnenbogen.svelte': {
+		name: 'Sonnenbogen (/heute)',
+		ort: 'selbst',
+		funktion: 'sonnenbogenText'
+	},
+	'lib/components/kalender/Mond.svelte': { name: 'Mond', ort: 'selbst', funktion: 'mondText' },
 	'lib/components/pc/Sparkline.svelte': { name: 'Kurve', ort: 'selbst', funktion: 'sparkText' },
 	'lib/components/blocks/Progress.svelte': {
 		name: 'Fortschritt',
@@ -405,9 +457,7 @@ export const KEINE_BILDER: Readonly<Record<string, string>> = {
 	'lib/components/kopf/Glocke.svelte':
 		'Zeichen einer Glocke; die Zahl steht im Namen des Knopfs, die Meldungen als Liste',
 	'lib/katalog/grund/Schublade.svelte': 'Zeichen ☰ und ×; der Knopf hat einen Namen',
-	// Kalender, Stufe 6
-	'lib/components/kopf/Himmel.svelte':
-		'Zeichen des Monds in seiner Phase; Phase, Sonnenzeiten und Ort stehen im Namen und Titel des Links',
+	// Kalender, Stufe 6; das Zeichen des Monds in der Kopfleiste ist seit 7b `kalender/Mond.svelte` ohne Namen.
 	'lib/katalog/Minilinie.svelte':
 		'Kleines Symbol der letzten Minute; den Wert nennt der Link (Name und Titel), der ganze Verlauf mit Textfassung steht auf /pc'
 };

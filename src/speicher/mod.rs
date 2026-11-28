@@ -295,6 +295,23 @@ impl Speicher {
         self.festschreiben(txn, &[])
     }
 
+    /// Setzt den Blickort (`Some`) oder entfernt ihn (`None`, folgt dem Heimatort).
+    pub fn blickort_setzen(&self, kennung: Option<&str>) -> Result<(), SpeicherFehler> {
+        let txn = self.db.begin_write()?;
+        {
+            let mut t = txn.open_table(META)?;
+            match kennung {
+                Some(k) => {
+                    t.insert(tabellen::META_BLICKORT, k)?;
+                }
+                None => {
+                    t.remove(tabellen::META_BLICKORT)?;
+                }
+            }
+        }
+        self.festschreiben(txn, &[Bereich::Blickort])
+    }
+
     /// Schema-Fassung der Datei (0, wenn noch keine eingetragen ist).
     pub fn schema(&self) -> Result<u32, SpeicherFehler> {
         Ok(migration::schema_lesen(&*self.db)?.unwrap_or(0))

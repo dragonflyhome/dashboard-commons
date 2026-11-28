@@ -71,3 +71,34 @@ export function beiTageswechsel(
 		dokument?.removeEventListener('visibilitychange', sichtbar);
 	};
 }
+
+/**
+ * Kalender, Stufe 7b: ruft `rufen` einmal, sobald `ziel` (Millisekunden seit 1970,
+ * etwa der Beginn des nächsten Tags am Blickort) vorbei ist: Zeitgeber auf
+ * `ziel` + `PUFFER_MS` und beim Wiederkehren der Seite `uhr() >= ziel`. Wer
+ * gerufen wird, stellt den nächsten Zeitpunkt selbst. Gibt die Abmeldung zurück.
+ */
+export function beiZeitpunkt(
+	ziel: number,
+	rufen: () => void,
+	uhr: () => Date = () => new Date(),
+	dokument: Dokument | null = typeof document === 'undefined' ? null : document
+): () => void {
+	let fertig = false;
+	function einmal(): void {
+		if (fertig) return;
+		fertig = true;
+		ab();
+		rufen();
+	}
+	function sichtbar(): void {
+		if (dokument?.visibilityState === 'visible' && uhr().getTime() >= ziel) einmal();
+	}
+	const zeitgeber = setTimeout(einmal, Math.max(0, ziel - uhr().getTime()) + PUFFER_MS);
+	dokument?.addEventListener('visibilitychange', sichtbar);
+	function ab(): void {
+		clearTimeout(zeitgeber);
+		dokument?.removeEventListener('visibilitychange', sichtbar);
+	}
+	return ab;
+}

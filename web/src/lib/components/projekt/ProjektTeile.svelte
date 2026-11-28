@@ -150,6 +150,7 @@
 				if (v.slug === s) void allesLaden(s);
 			}),
 			// Um Mitternacht neu rechnen lassen: Frist morgen wird heute, die Zeitleiste rückt weiter.
+			// shortcut: Tag des Rechners, weil der Server bis 7c nach Windows rechnet; mit 7c auf den Tag des Blickorts
 			beiTageswechsel(() => {
 				void allesLaden(s);
 			}),

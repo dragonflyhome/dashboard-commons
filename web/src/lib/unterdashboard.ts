@@ -14,6 +14,7 @@
 import { API } from './api/client';
 import { ladeAnstehend, unterDashboardAnsicht, type UnterDashboardAnsicht } from './anstehend.ts';
 import { mitZugang } from './zugang.ts';
+import { teileInZone } from './zeit/zone.svelte.ts';
 import type { ProjektStand } from '$vertrag';
 
 /** Was das Unter-Dashboard zeigt, fertig ausgewertet in anstehend.ts (`unterDashboardAnsicht`). */
@@ -86,10 +87,13 @@ export async function ladeUnterDaten(
 	}
 }
 
-/** `2026-10-30T14:03:00+01:00` → `30.10. 14:03` (die Ortszeit, wie der Server sie schreibt). */
+/** `2026-10-30T14:03:00+01:00` → `30.10. 14:03` (in der Anzeigezone). Unlesbares bleibt, wie es ist. */
 export function kurzZeit(zeit: string): string {
-	const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(zeit);
-	return m ? `${m[3] ?? ''}.${m[2] ?? ''}. ${m[4] ?? ''}:${m[5] ?? ''}` : zeit;
+	const d = new Date(zeit);
+	if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(zeit) || Number.isNaN(d.getTime())) return zeit;
+	const t = teileInZone(d);
+	const zwei = (n: number): string => String(n).padStart(2, '0');
+	return `${zwei(t.tag)}.${zwei(t.monat)}. ${zwei(t.stunde)}:${zwei(t.minute)}`;
 }
 
 /** Erste `n` und der Rest (für „und N weitere“ zum Aufklappen). */

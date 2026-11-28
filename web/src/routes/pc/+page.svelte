@@ -20,7 +20,7 @@
 	import Textfassung from '#lib/components/Textfassung.svelte';
 	import { dichteText } from '#lib/textfassung.ts';
 	import { LaufendesJetzt } from '#lib/zeit/jetzt.svelte.ts';
-	import { tagText } from '#lib/zeit/tage.ts';
+	import { tagInZone } from '#lib/zeit/zone.svelte.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -136,7 +136,7 @@
 			}}
 		/>
 		<!-- Etappe 3b: Textfassung des Streifens (Einträge je Tag), mit demselben Filter. -->
-		<Textfassung fassung={dichteText(v.ereignisse, tagText(uhr.wert), ausgeblendet)} />
+		<Textfassung fassung={dichteText(v.ereignisse, tagInZone(uhr.wert), ausgeblendet)} />
 		<Verlauf
 			ereignisse={v.ereignisse}
 			aus={ausgeblendet}

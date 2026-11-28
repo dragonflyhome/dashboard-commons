@@ -34,7 +34,8 @@ pub fn mime_for(path: &std::path::Path) -> &'static str {
 /// Seit Etappe 4d dazu die System-Seiten anleitung, zielbild und entscheidungen
 /// (ihre Unteradressen sind 404), seit der Freigabe in einem Schritt fassungen.
 /// Seit Etappe S2 einstellungen (die Farbwahl; verlangt die Anmeldung wie jede
-/// Seite, die nicht in der Liste der öffentlichen Wege steht).
+/// Seite, die nicht in der Liste der öffentlichen Wege steht). Seit Kalender 7b
+/// heute (Uhr, Sonne und Mond am Blickort).
 pub const SEITEN: &[&str] = &[
     "",
     "anstehend",
@@ -51,6 +52,7 @@ pub const SEITEN: &[&str] = &[
     "fassungen",
     "einstellungen",
     "kalender",
+    "heute",
 ];
 
 /// Die Unterseiten von `/katalog` (Adresse nach `katalog/`). Etappe 3b-2

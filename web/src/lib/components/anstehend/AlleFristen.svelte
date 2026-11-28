@@ -44,6 +44,7 @@
 			live.onNachholen(() => {
 				void laden();
 			}),
+			// shortcut: Tag des Rechners, weil der Server bis 7c nach Windows rechnet; mit 7c auf den Tag des Blickorts
 			beiTageswechsel(() => {
 				void laden();
 			}),

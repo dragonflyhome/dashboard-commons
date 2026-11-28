@@ -11,6 +11,7 @@ import {
 	mitFristNaechsteZuerst
 } from '#lib/anstehend.ts';
 import { chatWort } from '#lib/aufgaben.ts';
+import { tagInZone, uhrInZone } from '#lib/zeit/zone.svelte.ts';
 import type {
 	AnstehendEintrag,
 	ArbeitsStand,
@@ -106,11 +107,14 @@ export function schrittWer(s: Schritt): string | null {
 }
 
 /**
- * `2026-11-05T14:30:00+01:00` → „seit 05.11., 14:30 Uhr“ (Ortszeit, wie der
- * Server sie schreibt); bei fertigen Schritten „am …“, denn da dauert nichts an.
+ * `2026-11-05T14:30:00+01:00` → „seit 05.11., 14:30 Uhr“ (in der
+ * Anzeigezone); bei fertigen Schritten „am …“, denn da dauert nichts an.
  */
 export function zeitText(s: Pick<Schritt, 'stand' | 'seit'>): string {
-	const wann = `${kurzDatum(s.seit.slice(0, 10))}, ${s.seit.slice(11, 16)} Uhr`;
+	const d = new Date(s.seit);
+	const wann = Number.isNaN(d.getTime())
+		? s.seit
+		: `${kurzDatum(tagInZone(d))}, ${uhrInZone(d)} Uhr`;
 	return s.stand === 'fertig' ? `am ${wann}` : `seit ${wann}`;
 }
 

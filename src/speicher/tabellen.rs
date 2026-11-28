@@ -35,7 +35,8 @@ use super::pc_ereignisse::PcEreignisEintrag;
 use crate::api::vertrag::{Antwort, Arbeit, Aufgabe, Einstufung, Ereignis, Meldung, Vorgang};
 use crate::vertrag::passkey::Passkey;
 
-/// Verwaltung: `schema`, `fassung.<tabelle>` und `letzte_sicherung` (JJJJ-MM-TT).
+/// Verwaltung: `schema`, `fassung.<tabelle>`, `letzte_sicherung` (JJJJ-MM-TT) und
+/// `blickort` (Kennung eines Orts).
 pub const META: TableDefinition<&str, &str> = TableDefinition::new("meta");
 
 /// PC-Messwerte. Schlüssel: Zeit als RFC 3339 in UTC mit fester Breite
@@ -167,6 +168,9 @@ pub const META_FASSUNG_PC_EREIGNISSE_ARCHIV: &str = "fassung.pc_ereignisse_archi
 pub const META_LETZTE_SICHERUNG: &str = "letzte_sicherung";
 /// Die Fassung, deren „Neu in …“ die Oberfläche schon gezeigt hat (`/api/fassungen/gezeigt`).
 pub const META_NEU_IN_GEZEIGT: &str = "neu_in.gezeigt";
+/// Der Blickort: Kennung eines Orts aus `standorte.toml`. Fehlt er, folgt der
+/// Blickort dem Heimatort. So privat wie die Orte selbst: nie ins Protokoll.
+pub const META_BLICKORT: &str = "blickort";
 /// Tageszähler für Arbeitskennungen: `arbeit.zaehler.JJJJMMTT` → letzte Nummer des Tages.
 pub const META_ARBEIT_ZAEHLER: &str = "arbeit.zaehler.";
 /// Tageszähler für Vorgangskennungen: `vorgang.zaehler.JJJJMMTT` → letzte Nummer des Tages.
@@ -310,7 +314,7 @@ pub struct Tabelle {
 pub const ALLE: &[Tabelle] = &[
     Tabelle {
         name: "meta",
-        beschreibung: "Verwaltung: Schema-Fassung und Datum der letzten Sicherung",
+        beschreibung: "Verwaltung: Schema-Fassung, Datum der letzten Sicherung und Blickort (Kennung eines Orts)",
         eintraege: |txn| zaehlen(META, txn),
         kopieren: |von, nach| kopieren(META, von, nach),
         exportieren: Some(|txn| texte_exportieren(META, txn)),

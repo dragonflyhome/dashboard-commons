@@ -14,6 +14,18 @@ Eine Fassung heißt „x.y.z - JJJJ-MM-TT“, ganz oben steht immer Unreleased.
 Unreleased
 ----------
 
+Hinzugefügt
+- Bildschirm Heute mit Uhr, Sonnenbogen und Mond am gewählten Ort.
+  Uhrzeiten, die der Browser zeigt, folgen dem Ort, an dem man gerade
+  ist; Fristen und Texte vom Server folgen später. Bekannte Grenzen
+  bis dahin: „heute“ in Fristen und Kennzahlen rechnet weiter nach dem
+  Rechner, und fertige Uhrzeiten in Texten vom Server stehen in
+  Rechnerzeit neben umgerechneten.
+
+Behoben
+- Der Himmel in der Kopfleiste nimmt das Datum am Ort, nicht das des
+  Rechners.
+
 0.31.1 - 2026-11-27
 -------------------
 
